@@ -504,59 +504,6 @@ func (c *OVNNbClient) SetVirtualLogicalSwitchPortVirtualParents(lspName, parents
 	}, wrapErr("set logical switch port virtual-parents %w"))
 }
 
-func (c *OVNNbClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
-	value := ""
-	if enableArpProxy {
-		value = "true"
-	}
-	return c.transactLSPOptionUpdate(lspName, false, func(lsp *ovnnb.LogicalSwitchPort) {
-		applyLSPOption(lsp, "arp_proxy", value)
-	}, wrapErr("failed to set logical switch port option arp_proxy %w"))
-}
-
-// SetLogicalSwitchPortArpProxy sets the arp_proxy option of a router type logical switch port.
-// OVN answers ARP/ND requests for the given addresses with the MAC of the peer logical router port.
-// An empty address list removes the option.
-func (c *OVNNbClient) SetLogicalSwitchPortArpProxy(lspName string, proxyIPs []string) error {
-	lsp, err := c.GetLogicalSwitchPort(lspName, false)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
-	}
-	if lsp == nil {
-		err = fmt.Errorf("logical switch port %s not found", lspName)
-		klog.Error(err)
-		return err
-	}
-
-	arpProxy := strings.Join(proxyIPs, " ")
-	if lsp.Options["arp_proxy"] == arpProxy {
-		return nil
-	}
-
-	options := maps.Clone(lsp.Options)
-	if options == nil {
-		options = make(map[string]string)
-	}
-	if arpProxy == "" {
-		delete(options, "arp_proxy")
-	} else {
-		options["arp_proxy"] = arpProxy
-	}
-	lsp.Options = options
-
-	op, err := c.UpdateLogicalSwitchPortOp(lsp, &lsp.Options)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	if err := c.Transact("lsp-update", op); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to set logical switch port option arp_proxy %w", err)
-	}
-	return nil
-}
-
 // SetLogicalSwitchPortSecurity set logical switch port port_security
 func (c *OVNNbClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error {
 	lsp, err := c.getLogicalSwitchPortOrErr(lspName, false)

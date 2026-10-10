@@ -2433,22 +2433,6 @@ func (c *Controller) removeLogicalSwitchPortOption(name, option string) error {
 	})
 }
 
-func (c *Controller) setLogicalSwitchPortArpProxy(name string, enabled bool) error {
-	return c.updateLogicalSwitchPortOptionsWith(name, func() error {
-		return c.OVNNbClient.SetLogicalSwitchPortArpProxy(name, enabled)
-	}, func(options map[string]string) map[string]string {
-		if !enabled {
-			delete(options, "arp_proxy")
-			return options
-		}
-		if options == nil {
-			options = make(map[string]string, 1)
-		}
-		options["arp_proxy"] = strconv.FormatBool(enabled)
-		return options
-	})
-}
-
 func (c *Controller) enableLogicalSwitchPortLayer2Forward(name string) error {
 	return c.updateLogicalSwitchPortWith(name, func() error {
 		return c.OVNNbClient.EnablePortLayer2forward(name)
@@ -3420,7 +3404,6 @@ func (c *Controller) createLoadBalancer(name, protocol string, selectFields ...s
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.CreateLoadBalancer(name, protocol, selectFields...)
 	}
-	lb, err := c.getLoadBalancer(name, true)
 	row := &ovnnb.LoadBalancer{
 		Name:        name,
 		ExternalIDs: withVendor(nil),
@@ -3429,7 +3412,8 @@ func (c *Controller) createLoadBalancer(name, protocol string, selectFields ...s
 	if len(selectFields) != 0 {
 		row.SelectionFields = selectFields
 	}
-	return c.createIfAbsent(lb, err, "lb-add", row)
+	return table.CreateIfAbsentByName(context.Background(), c.OVNNbTables, row,
+		ovnnb.LoadBalancerTable, name, "lb-add", func(row *ovnnb.LoadBalancer) string { return row.Name })
 }
 
 func (c *Controller) deleteLoadBalancerHealthChecks(filter func(*ovnnb.LoadBalancerHealthCheck) bool) error {
