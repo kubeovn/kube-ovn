@@ -149,7 +149,7 @@ func (a *Application) environmentCheck(ctx context.Context, client *Client, _ []
 		if _, err := fmt.Fprintf(a.streams.Out, "Environment check on %s\n", target.Node); err != nil {
 			return err
 		}
-		if err := client.Executor.Exec(ctx, target, []string{"bash", "/kube-ovn/env-check.sh"}, a.outputStreams()); err != nil {
+		if err := client.Executor.Exec(ctx, target, []string{"environment"}, a.outputStreams()); err != nil {
 			failures = append(failures, err)
 		}
 	}
