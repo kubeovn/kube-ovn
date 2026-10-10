@@ -194,6 +194,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 	klog.Infof("UpdateNp, related subnets protocols %s", protocolSet.String())
+	klog.V(5).InfoS("[DEBUG-network-e2e] network policy selected ports", "policy", key, "portGroup", pgName, "ports", ports, "protocols", protocolSet.String(), "spec", np.Spec)
 
 	if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports); err != nil {
 		klog.Errorf("failed to set ports of port group %s to %v: %v", pgName, ports, err)

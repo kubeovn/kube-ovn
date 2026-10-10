@@ -1510,6 +1510,7 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 }
 
 func (c *Controller) reconcileServiceTemplateState(svc *v1.Service, prefix string, migrations []ovs.TemplateVIPMigration, desiredTemplateVIPs, variablesByChassis map[string]map[string]string) error {
+	klog.V(5).InfoS("[DEBUG-network-e2e] desired service template backends", "service", klog.KObj(svc), "uid", svc.UID, "trafficDistribution", svc.Spec.TrafficDistribution, "vips", desiredTemplateVIPs, "variablesByChassis", variablesByChassis)
 	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
 		return lb.ExternalIDs[serviceLBOwnerExternalID] == string(svc.UID)
 	})

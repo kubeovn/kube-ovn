@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -38,6 +39,16 @@ func init() {
 
 	zc := zap.NewProductionConfig()
 	zc.Level = zap.NewAtomicLevelAt(zapcore.Level(-3))
+	if value := os.Getenv("KUBE_OVN_LIBOVSDB_LOG_VERBOSITY"); value != "" {
+		verbosity, err := strconv.Atoi(value)
+		if err != nil || verbosity < 0 || verbosity > 5 {
+			klog.Warningf("invalid KUBE_OVN_LIBOVSDB_LOG_VERBOSITY %q; keeping verbosity 3", value)
+		} else {
+			zc.Level = zap.NewAtomicLevelAt(zapcore.Level(-verbosity))
+			// Diagnostic transactions must not be dropped by production log sampling.
+			zc.Sampling = nil
+		}
+	}
 	zc.EncoderConfig.EncodeLevel = func(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 		if l < zapcore.InfoLevel {
 			l = zapcore.InfoLevel

@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import shlex
 import signal
+import shutil
 import subprocess
 import threading
 import time
@@ -49,7 +50,7 @@ def capture(command, seconds=10, cancel=None):
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                    text=True, start_new_session=True)
-    except OSError as error:
+    except (OSError, ValueError) as error:
         return {"started": timestamp(), "command": command, "error": str(error)}
     started = timestamp()
     deadline = time.monotonic() + seconds
@@ -80,11 +81,73 @@ def podNames(selector, cancel=None):
     return result.get("stdout", "").split()
 
 
+def prepareDebug(directory):
+    """Enable diagnostics before E2E; wait for the controller restart to finish."""
+    directory.mkdir(parents=True, exist_ok=True)
+    result = capture(kubectl("get", "deployment", "kube-ovn-controller", "-n", "kube-system", "-o", "json"))
+    try:
+        containers = json.loads(result.get("stdout", "")).get("spec", {}).get("template", {}).get("spec", {}).get("containers", [])
+        controller = next(container for container in containers if container["name"] == "kube-ovn-controller")
+    except (ValueError, StopIteration, KeyError):
+        (directory / "controller-error.json").write_text(json.dumps({"error": "cannot read controller deployment", "stderr": result.get("stderr")}))
+        return 1
+    flags = ("--v=5", "--vmodule=network_policy=6,endpoint_slice=6,ovn*=6", "--enable-pprof=true", "--pprof-port=10660")
+    args = [arg for arg in controller.get("args", [])
+            if not arg.startswith(("--v=", "--vmodule=", "--enable-pprof=", "--pprof-port="))]
+    patch = {"spec": {"template": {"spec": {"containers": [{"name": "kube-ovn-controller",
+        "args": args + list(flags), "env": [{"name": "KUBE_OVN_LIBOVSDB_LOG_VERBOSITY", "value": "5"}]}]}}}}
+    result = capture(kubectl("patch", "deployment", "kube-ovn-controller", "-n", "kube-system",
+                             "--type=strategic", "-p", json.dumps(patch)))
+    result.pop("command", None)
+    result["debugFlags"] = flags
+    (directory / "controller-patch.json").write_text(json.dumps(result, indent=2))
+    if result.get("returncode") != 0:
+        return 1
+    rollout = capture(["kubectl", "--request-timeout=185s", "rollout", "status",
+        "deployment/kube-ovn-controller", "-n", "kube-system", "--timeout=180s"], seconds=185)
+    (directory / "controller-rollout.json").write_text(json.dumps(rollout, indent=2))
+    if rollout.get("returncode") != 0:
+        return 1
+    # All NB modules log to file at debug level; stderr/console levels stay unchanged.
+    failed = False
+    central = podNames("app=ovn-central")
+    for pod in central:
+        result = capture(kubectl("exec", "-n", "kube-system", pod, "-c", "ovn-central", "--", "sh", "-ec", '''
+date -u
+echo '=== NB vlog before ==='
+ovs-appctl -T 2 -t /var/run/ovn/ovnnb_db.ctl vlog/list
+ovs-appctl -T 2 -t /var/run/ovn/ovnnb_db.ctl vlog/set file:dbg
+echo '=== NB vlog after ==='
+ovs-appctl -T 2 -t /var/run/ovn/ovnnb_db.ctl vlog/list
+'''))
+        (directory / f"nb-vlog-{pod}.json").write_text(json.dumps(result, indent=2))
+        failed |= result.get("returncode") != 0
+    for pod in podNames("app=ovs"):
+        result = capture(kubectl("exec", "-n", "kube-system", pod, "-c", "openvswitch", "--", "sh", "-ec", '''
+for socket in /var/run/ovn/ovn-controller*.ctl; do
+  levels=$(ovs-appctl -T 2 -t "$socket" vlog/list)
+  echo "=== $socket before ==="
+  printf '%s\n' "$levels"
+  for module in binding lflow ofctrl reconnect; do
+    if printf '%s\n' "$levels" | awk -v m="$module" '$1==m {found=1} END {exit !found}'; then
+      ovs-appctl -T 2 -t "$socket" vlog/set "$module:file:dbg"
+    fi
+  done
+  echo "=== $socket after ==="
+  ovs-appctl -T 2 -t "$socket" vlog/list
+done
+'''))
+        # Older scheduled images may use different sockets/modules; retain the result.
+        (directory / f"ovn-controller-vlog-{pod}.json").write_text(json.dumps(result, indent=2))
+    return int(failed or not central)
+
+
 def runtimeJobs(central, cancel=None):
     # Sample both ends of NB transactions to distinguish server/client starvation.
     runtime = """
 date -u
 ps -eo pid,comm,pcpu,pmem,stat,wchan
+cat /proc/uptime /proc/loadavg
 cat /sys/fs/cgroup/cpu.max /sys/fs/cgroup/cpu.stat /sys/fs/cgroup/memory.events
 cat /sys/fs/cgroup/cpu.pressure /sys/fs/cgroup/io.pressure /sys/fs/cgroup/memory.pressure
 cat /proc/net/tcp /proc/net/tcp6
@@ -93,6 +156,10 @@ for proc in /proc/[0-9]*; do
     kube-ovn-contro*|ovsdb-server|ovn-northd)
       echo "=== $proc ==="
       cat "$proc/stat" "$proc/schedstat" "$proc/io"
+      for task in "$proc"/task/*; do
+        echo "=== $task ==="
+        cat "$task/stat" "$task/schedstat" "$task/wchan"
+      done
       ;;
   esac
 done
@@ -120,6 +187,34 @@ done
     return jobs
 
 
+def fastJobs(cancel=None):
+    jobs = runtimeJobs([], cancel)
+    for pod in podNames("app=kube-ovn-controller", cancel)[:3]:
+        jobs[f"goroutines-{pod}"] = kubectl("exec", "-n", "kube-system", pod, "-c", "kube-ovn-controller", "--",
+            "curl", "-q", "-fsS", "--max-time", "2", "--max-filesize", "1048576", "http://127.0.0.1:10660/debug/pprof/goroutine?debug=2")
+        # Bypass libovsdb using the controller's network namespace and configured NB endpoint.
+        jobs[f"nb-controller-{pod}"] = kubectl("exec", "-n", "kube-system", pod, "-c", "kube-ovn-controller", "--", "sh", "-ec", '''
+date -u
+if [ "${ENABLE_SSL:-false}" = true ]; then echo 'TCP probe unavailable with SSL' >&2; exit 1; fi
+address="${OVN_NB_ADDR:-}"
+if [ -z "$address" ]; then
+  host="${OVN_DB_IPS:-${OVN_NB_SERVICE_HOST:-}}"
+  host="${host%%,*}"
+  address="tcp:[$host]:${KUBE_OVN_NB_PORT:-6641}"
+fi
+timeout 3 ovsdb-client --timeout=2 query "${address%%,*}" '["OVN_Northbound",{"op":"select","table":"NB_Global","where":[],"columns":["nb_cfg"]}]'
+''')
+    for pod in podNames("app=ovn-central", cancel)[:3]:
+        jobs[f"nb-local-{pod}"] = kubectl("exec", "-n", "kube-system", pod, "-c", "ovn-central", "--",
+            "ovsdb-client", "--timeout=2", "query", "unix:/var/run/ovn/ovnnb_db.sock",
+            '["OVN_Northbound",{"op":"select","table":"NB_Global","where":[],"columns":["nb_cfg"]}]')
+    for name, command in list(jobs.items()):
+        if name.startswith("client-") and name.endswith("-sockets"):
+            jobs[name.removesuffix("-sockets") + "-independent-request"] = command[:-1] + [
+                "date -u; curl -q -v -sS --connect-timeout 2 --max-time 3 http://traffic-dist-test-service:80/"]
+    return jobs
+
+
 def collectSnapshot(directory, full=False, cancel=None):
     directory.mkdir(parents=True, exist_ok=True)
     for old in directory.glob("*.json"):
@@ -137,6 +232,8 @@ def collectSnapshot(directory, full=False, cancel=None):
         jobs["ovn-sb"] = kubectl("exec", "-n", "kube-system", central[0], "-c", "ovn-central", "--", "sh", "-c",
             'for table in SB_Global Chassis_Private Chassis_Template_Var Port_Binding; do echo "=== $table ==="; '
             'timeout 3 ovn-sbctl --timeout=2 list "$table"; done')
+        jobs["ovn-log-rotation"] = kubectl("exec", "-n", "kube-system", central[0], "-c", "ovn-central", "--",
+            "logrotate", "--state", "/tmp/network-e2e-logrotate.status", "/etc/logrotate.d/ovn")
     jobs.update(runtimeJobs(central, cancel))
     for pod in podNames("app=ovs", cancel):
         # Cookie zero includes learned affinity flows; full snapshots also record ACL flows.
@@ -196,9 +293,133 @@ class Diagnostics:
         self.interval = interval
         self.stop = threading.Event()
         self.failure = threading.Event()
+        self.fastFailure = threading.Event()
         self.threads = []
         self.processes = []
+        self.remoteStreams = []
         self.lock = threading.Lock()
+
+    def stream(self, name, command, maxBytes=4 * 1024 * 1024):
+        """Retain four bounded segments of live logs, including packet headers only."""
+        directory = self.directory / "streams" / name
+        directory.mkdir(parents=True, exist_ok=True)
+        cleanup = None
+        if "exec" in command and command[0] == "kubectl":
+            offset = command.index("--")
+            pidfile = f"/tmp/network-e2e-diagnostic-{os.getpid()}-{name}.pid"
+            prefix = command[:offset + 1]
+            command = prefix + ["sh", "-c", r'''
+pidfile="$1"
+shift
+printf '%s\n' "$$" > "$pidfile"
+child=''
+trap 'if [ -n "$child" ]; then kill -TERM "$child" 2>/dev/null || true; fi; rm -f "$pidfile"' EXIT
+trap 'exit 143' TERM INT
+timeout -s TERM 10800 "$@" &
+child=$!
+wait "$child"
+''', "sh", pidfile, *command[offset + 1:]]
+            cleanup = prefix + ["sh", "-c", r'''
+if [ -f "$1" ]; then
+  read -r pid < "$1"
+  if tr '\000' '\n' < "/proc/$pid/cmdline" 2>/dev/null | grep -Fxq "$1"; then
+    kill -TERM "$pid"
+  fi
+fi
+''', "sh", pidfile]
+        with self.lock:
+            if self.stop.is_set():
+                return
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                       bufsize=0, start_new_session=True)
+            self.processes.append(process)
+            if cleanup:
+                self.remoteStreams.append((name, cleanup))
+        metadata = {"started": timestamp(), "command": command, "segments": 4, "maxSegmentBytes": maxBytes}
+        (directory / "metadata.json").write_text(json.dumps(metadata, indent=2))
+        index = 0
+        written = 0
+        output = (directory / "0.log").open("wb")
+        try:
+            with process.stdout:
+                while chunk := process.stdout.read(65536):
+                    while chunk:
+                        count = min(len(chunk), maxBytes - written)
+                        output.write(chunk[:count])
+                        output.flush()
+                        written += count
+                        chunk = chunk[count:]
+                        if written == maxBytes:
+                            output.close()
+                            index += 1
+                            metadata["lastSegment"] = index
+                            (directory / "metadata.json").write_text(json.dumps(metadata, indent=2))
+                            written = 0
+                            output = (directory / f"{index % 4}.log").open("wb")
+            process.wait()
+        finally:
+            output.close()
+            if process.poll() is None:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+            metadata.update(finished=timestamp(), returncode=process.poll(), lastSegment=index)
+            (directory / "metadata.json").write_text(json.dumps(metadata, indent=2))
+            with self.lock:
+                self.processes.remove(process)
+
+    def liveLogs(self):
+        targets = []
+        for pod in podNames("app=kube-ovn-controller", self.stop)[:3]:
+            targets.append((f"controller-{pod}", ["kubectl", "--request-timeout=0", "logs", "-f",
+                "-n", "kube-system", pod, "-c", "kube-ovn-controller", "--timestamps", "--tail=100"]))
+        for pod in podNames("app=ovn-central", self.stop)[:3]:
+            prefix = ["kubectl", "--request-timeout=0", "exec", "-n", "kube-system", pod, "-c", "ovn-central", "--"]
+            targets.append((f"nb-file-{pod}", prefix + ["tail", "-n", "100", "-F", "/var/log/ovn/ovsdb-server-nb.log"]))
+            targets.append((f"db-packet-headers-{pod}", prefix + ["tcpdump", "-i", "any", "-p", "-nn", "-tttt", "-S", "-l",
+                "tcp port 6641 or tcp port 6642 or tcp port 6643 or tcp port 6644"]))
+        for pod in podNames("app=ovs", self.stop):
+            prefix = ["kubectl", "--request-timeout=0", "exec", "-n", "kube-system", pod, "-c", "openvswitch", "--"]
+            targets.append((f"ovn-controller-file-{pod}", prefix + ["tail", "-n", "100", "-F", "/var/log/ovn/ovn-controller.log"]))
+            targets.append((f"service-packet-headers-{pod}", prefix + ["tcpdump", "-i", "any", "-p", "-nn", "-tttt", "-S", "-l",
+                "tcp port 80 or tcp port 81 or tcp port 9376"]))
+        for name, command in targets:
+            thread = threading.Thread(target=self.guard, args=(self.stream, (name, command)), daemon=True)
+            with self.lock:
+                if self.stop.is_set():
+                    break
+                self.threads.append(thread)
+                thread.start()
+
+    def fastSample(self):
+        history = collections.deque(maxlen=12)
+        index = 0
+        failures = 0
+        while not self.stop.is_set():
+            full = self.fastFailure.is_set()
+            self.fastFailure.clear()
+            if full:
+                failureDir = self.directory / "probe-failures" / str(failures % 8)
+                failureDir.mkdir(parents=True, exist_ok=True)
+                for source in (self.directory / "streams").glob("*/*"):
+                    destination = failureDir / "streams" / source.parent.name / source.name
+                    destination.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copyfile(source, destination)
+            jobs = fastJobs(self.stop)
+            with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+                results = list(executor.map(lambda item: (item[0], capture(item[1], seconds=6, cancel=self.stop)), jobs.items()))
+            sample = dict(results)
+            directory = self.directory / "probes"
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / f"{index % 12}.json").write_text(json.dumps(sample))
+            history.append(sample)
+            if full:
+                (failureDir / "preceding-probes.json").write_text(json.dumps(list(history)))
+                failures += 1
+            index += 1
+            self.fastFailure.wait(5)
 
     def watch(self, resource):
         # Reconnect watches after API errors, retaining timestamps and resourceVersion.
@@ -262,7 +483,8 @@ class Diagnostics:
             self.failure.wait(self.interval)
 
     def start(self):
-        for target, args in [(self.watch, (resource,)) for resource in resources] + [(self.sample, ())]:
+        for target, args in [(self.watch, (resource,)) for resource in resources] + [
+                (self.sample, ()), (self.fastSample, ()), (self.liveLogs, ())]:
             thread = threading.Thread(target=self.guard, args=(target, args), daemon=True)
             thread.start()
             self.threads.append(thread)
@@ -279,6 +501,13 @@ class Diagnostics:
     def close(self):
         self.stop.set()
         self.failure.set()
+        self.fastFailure.set()
+        # Closing kubectl's transport alone may leave remote tail/tcpdump running.
+        with self.lock:
+            remote = list(self.remoteStreams)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            results = list(executor.map(lambda item: (item[0], capture(item[1], seconds=3)), remote))
+        (self.directory / "stream-cleanup.json").write_text(json.dumps(dict(results), indent=2))
         with self.lock:
             for process in self.processes:
                 try:
@@ -355,6 +584,8 @@ def runSuite(suite, directory, interval):
                     log.flush()
                     if failurePattern.search(line):
                         diagnostics.failure.set()
+                        if re.search(r"\[FAIL(?:ED)?\]", line):
+                            diagnostics.fastFailure.set()
             result = process.wait()
     except OSError as error:
         (directory / "suite-start-error.txt").write_text(str(error))
@@ -384,13 +615,15 @@ def runSuite(suite, directory, interval):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("run", "snapshot"))
+    parser.add_argument("action", choices=("prepare", "run", "snapshot"))
     parser.add_argument("directory", type=Path)
     parser.add_argument("--suite", choices=("k8s-conformance-e2e", "k8s-netpol-e2e"))
     parser.add_argument("--interval", type=float, default=30)
     args = parser.parse_args()
     if args.interval <= 0:
         parser.error("interval must be positive")
+    if args.action == "prepare":
+        return prepareDebug(args.directory)
     if args.action == "snapshot":
         collectSnapshot(args.directory, full=True)
         return 0
