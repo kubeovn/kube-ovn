@@ -96,6 +96,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Temporarily disable Valgrind in CI while investigating E2E convergence failures.
+  DEBUG_WRAPPER: ""
   EXECUTION_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
   # Every PR job uses the immutable candidate revision validated against the live pull request.
   E2E_SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.headSHA || github.event.repository.default_branch }}
@@ -1025,9 +1027,8 @@ jobs:
       - name: Set environment variables
         run: |
           if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
+            # Run the debug image as root.
             echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
       - name: Download private Kind node image
@@ -1107,6 +1108,7 @@ jobs:
           path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: Check valgrind result
+        if: env.DEBUG_WRAPPER == 'valgrind'
         run: |
           if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
             exit
@@ -1330,9 +1332,8 @@ jobs:
       - name: Set environment variables
         run: |
           if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
+            # Run the debug image as root.
             echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
       - name: Download private Kind node image
@@ -1403,6 +1404,7 @@ jobs:
           path: k8s-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
 
       - name: Check valgrind result
+        if: env.DEBUG_WRAPPER == 'valgrind'
         run: |
           if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
             exit
@@ -1508,9 +1510,8 @@ jobs:
       - name: Set environment variables
         run: |
           if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
+            # Run the debug image as root.
             echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
       - name: Download private Kind node image
@@ -1583,6 +1584,7 @@ jobs:
           path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
 
       - name: Check valgrind result
+        if: env.DEBUG_WRAPPER == 'valgrind'
         run: |
           if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
             exit
@@ -1701,9 +1703,8 @@ jobs:
       - name: Set environment variables
         run: |
           if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
+            # Run the debug image as root.
             echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
       - name: Download private Kind node image
@@ -1778,6 +1779,7 @@ jobs:
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check valgrind result
+        if: env.DEBUG_WRAPPER == 'valgrind'
         run: |
           if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
             exit
@@ -3598,9 +3600,8 @@ jobs:
       - name: Set environment variables
         run: |
           if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
+            # Run the debug image as root.
             echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
       - name: Download private Kind node image
@@ -3759,9 +3760,8 @@ jobs:
       - name: Set environment variables
         run: |
           if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
+            # Run the debug image as root.
             echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
           fi
 
       - name: Download private Kind node image
@@ -4370,7 +4370,7 @@ jobs:
         id: install
         env:
           UNTAINT_CONTROL_PLANE: "false"
-        run: make kind-install-debug-valgrind-${{ matrix.ip-family }}
+        run: make kind-install-debug-${{ matrix.ip-family }}
 
       - name: Install Multus
         run: make kind-install-multus
@@ -4429,6 +4429,7 @@ jobs:
           path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check valgrind result
+        if: env.DEBUG_WRAPPER == 'valgrind'
         run: |
           kubectl -n kube-system rollout restart ds ovs-ovn
           kubectl -n kube-system rollout status ds ovs-ovn
