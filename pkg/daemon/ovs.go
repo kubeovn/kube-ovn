@@ -203,23 +203,8 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 
 	klog.Infof("Configuring external bridge %s for provider %s, nic %s, and vlan interfaces %v", bridge, provider, nic, vlanInterfaceMap)
 
-	brExists, err := c.vswitchBridgeExists(bridge)
-	if err != nil {
-		return fmt.Errorf("failed to check OVS bridge existence: %w", err)
-	}
-	otherConfig := map[string]string{"mac-learning-fallback": strconv.FormatBool(macLearningFallback)}
-	if !brExists {
-		otherConfig["hwaddr"] = util.GenerateMac()
-	}
-	if err := ovs.EnsureVswitchBridge(context.Background(), c.vswitchTables, ovs.VswitchBridgeConfig{
-		Name: bridge,
-		ExternalIDs: map[string]string{
-			"vendor":             util.CniTypeName,
-			"exchange-link-name": strconv.FormatBool(exchangeLinkName),
-		},
-		OtherConfig: otherConfig,
-	}); err != nil {
-		return fmt.Errorf("failed to create OVS bridge %s: %w", bridge, err)
+	if err := c.ensureExternalBridge(bridge, exchangeLinkName, macLearningFallback); err != nil {
+		return err
 	}
 
 	if err := c.waitForBridgeInterface(bridge, 5*time.Second); err != nil {
@@ -290,6 +275,28 @@ func (c *Controller) configExternalBridge(provider, bridge, nic string, exchange
 		return err
 	}
 
+	return nil
+}
+
+func (c *Controller) ensureExternalBridge(bridge string, exchangeLinkName, macLearningFallback bool) error {
+	brExists, err := c.vswitchBridgeExists(bridge)
+	if err != nil {
+		return fmt.Errorf("failed to check OVS bridge existence: %w", err)
+	}
+	otherConfig := map[string]string{"mac-learning-fallback": strconv.FormatBool(macLearningFallback)}
+	if !brExists {
+		otherConfig["hwaddr"] = util.GenerateMac()
+	}
+	if err := ovs.EnsureVswitchBridge(context.Background(), c.vswitchTables, ovs.VswitchBridgeConfig{
+		Name: bridge,
+		ExternalIDs: map[string]string{
+			"vendor":             util.CniTypeName,
+			"exchange-link-name": strconv.FormatBool(exchangeLinkName),
+		},
+		OtherConfig: otherConfig,
+	}); err != nil {
+		return fmt.Errorf("failed to create OVS bridge %s: %w", bridge, err)
+	}
 	return nil
 }
 
