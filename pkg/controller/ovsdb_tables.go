@@ -483,16 +483,6 @@ func (c *Controller) deleteOps(row model.Model) ([]ovsdb.Operation, error) {
 	return c.OVNNbTables.Table(row).DeleteOps(row)
 }
 
-func (c *Controller) createIfAbsent[T any](existing *T, err error, method string, row *T) error {
-	if err != nil {
-		return err
-	}
-	if existing != nil {
-		return nil
-	}
-	return c.createRow(method, row)
-}
-
 func withVendor(externalIDs map[string]string) map[string]string {
 	ids := maps.Clone(externalIDs)
 	if ids == nil {
@@ -3450,82 +3440,6 @@ func (c *Controller) addLoadBalancerVIP(lbName, vip string, backends ...string) 
 	return c.mutateRow(lb, "lb-add", mutations...)
 }
 
-// updateLoadBalancerIPPortMapping reconciles the backend-to-LSP map for one VIP.
-// Entries still referenced by another VIP are retained.
-func (c *Controller) updateLoadBalancerIPPortMapping(lbName, vip string, mappings map[string]string) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.LoadBalancerUpdateIPPortMapping(lbName, vip, mappings)
-	}
-	lb, err := c.getLoadBalancer(lbName, false)
-	if err != nil {
-		return err
-	}
-	newBackendIPs := make(map[string]bool, len(mappings))
-	for ip := range mappings {
-		newBackendIPs[strings.Trim(ip, "[]")] = true
-	}
-	toDelete := make(map[string]string)
-	toInsert := make(map[string]string)
-	for mappingKey, mappingValue := range lb.IPPortMappings {
-		cleanKey := strings.Trim(mappingKey, "[]")
-		if newBackendIPs[cleanKey] {
-			continue
-		}
-		stillUsed := false
-		for otherVIP, backends := range lb.Vips {
-			if otherVIP == vip {
-				continue
-			}
-			for backend := range strings.SplitSeq(backends, ",") {
-				backendIP, _, splitErr := net.SplitHostPort(backend)
-				if splitErr == nil && backendIP == cleanKey {
-					stillUsed = true
-					break
-				}
-			}
-			if stillUsed {
-				break
-			}
-		}
-		if !stillUsed {
-			toDelete[mappingKey] = mappingValue
-		}
-	}
-	for ip, lsp := range mappings {
-		cleanIP := strings.Trim(ip, "[]")
-		existingKey, existingLSP, found := "", "", false
-		if value, ok := lb.IPPortMappings[ip]; ok {
-			existingKey, existingLSP, found = ip, value, true
-		} else {
-			for key, value := range lb.IPPortMappings {
-				if strings.Trim(key, "[]") == cleanIP {
-					existingKey, existingLSP, found = key, value, true
-					break
-				}
-			}
-		}
-		if found {
-			if existingLSP == lsp {
-				continue
-			}
-			toDelete[existingKey] = existingLSP
-		}
-		toInsert[ip] = lsp
-	}
-	mutations := make([]model.Mutation, 0, 2)
-	if len(toDelete) != 0 {
-		mutations = append(mutations, model.Mutation{
-			Field: &lb.IPPortMappings, Value: toDelete, Mutator: ovsdb.MutateOperationDelete,
-		})
-	}
-	if len(toInsert) != 0 {
-		mutations = append(mutations, model.Mutation{
-			Field: &lb.IPPortMappings, Value: toInsert, Mutator: ovsdb.MutateOperationInsert,
-		})
-	}
-	return c.mutateRow(lb, "lb-update", mutations...)
-}
-
 // deleteLoadBalancerIPPortMapping removes mappings whose backend IP is no
 // longer referenced by another VIP on the same load balancer.
 func (c *Controller) deleteLoadBalancerIPPortMapping(lbName, vip string) error {
@@ -3579,46 +3493,6 @@ func (c *Controller) deleteLoadBalancerIPPortMapping(lbName, vip string) error {
 	return c.mutateRow(lb, "lb-del", model.Mutation{Field: &lb.IPPortMappings, Value: toDelete, Mutator: ovsdb.MutateOperationDelete})
 }
 
-// addLoadBalancerHealthCheck creates a health-check row and atomically adds its
-// UUID to the parent load balancer. The mapping update retains legacy behavior.
-func (c *Controller) addLoadBalancerHealthCheck(lbName, vip string, ignoreHealthCheck bool, ipPortMapping, externalIDs map[string]string) error {
-	if c.OVNNbTables == nil {
-		return c.OVNNbClient.LoadBalancerAddHealthCheck(lbName, vip, ignoreHealthCheck, ipPortMapping, externalIDs)
-	}
-	if err := c.updateLoadBalancerIPPortMapping(lbName, vip, ipPortMapping); err != nil {
-		return err
-	}
-	if ignoreHealthCheck {
-		return nil
-	}
-	lb, err := c.getLoadBalancer(lbName, false)
-	if err != nil {
-		return err
-	}
-	checks, err := c.listAttached(lb.HealthCheck, &ovnnb.LoadBalancerHealthCheck{}, func(row *ovnnb.LoadBalancerHealthCheck) bool {
-		return row.Vip == vip
-	})
-	if err != nil {
-		return err
-	}
-	if len(checks) != 0 {
-		return nil
-	}
-	row := &ovnnb.LoadBalancerHealthCheck{
-		UUID:        ovsclient.NamedUUID(),
-		ExternalIDs: maps.Clone(externalIDs),
-		Options: map[string]string{
-			"timeout": "20", "interval": "5", "success_count": "3", "failure_count": "3",
-		},
-		Vip: vip,
-	}
-	ops, err := c.createAndAttach(row, lb, &lb.HealthCheck, row.UUID)
-	if err != nil {
-		return err
-	}
-	return c.transactOps(&ovnnb.LoadBalancer{}, "lbhc-add", ops...)
-}
-
 // deleteLoadBalancerHealthCheck removes a health-check UUID from its parent.
 func (c *Controller) deleteLoadBalancerHealthCheck(lbName, uuid string) error {
 	if c.OVNNbTables == nil {
@@ -3632,62 +3506,53 @@ func (c *Controller) deleteLoadBalancerHealthCheck(lbName, uuid string) error {
 	if err != nil {
 		return err
 	}
-	childOps, err := c.OVNNbTables.Table(&ovnnb.LoadBalancerHealthCheck{}).DeleteOps(
-		&ovnnb.LoadBalancerHealthCheck{UUID: uuid},
-	)
-	if err != nil {
-		return err
-	}
-	return c.transactOps(&ovnnb.LoadBalancer{}, "lb-hc-del", append(parentOps, childOps...)...)
+	return c.transactOps(&ovnnb.LoadBalancer{}, "lb-hc-del", parentOps...)
 }
 
-// deleteLoadBalancerVIP removes a VIP and, when requested, its health-check
-// and now-unused IP-port mappings.
+// deleteLoadBalancerVIP removes the VIP, its metadata, unused backend mappings,
+// and optional health check in one NB transaction.
 func (c *Controller) deleteLoadBalancerVIP(lbName, vip string, ignoreHealthCheck bool) error {
 	if c.OVNNbTables == nil {
 		return c.OVNNbClient.LoadBalancerDeleteVip(lbName, vip, ignoreHealthCheck)
 	}
-	lb, err := c.getLoadBalancer(lbName, true)
-	if err != nil || lb == nil {
-		return err
+	lb, err := c.getLoadBalancer(lbName, false)
+	if err != nil {
+		return fmt.Errorf("get load balancer health check: %w", err)
 	}
 	checks, err := c.listAttached(lb.HealthCheck, &ovnnb.LoadBalancerHealthCheck{}, func(row *ovnnb.LoadBalancerHealthCheck) bool {
 		return row.Vip == vip
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("get load balancer health check: %w", err)
 	}
 	if len(checks) > 1 {
-		return fmt.Errorf("load balancer %s has more than one health check with vip %s", lbName, vip)
+		return fmt.Errorf("get load balancer health check: lb %s has more than one health check with the same vip %s", lbName, vip)
 	}
-	var checkUUID string
-	if len(checks) == 1 {
-		checkUUID = checks[0].UUID
-	}
-	if len(lb.IPPortMappings) != 0 {
-		ignoreHealthCheck = false
-	}
-	if !ignoreHealthCheck && checkUUID != "" {
-		if err := c.deleteLoadBalancerIPPortMapping(lbName, vip); err != nil {
-			return err
-		}
-		if err := c.deleteLoadBalancerHealthCheck(lbName, checkUUID); err != nil {
-			return err
+	mutations := ovs.LoadBalancerDeleteVIPMutations(lb, vip)
+	var ops []ovsdb.Operation
+	if len(mutations) != 0 {
+		ops, err = c.OVNNbTables.Table(lb).MutateOps(lb, mutations...)
+		if err != nil {
+			return fmt.Errorf("generate operations for deleting vip %s from load balancer %s: %w", vip, lbName, err)
 		}
 	}
-	if _, ok := lb.Vips[vip]; !ok {
-		return nil
+	if (!ignoreHealthCheck || len(lb.IPPortMappings) != 0) && len(checks) == 1 {
+		healthCheckOps, err := c.mutateUUIDField(lb, lb, &lb.HealthCheck, []string{checks[0].UUID}, ovsdb.MutateOperationDelete)
+		if err != nil {
+			return err
+		}
+		deleteOps, err := c.deleteOps(&checks[0])
+		if err != nil {
+			return err
+		}
+		ops = append(ops, healthCheckOps...)
+		ops = append(ops, deleteOps...)
 	}
-	mutations := []model.Mutation{{
-		Field: &lb.Vips, Value: map[string]string{vip: lb.Vips[vip]}, Mutator: ovsdb.MutateOperationDelete,
-	}}
-	key := localExternalVIPKeyPrefix + vip
-	if value, ok := lb.ExternalIDs[key]; ok {
-		mutations = append(mutations, model.Mutation{
-			Field: &lb.ExternalIDs, Value: map[string]string{key: value}, Mutator: ovsdb.MutateOperationDelete,
-		})
+	if err := c.transactOps(lb, "lb-add", ops...); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to delete vip %s from load balancers %s: %w", vip, lbName, err)
 	}
-	return c.mutateRow(lb, "lb-del", mutations...)
+	return nil
 }
 
 func matchesExternalIDs(actual, expected map[string]string) bool {

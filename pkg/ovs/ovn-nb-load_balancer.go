@@ -420,27 +420,7 @@ func (c *OVNNbClient) loadBalancerDeleteVIPOps(lbName, vipEndpoint string, ignor
 		ignoreHealthCheck = false
 	}
 
-	mutations := make([]model.Mutation, 0, 3)
-	if value, ok := lb.Vips[vipEndpoint]; ok {
-		mutations = append(mutations, model.Mutation{
-			Field: &lb.Vips, Value: map[string]string{vipEndpoint: value}, Mutator: ovsdb.MutateOperationDelete,
-		})
-		backendIPs, err := c.extractBackendIPsFromVIP(lb, vipEndpoint)
-		if err != nil {
-			return nil, err
-		}
-		if unused := c.findUnusedBackendIPs(lb, vipEndpoint, backendIPs); len(unused) != 0 {
-			mutations = append(mutations, model.Mutation{
-				Field: &lb.IPPortMappings, Value: unused, Mutator: ovsdb.MutateOperationDelete,
-			})
-		}
-	}
-	key := localExternalVIPKeyPrefix + vipEndpoint
-	if value, ok := lb.ExternalIDs[key]; ok {
-		mutations = append(mutations, model.Mutation{
-			Field: &lb.ExternalIDs, Value: map[string]string{key: value}, Mutator: ovsdb.MutateOperationDelete,
-		})
-	}
+	mutations := LoadBalancerDeleteVIPMutations(lb, vipEndpoint)
 
 	var ops []ovsdb.Operation
 	if len(mutations) != 0 {
@@ -457,6 +437,31 @@ func (c *OVNNbClient) loadBalancerDeleteVIPOps(lbName, vipEndpoint string, ignor
 		ops = append(ops, healthCheckOps...)
 	}
 	return ops, nil
+}
+
+// LoadBalancerDeleteVIPMutations builds cleanup from one load balancer snapshot.
+// Both legacy clients and table providers use the same VIP deletion contract.
+func LoadBalancerDeleteVIPMutations(lb *ovnnb.LoadBalancer, vipEndpoint string) []model.Mutation {
+	mutations := make([]model.Mutation, 0, 3)
+	if value, ok := lb.Vips[vipEndpoint]; ok {
+		mutations = append(mutations, model.Mutation{
+			Field: &lb.Vips, Value: map[string]string{vipEndpoint: value}, Mutator: ovsdb.MutateOperationDelete,
+		})
+		backendIPs := extractBackendIPs(value)
+		klog.V(4).Infof("VIP %s uses %d backend IPs: %v", vipEndpoint, len(backendIPs), getMapKeys(backendIPs))
+		if unused := findUnusedBackendIPs(lb, vipEndpoint, backendIPs); len(unused) != 0 {
+			mutations = append(mutations, model.Mutation{
+				Field: &lb.IPPortMappings, Value: unused, Mutator: ovsdb.MutateOperationDelete,
+			})
+		}
+	}
+	key := localExternalVIPKeyPrefix + vipEndpoint
+	if value, ok := lb.ExternalIDs[key]; ok {
+		mutations = append(mutations, model.Mutation{
+			Field: &lb.ExternalIDs, Value: map[string]string{key: value}, Mutator: ovsdb.MutateOperationDelete,
+		})
+	}
+	return mutations
 }
 
 // SetLoadBalancerVIPExternalTrafficLocal records the node LSP of the chassis
@@ -1177,24 +1182,32 @@ func (c *OVNNbClient) extractBackendIPsFromVIP(lb *ovnnb.LoadBalancer, vipEndpoi
 		return nil, nil
 	}
 
-	backendIPs := make(map[string]bool)
+	backendIPs := extractBackendIPs(vipBackends)
+	klog.V(4).Infof("VIP %s uses %d backend IPs: %v", vipEndpoint, len(backendIPs), getMapKeys(backendIPs))
+	return backendIPs, nil
+}
 
+func extractBackendIPs(vipBackends string) map[string]bool {
+	backendIPs := make(map[string]bool)
 	for backend := range strings.SplitSeq(vipBackends, ",") {
 		if backendIP, _, err := net.SplitHostPort(backend); err == nil {
 			backendIPs[backendIP] = true
 		}
 	}
 
-	klog.V(4).Infof("VIP %s uses %d backend IPs: %v", vipEndpoint, len(backendIPs), getMapKeys(backendIPs))
-	return backendIPs, nil
+	return backendIPs
 }
 
 // findUnusedBackendIPs identifies which backend IPs are no longer used by any other VIP
 func (c *OVNNbClient) findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP string, targetBackendIPs map[string]bool) map[string]string {
+	return findUnusedBackendIPs(lb, targetVIP, targetBackendIPs)
+}
+
+func findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP string, targetBackendIPs map[string]bool) map[string]string {
 	unusedBackendIPs := make(map[string]string)
 
 	for backendIP := range targetBackendIPs {
-		if !c.isBackendIPStillUsed(lb, targetVIP, backendIP) {
+		if !isBackendIPStillUsed(lb, targetVIP, backendIP) {
 			if portMapping, exists := lb.IPPortMappings[backendIP]; exists {
 				unusedBackendIPs[backendIP] = portMapping
 			}
@@ -1207,6 +1220,10 @@ func (c *OVNNbClient) findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP str
 
 // isBackendIPStillUsed checks if a backend IP is still referenced by any other VIP
 func (c *OVNNbClient) isBackendIPStillUsed(lb *ovnnb.LoadBalancer, targetVIP, backendIP string) bool {
+	return isBackendIPStillUsed(lb, targetVIP, backendIP)
+}
+
+func isBackendIPStillUsed(lb *ovnnb.LoadBalancer, targetVIP, backendIP string) bool {
 	for otherVIP, otherBackends := range lb.Vips {
 		if otherVIP == targetVIP {
 			continue

@@ -227,7 +227,7 @@ type cniTableBackend struct {
 }
 
 func (b cniTableBackend) Transact(ctx context.Context, ops ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
-	return b.Database.TransactResults(ctx, ops...)
+	return b.TransactResults(ctx, ops...)
 }
 
 type beforeCNIQoSWaitClient struct {

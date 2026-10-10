@@ -219,7 +219,7 @@ func (c *VswitchClient) cleanupACLSamplingCollectorSets() error {
 }
 
 func (c *VswitchClient) transactVswitchOperations(operations []ovsdb.Operation) ([]ovsdb.OperationResult, error) {
-	return c.Database.TransactResults(context.Background(), operations...)
+	return c.TransactResults(context.Background(), operations...)
 }
 
 func decodeVswitchRows[T any](schema ovsdb.DatabaseSchema, tableName string, rows []ovsdb.Row) ([]T, error) {
