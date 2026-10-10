@@ -543,7 +543,7 @@ func TestEnsureServiceScopedLB(t *testing.T) {
 	lbName := serviceScopedLBName(svc, corev1.ProtocolTCP)
 	gomock.InOrder(
 		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp").Return(nil),
-		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, []string(nil)).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, []string{"ip_src", "ipv6_src"}).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc, ctrl.config.ClusterRouter, serviceLBInternalTraffic))).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerAffinityTimeout(lbName, 42).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),
