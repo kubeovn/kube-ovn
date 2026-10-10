@@ -16,6 +16,15 @@ const (
 	cacheWaitTimeout  = 5 * time.Second
 )
 
+// CacheBarrier marks a monitored database facade that can wait until a row is
+// observed in its cache. A successful transaction alone does not satisfy this
+// barrier because monitor updates may arrive later.
+type CacheBarrier interface {
+	WaitForRows(context.Context, model.Model, any, any) error
+}
+
+var _ CacheBarrier = (*Database)(nil)
+
 // tableFor resolves a provider once for package-level helpers. Keeping this
 // validation in one place gives callers the same error behavior as Table.
 func tableFor(provider Provider, prototype model.Model) (Handle, error) {
@@ -23,7 +32,7 @@ func tableFor(provider Provider, prototype model.Model) (Handle, error) {
 		return nil, errors.New("ovsdb table provider is nil")
 	}
 	if prototype == nil {
-		return nil, errors.New("ovsdb table prototype is nil")
+		return nil, fmt.Errorf("%w: ovsdb table prototype is nil", ErrInvalidModel)
 	}
 	table := provider.Table(prototype)
 	if table == nil {
@@ -155,13 +164,18 @@ func WaitForRows(ctx context.Context, provider Provider, prototype model.Model, 
 	}
 	value := reflect.ValueOf(result)
 	if !value.IsValid() || value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Kind() != reflect.Slice {
-		return errors.New("ovsdb wait result must be a non-nil pointer to a slice")
+		return fmt.Errorf("%w: ovsdb wait result must be a non-nil pointer to a slice", ErrInvalidResult)
+	}
+	if ctx == nil {
+		ctx = context.Background()
 	}
 
 	waitCtx := ctx
 	cancel := func() {}
+	internalDeadline := false
 	if _, ok := ctx.Deadline(); !ok {
 		waitCtx, cancel = context.WithTimeout(ctx, cacheWaitTimeout)
+		internalDeadline = true
 	}
 	defer cancel()
 
@@ -170,6 +184,14 @@ func WaitForRows(ctx context.Context, provider Provider, prototype model.Model, 
 	for {
 		value.Elem().Set(reflect.Zero(value.Elem().Type()))
 		if err := table.Filter(waitCtx, predicate, result); err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				if ctx.Err() != nil {
+					return ctx.Err()
+				}
+				if internalDeadline && waitCtx.Err() != nil {
+					return cacheStaleError(waitCtx.Err())
+				}
+			}
 			return err
 		}
 		if value.Elem().Len() != 0 {
@@ -177,6 +199,12 @@ func WaitForRows(ctx context.Context, provider Provider, prototype model.Model, 
 		}
 		select {
 		case <-waitCtx.Done():
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			if internalDeadline {
+				return cacheStaleError(waitCtx.Err())
+			}
 			return waitCtx.Err()
 		case <-ticker.C:
 		}

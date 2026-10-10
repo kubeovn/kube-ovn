@@ -34,8 +34,16 @@ func NewLogicalSwitchPorts(provider table.Provider, executor table.Executor) *Lo
 // stale parent references are removed before the desired parent is attached
 // in one transaction.
 func (p *LogicalSwitchPorts) EnsureParent(ctx context.Context, portName, switchName string) error {
+	_, err := p.EnsureParentResult(ctx, portName, switchName)
+	return err
+}
+
+// EnsureParentResult is the result-bearing form of EnsureParent. It exposes
+// only commit metadata while keeping model mutations private to this facade.
+func (p *LogicalSwitchPorts) EnsureParentResult(ctx context.Context, portName, switchName string) (table.CommitResult, error) {
+	result := table.CommitResult{Method: "lsp-parent"}
 	if p == nil {
-		return errors.New("logical switch port facade is nil")
+		return result, errors.New("logical switch port facade is nil")
 	}
 	return namedParentSpec[ovnnb.LogicalSwitchPort, ovnnb.LogicalSwitch]{
 		executor:   p.executor,

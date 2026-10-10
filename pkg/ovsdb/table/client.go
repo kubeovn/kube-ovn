@@ -362,6 +362,7 @@ func (d *Database) TransactConditional(method string, operations []ovsdb.Operati
 func (d *Database) transact(ctx context.Context, method string, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
 	start := time.Now()
 	results, err := d.Client.TransactResults(ctx, operations...)
+	err = wrapTransactionError(method, operations, err)
 	if d.observer != nil {
 		d.observer.ObserveTransaction(TransactionEvent{
 			Database:   d.name,
