@@ -59,30 +59,31 @@ type namedParentSpec[Child, Parent any] struct {
 	field      func(*Parent) *[]string
 }
 
-func (s namedParentSpec[Child, Parent]) ensure(ctx context.Context, childName, parentName string) error {
+func (s namedParentSpec[Child, Parent]) ensure(ctx context.Context, childName, parentName string) (table.CommitResult, error) {
+	result := table.CommitResult{Method: s.method}
 	if s.children == nil || s.parents == nil || s.executor == nil {
-		return errors.New(s.nilErr)
+		return result, errors.New(s.nilErr)
 	}
 	if childName == "" || parentName == "" {
-		return errors.New(s.namesErr)
+		return result, errors.New(s.namesErr)
 	}
 
 	child := s.newChild(childName)
 	if err := s.children.Get(ctx, child); err != nil {
-		return fmt.Errorf("get %s %s: %w", s.childKind, childName, err)
+		return result, fmt.Errorf("get %s %s: %w", s.childKind, childName, err)
 	}
 	uuid := s.uuidOf(child)
 
 	target, err := getNamed(ctx, s.parents, parentName, s.parentKind, s.nameOf)
 	if err != nil {
-		return err
+		return result, err
 	}
 
 	parents, err := listMatching(ctx, s.parents, func(row *Parent) bool {
 		return slices.Contains(*s.field(row), uuid)
 	})
 	if err != nil {
-		return fmt.Errorf("find parents for %s %s: %w", s.childKind, childName, err)
+		return result, fmt.Errorf("find parents for %s %s: %w", s.childKind, childName, err)
 	}
 
 	plan := table.NewTxPlan(s.method)
@@ -97,7 +98,7 @@ func (s namedParentSpec[Child, Parent]) ensure(ctx context.Context, childName, p
 			Field: s.field(parent), Value: []string{uuid}, Mutator: ovsdb.MutateOperationDelete,
 		})
 		if err != nil {
-			return fmt.Errorf("detach %s %s from %s: %w", s.childKind, childName, s.nameOf(parent), err)
+			return result, fmt.Errorf("detach %s %s from %s: %w", s.childKind, childName, s.nameOf(parent), err)
 		}
 		plan.Add(operations...)
 	}
@@ -106,9 +107,9 @@ func (s namedParentSpec[Child, Parent]) ensure(ctx context.Context, childName, p
 			Field: s.field(target), Value: []string{uuid}, Mutator: ovsdb.MutateOperationInsert,
 		})
 		if err != nil {
-			return fmt.Errorf("attach %s %s to %s: %w", s.childKind, childName, parentName, err)
+			return result, fmt.Errorf("attach %s %s to %s: %w", s.childKind, childName, parentName, err)
 		}
 		plan.Add(operations...)
 	}
-	return s.executor.Execute(ctx, plan)
+	return table.CommitPlan(ctx, s.executor, plan)
 }

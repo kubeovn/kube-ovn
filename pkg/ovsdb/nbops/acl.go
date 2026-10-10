@@ -45,19 +45,27 @@ func NewACLs(provider table.Provider, executor table.Executor) *ACLs {
 // ACL. Any stale parent references are removed before the desired parent is
 // attached in one transaction. parentType must be "pg" or "ls".
 func (a *ACLs) EnsureParent(ctx context.Context, parentName, parentType, aclUUID string) error {
+	_, err := a.EnsureParentResult(ctx, parentName, parentType, aclUUID)
+	return err
+}
+
+// EnsureParentResult is the result-bearing form of EnsureParent. It exposes
+// only commit metadata while keeping model mutations private to this facade.
+func (a *ACLs) EnsureParentResult(ctx context.Context, parentName, parentType, aclUUID string) (table.CommitResult, error) {
+	result := table.CommitResult{Method: "acl-parent"}
 	if a == nil || a.acl == nil || a.switches == nil || a.portGroups == nil || a.executor == nil {
-		return errors.New("acl facade is nil")
+		return result, errors.New("acl facade is nil")
 	}
 	if parentName == "" || aclUUID == "" {
-		return errors.New("acl parent name and uuid are required")
+		return result, errors.New("acl parent name and uuid are required")
 	}
 	if parentType != aclParentPortGroup && parentType != aclParentLogicalSwitch {
-		return errors.New("acl parent type must be 'pg' or 'ls'")
+		return result, errors.New("acl parent type must be 'pg' or 'ls'")
 	}
 
 	acl := &ovnnb.ACL{UUID: aclUUID}
 	if err := a.acl.Get(ctx, acl); err != nil {
-		return fmt.Errorf("get acl %s: %w", aclUUID, err)
+		return result, fmt.Errorf("get acl %s: %w", aclUUID, err)
 	}
 
 	var targetSwitch *ovnnb.LogicalSwitch
@@ -65,13 +73,13 @@ func (a *ACLs) EnsureParent(ctx context.Context, parentName, parentType, aclUUID
 	if parentType == aclParentLogicalSwitch {
 		target, err := getNamed(ctx, a.switches, parentName, "logical switch", func(row *ovnnb.LogicalSwitch) string { return row.Name })
 		if err != nil {
-			return err
+			return result, err
 		}
 		targetSwitch = target
 	} else {
 		target, err := getNamed(ctx, a.portGroups, parentName, "port group", func(row *ovnnb.PortGroup) string { return row.Name })
 		if err != nil {
-			return err
+			return result, err
 		}
 		targetGroup = target
 	}
@@ -80,13 +88,13 @@ func (a *ACLs) EnsureParent(ctx context.Context, parentName, parentType, aclUUID
 		return slices.Contains(row.ACLs, aclUUID)
 	})
 	if err != nil {
-		return fmt.Errorf("find switch parents for acl %s: %w", aclUUID, err)
+		return result, fmt.Errorf("find switch parents for acl %s: %w", aclUUID, err)
 	}
 	pgParents, err := listMatching(ctx, a.portGroups, func(row *ovnnb.PortGroup) bool {
 		return slices.Contains(row.ACLs, aclUUID)
 	})
 	if err != nil {
-		return fmt.Errorf("find port group parents for acl %s: %w", aclUUID, err)
+		return result, fmt.Errorf("find port group parents for acl %s: %w", aclUUID, err)
 	}
 
 	plan := table.NewTxPlan("acl-parent")
@@ -101,7 +109,7 @@ func (a *ACLs) EnsureParent(ctx context.Context, parentName, parentType, aclUUID
 			Field: &parent.ACLs, Value: []string{aclUUID}, Mutator: ovsdb.MutateOperationDelete,
 		})
 		if err != nil {
-			return fmt.Errorf("detach acl %s from %s: %w", aclUUID, parent.Name, err)
+			return result, fmt.Errorf("detach acl %s from %s: %w", aclUUID, parent.Name, err)
 		}
 		plan.Add(operations...)
 	}
@@ -115,7 +123,7 @@ func (a *ACLs) EnsureParent(ctx context.Context, parentName, parentType, aclUUID
 			Field: &parent.ACLs, Value: []string{aclUUID}, Mutator: ovsdb.MutateOperationDelete,
 		})
 		if err != nil {
-			return fmt.Errorf("detach acl %s from %s: %w", aclUUID, parent.Name, err)
+			return result, fmt.Errorf("detach acl %s from %s: %w", aclUUID, parent.Name, err)
 		}
 		plan.Add(operations...)
 	}
@@ -125,7 +133,7 @@ func (a *ACLs) EnsureParent(ctx context.Context, parentName, parentType, aclUUID
 				Field: &targetSwitch.ACLs, Value: []string{aclUUID}, Mutator: ovsdb.MutateOperationInsert,
 			})
 			if err != nil {
-				return fmt.Errorf("attach acl %s to %s: %w", aclUUID, parentName, err)
+				return result, fmt.Errorf("attach acl %s to %s: %w", aclUUID, parentName, err)
 			}
 			plan.Add(operations...)
 		} else {
@@ -133,10 +141,10 @@ func (a *ACLs) EnsureParent(ctx context.Context, parentName, parentType, aclUUID
 				Field: &targetGroup.ACLs, Value: []string{aclUUID}, Mutator: ovsdb.MutateOperationInsert,
 			})
 			if err != nil {
-				return fmt.Errorf("attach acl %s to %s: %w", aclUUID, parentName, err)
+				return result, fmt.Errorf("attach acl %s to %s: %w", aclUUID, parentName, err)
 			}
 			plan.Add(operations...)
 		}
 	}
-	return a.executor.Execute(ctx, plan)
+	return table.CommitPlan(ctx, a.executor, plan)
 }

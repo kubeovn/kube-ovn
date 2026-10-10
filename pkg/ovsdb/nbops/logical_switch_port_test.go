@@ -63,7 +63,9 @@ func TestEnsureParentDetachesStaleParentsBeforeAttach(t *testing.T) {
 	executor := &recordingExecutor{}
 	facade := &LogicalSwitchPorts{ports: portTable, switches: switchTable, executor: executor}
 
-	require.NoError(t, facade.EnsureParent(t.Context(), "port", "target"))
+	result, err := facade.EnsureParentResult(t.Context(), "port", "target")
+	require.NoError(t, err)
+	require.Equal(t, table.CommitResult{Method: "lsp-parent", OperationCount: 2, Applied: true}, result)
 	require.Len(t, executor.plans, 1)
 	require.Len(t, executor.plans[0].Operations(), 2)
 	require.Equal(t, "lsp-parent", executor.plans[0].Method())

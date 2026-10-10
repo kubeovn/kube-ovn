@@ -95,11 +95,11 @@ func (t *Table) ensure() error {
 		return errors.New("ovsdb table is nil")
 	}
 	if t.prototype == nil {
-		return errors.New("ovsdb table prototype is nil")
+		return fmt.Errorf("%w: ovsdb table prototype is nil", ErrInvalidModel)
 	}
 	value := reflect.ValueOf(t.prototype)
 	if value.Kind() == reflect.Pointer && value.IsNil() {
-		return errors.New("ovsdb table prototype is nil")
+		return fmt.Errorf("%w: ovsdb table prototype is nil", ErrInvalidModel)
 	}
 	return nil
 }
@@ -109,14 +109,14 @@ func (t *Table) ensureModel(row model.Model) error {
 		return err
 	}
 	if row == nil {
-		return errors.New("ovsdb table model is nil")
+		return fmt.Errorf("%w: ovsdb table model is nil", ErrInvalidModel)
 	}
 	value := reflect.ValueOf(row)
 	if value.Kind() == reflect.Pointer && value.IsNil() {
-		return errors.New("ovsdb table model is nil")
+		return fmt.Errorf("%w: ovsdb table model is nil", ErrInvalidModel)
 	}
 	if actual, expected := reflect.TypeOf(row), reflect.TypeOf(t.prototype); actual != expected {
-		return fmt.Errorf("ovsdb table model type %v does not match prototype %v", actual, expected)
+		return fmt.Errorf("%w: ovsdb table model type %v does not match prototype %v", ErrInvalidModel, actual, expected)
 	}
 	return nil
 }
@@ -127,14 +127,14 @@ func (t *Table) ensureResult(result any) error {
 	}
 	value := reflect.ValueOf(result)
 	if !value.IsValid() || value.Kind() != reflect.Pointer || value.IsNil() || value.Elem().Kind() != reflect.Slice {
-		return errors.New("ovsdb table result must be a non-nil pointer to a slice")
+		return fmt.Errorf("%w: ovsdb table result must be a non-nil pointer to a slice", ErrInvalidResult)
 	}
 	elementType := value.Elem().Type().Elem()
 	prototypeType := reflect.TypeOf(t.prototype)
 	if elementType == prototypeType || prototypeType.Kind() == reflect.Pointer && elementType == prototypeType.Elem() {
 		return nil
 	}
-	return fmt.Errorf("ovsdb table result element type %v does not match prototype %v", elementType, prototypeType)
+	return fmt.Errorf("%w: ovsdb table result element type %v does not match prototype %v", ErrInvalidResult, elementType, prototypeType)
 }
 
 func (t *Table) ensurePredicate(predicate any) error {
@@ -143,14 +143,14 @@ func (t *Table) ensurePredicate(predicate any) error {
 	}
 	value := reflect.ValueOf(predicate)
 	if !value.IsValid() || value.Kind() != reflect.Func || value.IsNil() {
-		return errors.New("ovsdb table predicate must be a non-nil function")
+		return fmt.Errorf("%w: ovsdb table predicate must be a non-nil function", ErrInvalidPredicate)
 	}
 	typeOfPredicate := value.Type()
 	if typeOfPredicate.NumIn() != 1 || typeOfPredicate.In(0) != reflect.TypeOf(t.prototype) {
-		return fmt.Errorf("ovsdb table predicate model type does not match prototype %v", reflect.TypeOf(t.prototype))
+		return fmt.Errorf("%w: ovsdb table predicate model type does not match prototype %v", ErrInvalidPredicate, reflect.TypeOf(t.prototype))
 	}
 	if typeOfPredicate.NumOut() != 1 || typeOfPredicate.Out(0).Kind() != reflect.Bool {
-		return errors.New("ovsdb table predicate must return bool")
+		return fmt.Errorf("%w: ovsdb table predicate must return bool", ErrInvalidPredicate)
 	}
 	return nil
 }

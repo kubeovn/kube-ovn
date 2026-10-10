@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 func filterRows[T any](candidates []T) func(any, any) error {
@@ -40,7 +41,9 @@ func TestEnsureACLParentDetachesStaleSwitchBeforePortGroup(t *testing.T) {
 		[]ovnnb.PortGroup{{Name: "target"}},
 	)
 
-	require.NoError(t, facade.EnsureParent(t.Context(), "target", "pg", "acl-uuid"))
+	result, err := facade.EnsureParentResult(t.Context(), "target", "pg", "acl-uuid")
+	require.NoError(t, err)
+	require.Equal(t, table.CommitResult{Method: "acl-parent", OperationCount: 2, Applied: true}, result)
 	require.Len(t, executor.plans, 1)
 	require.Len(t, executor.plans[0].Operations(), 2)
 	require.Equal(t, "acl-parent", executor.plans[0].Method())
@@ -72,7 +75,9 @@ func TestEnsureACLParentAlreadyOnTargetIsNoop(t *testing.T) {
 		[]ovnnb.PortGroup{{Name: "target", ACLs: []string{"acl-uuid"}}},
 	)
 
-	require.NoError(t, facade.EnsureParent(t.Context(), "target", "pg", "acl-uuid"))
+	result, err := facade.EnsureParentResult(t.Context(), "target", "pg", "acl-uuid")
+	require.NoError(t, err)
+	require.Equal(t, table.CommitResult{Method: "acl-parent", Applied: false}, result)
 	require.Len(t, executor.plans, 1)
 	require.Empty(t, executor.plans[0].Operations())
 	require.Equal(t, "acl-parent", executor.plans[0].Method())
