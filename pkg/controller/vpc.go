@@ -155,6 +155,10 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) error {
 		return err
 	}
 
+	if err := c.deleteU2OOverlayCIDRsAddressSets(vpc.Name); err != nil {
+		return err
+	}
+
 	return nil
 }
 
