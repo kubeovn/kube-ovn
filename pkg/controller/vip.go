@@ -231,7 +231,7 @@ func (c *Controller) ensureVipLogicalSwitchPort(vip *kubeovnv1.Vip, subnet *kube
 		return nil
 	}
 	ipStr := util.GetStringIP(v4ip, v6ip)
-	if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
+	if err := c.createLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
 		err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
 		klog.Error(err)
 		return err
@@ -240,7 +240,7 @@ func (c *Controller) ensureVipLogicalSwitchPort(vip *kubeovnv1.Vip, subnet *kube
 		// pre-fix switch_lb_rule vips had arp_proxy set on their lsp; it was never
 		// functional and the CreateLogicalSwitchPort update above does not touch the
 		// options column, so it must be cleared explicitly during repair.
-		if err := c.OVNNbClient.RemoveLogicalSwitchPortOption(portName, "arp_proxy"); err != nil {
+		if err := c.removeLogicalSwitchPortOption(portName, "arp_proxy"); err != nil {
 			err = fmt.Errorf("failed to remove arp_proxy option from lsp %s: %w", portName, err)
 			klog.Error(err)
 			return err
@@ -271,7 +271,7 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 			}
 			portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
 			klog.Infof("delete vip lsp %s", portName)
-			if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+			if err := c.deleteLogicalSwitchPort(portName); err != nil {
 				err = fmt.Errorf("failed to delete lsp %s: %w", vip.Name, err)
 				klog.Error(err)
 				return err
@@ -397,7 +397,7 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 	}
 	parents := strings.Join(virtualParents, ",")
 	for _, virtualPort := range virtualPorts {
-		if err = c.OVNNbClient.SetVirtualLogicalSwitchPortVirtualParents(virtualPort.name, parents); err != nil {
+		if err = c.setVirtualLogicalSwitchPortVirtualParents(virtualPort.name, parents); err != nil {
 			klog.Errorf("set vip %s virtual parents %s: %v", virtualPort.name, parents, err)
 			return err
 		}
@@ -429,7 +429,7 @@ func virtualVipPorts(vip *kubeovnv1.Vip) []virtualVipPort {
 }
 
 func (c *Controller) ensureVirtualVipPort(vip *kubeovnv1.Vip, virtualPort virtualVipPort) error {
-	if err := c.OVNNbClient.CreateVirtualLogicalSwitchPort(virtualPort.name, vip.Spec.Subnet, virtualPort.ip); err != nil {
+	if err := c.createVirtualLogicalSwitchPort(virtualPort.name, vip.Spec.Subnet, virtualPort.ip); err != nil {
 		klog.Errorf("create virtual port with vip %s from logical switch %s: %v", virtualPort.name, vip.Spec.Subnet, err)
 		return err
 	}
@@ -438,7 +438,7 @@ func (c *Controller) ensureVirtualVipPort(vip *kubeovnv1.Vip, virtualPort virtua
 	}
 
 	addresses := vip.Status.Mac + " " + virtualPort.ip
-	if err := c.OVNNbClient.SetVirtualLogicalSwitchPortAddresses(virtualPort.name, addresses); err != nil {
+	if err := c.setVirtualLogicalSwitchPortAddresses(virtualPort.name, addresses); err != nil {
 		klog.Errorf("set virtual port %s addresses %s: %v", virtualPort.name, addresses, err)
 		return err
 	}
@@ -516,7 +516,7 @@ func (c *Controller) syncVirtualVipPortGroups(vip *kubeovnv1.Vip, virtualPorts [
 		return nil
 	}
 
-	portGroups, err := c.OVNNbClient.ListPortGroups(map[string]string{
+	portGroups, err := c.listPortGroups(map[string]string{
 		"subnet":         subnet.Name,
 		"node":           "",
 		networkPolicyKey: "",
@@ -543,12 +543,12 @@ func (c *Controller) syncVirtualVipPortGroups(vip *kubeovnv1.Vip, virtualPorts [
 			if !ok {
 				continue
 			}
-			if err = c.OVNNbClient.PortGroupAddPorts(pgName, virtualPort.name); err != nil {
+			if err = c.updatePortGroupPorts(pgName, ovsdb.MutateOperationInsert, virtualPort.name); err != nil {
 				return fmt.Errorf("add virtual port %s to port group %s: %w", virtualPort.name, pgName, err)
 			}
 		}
 		if len(stalePortGroupNames) > 0 {
-			if err = c.OVNNbClient.RemovePortFromPortGroups(virtualPort.name, stalePortGroupNames...); err != nil {
+			if err = c.removePortFromPortGroups(virtualPort.name, stalePortGroupNames...); err != nil {
 				return fmt.Errorf("remove virtual port %s from old port groups: %w", virtualPort.name, err)
 			}
 		}
@@ -563,7 +563,7 @@ func (c *Controller) deleteVirtualVipPorts(vip *kubeovnv1.Vip) error {
 	}
 
 	if vip.Spec.Subnet != "" {
-		lsps, err := c.OVNNbClient.ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: vip.Spec.Subnet}, func(lsp *ovnnb.LogicalSwitchPort) bool {
+		lsps, err := c.listLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: vip.Spec.Subnet}, func(lsp *ovnnb.LogicalSwitchPort) bool {
 			if lsp.Type != "virtual" {
 				return false
 			}
@@ -589,7 +589,7 @@ func (c *Controller) deleteVirtualVipPorts(vip *kubeovnv1.Vip) error {
 	}
 	slices.Sort(names)
 	for _, name := range names {
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(name); err != nil {
+		if err := c.deleteLogicalSwitchPort(name); err != nil {
 			klog.Errorf("delete virtual logical switch port %s from logical switch %s: %v", name, vip.Spec.Subnet, err)
 			return err
 		}
@@ -1050,12 +1050,12 @@ func (c *Controller) reconcileVipAttachSubnets(vip *kubeovnv1.Vip) error {
 		if slices.Contains(desired, subnet) || c.hasOtherVipAttachSubnet(vpc.Name, subnet, vip.Name) {
 			continue
 		}
-		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet, ovsdb.MutateOperationDelete, lbs...); err != nil {
+		if err := c.updateLogicalSwitchLoadBalancers(subnet, ovsdb.MutateOperationDelete, lbs...); err != nil {
 			return fmt.Errorf("failed to detach vpc %s load balancers from subnet %s for vip %s: %w", vpc.Name, subnet, vip.Name, err)
 		}
 	}
 	for _, subnet := range desired {
-		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet, ovsdb.MutateOperationInsert, lbs...); err != nil {
+		if err := c.updateLogicalSwitchLoadBalancers(subnet, ovsdb.MutateOperationInsert, lbs...); err != nil {
 			return fmt.Errorf("failed to attach vpc %s load balancers to subnet %s for vip %s: %w", vpc.Name, subnet, vip.Name, err)
 		}
 	}
@@ -1111,7 +1111,7 @@ func (c *Controller) detachAllVipAttachSubnets(vip *kubeovnv1.Vip) error {
 		if c.hasOtherVipAttachSubnet(vpc.Name, subnet, vip.Name) {
 			continue
 		}
-		if err := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet, ovsdb.MutateOperationDelete, lbs...); err != nil {
+		if err := c.updateLogicalSwitchLoadBalancers(subnet, ovsdb.MutateOperationDelete, lbs...); err != nil {
 			return fmt.Errorf("failed to detach vpc %s load balancers from subnet %s for vip %s: %w", vpc.Name, subnet, vip.Name, err)
 		}
 	}

@@ -267,7 +267,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 		return err
 	}
 
-	if lbhcs, err = c.OVNNbClient.ListLoadBalancerHealthChecks(
+	if lbhcs, err = c.listLoadBalancerHealthChecks(
 		func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 			return slices.Contains(info.Vips, lbhc.Vip)
 		},
@@ -282,7 +282,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 	for _, lbhc := range lbhcs {
 		var lbs []ovnnb.LoadBalancer
 
-		if lbs, err = c.OVNNbClient.ListLoadBalancers(
+		if lbs, err = c.listLoadBalancers(
 			func(lb *ovnnb.LoadBalancer) bool {
 				return slices.Contains(lb.HealthCheck, lbhc.UUID)
 			},
@@ -309,13 +309,13 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 			}
 			belongsToOwner = true
 
-			err = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID)
+			err = c.deleteLoadBalancerHealthCheck(lb.Name, lbhc.UUID)
 			if err != nil && !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete load balancer health check %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
 				return err
 			}
 
-			err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip)
+			err = c.deleteLoadBalancerIPPortMapping(lb.Name, lbhc.Vip)
 			if err != nil && !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete ip port mappings %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
 				return err
@@ -344,7 +344,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 	}
 
 	if lbhcUUIDsToDelete.Len() > 0 {
-		if err = c.OVNNbClient.DeleteLoadBalancerHealthChecks(
+		if err = c.deleteLoadBalancerHealthChecks(
 			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 				return lbhcUUIDsToDelete.Has(lbhc.UUID)
 			},
@@ -355,7 +355,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 	}
 
 	for vip := range vips {
-		if lbhcs, err = c.OVNNbClient.ListLoadBalancerHealthChecks(
+		if lbhcs, err = c.listLoadBalancerHealthChecks(
 			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 				return lbhc.ExternalIDs[util.SwitchLBRuleSubnet] == vip
 			},

@@ -2,12 +2,14 @@ package daemon
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -20,6 +22,7 @@ import (
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/request"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -302,7 +305,7 @@ func cniEventTestHandler(t *testing.T, pod *v1.Pod, subnet *kubeovnv1.Subnet, re
 	if subnet != nil {
 		require.NoError(t, subnetIndexer.Add(subnet))
 	}
-	config := &Configuration{NodeName: "node-a"}
+	config := &Configuration{NodeName: "node-a", VswitchTables: cniEventProvider{}}
 	controller := &Controller{
 		config:        config,
 		podsLister:    listerv1.NewPodLister(podIndexer),
@@ -310,6 +313,23 @@ func cniEventTestHandler(t *testing.T, pod *v1.Pod, subnet *kubeovnv1.Subnet, re
 		recorder:      recorder,
 	}
 	return createCniServerHandler(config, controller)
+}
+
+type cniEventProvider struct {
+	filterErr error
+}
+
+func (p cniEventProvider) Table(model.Model) table.Handle {
+	return cniEventHandle{filterErr: p.filterErr}
+}
+
+type cniEventHandle struct {
+	table.Handle
+	filterErr error
+}
+
+func (h cniEventHandle) Filter(context.Context, any, any) error {
+	return h.filterErr
 }
 
 func serveCNIRequest(t *testing.T, handler *cniServerHandler, path string, podRequest request.CniRequest) *httptest.ResponseRecorder {
