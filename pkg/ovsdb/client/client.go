@@ -118,7 +118,7 @@ func NewOvsDbClient(
 	// leader-only mode in that case starts an unnecessary _Server monitor whose
 	// cache handler can contend with transactions during reconnects. Keep the
 	// leader watcher for the multi-endpoint HA configuration only.
-	if len(options) > 1 {
+	if endpointCount > 1 {
 		options = append(options, client.WithLeaderOnly(true))
 	}
 	options = append(options, client.WithLogger(&dbLogger))
