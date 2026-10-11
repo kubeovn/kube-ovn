@@ -83,16 +83,30 @@ func TestEnqueueUpdatePodWhenLabelsStillMatchNetworkPolicy(t *testing.T) {
 	controller.config.EnableNP = true
 	controller.namedPort = NewNamedPort()
 	controller.addOrUpdatePodQueue = newTypedRateLimitingQueue[string]("AddOrUpdatePod", nil)
+	t.Cleanup(controller.addOrUpdatePodQueue.ShutDown)
 	controller.updateNpQueue = newTypedRateLimitingQueue[string]("UpdateNetworkPolicy", nil)
+	t.Cleanup(controller.updateNpQueue.ShutDown)
 
 	npIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	require.NoError(t, npIndexer.Add(&networkingv1.NetworkPolicy{
-		Name:      "default-deny",
+		Name:      "allow-selected",
 		Namespace: metav1.NamespaceDefault,
-		Spec: networkingv1.NetworkPolicySpec{PodSelector: metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{
-			Key: "app", Operator: metav1.LabelSelectorOpIn, Values: []string{"old", "new"},
-		}}}},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{
+				Key: "app", Operator: metav1.LabelSelectorOpIn, Values: []string{"old", "new"},
+			}}},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{From: []networkingv1.NetworkPolicyPeer{{
+				PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "old"}},
+			}}}},
+		},
 	}))
+	for _, app := range []string{"old", "new"} {
+		require.NoError(t, npIndexer.Add(&networkingv1.NetworkPolicy{
+			Name:      "allow-" + app,
+			Namespace: metav1.NamespaceDefault,
+			Spec:      networkingv1.NetworkPolicySpec{PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": app}}},
+		}))
+	}
 	controller.npsLister = networkinglister.NewNetworkPolicyLister(npIndexer)
 
 	oldPod := pod.DeepCopy()
@@ -102,9 +116,13 @@ func TestEnqueueUpdatePodWhenLabelsStillMatchNetworkPolicy(t *testing.T) {
 
 	controller.enqueueUpdatePod(oldPod, newPod)
 
-	require.Equal(t, 1, controller.updateNpQueue.Len())
-	item, shutdown := controller.updateNpQueue.Get()
-	require.False(t, shutdown)
-	controller.updateNpQueue.Done(item)
-	require.Equal(t, "default/default-deny", item)
+	require.Equal(t, 3, controller.updateNpQueue.Len())
+	var policies []string
+	for range 3 {
+		item, shutdown := controller.updateNpQueue.Get()
+		require.False(t, shutdown)
+		controller.updateNpQueue.Done(item)
+		policies = append(policies, item)
+	}
+	require.ElementsMatch(t, []string{"default/allow-selected", "default/allow-old", "default/allow-new"}, policies)
 }

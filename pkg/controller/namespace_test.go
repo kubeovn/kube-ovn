@@ -28,18 +28,34 @@ func TestEnqueueUpdateNamespaceWhenLabelsStillMatchNetworkPolicy(t *testing.T) {
 	controller := fake.fakeController
 	controller.config.EnableNP = true
 	controller.updateNpQueue = newTypedRateLimitingQueue[string]("UpdateNetworkPolicy", nil)
+	t.Cleanup(controller.updateNpQueue.ShutDown)
 	controller.addNamespaceQueue = newTypedRateLimitingQueue[string]("AddNamespace", nil)
+	t.Cleanup(controller.addNamespaceQueue.ShutDown)
 
 	npIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
 	require.NoError(t, npIndexer.Add(&networkingv1.NetworkPolicy{
 		Name:      "allow-client",
 		Namespace: metav1.NamespaceDefault,
-		Spec: networkingv1.NetworkPolicySpec{Ingress: []networkingv1.NetworkPolicyIngressRule{{From: []networkingv1.NetworkPolicyPeer{{
-			NamespaceSelector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{
-				Key: "tenant", Operator: metav1.LabelSelectorOpExists,
+		Spec: networkingv1.NetworkPolicySpec{Ingress: []networkingv1.NetworkPolicyIngressRule{
+			{From: []networkingv1.NetworkPolicyPeer{{
+				NamespaceSelector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{
+					Key: "tenant", Operator: metav1.LabelSelectorOpExists,
+				}}},
 			}}},
-		}}}}},
+			{From: []networkingv1.NetworkPolicyPeer{{
+				NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"tenant": "old"}},
+			}}},
+		}},
 	}))
+	for _, tenant := range []string{"old", "new"} {
+		require.NoError(t, npIndexer.Add(&networkingv1.NetworkPolicy{
+			Name:      "allow-" + tenant,
+			Namespace: metav1.NamespaceDefault,
+			Spec: networkingv1.NetworkPolicySpec{Ingress: []networkingv1.NetworkPolicyIngressRule{{From: []networkingv1.NetworkPolicyPeer{{
+				NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"tenant": tenant}},
+			}}}}},
+		}))
+	}
 	controller.npsLister = networkinglister.NewNetworkPolicyLister(npIndexer)
 
 	oldNs := ns.DeepCopy()
@@ -49,11 +65,15 @@ func TestEnqueueUpdateNamespaceWhenLabelsStillMatchNetworkPolicy(t *testing.T) {
 
 	controller.enqueueUpdateNamespace(oldNs, newNs)
 
-	require.Equal(t, 1, controller.updateNpQueue.Len())
-	item, shutdown := controller.updateNpQueue.Get()
-	require.False(t, shutdown)
-	controller.updateNpQueue.Done(item)
-	require.Equal(t, "default/allow-client", item)
+	require.Equal(t, 3, controller.updateNpQueue.Len())
+	var policies []string
+	for range 3 {
+		item, shutdown := controller.updateNpQueue.Get()
+		require.False(t, shutdown)
+		controller.updateNpQueue.Done(item)
+		policies = append(policies, item)
+	}
+	require.ElementsMatch(t, []string{"default/allow-client", "default/allow-old", "default/allow-new"}, policies)
 }
 
 // Test_handleAddNamespace_orphanedSubnet is a regression guard for the bug where
