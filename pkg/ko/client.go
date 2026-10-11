@@ -42,6 +42,9 @@ func (r *helperExecutor) Exec(ctx context.Context, target Target, argv []string,
 	if target.Container != "agent" {
 		return r.legacy.Exec(ctx, target, argv, streams)
 	}
+	if streams.In != nil || streams.TTY {
+		return errors.New("interactive exec is not supported through the node-agent helper")
+	}
 	if pod.Labels["app"] != "kubectl-ko-node-agent" {
 		return errors.New("helper target is not an independent node agent")
 	}

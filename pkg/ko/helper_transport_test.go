@@ -131,6 +131,15 @@ func TestHelperRejectsComponentTargets(t *testing.T) {
 	}
 }
 
+func TestHelperRejectsInteractiveStreams(t *testing.T) {
+	client := fake.NewClientset(&corev1.Pod{Name: "agent", Namespace: "ovn-system", Labels: map[string]string{"app": "kubectl-ko-node-agent"}})
+	executor := &helperExecutor{client: client}
+	err := executor.Exec(t.Context(), Target{Namespace: "ovn-system", Pod: "agent", Container: "agent"}, []string{"sh"}, Streams{In: bytes.NewBufferString("input")})
+	require.ErrorContains(t, err, "interactive exec is not supported")
+	err = executor.Exec(t.Context(), Target{Namespace: "ovn-system", Pod: "agent", Container: "agent"}, []string{"sh"}, Streams{TTY: true})
+	require.ErrorContains(t, err, "interactive exec is not supported")
+}
+
 func TestHelperWaitsForProcessStatus(t *testing.T) {
 	for _, code := range []int{0, 29} {
 		t.Run(strconv.Itoa(code), func(t *testing.T) {

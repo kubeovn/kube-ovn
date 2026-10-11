@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/kubectl/pkg/cmd/util/podcmd"
 	"k8s.io/kubectl/pkg/polymorphichelpers"
+	"k8s.io/kubectl/pkg/util/podutils"
 )
 
 // execPod resolves a kubectl-style resource reference to one running Pod.
@@ -32,7 +33,7 @@ func (c *Client) execPod(ctx context.Context, reference, selector string, timeou
 
 	resource, name, qualified := strings.Cut(reference, "/")
 	if !qualified {
-		return c.Kubernetes.CoreV1().Pods(c.WorkloadNamespace).Get(ctx, reference, metav1.GetOptions{})
+		return c.waitForNamedPod(ctx, reference, timeout)
 	}
 	if resource == "" || name == "" || strings.Contains(name, "/") {
 		return nil, fmt.Errorf("invalid resource reference %q", reference)
@@ -42,7 +43,7 @@ func (c *Client) execPod(ctx context.Context, reference, selector string, timeou
 	var err error
 	switch resource {
 	case "pod":
-		return c.Kubernetes.CoreV1().Pods(c.WorkloadNamespace).Get(ctx, name, metav1.GetOptions{})
+		return c.waitForNamedPod(ctx, name, timeout)
 	case "service":
 		object, err = c.Kubernetes.CoreV1().Services(c.WorkloadNamespace).Get(ctx, name, metav1.GetOptions{})
 	case "deployment":
@@ -68,6 +69,30 @@ func (c *Client) execPod(ctx context.Context, reference, selector string, timeou
 		return nil, err
 	}
 	return c.firstRunningPod(ctx, objectSelector.String(), timeout)
+}
+
+func (c *Client) waitForNamedPod(ctx context.Context, name string, timeout time.Duration) (*corev1.Pod, error) {
+	var result *corev1.Pod
+	err := wait.PollUntilContextTimeout(ctx, 250*time.Millisecond, timeout, true,
+		func(ctx context.Context) (bool, error) {
+			pod, err := c.Kubernetes.CoreV1().Pods(c.WorkloadNamespace).Get(ctx, name, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+				result = pod.DeepCopy()
+				return true, nil
+			}
+			if pod.Status.Phase == corev1.PodRunning && podHasRunningContainer(pod) {
+				result = pod.DeepCopy()
+				return true, nil
+			}
+			return false, nil
+		})
+	if err != nil {
+		return nil, fmt.Errorf("wait for pod %q to be running: %w", name, err)
+	}
+	return result, nil
 }
 
 func canonicalExecResource(resource string) string {
@@ -107,14 +132,14 @@ func (c *Client) firstRunningPod(ctx context.Context, selector string, timeout t
 			candidates := make([]*corev1.Pod, 0, len(pods.Items))
 			for i := range pods.Items {
 				pod := &pods.Items[i]
-				if pod.DeletionTimestamp == nil && pod.Status.Phase == corev1.PodRunning && podHasRunningContainer(pod) {
+				if pod.Status.Phase == corev1.PodRunning && podHasRunningContainer(pod) {
 					candidates = append(candidates, pod)
 				}
 			}
 			if len(candidates) == 0 {
 				return false, nil
 			}
-			slices.SortFunc(candidates, func(a, b *corev1.Pod) int { return strings.Compare(a.Name, b.Name) })
+			sort.Sort(sort.Reverse(podutils.ActivePods(candidates)))
 			result = candidates[0].DeepCopy()
 			return true, nil
 		})
