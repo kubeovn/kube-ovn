@@ -719,6 +719,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 				Labels:      labels,
 				Annotations: annotations,
 				Spec: corev1.PodSpec{
+					PriorityClassName: gw.Spec.PriorityClassName,
 					Affinity: mergeGatewayAffinity(
 						genGatewayPodAntiAffinity(labels, gw.Spec.PodAntiAffinity),
 						&corev1.Affinity{

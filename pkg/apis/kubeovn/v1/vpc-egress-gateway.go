@@ -335,6 +335,9 @@ type VpcEgressGatewaySpec struct {
 	NodeSelector []VpcEgressGatewayNodeSelector `json:"nodeSelector,omitempty"`
 	// optional tolerations applied to the workload pods
 	Tolerations []corev1.Toleration `json:"tolerations,omitempty"`
+	// Optional PriorityClass name applied to the workload pods.
+	// If not specified, the cluster's default Pod priority applies.
+	PriorityClassName string `json:"priorityClassName,omitempty"`
 
 	// Compute Resources required for the container. If not specified, the controller will set a default value.
 	// If specified, the controller will not set any default value and use the specified value directly.
