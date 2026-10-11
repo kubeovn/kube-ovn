@@ -60,6 +60,17 @@ type initialMonitorClient interface {
 	Monitor(context.Context, *client.Monitor) (client.MonitorCookie, error)
 }
 
+func hasMultipleEndpoints(addr string) bool {
+	endpointCount := 0
+	for range strings.SplitSeq(addr, ",") {
+		endpointCount++
+		if endpointCount > 1 {
+			return true
+		}
+	}
+	return false
+}
+
 // monitorWithTimeout bounds the initial monitor RPC so cache update errors cannot block startup forever.
 func monitorWithTimeout(c initialMonitorClient, monitors []client.MonitorOption, timeout time.Duration) error {
 	monitor := c.NewMonitor(monitors...)
@@ -83,16 +94,15 @@ func NewOvsDbClient(
 
 	var ssl bool
 	var options []client.Option
-	endpointCount := 0
+	multipleEndpoints := hasMultipleEndpoints(addr)
 	for ep := range strings.SplitSeq(addr, ",") {
-		endpointCount++
 		if !ssl && strings.HasPrefix(ep, client.SSL) {
 			ssl = true
 		}
 		options = append(options, client.WithEndpoint(ep))
 	}
 	var backOff backoff.BackOff
-	if endpointCount > 1 {
+	if multipleEndpoints {
 		// multiple endpoints, use zero backoff to try next endpoint immediately
 		backOff = &backoff.ZeroBackOff{}
 	} else {
@@ -118,7 +128,7 @@ func NewOvsDbClient(
 	// leader-only mode in that case starts an unnecessary _Server monitor whose
 	// cache handler can contend with transactions during reconnects. Keep the
 	// leader watcher for the multi-endpoint HA configuration only.
-	if endpointCount > 1 {
+	if multipleEndpoints {
 		options = append(options, client.WithLeaderOnly(true))
 	}
 	options = append(options, client.WithLogger(&dbLogger))
