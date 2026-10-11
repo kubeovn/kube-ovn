@@ -83,14 +83,16 @@ func NewOvsDbClient(
 
 	var ssl bool
 	var options []client.Option
+	endpointCount := 0
 	for ep := range strings.SplitSeq(addr, ",") {
+		endpointCount++
 		if !ssl && strings.HasPrefix(ep, client.SSL) {
 			ssl = true
 		}
 		options = append(options, client.WithEndpoint(ep))
 	}
 	var backOff backoff.BackOff
-	if len(options) > 1 {
+	if endpointCount > 1 {
 		// multiple endpoints, use zero backoff to try next endpoint immediately
 		backOff = &backoff.ZeroBackOff{}
 	} else {
