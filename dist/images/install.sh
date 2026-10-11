@@ -7593,6 +7593,22 @@ rules:
       - pods
     verbs:
       - get
+      - list
+      - patch
+  - apiGroups:
+      - ""
+    resources:
+      - nodes
+    verbs:
+      - patch
+  - apiGroups:
+      - coordination.k8s.io
+    resources:
+      - leases
+    verbs:
+      - get
+      - create
+      - update
       - patch
   - apiGroups:
       - ""
