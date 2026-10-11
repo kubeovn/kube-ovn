@@ -74,6 +74,22 @@ jobs:
               -f make_latest=true >/dev/null
           fi
 
+      - name: Set up Helm
+        uses: azure/setup-helm@v5.0.1
+
+      - name: Publish runtime image lists
+        env:
+          GH_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          GH_REPO: "${{ github.repository }}"
+        run: |
+          python3 -m pip install PyYAML
+          version=$(awk '/^version:/ {print $2}' charts/kube-ovn/Chart.yaml)
+          image_list_dir=$(mktemp -d)
+          for arch in amd64 arm64; do
+            make image-list IMAGE_LIST_ARGS="--version ${version} --arch ${arch}" > "${image_list_dir}/images-${arch}.txt"
+          done
+          gh release upload "${version}" "${image_list_dir}/images-amd64.txt" "${image_list_dir}/images-arm64.txt" --clobber
+
       - name: Login to GitHub Container Registry
         run: |
           echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin

@@ -8,6 +8,10 @@ on:
       - '.github/workflows/helm-testing.yaml'
       - 'hack/kubectl-ko-chart-test.sh'
       - 'hack/test-kubectl-ko-chart.py'
+      - 'hack/image-list.py'
+      - 'hack/test-image-list.py'
+      - 'Makefile'
+      - '.github/workflows/release-chart.yaml'
       - 'hack/test-non-root-nft.sh'
       - 'dist/images/Dockerfile'
       - 'dist/images/Dockerfile.base'
@@ -48,6 +52,7 @@ jobs:
         run: |
           python3 hack/test-tproxy-container.py
           python3 hack/test-kubectl-ko-chart.py
+          python3 hack/test-image-list.py
           ct lint --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml
           # Lint the legacy chart separately; it is intentionally not installed in the shared Kind cluster.
           ct lint --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn/ct.yaml
