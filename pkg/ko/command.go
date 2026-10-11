@@ -13,6 +13,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/kubectl/pkg/util/term"
 
 	"github.com/kubeovn/kube-ovn/versions"
 )
@@ -191,7 +192,13 @@ func (a *Application) addControlCommands() {
 				if stdin {
 					streams.In = a.streams.In
 				}
-				streams.TTY = tty
+				streams.TTY = tty && stdin
+				if streams.TTY && !(term.TTY{In: streams.In}).IsTerminalIn() {
+					if !quiet && streams.ErrOut != nil {
+						_, _ = fmt.Fprintln(streams.ErrOut, "Unable to use a TTY - input is not a terminal or the right kind of file")
+					}
+					streams.TTY = false
+				}
 				return client.exec(ctx, reference, selector, container, quiet, podRunningTimeout, streams, args[dash:])
 			})(cmd, args)
 		},
