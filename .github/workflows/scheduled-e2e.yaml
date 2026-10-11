@@ -44,14 +44,14 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
       - name: Remove DNS search domain
         run: |
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -62,7 +62,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -74,14 +74,14 @@ jobs:
         run: mkdir -p test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -135,14 +135,14 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
       - name: Remove DNS search domain
         run: |
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -153,7 +153,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -165,14 +165,14 @@ jobs:
         run: mkdir -p test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -222,7 +222,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
       - name: Remove DNS search domain
         run: |
@@ -233,14 +233,14 @@ jobs:
         run: mkdir -p test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -290,8 +290,8 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -302,7 +302,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -314,14 +314,14 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -371,8 +371,8 @@ jobs:
           - release-1.12
           - release-1.11
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -383,7 +383,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -395,14 +395,14 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -450,20 +450,20 @@ jobs:
           - release-1.12
           - release-1.11
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -506,20 +506,20 @@ jobs:
           - release-1.12
           - release-1.11
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -564,20 +564,20 @@ jobs:
           - release-1.12
           - release-1.11
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -623,9 +623,9 @@ jobs:
           - release-1.11
           - release-1.12-mc
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -636,7 +636,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -648,14 +648,14 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -702,9 +702,9 @@ jobs:
           - release-1.12-mc
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -715,7 +715,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -727,14 +727,14 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -780,9 +780,9 @@ jobs:
           - release-1.13
           - release-1.12
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -793,7 +793,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -805,14 +805,14 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -858,20 +858,20 @@ jobs:
           - release-1.12
           - release-1.11
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -912,8 +912,8 @@ jobs:
           - release-1.12
           - release-1.11
     steps:
-      - uses: actions/checkout@v6
-      - uses: azure/setup-helm@v5.0.0
+      - uses: actions/checkout@v7.0.1
+      - uses: azure/setup-helm@v5.0.1
         with:
           version: '${{ env.HELM_VERSION }}'
 
@@ -922,7 +922,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -933,7 +933,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -945,14 +945,14 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1016,8 +1016,8 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -1028,7 +1028,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -1040,14 +1040,14 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1109,12 +1109,12 @@ jobs:
           - release-1.14 => master
           - release-1.15 => master
     steps:
-      - uses: actions/checkout@v6
-      - uses: azure/setup-helm@v5.0.0
+      - uses: actions/checkout@v7.0.1
+      - uses: azure/setup-helm@v5.0.1
         with:
           version: '${{ env.HELM_VERSION }}'
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -1125,7 +1125,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -1143,20 +1143,20 @@ jobs:
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ env.VERSION_FROM }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ env.VERSION_FROM }}
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ env.VERSION_TO }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ env.VERSION_TO }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1213,20 +1213,20 @@ jobs:
           - release-1.13
           - release-1.12
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7.0.1
 
       - name: Create branch directory
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1277,8 +1277,8 @@ jobs:
           - release-1.13
           - release-1.12
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -1289,7 +1289,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -1301,14 +1301,14 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1354,8 +1354,8 @@ jobs:
           - release-1.12
           - release-1.12-mc
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-go@v7.0.0
         with:
           go-version: ${{ env.GO_VERSION || '' }}
           go-version-file: go.mod
@@ -1366,7 +1366,7 @@ jobs:
         run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6.1.0
         with:
           path: |
             ~/.cache/go-build
@@ -1378,14 +1378,14 @@ jobs:
         run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Check out branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ matrix.branch }}
           fetch-depth: 1
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
