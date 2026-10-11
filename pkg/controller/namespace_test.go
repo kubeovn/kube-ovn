@@ -7,11 +7,54 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	networkinglister "k8s.io/client-go/listers/networking/v1"
+	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestEnqueueUpdateNamespaceWhenLabelsStillMatchNetworkPolicy(t *testing.T) {
+	ns := &corev1.Namespace{
+		Name:            "client",
+		ResourceVersion: "1",
+		Labels:          map[string]string{"tenant": "old"},
+		Annotations:     map[string]string{util.LogicalSwitchAnnotation: util.DefaultSubnet},
+	}
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Namespaces: []*corev1.Namespace{ns}})
+	require.NoError(t, err)
+	controller := fake.fakeController
+	controller.config.EnableNP = true
+	controller.updateNpQueue = newTypedRateLimitingQueue[string]("UpdateNetworkPolicy", nil)
+	controller.addNamespaceQueue = newTypedRateLimitingQueue[string]("AddNamespace", nil)
+
+	npIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	require.NoError(t, npIndexer.Add(&networkingv1.NetworkPolicy{
+		Name:      "allow-client",
+		Namespace: metav1.NamespaceDefault,
+		Spec: networkingv1.NetworkPolicySpec{Ingress: []networkingv1.NetworkPolicyIngressRule{{From: []networkingv1.NetworkPolicyPeer{{
+			NamespaceSelector: &metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{
+				Key: "tenant", Operator: metav1.LabelSelectorOpExists,
+			}}},
+		}}}}},
+	}))
+	controller.npsLister = networkinglister.NewNetworkPolicyLister(npIndexer)
+
+	oldNs := ns.DeepCopy()
+	newNs := ns.DeepCopy()
+	newNs.ResourceVersion = "2"
+	newNs.Labels["tenant"] = "new"
+
+	controller.enqueueUpdateNamespace(oldNs, newNs)
+
+	require.Equal(t, 1, controller.updateNpQueue.Len())
+	item, shutdown := controller.updateNpQueue.Get()
+	require.False(t, shutdown)
+	controller.updateNpQueue.Done(item)
+	require.Equal(t, "default/allow-client", item)
+}
 
 // Test_handleAddNamespace_orphanedSubnet is a regression guard for the bug where
 // a subnet referencing a non-existent VPC aborted evaluation of the whole subnet
