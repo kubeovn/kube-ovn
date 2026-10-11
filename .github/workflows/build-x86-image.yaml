@@ -66,7 +66,7 @@ jobs:
           fi
           rm -frv "$tmp_dir"
 
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         if: steps.check.outputs.build-base == 1
         with:
           android: true
@@ -140,7 +140,7 @@ jobs:
           fi
           rm -frv "$tmp_dir"
 
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         if: steps.check.outputs.build-dpdk-base == 1
         with:
           android: true
@@ -175,7 +175,7 @@ jobs:
       - build-kube-ovn-base
       - build-kube-ovn-dpdk-base
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -360,7 +360,7 @@ jobs:
     name: Build vpc-nat-gateway
     runs-on: ubuntu-24.04
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -431,7 +431,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
           lookup-only: true
 
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         if: steps.lookup-go-cache.outputs.cache-hit != 'true'
         with:
           android: true
@@ -513,7 +513,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -697,7 +697,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -791,7 +791,7 @@ jobs:
           - standard
           - lax
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -987,7 +987,7 @@ jobs:
           - standard
           - lax
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -1156,7 +1156,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -1339,7 +1339,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -1494,7 +1494,7 @@ jobs:
           - dual
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -1651,7 +1651,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -1796,7 +1796,7 @@ jobs:
         ip-family:
           - ipv4
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -1972,7 +1972,7 @@ jobs:
             tenant-control-plane: ha
             tenant-control-plane-replicas: 3
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -2131,7 +2131,7 @@ jobs:
           - "false"
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -2197,7 +2197,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -2261,7 +2261,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -2327,7 +2327,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -2396,7 +2396,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -2539,7 +2539,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -2653,7 +2653,7 @@ jobs:
         k8s-version:
           - v1.29.14
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -2728,7 +2728,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -2814,7 +2814,7 @@ jobs:
         mode:
           - overlay
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -2962,7 +2962,7 @@ jobs:
         mode:
           - overlay
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -3113,7 +3113,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -3124,7 +3124,7 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-      - uses: azure/setup-helm@v5.0.1
+      - uses: azure/setup-helm@v5
         with:
           version: '${{ env.HELM_VERSION }}'
 
@@ -3280,7 +3280,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -3402,7 +3402,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -3507,7 +3507,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -3683,7 +3683,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -3826,7 +3826,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -3969,7 +3969,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -4107,7 +4107,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -4249,7 +4249,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -4361,7 +4361,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
@@ -4522,7 +4522,7 @@ jobs:
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-24.04
     steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
