@@ -261,7 +261,8 @@ func (c *Client) linuxTasks(target Target, directory string, limit int64) []coll
 		"dmesg": {{"dmesg"}}, "route": {{"ip", "-4", "route", "show"}, {"ip", "-6", "route", "show"}},
 		"link": {{"ip", "-d", "-s", "link", "show"}}, "neigh": {{"ip", "-4", "neigh"}, {"ip", "-6", "neigh"}},
 		"memory": {{"free", "-m"}}, "top": {{"top", "-b", "-n", "1"}}, "sysctl": {{"sysctl", "-a"}},
-		"netstat": {{"netstat", "-tunlp"}}, "addr": {{"ip", "-s", "addr", "show"}}, "ipset": {{"ipset", "list"}},
+		"netstat": {{"cat", "/proc/net/tcp"}, {"cat", "/proc/net/tcp6"}, {"cat", "/proc/net/udp"}, {"cat", "/proc/net/udp6"}, {"cat", "/proc/net/unix"}},
+		"addr":    {{"ip", "-s", "addr", "show"}}, "ipset": {{"ipset", "list"}},
 		"tcp": {{"cat", "/proc/net/sockstat"}}, "ipsec": {{"cat", "/etc/ipsec.conf"}, {"ipsec", "statusall"}},
 		"xfrm": {{"ip", "xfrm", "policy"}, {"ip", "xfrm", "state", "list", "nokeys"}},
 	}

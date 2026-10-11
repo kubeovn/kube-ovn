@@ -94,6 +94,39 @@ func TestTCPDumpUsesNetNSAndPreservesBinary(t *testing.T) {
 	}
 }
 
+func TestTCPDumpFallsBackToPodNetNS(t *testing.T) {
+	pod := &corev1.Pod{Name: "web", Namespace: "app", UID: "web-id", Spec: corev1.PodSpec{NodeName: "node-a"}, Annotations: map[string]string{}}
+	agent := readyPod("agent-a", "node-a", "agent", map[string]string{"app": "kubectl-ko-node-agent"})
+	app, executor, _, _ := testApplication(t, pod, agent, &corev1.Node{Name: "node-a"})
+	client, err := app.newClient()
+	require.NoError(t, err)
+	client.ComponentFree = true
+	app.client = client
+	executor.run = func(_ context.Context, _ Target, argv []string, streams Streams) error {
+		switch argv[0] {
+		case "ovs-vsctl":
+			_, err := io.WriteString(streams.Out, `{"headings":["name","external_ids","ofport"],"data":[]}`)
+			return err
+		case "/kube-ovn/kubectl-ko-node-agent":
+			_, err := io.WriteString(streams.Out, "/proc/42/ns/net\n")
+			return err
+		default:
+			_, err := streams.Out.Write([]byte{0, 255, 10, 13, 0})
+			return err
+		}
+	}
+
+	require.NoError(t, app.Execute(t.Context(), []string{"capture", "--pod", "app/web", "--", "-c", "1"}))
+	var captureCall []string
+	for _, call := range executor.calls {
+		if len(call.argv) > 0 && call.argv[0] == "capture" {
+			captureCall = call.argv
+			break
+		}
+	}
+	require.Equal(t, []string{"capture", "--netns", "/proc/42/ns/net", "--interface", "eth0", "--count", "1"}, captureCall)
+}
+
 func TestVMPortResolvedBeforeInterfaceLookup(t *testing.T) {
 	pod := &corev1.Pod{Name: "virt-launcher", Namespace: "app", Spec: corev1.PodSpec{NodeName: "node-a"}, OwnerReferences: []metav1.OwnerReference{{Kind: "VirtualMachineInstance", Name: "vm-a"}}}
 	app, _, _, _ := testApplication(t, pod)

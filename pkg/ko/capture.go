@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+
+	"github.com/kubeovn/kube-ovn/pkg/kohelper"
 )
 
 const defaultCaptureSnaplen = 262144
@@ -13,6 +15,7 @@ type packetCaptureOptions struct {
 	count   int
 	snaplen int
 	pcap    bool
+	list    bool
 }
 
 // parseCaptureArguments accepts the stable subset of tcpdump flags that the
@@ -28,7 +31,7 @@ func parseCaptureArguments(args []string) (packetCaptureOptions, error) {
 		case arg == "-nn" || arg == "-n":
 			continue
 		case arg == "-c" || arg == "-s":
-			value, rest, err := captureArgumentValue(arg, remaining)
+			value, rest, err := kohelper.ConsumeArgumentValue(arg, remaining)
 			if err != nil {
 				return packetCaptureOptions{}, err
 			}
@@ -45,7 +48,7 @@ func parseCaptureArguments(args []string) (packetCaptureOptions, error) {
 				return packetCaptureOptions{}, err
 			}
 		case arg == "-w":
-			value, rest, err := captureArgumentValue(arg, remaining)
+			value, rest, err := kohelper.ConsumeArgumentValue(arg, remaining)
 			if err != nil {
 				return packetCaptureOptions{}, err
 			}
@@ -55,7 +58,7 @@ func parseCaptureArguments(args []string) (packetCaptureOptions, error) {
 			}
 			options.pcap = true
 		case arg == "-i":
-			value, rest, err := captureArgumentValue(arg, remaining)
+			value, rest, err := kohelper.ConsumeArgumentValue(arg, remaining)
 			if err != nil {
 				return packetCaptureOptions{}, err
 			}
@@ -66,18 +69,13 @@ func parseCaptureArguments(args []string) (packetCaptureOptions, error) {
 			if options.iface == "" {
 				return packetCaptureOptions{}, errors.New("-i requires an interface name")
 			}
+		case arg == "-D":
+			options.list = true
 		default:
-			return packetCaptureOptions{}, fmt.Errorf("unsupported capture argument %q; use -c, -s, -nn, -i, or -w -", arg)
+			return packetCaptureOptions{}, fmt.Errorf("unsupported capture argument %q; use -D, -c, -s, -nn, -i, or -w -", arg)
 		}
 	}
 	return options, nil
-}
-
-func captureArgumentValue(flag string, args []string) (string, []string, error) {
-	if len(args) == 0 {
-		return "", nil, fmt.Errorf("%s requires a value", flag)
-	}
-	return args[0], args[1:], nil
 }
 
 func setCaptureNumber(options *packetCaptureOptions, flag, value string) error {

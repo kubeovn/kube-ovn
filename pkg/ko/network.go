@@ -339,15 +339,24 @@ func (a *Application) tcpdump(ctx context.Context, client *Client, target captur
 	}
 	source := podNetworkSource(pod)
 	nic, err := client.podInterface(ctx, ovs, source.lsp)
-	if err != nil {
-		return err
+	if err != nil || nic.netns == "" {
+		var fallbackErr error
+		netns, fallbackErr = client.podNetNS(ctx, ovs, pod)
+		if fallbackErr != nil {
+			if err != nil {
+				return fmt.Errorf("find capture interface for %s/%s: %w", pod.Namespace, pod.Name, err)
+			}
+			return fmt.Errorf("resolve capture network namespace for %s/%s: %w", pod.Namespace, pod.Name, fallbackErr)
+		}
+		netns = strings.TrimSpace(netns)
+		if netns == "" {
+			return errors.New("pod network namespace path is empty")
+		}
+	} else {
+		netns = nic.netns
 	}
-	if nic.netns == "" {
-		return errors.New("OVS interface has no pod_netns external ID")
-	}
-	netns = nic.netns
 	if pod.Annotations[annotationPrefix+"pod_nic_type"] == "internal-port" {
-		if options.iface == "" {
+		if options.iface == "" && nic.name != "" {
 			name = nic.name
 		}
 	}
@@ -367,6 +376,9 @@ func captureCommand(netns, iface string, options packetCaptureOptions) []string 
 	}
 	if options.pcap {
 		argv = append(argv, "--pcap")
+	}
+	if options.list {
+		argv = append(argv, "--list-interfaces")
 	}
 	return argv
 }

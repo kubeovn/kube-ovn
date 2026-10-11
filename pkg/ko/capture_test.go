@@ -12,6 +12,12 @@ func TestParseCaptureArguments(t *testing.T) {
 	require.Equal(t, packetCaptureOptions{iface: "eth0", count: 1, snaplen: 128, pcap: true}, options)
 }
 
+func TestParseCaptureArgumentsListsInterfaces(t *testing.T) {
+	options, err := parseCaptureArguments([]string{"-D"})
+	require.NoError(t, err)
+	require.True(t, options.list)
+}
+
 func TestParseCaptureArgumentsRejectsUnsupportedFilters(t *testing.T) {
 	_, err := parseCaptureArguments([]string{"-c", "1", "tcp port 80"})
 	require.ErrorContains(t, err, "unsupported capture argument")

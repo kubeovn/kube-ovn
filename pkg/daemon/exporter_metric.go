@@ -1,8 +1,10 @@
 package daemon
 
 import (
+	"bufio"
+	"errors"
+	"fmt"
 	"os"
-	"os/exec"
 	"strconv"
 	"strings"
 
@@ -30,32 +32,54 @@ func (c *Controller) setIPLocalPortRangeMetric() {
 }
 
 func (c *Controller) setCheckSumErrMetric() {
-	output, err := exec.Command("netstat", "-us").CombinedOutput()
+	value, err := readInCsumErrors("/proc/net/snmp")
 	if err != nil {
-		klog.Errorf("failed to exec cmd 'netstat -us', err %v", err)
+		klog.Errorf("failed to read InCsumErrors from /proc/net/snmp, err %v", err)
 		return
 	}
+	metricCheckSumErr.WithLabelValues(c.config.NodeName).Set(float64(value))
+}
 
-	found := false
-	lines := strings.SplitSeq(string(output), "\n")
-	for line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
+func readInCsumErrors(path string) (value int, resultErr error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { resultErr = errors.Join(resultErr, file.Close()) }()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		const prefix = "Udp:"
+		if !strings.HasPrefix(line, prefix) {
 			continue
 		}
-
-		if strings.Contains(line, "InCsumErrors") {
-			values := strings.Split(line, ":")
-			if len(values) == 2 {
-				val, _ := strconv.Atoi(strings.TrimSpace(values[1]))
-				metricCheckSumErr.WithLabelValues(c.config.NodeName).Set(float64(val))
-				found = true
+		headers := strings.Fields(strings.TrimPrefix(line, prefix))
+		if !scanner.Scan() {
+			return 0, errors.Join(scanner.Err(), errors.New("missing UDP counters in /proc/net/snmp"))
+		}
+		if !strings.HasPrefix(scanner.Text(), prefix) {
+			return 0, errors.New("invalid UDP counters in /proc/net/snmp")
+		}
+		values := strings.Fields(strings.TrimPrefix(scanner.Text(), prefix))
+		for index, header := range headers {
+			if header != "InCsumErrors" {
+				continue
 			}
+			if index >= len(values) {
+				return 0, errors.New("missing UDP InCsumErrors value in /proc/net/snmp")
+			}
+			value, err := strconv.Atoi(values[index])
+			if err != nil {
+				return 0, fmt.Errorf("parse InCsumErrors value %q: %w", values[index], err)
+			}
+			return value, nil
 		}
 	}
-	if !found {
-		metricCheckSumErr.WithLabelValues(c.config.NodeName).Set(float64(0))
+	if err := scanner.Err(); err != nil {
+		return 0, err
 	}
+	return 0, nil
 }
 
 func (c *Controller) setDNSSearchMetric() {

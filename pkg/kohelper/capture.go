@@ -11,6 +11,7 @@ type captureOptions struct {
 	count   int
 	snaplen int
 	pcap    bool
+	list    bool
 }
 
 const captureDefaultSnaplen = 262144
@@ -23,7 +24,7 @@ func parseCaptureArgs(args []string) (captureOptions, error) {
 		remaining = remaining[1:]
 		switch arg {
 		case "--netns", "--interface", "--count", "--snaplen":
-			value, rest, err := captureValue(arg, remaining)
+			value, rest, err := ConsumeArgumentValue(arg, remaining)
 			if err != nil {
 				return captureOptions{}, err
 			}
@@ -48,16 +49,11 @@ func parseCaptureArgs(args []string) (captureOptions, error) {
 			}
 		case "--pcap":
 			options.pcap = true
+		case "--list-interfaces":
+			options.list = true
 		default:
 			return captureOptions{}, fmt.Errorf("unsupported capture option %q", arg)
 		}
 	}
 	return options, nil
-}
-
-func captureValue(flag string, args []string) (string, []string, error) {
-	if len(args) == 0 {
-		return "", nil, fmt.Errorf("%s requires a value", flag)
-	}
-	return args[0], args[1:], nil
 }
