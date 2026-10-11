@@ -623,15 +623,20 @@ done
             thread.join(timeout=1)
 
 
-def runSuite(suite, directory, interval):
+def runSuite(suite, directory, interval, maxSeconds=None):
     directory = directory.resolve()
     directory.mkdir(parents=True, exist_ok=True)
     seed = int(os.environ.get("E2E_SEED", str(int(time.time()))))
+    if maxSeconds is None:
+        maxSeconds = int(os.environ.get("E2E_MAX_SECONDS", "4200"))
+    if maxSeconds <= 0:
+        raise ValueError("E2E_MAX_SECONDS must be positive")
     metadata = {"started": timestamp(), "seed": seed, "suite": suite,
                 "head": os.environ.get("EXECUTION_SHA", os.environ.get("GITHUB_SHA")), "run": os.environ.get("GITHUB_RUN_ID"),
                 "ipFamily": os.environ.get("E2E_IP_FAMILY"),
                 "networkMode": os.environ.get("E2E_NETWORK_MODE"),
-                "enforcement": os.environ.get("NP_ENFORCEMENT")}
+                "enforcement": os.environ.get("NP_ENFORCEMENT"),
+                "maxSeconds": maxSeconds}
     (directory / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
     diagnostics = Diagnostics(directory, interval)
     diagnostics.start()
@@ -648,6 +653,8 @@ def runSuite(suite, directory, interval):
     process = None
     interrupted = 0
     killTimer = None
+    watchdogTimer = None
+    watchdogTriggered = False
 
     def interrupt(signum, frame):
         nonlocal interrupted, killTimer
@@ -667,12 +674,46 @@ def runSuite(suite, directory, interval):
             killTimer.daemon = True
             killTimer.start()
 
+    def watchdog():
+        """Bound a hung upstream e2e exec so diagnostics can still upload."""
+        nonlocal watchdogTriggered, watchdogTimer
+        if process is None or process.poll() is not None or diagnostics.stop.is_set():
+            return
+        watchdogTriggered = True
+        event = {
+            "observed": timestamp(), "reason": "e2e process exceeded maxSeconds",
+            "maxSeconds": maxSeconds, "pid": process.pid,
+        }
+        (directory / "watchdog.json").write_text(json.dumps(event, indent=2) + "\n")
+        with (directory / "e2e.log").open("a") as log:
+            log.write(f"{timestamp()} [E2E-WATCHDOG] process exceeded {maxSeconds}s; terminating for diagnostics\n")
+        diagnostics.recordFailure(
+            f"[E2E-WATCHDOG] process exceeded {maxSeconds}s; terminating for diagnostics\n",
+            "test",
+        )
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            return
+        def forceKill():
+            if process.poll() is None:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+        watchdogTimer = threading.Timer(10, forceKill)
+        watchdogTimer.daemon = True
+        watchdogTimer.start()
+
     handlers = {sig: signal.signal(sig, interrupt) for sig in (signal.SIGTERM, signal.SIGINT)}
     result = 127
     try:
         with (directory / "e2e.log").open("w") as log:
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                        text=True, bufsize=1, start_new_session=True)
+            watchdogTimer = threading.Timer(maxSeconds, watchdog)
+            watchdogTimer.daemon = True
+            watchdogTimer.start()
             with process.stdout:
                 for line in process.stdout:
                     print(line, end="", flush=True)
@@ -690,6 +731,8 @@ def runSuite(suite, directory, interval):
             process.wait()
         if killTimer is not None:
             killTimer.cancel()
+        if watchdogTimer is not None:
+            watchdogTimer.cancel()
         for sig, handler in handlers.items():
             signal.signal(sig, handler)
         try:
@@ -698,6 +741,10 @@ def runSuite(suite, directory, interval):
             (directory / "stop-collection-error.txt").write_text(str(error))
     if interrupted:
         result = 128 + interrupted
+    elif watchdogTriggered:
+        # Keep this distinct from a test assertion failure so the job log makes
+        # it clear that an upstream exec hung and was bounded by our runner.
+        result = 124
     try:
         collectSnapshot(directory / "final", full=True,
                         cancel=diagnostics.stop if interrupted else None)
@@ -714,6 +761,8 @@ def main():
     parser.add_argument("directory", type=Path)
     parser.add_argument("--suite", choices=("k8s-conformance-e2e", "k8s-netpol-e2e"))
     parser.add_argument("--interval", type=float, default=30)
+    parser.add_argument("--max-seconds", type=int,
+                        default=int(os.environ.get("E2E_MAX_SECONDS", "4200")))
     args = parser.parse_args()
     if args.interval <= 0:
         parser.error("interval must be positive")
@@ -724,7 +773,7 @@ def main():
         return 0
     if not args.suite:
         parser.error("run requires --suite")
-    return runSuite(args.suite, args.directory, args.interval)
+    return runSuite(args.suite, args.directory, args.interval, args.max_seconds)
 
 
 if __name__ == "__main__":
