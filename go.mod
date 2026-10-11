@@ -32,7 +32,7 @@ require (
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
 	github.com/moby/sys/mountinfo v0.7.2
-	github.com/onsi/ginkgo/v2 v2.33.0
+	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 	github.com/osrg/gobgp/v4 v4.10.0
 	github.com/ovn-kubernetes/libovsdb v0.8.2-0.20260710115425-adb4e0375fb5
@@ -53,11 +53,11 @@ require (
 	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.28.0
 	go.universe.tf/metallb v0.16.1
-	golang.org/x/mod v0.41.0
+	golang.org/x/mod v0.42.0
 	golang.org/x/net v0.61.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/time v0.16.0
-	golang.org/x/tools v0.51.0
+	golang.org/x/tools v0.52.0
 	google.golang.org/grpc v1.84.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.3.1
@@ -290,7 +290,7 @@ require (
 )
 
 replace (
-	github.com/go-ini/ini => github.com/go-ini/ini v1.67.0
+	github.com/go-ini/ini => github.com/go-ini/ini v1.67.3
 	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20260528080449-dad82eb4dedd
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20191219222812-2987a591a72c
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47
