@@ -43,6 +43,9 @@ class NetworkDiagnosticsTest(unittest.TestCase):
     def testInterruptedSuiteKeepsPartialArtifactsAndStopsChildProcesses(self):
         self.runWithStubs(143, interrupt=True)
 
+    def testHungSuiteIsBoundedAndLeavesWatchdogEvidence(self):
+        self.runWithStubs(0, hang=True, maxSeconds=0.1, expectedCode=124)
+
     def testGinkgoImmediateFailureFreezesBeforeCleanup(self):
         self.runWithStubs(7, failureLine="[FAILED] Timed out after 120.000s.")
 
@@ -188,7 +191,8 @@ sys.exit(child.wait())
             self.assertEqual(frozen.read_text(), "pre-cleanup NB request")
 
     def runWithStubs(self, exitCode, interrupt=False,
-                     failureLine="Validation of netpol-x/a -> netpol-y/b FAILED !!!"):
+                     failureLine="Validation of netpol-x/a -> netpol-y/b FAILED !!!",
+                     hang=False, maxSeconds=None, expectedCode=None):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             binary = root / "bin"
@@ -224,6 +228,9 @@ from pathlib import Path
 root = Path(os.environ['DIAGNOSTIC_TEST_ROOT'])
 output = root / 'diagnostics'
 (root / 'make-args.json').write_text(json.dumps(sys.argv[1:]))
+if {hang!r}:
+    while True:
+        time.sleep(60)
 deadline = time.monotonic() + 10
 while not (output / 'samples/0/pods.json').exists() or not (output / 'watch-pods.jsonl').exists():
     if time.monotonic() > deadline: sys.exit(99)
@@ -247,14 +254,21 @@ sys.exit({exitCode})
             environment = {"PATH": f"{binary}:{os.environ['PATH']}", "DIAGNOSTIC_TEST_ROOT": str(root),
                            "E2E_SEED": "1234"}
             with mock.patch.dict(os.environ, environment):
-                result = diagnostics.runSuite("k8s-netpol-e2e", output, interval=0.05)
-            self.assertEqual(result, exitCode)
+                result = diagnostics.runSuite("k8s-netpol-e2e", output, interval=0.05,
+                                             maxSeconds=maxSeconds)
+            self.assertEqual(result, expectedCode if expectedCode is not None else exitCode)
             metadata = json.loads((output / "metadata.json").read_text())
             self.assertFalse((output / "stop-collection-error.txt").exists())
-            self.assertEqual(metadata["returncode"], exitCode)
+            self.assertEqual(metadata["returncode"],
+                             expectedCode if expectedCode is not None else exitCode)
             self.assertEqual(metadata["seed"], 1234)
-            self.assertIn("test output", (output / "e2e.log").read_text())
-            self.assertEqual(json.loads((output / "final/pods.json").read_text())["objects"], [])
+            if hang:
+                self.assertIn("E2E-WATCHDOG", (output / "e2e.log").read_text())
+                self.assertTrue((output / "watchdog.json").exists())
+            else:
+                self.assertIn("test output", (output / "e2e.log").read_text())
+            if not hang:
+                self.assertEqual(json.loads((output / "final/pods.json").read_text())["objects"], [])
             args = json.loads((root / "make-args.json").read_text())
             self.assertIn("--seed=1234", args[1])
             self.assertIn("--json-report=", args[1])
