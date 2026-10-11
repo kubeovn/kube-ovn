@@ -215,6 +215,41 @@ func TestBaselineAdminPolicyLabelMatcherIncludesIngressPeers(t *testing.T) {
 	require.True(t, isRulesArrayEmpty(changedEgress))
 }
 
+func TestCnpLabelMatcherEnqueuesUnnamedRules(t *testing.T) {
+	controller := newPolicyLabelTestController(t, &corev1.Namespace{Name: metav1.NamespaceDefault})
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	selector := &v1alpha2.NamespacedPod{
+		NamespaceSelector: metav1.LabelSelector{},
+		PodSelector:       metav1.LabelSelector{MatchLabels: map[string]string{"app": "new"}},
+	}
+	cnp := &v1alpha2.ClusterNetworkPolicy{
+		Name: "unnamed",
+		Spec: v1alpha2.ClusterNetworkPolicySpec{
+			Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{{From: []v1alpha2.ClusterNetworkPolicyIngressPeer{{Pods: selector}}}},
+			Egress:  []v1alpha2.ClusterNetworkPolicyEgressRule{{To: []v1alpha2.ClusterNetworkPolicyEgressPeer{{Pods: selector}}}},
+		},
+	}
+	require.NoError(t, indexer.Add(cnp))
+	controller.cnpsLister = cnplister.NewClusterNetworkPolicyLister(indexer)
+	controller.updateCnpsByLabelsChange(labelChange{
+		oldNsLabels:  map[string]string{},
+		newNsLabels:  map[string]string{},
+		oldPodLabels: map[string]string{"app": "old"},
+		newPodLabels: map[string]string{"app": "new"},
+	})
+	require.Equal(t, 2, controller.updateCnpQueue.Len())
+	fields := make(map[ChangedField]bool)
+	for controller.updateCnpQueue.Len() > 0 {
+		item, shutdown := controller.updateCnpQueue.Get()
+		require.False(t, shutdown)
+		controller.updateCnpQueue.Done(item)
+		fields[item.field] = true
+		require.True(t, item.ruleNames[0].isMatch)
+	}
+	require.True(t, fields[ChangedIngressRule])
+	require.True(t, fields[ChangedEgressRule])
+}
+
 func assertAdminPolicyFields(t *testing.T, queue workqueue.TypedRateLimitingInterface[*AdminNetworkPolicyChangedDelta], want map[string]map[ChangedField][]string) {
 	t.Helper()
 	require.Equal(t, 3*len(want), queue.Len())

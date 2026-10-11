@@ -43,6 +43,17 @@ type AdminNetworkPolicyChangedDelta struct {
 	DNSReconcileDone bool
 }
 
+type labelChange struct {
+	oldNsLabels  map[string]string
+	newNsLabels  map[string]string
+	oldPodLabels map[string]string
+	newPodLabels map[string]string
+}
+
+func (change labelChange) anyMatch(matcher func(map[string]string, map[string]string) bool) bool {
+	return matcher(change.oldNsLabels, change.oldPodLabels) || matcher(change.newNsLabels, change.newPodLabels)
+}
+
 func (c *Controller) enqueueAddAnp(obj any) {
 	key := cache.MetaObjectToName(obj.(*v1alpha1.AdminNetworkPolicy)).String()
 	klog.V(3).Infof("enqueue add anp %s", key)
@@ -898,21 +909,21 @@ func (c *Controller) setAddrSetForAnpRuleCommon(anpName, pgName, ruleName string
 }
 
 func (c *Controller) updateAnpsByLabelsMatch(nsLabels, podLabels map[string]string) {
-	c.updateAnpsByLabelsChange(nsLabels, nsLabels, podLabels, podLabels)
+	c.updateAnpsByLabelsChange(labelChange{nsLabels, nsLabels, podLabels, podLabels})
 }
 
-func (c *Controller) updateAnpsByLabelsChange(oldNsLabels, newNsLabels, oldPodLabels, newPodLabels map[string]string) {
+func (c *Controller) updateAnpsByLabelsChange(change labelChange) {
 	anps, err := c.anpsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list admin network policies for label update: %v", err)
 	}
 	for _, anp := range anps {
-		if isLabelsMatchForChange(anp.Spec.Subject.Namespaces, anp.Spec.Subject.Pods, oldNsLabels, newNsLabels, oldPodLabels, newPodLabels) {
+		if isLabelsMatchForChange(anp.Spec.Subject.Namespaces, anp.Spec.Subject.Pods, change) {
 			klog.Infof("anp %s, labels matched for anp's subject", anp.Name)
 			c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: anp.Name, field: ChangedSubject})
 		}
 
-		ingressRuleNames, egressRuleNames := isLabelsMatchAnpRulePeersForChange(anp.Spec.Ingress, anp.Spec.Egress, oldNsLabels, newNsLabels, oldPodLabels, newPodLabels)
+		ingressRuleNames, egressRuleNames := isLabelsMatchAnpRulePeersForChange(anp.Spec.Ingress, anp.Spec.Egress, change)
 		if !isRulesArrayEmpty(ingressRuleNames) {
 			klog.Infof("anp %s, labels matched for anp's ingress peer", anp.Name)
 			c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: anp.Name, ruleNames: ingressRuleNames, field: ChangedIngressRule})
@@ -929,12 +940,12 @@ func (c *Controller) updateAnpsByLabelsChange(oldNsLabels, newNsLabels, oldPodLa
 		klog.Errorf("failed to list baseline admin network policies for label update: %v", err)
 	}
 	for _, banp := range banps {
-		if isLabelsMatchForChange(banp.Spec.Subject.Namespaces, banp.Spec.Subject.Pods, oldNsLabels, newNsLabels, oldPodLabels, newPodLabels) {
+		if isLabelsMatchForChange(banp.Spec.Subject.Namespaces, banp.Spec.Subject.Pods, change) {
 			klog.Infof("banp %s, labels matched for banp's subject", banp.Name)
 			c.updateBanpQueue.Add(&AdminNetworkPolicyChangedDelta{key: banp.Name, field: ChangedSubject})
 		}
 
-		ingressRuleNames, egressRuleNames := isLabelsMatchBanpRulePeersForChange(banp.Spec.Ingress, banp.Spec.Egress, oldNsLabels, newNsLabels, oldPodLabels, newPodLabels)
+		ingressRuleNames, egressRuleNames := isLabelsMatchBanpRulePeersForChange(banp.Spec.Ingress, banp.Spec.Egress, change)
 		if !isRulesArrayEmpty(ingressRuleNames) {
 			klog.Infof("banp %s, labels matched for banp's ingress peer", banp.Name)
 			c.updateBanpQueue.Add(&AdminNetworkPolicyChangedDelta{key: banp.Name, ruleNames: ingressRuleNames, field: ChangedIngressRule})
@@ -947,8 +958,10 @@ func (c *Controller) updateAnpsByLabelsChange(oldNsLabels, newNsLabels, oldPodLa
 	}
 }
 
-func isLabelsMatchForChange(namespaces *metav1.LabelSelector, pods *v1alpha1.NamespacedPod, oldNsLabels, newNsLabels, oldPodLabels, newPodLabels map[string]string) bool {
-	return isLabelsMatch(namespaces, pods, oldNsLabels, oldPodLabels) || isLabelsMatch(namespaces, pods, newNsLabels, newPodLabels)
+func isLabelsMatchForChange(namespaces *metav1.LabelSelector, pods *v1alpha1.NamespacedPod, change labelChange) bool {
+	return change.anyMatch(func(nsLabels, podLabels map[string]string) bool {
+		return isLabelsMatch(namespaces, pods, nsLabels, podLabels)
+	})
 }
 
 func isLabelsMatch(namespaces *metav1.LabelSelector, pods *v1alpha1.NamespacedPod, nsLabels, podLabels map[string]string) bool {
@@ -1020,9 +1033,9 @@ func isLabelsMatchAnpRulePeers(ingress []v1alpha1.AdminNetworkPolicyIngressRule,
 	return isLabelsMatchAnpRulePeersCommon(ingress, egress, nil, nsLabels, podLabels)
 }
 
-func isLabelsMatchAnpRulePeersForChange(ingress []v1alpha1.AdminNetworkPolicyIngressRule, egress []v1alpha1.AdminNetworkPolicyEgressRule, oldNsLabels, newNsLabels, oldPodLabels, newPodLabels map[string]string) ([util.AnpMaxRules]ChangedName, [util.AnpMaxRules]ChangedName) {
-	oldIngress, oldEgress := isLabelsMatchAnpRulePeers(ingress, egress, oldNsLabels, oldPodLabels)
-	newIngress, newEgress := isLabelsMatchAnpRulePeers(ingress, egress, newNsLabels, newPodLabels)
+func isLabelsMatchAnpRulePeersForChange(ingress []v1alpha1.AdminNetworkPolicyIngressRule, egress []v1alpha1.AdminNetworkPolicyEgressRule, change labelChange) ([util.AnpMaxRules]ChangedName, [util.AnpMaxRules]ChangedName) {
+	oldIngress, oldEgress := isLabelsMatchAnpRulePeers(ingress, egress, change.oldNsLabels, change.oldPodLabels)
+	newIngress, newEgress := isLabelsMatchAnpRulePeers(ingress, egress, change.newNsLabels, change.newPodLabels)
 	return mergeChangedNames(oldIngress, newIngress), mergeChangedNames(oldEgress, newEgress)
 }
 
@@ -1036,9 +1049,9 @@ func isLabelsMatchBaselineAnpRulePeers(ingress []v1alpha1.BaselineAdminNetworkPo
 	return changedIngress, changedEgress
 }
 
-func isLabelsMatchBanpRulePeersForChange(ingress []v1alpha1.BaselineAdminNetworkPolicyIngressRule, egress []v1alpha1.BaselineAdminNetworkPolicyEgressRule, oldNsLabels, newNsLabels, oldPodLabels, newPodLabels map[string]string) ([util.AnpMaxRules]ChangedName, [util.AnpMaxRules]ChangedName) {
-	oldIngress, oldEgress := isLabelsMatchBaselineAnpRulePeers(ingress, egress, oldNsLabels, oldPodLabels)
-	newIngress, newEgress := isLabelsMatchBaselineAnpRulePeers(ingress, egress, newNsLabels, newPodLabels)
+func isLabelsMatchBanpRulePeersForChange(ingress []v1alpha1.BaselineAdminNetworkPolicyIngressRule, egress []v1alpha1.BaselineAdminNetworkPolicyEgressRule, change labelChange) ([util.AnpMaxRules]ChangedName, [util.AnpMaxRules]ChangedName) {
+	oldIngress, oldEgress := isLabelsMatchBaselineAnpRulePeers(ingress, egress, change.oldNsLabels, change.oldPodLabels)
+	newIngress, newEgress := isLabelsMatchBaselineAnpRulePeers(ingress, egress, change.newNsLabels, change.newPodLabels)
 	return mergeChangedNames(oldIngress, newIngress), mergeChangedNames(oldEgress, newEgress)
 }
 

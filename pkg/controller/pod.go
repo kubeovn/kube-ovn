@@ -389,8 +389,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		oldPodLabels := labelsForPodEvent(oldPod.Labels)
 		newPodLabels := labelsForPodEvent(newPod.Labels)
 		if !maps.Equal(oldPod.Labels, newPod.Labels) {
-			c.updateAnpsByLabelsChange(nsLabels, nsLabels, oldPodLabels, newPodLabels)
-			c.updateCnpsByLabelsChange(nsLabels, nsLabels, oldPodLabels, newPodLabels)
+			change := labelChange{nsLabels, nsLabels, oldPodLabels, newPodLabels}
+			c.updateAnpsByLabelsChange(change)
+			c.updateCnpsByLabelsChange(change)
 		}
 
 		for _, podNet := range podNets {
