@@ -60,6 +60,17 @@ type initialMonitorClient interface {
 	Monitor(context.Context, *client.Monitor) (client.MonitorCookie, error)
 }
 
+func hasMultipleEndpoints(addr string) bool {
+	endpointCount := 0
+	for range strings.SplitSeq(addr, ",") {
+		endpointCount++
+		if endpointCount > 1 {
+			return true
+		}
+	}
+	return false
+}
+
 // monitorWithTimeout bounds the initial monitor RPC so cache update errors cannot block startup forever.
 func monitorWithTimeout(c initialMonitorClient, monitors []client.MonitorOption, timeout time.Duration) error {
 	monitor := c.NewMonitor(monitors...)
@@ -83,6 +94,7 @@ func NewOvsDbClient(
 
 	var ssl bool
 	var options []client.Option
+	multipleEndpoints := hasMultipleEndpoints(addr)
 	for ep := range strings.SplitSeq(addr, ",") {
 		if !ssl && strings.HasPrefix(ep, client.SSL) {
 			ssl = true
@@ -90,7 +102,7 @@ func NewOvsDbClient(
 		options = append(options, client.WithEndpoint(ep))
 	}
 	var backOff backoff.BackOff
-	if len(options) > 1 {
+	if multipleEndpoints {
 		// multiple endpoints, use zero backoff to try next endpoint immediately
 		backOff = &backoff.ZeroBackOff{}
 	} else {
@@ -112,7 +124,14 @@ func NewOvsDbClient(
 	dbLogger := logger.WithValues("db", db)
 	connectTimeout := time.Duration(ovsDbConTimeout) * time.Second
 	inactivityTimeout := time.Duration(ovsDbInactivityTimeout) * time.Second
-	options = append(options, client.WithLeaderOnly(true), client.WithLogger(&dbLogger))
+	// A single endpoint cannot fail over to another clustered leader. Enabling
+	// leader-only mode in that case starts an unnecessary _Server monitor whose
+	// cache handler can contend with transactions during reconnects. Keep the
+	// leader watcher for the multi-endpoint HA configuration only.
+	if multipleEndpoints {
+		options = append(options, client.WithLeaderOnly(true))
+	}
+	options = append(options, client.WithLogger(&dbLogger))
 	if inactivityTimeout > 0 {
 		// Reading and parsing the DB after reconnect at scale can (unsurprisingly)
 		// take longer than a normal ovsdb operation. Give it a bit more time so
