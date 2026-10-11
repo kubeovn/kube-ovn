@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.16.12 (2026-10-10)
+
+ * [bcd8fae0e](https://github.com/kubeovn/kube-ovn/commit/bcd8fae0e9e8564a74430ed1ef6ec3c3dd9c477a) release v1.16.12
+ * [7416cd63b](https://github.com/kubeovn/kube-ovn/commit/7416cd63b75373dc7a5465299850a0950177ad7b) fix(deps): update golang (#7632)
+ * [e4d3823ad](https://github.com/kubeovn/kube-ovn/commit/e4d3823ada2673448b14c6e444e755f4b509e891) [release-1.16] feat: enhance kubectl-ko tcpdump for kubevirt (#7629)
+ * [2efdc7a81](https://github.com/kubeovn/kube-ovn/commit/2efdc7a81dbf8c7ff45d0dd3ec6b499ab3347f91) fix(deps): update golang (#7628)
+ * [d2892fdd5](https://github.com/kubeovn/kube-ovn/commit/d2892fdd5cda62b949557e5187f9583675913b9e) fix(controller): give SwitchLB VIPs their own MAC (#7627)
+ * [44ebf15f9](https://github.com/kubeovn/kube-ovn/commit/44ebf15f91e249aa19b128de6c5f0e2e370a4c60) fix(ovs): atomically create load balancers (#7623)
+ * [91ed368df](https://github.com/kubeovn/kube-ovn/commit/91ed368dfea4f84aac6e40a088635bffe829a0e6) fix: wait for hosted OVN central rollout  (#7624)
+ * [97b381319](https://github.com/kubeovn/kube-ovn/commit/97b381319f170ca85909a081c43c2a666602cb99) fix: resolve HCP northd address families with bounded DNS lookups (#7625)
+ * [0fa14a397](https://github.com/kubeovn/kube-ovn/commit/0fa14a397332948636c9ca995a233a8f65f8a4f6) fix(deps): update golang (release-1.16) (#7616)
+ * [4f2f1b226](https://github.com/kubeovn/kube-ovn/commit/4f2f1b226d13c16718957d036182c5066163b020) prepare for next release
+
+### Contributors
+
+ * renovate[bot]
+ * zhangzujian
+ * 张祖建
+
+## v1.16.11 (2026-10-08)
+
+ * [22e5807cf](https://github.com/kubeovn/kube-ovn/commit/22e5807cf993630ed9429eae08bd1a2a9dad96cc) release v1.16.11
+ * [eddd51d47](https://github.com/kubeovn/kube-ovn/commit/eddd51d47cf413a30f3196f4064fcda53de39411) fix(pinger,monitor): allow monitoring/metrics components to find correct ctrl sockets (#7609)
+ * [39fc10716](https://github.com/kubeovn/kube-ovn/commit/39fc10716af86857ae4f4852d4abdb54b115ccff) fix: restore default NORMAL flow on provider bridges after ovs restart (#7546) (#7608)
+ * [9410525fb](https://github.com/kubeovn/kube-ovn/commit/9410525fba4c5aa3efd96adbcdf8e8aaf947a9cd) fix(controller): requeue network policies when pod is routed (#7605)
+ * [6870fa2a7](https://github.com/kubeovn/kube-ovn/commit/6870fa2a70e1c1483315c7b4dcc7e359593a1725) fix: preserve OVN EIP status during allocation race (#7597)
+ * [2a5b012a9](https://github.com/kubeovn/kube-ovn/commit/2a5b012a9731539324de9dba85fbb0f89118181b) fix(deps): update module golang.org/x/tools to v0.51.0 (#7590)
+ * [bc13cf368](https://github.com/kubeovn/kube-ovn/commit/bc13cf3682632efd0bc7ae1945582b392739cc97) prepare for next release
+
+### Contributors
+
+ * renovate[bot]
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.10 (2026-10-01)
 
  * [cb4076adc](https://github.com/kubeovn/kube-ovn/commit/cb4076adc7176a594989d5f25b343f2f06cdc612) release v1.16.10
