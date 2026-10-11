@@ -296,8 +296,9 @@ func (c *Controller) enqueueDeletePod(obj any) {
 
 	if c.config.EnableANP {
 		nsLabels := c.getNsLabels(p.Namespace, p.Name)
-		c.updateAnpsByLabelsMatch(nsLabels, p.Labels)
-		c.updateCnpsByLabelsMatch(nsLabels, p.Labels)
+		podLabels := labelsForPodEvent(p.Labels)
+		c.updateAnpsByLabelsMatch(nsLabels, podLabels)
+		c.updateCnpsByLabelsMatch(nsLabels, podLabels)
 	}
 
 	key := cache.MetaObjectToName(p).String()
@@ -385,9 +386,11 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 
 	if c.config.EnableANP {
 		nsLabels := c.getNsLabels(newPod.Namespace, newPod.Name)
+		oldPodLabels := labelsForPodEvent(oldPod.Labels)
+		newPodLabels := labelsForPodEvent(newPod.Labels)
 		if !maps.Equal(oldPod.Labels, newPod.Labels) {
-			c.updateAnpsByLabelsMatch(nsLabels, newPod.Labels)
-			c.updateCnpsByLabelsMatch(nsLabels, newPod.Labels)
+			c.updateAnpsByLabelsChange(nsLabels, nsLabels, oldPodLabels, newPodLabels)
+			c.updateCnpsByLabelsChange(nsLabels, nsLabels, oldPodLabels, newPodLabels)
 		}
 
 		for _, podNet := range podNets {
@@ -396,8 +399,8 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 			oldRouted := oldPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)]
 			newRouted := newPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)]
 			if oldAllocated != newAllocated || oldRouted != newRouted {
-				c.updateAnpsByLabelsMatch(nsLabels, newPod.Labels)
-				c.updateCnpsByLabelsMatch(nsLabels, newPod.Labels)
+				c.updateAnpsByLabelsMatch(nsLabels, newPodLabels)
+				c.updateCnpsByLabelsMatch(nsLabels, newPodLabels)
 				break
 			}
 		}
@@ -466,6 +469,14 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 			break
 		}
 	}
+}
+
+// labelsForPodEvent distinguishes an unlabeled pod from a namespace event, which passes nil.
+func labelsForPodEvent(podLabels map[string]string) map[string]string {
+	if podLabels == nil {
+		return map[string]string{}
+	}
+	return podLabels
 }
 
 func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {

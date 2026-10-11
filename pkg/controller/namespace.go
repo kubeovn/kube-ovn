@@ -72,8 +72,8 @@ func (c *Controller) enqueueUpdateNamespace(oldObj, newObj any) {
 		}
 
 		if c.config.EnableANP {
-			c.updateAnpsByLabelsMatch(newObj.(*v1.Namespace).Labels, nil)
-			c.updateCnpsByLabelsMatch(newObj.(*v1.Namespace).Labels, nil)
+			c.updateAnpsByLabelsChange(oldNs.Labels, newNs.Labels, nil, nil)
+			c.updateCnpsByLabelsChange(oldNs.Labels, newNs.Labels, nil, nil)
 		}
 
 		expectSubnets, err := c.getNsExpectSubnets(newNs)
