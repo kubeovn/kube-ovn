@@ -4,6 +4,11 @@ The production Kube-OVN image keeps the networking daemons and the small
 `kubectl-ko-node-agent` binary. Node diagnostics run in the independent agent,
 which is privileged only for the operation requested by `kubectl ko`.
 
+The production base and DPDK images omit the utilities replaced below. The VPC
+NAT gateway image keeps `tcpdump` for packet diagnostics inside the gateway.
+The debug image may install additional diagnostic tools, including `gdb` and
+`valgrind`.
+
 | Previous image utility | Production replacement | Notes |
 | --- | --- | --- |
 | `tcpdump`, sniffer utilities | `kubectl ko capture` | The agent opens an `AF_PACKET` socket in the target network namespace and can stream a pcap (`-w -`) without `nsenter` or a `tcpdump` process. `-D` lists interfaces; pcap output currently requires an Ethernet interface. |
