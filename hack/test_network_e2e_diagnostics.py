@@ -231,7 +231,10 @@ output = root / 'diagnostics'
 if {hang!r}:
     while True:
         time.sleep(60)
-deadline = time.monotonic() + 10
+# Full failure snapshots intentionally collect several independent sources
+# with bounded per-command timeouts.  Leave enough room for a loaded CI runner
+# to finish the snapshot before asserting that cleanup was preserved.
+deadline = time.monotonic() + 60
 while not (output / 'samples/0/pods.json').exists() or not (output / 'watch-pods.jsonl').exists():
     if time.monotonic() > deadline: sys.exit(99)
     time.sleep(0.02)
