@@ -17,6 +17,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework/config"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
@@ -598,6 +599,24 @@ var _ = framework.Describe("[group:vip]", func() {
 		framework.ExpectNotEmpty(gwMac)
 		framework.ExpectNotEqual(switchLbVip1.Status.Mac, gwMac)
 		framework.ExpectNotEqual(switchLbVip2.Status.Mac, gwMac)
+
+		ginkgo.By("Checking the subnet router port answers ARP for the switch lb vips and the vips have no lsp")
+		lspName := fmt.Sprintf("%s-%s", subnetName, vpcName)
+		nbctlCmd = "ovn-nbctl --format=list --data=bare --no-heading --columns=options find Logical_Switch_Port name=" + lspName
+		output, _, err = framework.NBExec(nbctlCmd)
+		framework.ExpectNoError(err)
+		for _, vip := range []*apiv1.Vip{switchLbVip1, switchLbVip2} {
+			for _, ip := range []string{vip.Status.V4ip, vip.Status.V6ip} {
+				if ip != "" {
+					framework.ExpectContainSubstring(string(output), ip)
+				}
+			}
+			vipPortName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, util.OvnProvider)
+			nbctlCmd = "ovn-nbctl --format=list --data=bare --no-heading --columns=_uuid find Logical_Switch_Port name=" + vipPortName
+			output, _, err = framework.NBExec(nbctlCmd)
+			framework.ExpectNoError(err)
+			framework.ExpectEmpty(strings.TrimSpace(string(output)))
+		}
 		if vip1.Status.V4ip != "" {
 			framework.ExpectNotEqual(vip1.Status.V4ip, vip2.Status.V4ip)
 		} else {
