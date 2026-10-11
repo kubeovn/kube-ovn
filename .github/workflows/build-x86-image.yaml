@@ -666,15 +666,27 @@ jobs:
       - name: Install OVSDB test server
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends openvswitch-common
+          sudo apt-get install -y --no-install-recommends openvswitch-common python3-yaml
           mkdir -p "$RUNNER_TEMP/cni-ovsdb-bin"
           for binary in ovsdb-tool ovsdb-server; do
             ln -s "$(command -v "$binary")" "$RUNNER_TEMP/cni-ovsdb-bin/$binary"
           done
           echo "OVSDB_CNI_TEST_BIN_DIR=$RUNNER_TEMP/cni-ovsdb-bin" >> "$GITHUB_ENV"
 
+      - uses: azure/setup-helm@v5.0.1
+
+      - name: Check IPsec installation contracts
+        run: |
+          python3 hack/test-ipsec-container.py
+          bash dist/images/install-cni-security_test.sh
+          bash -n dist/images/install.sh
+          git diff --check
+
       - name: Unit test
-        run: make ut
+        run: |
+          make ut
+          go test -race ./pkg/ipsec
+          go test -race ./pkg/controller -run TestIPsec -count=1
 
       - uses: shogo82148/actions-goveralls@v1
         continue-on-error: true
@@ -796,6 +808,13 @@ jobs:
             make image-kube-ovn
           fi
           make tar-kube-ovn
+
+      - name: Verify the packaged IPsec monitor
+        run: |
+          docker run --rm --network none --user 0:65534 --cap-drop ALL \
+            --security-opt no-new-privileges --memory 128m --cpus 1 \
+            --mount "type=bind,src=$PWD/hack/test-ipsec-monitor.py,dst=/tmp/test-ipsec-monitor.py,readonly" \
+            "kubeovn/kube-ovn:$TAG" python3 /tmp/test-ipsec-monitor.py /usr/share/openvswitch/scripts/ovs-monitor-ipsec
 
       - name: Build dpdk
         run: |
@@ -4782,7 +4801,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 120
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
         with:
@@ -4839,6 +4858,8 @@ jobs:
           key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
+      - uses: azure/setup-helm@v5.0.1
+
       - name: Install kind
         uses: helm/kind-action@v1.15.1
         with:
@@ -4860,6 +4881,44 @@ jobs:
 
       - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
+
+      - name: Validate IPsec runtime with the built image
+        run: |
+          ipsec_image="kubeovn/kube-ovn:$(cat VERSION)"
+          CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/ipsec-tests" ./pkg/ipsec
+          CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/ipsec-ovsdb-tests" ./pkg/ovs
+          # A published base without the extension must fail before identity issuance.
+          docker run --rm --network none --user 0:65534 --cap-drop ALL --cap-add NET_BIND_SERVICE \
+            --security-opt no-new-privileges \
+            --mount "type=bind,src=$RUNNER_TEMP/ipsec-tests,dst=/tmp/ipsec-tests,readonly" \
+            --env KUBE_OVN_IPSEC_UNSUPPORTED_TEST=true \
+            kubeovn/kube-ovn-base:v1.17.0@sha256:300011722d58c4c822279b034476d124f6f52d5ba607ddc68939fea1364746c1 \
+            /tmp/ipsec-tests -test.run '^TestCandidateWithoutProtection$' -test.v -test.timeout=30s
+          docker run --rm --network none --user 0:65534 --cap-drop ALL --cap-add NET_BIND_SERVICE \
+            --security-opt no-new-privileges --memory 512m --cpus 1 \
+            --env OVSDB_CNI_TEST_BIN_DIR=/tmp/ovs-tools \
+            --mount "type=bind,src=$RUNNER_TEMP/ipsec-ovsdb-tests,dst=/tmp/ipsec-ovsdb-tests,readonly" \
+            "$ipsec_image" bash -c '
+              set -euo pipefail
+              mkdir /tmp/ovs-tools
+              ln -s "$(command -v ovsdb-tool)" /tmp/ovs-tools/ovsdb-tool
+              ln -s "$(command -v ovsdb-server)" /tmp/ovs-tools/ovsdb-server
+              exec /tmp/ipsec-ovsdb-tests -test.run "^TestIPsec" -test.v -test.timeout=120s
+            '
+          bash hack/test-ipsec-runtime.sh "$ipsec_image" "$RUNNER_TEMP/ipsec-tests"
+          bash hack/test-ipsec-traffic.sh "$ipsec_image" "$RUNNER_TEMP/ipsec-tests"
+
+      - name: Validate IPsec installer, release and protected tunnel outputs
+        run: |
+          ipsec_image="kubeovn/kube-ovn:$(cat VERSION)"
+          IPSEC_OVERLAY_INSTALLER=true bash hack/test-ipsec-overlay.sh "$ipsec_image"
+          IPSEC_CLEANUP_STARTUP=true bash hack/test-ipsec-overlay.sh "$ipsec_image"
+          for family in IPv4 IPv6; do
+            for tunnel in geneve vxlan; do
+              IPSEC_PROTECTION_FAILURES=true IPSEC_OVERLAY_FAMILY="$family" IPSEC_OVERLAY_TUNNEL="$tunnel" \
+                bash hack/test-ipsec-overlay.sh "$ipsec_image"
+            done
+          done
 
       - name: Create kind cluster
         run: |
@@ -4933,7 +4992,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
         with:
@@ -5011,6 +5070,12 @@ jobs:
 
       - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
+
+      - name: Verify bound CSR signing and cert-manager admission
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-yaml
+          bash hack/test-ipsec-api.sh
 
       - name: Create kind cluster
         run: |

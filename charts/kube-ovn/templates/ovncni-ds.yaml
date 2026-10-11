@@ -8,6 +8,11 @@ metadata:
     kubernetes.io/description: |
       This daemon set launches the kube-ovn cni daemon.
 spec:
+  updateStrategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app: kube-ovn-cni
@@ -46,6 +51,8 @@ spec:
           - |
             chmod +t /usr/local/sbin
             chown -R nobody: /var/log/kube-ovn
+            chown 0:65534 /run/kube-ovn-ipsec-protection
+            chmod 0750 /run/kube-ovn-ipsec-protection
             iptables -V
         securityContext:
           allowPrivilegeEscalation: true
@@ -56,6 +63,8 @@ spec:
           runAsUser: 0
           runAsGroup: 0
         volumeMounts:
+          - name: ipsec-protection
+            mountPath: /run/kube-ovn-ipsec-protection
           - name: usr-local-sbin
             mountPath: /usr/local/sbin
           - mountPath: /run/xtables.lock
@@ -91,6 +100,49 @@ spec:
           - mountPath: /usr/local/bin
             name: local-bin
           {{- end }}
+      {{- if not .Values.func.ENABLE_OVN_IPSEC }}
+      - name: ipsec-cleanup
+        image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+          - /kube-ovn/kube-ovn-ipsec
+        args:
+          - --cleanup-only
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 65534
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - NET_ADMIN
+              - NET_BIND_SERVICE
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: POD_UID
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.uid
+        volumeMounts:
+          - name: ipsec-protection
+            mountPath: /run/kube-ovn-ipsec-protection
+          - name: ovs-ipsec-keys
+            mountPath: /etc/ovs_ipsec_keys
+          - name: host-run-ovs
+            mountPath: /run/openvswitch
+            readOnly: true
+        resources:
+          {{- toYaml .Values.ipsec.resources | nindent 10 }}
+      {{- end }}
       containers:
       - name: cni-server
         image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
@@ -143,7 +195,6 @@ spec:
           {{- if or .Values.networking.TLS_MIN_VERSION .Values.networking.TLS_MAX_VERSION .Values.networking.TLS_CIPHER_SUITES }}
           {{- include "kubeovn.componentTLSArgs" . | nindent 10 }}
           {{- end }}
-          - --enable-ovn-ipsec={{- .Values.func.ENABLE_OVN_IPSEC }}
           - --set-vxlan-tx-off={{- .Values.func.SET_VXLAN_TX_OFF }}
           - --host-tunnel-src={{- .Values.func.HOST_TUNNEL_SRC | default false }}
           - --non-primary-cni-mode={{- .Values.cni_conf.NON_PRIMARY_CNI }}
@@ -156,6 +207,8 @@ spec:
           privileged: false
           allowPrivilegeEscalation: true
           capabilities:
+            drop:
+              - SYS_NICE
             add:
               - NET_ADMIN
               - NET_BIND_SERVICE
@@ -225,10 +278,6 @@ spec:
           - mountPath: /etc/localtime
             name: localtime
             readOnly: true
-        {{- if .Values.func.ENABLE_OVN_IPSEC }}
-          - mountPath: /etc/ovs_ipsec_keys
-            name: ovs-ipsec-keys
-        {{- end }}
         readinessProbe:
           failureThreshold: 3
           periodSeconds: 7
@@ -291,9 +340,74 @@ spec:
             cpu: 100m
             memory: 128Mi
       {{- end }}
+      {{- if .Values.func.ENABLE_OVN_IPSEC }}
+      - name: ipsec
+        image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+          - /kube-ovn/kube-ovn-ipsec
+        args:
+          - --ovn-ipsec-cert-duration={{ .Values.ipsec.certificateDuration | int64 }}
+          - --request-timeout={{ .Values.ipsec.requestTimeout }}
+          - --priority={{ .Values.ipsec.priority }}
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 65534
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - NET_ADMIN
+              - NET_BIND_SERVICE
+              - SYS_NICE
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+          - name: POD_NAMESPACE
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.namespace
+          - name: POD_UID
+            valueFrom:
+              fieldRef:
+                fieldPath: metadata.uid
+        volumeMounts:
+          - name: ipsec-protection
+            mountPath: /run/kube-ovn-ipsec-protection
+          - name: ovs-ipsec-keys
+            mountPath: /etc/ovs_ipsec_keys
+          - name: host-run-ovs
+            mountPath: /run/openvswitch
+            readOnly: true
+        startupProbe:
+          exec:
+            command: [/kube-ovn/kube-ovn-ipsec, --check=livez]
+          failureThreshold: 60
+          periodSeconds: 5
+        livenessProbe:
+          exec:
+            command: [/kube-ovn/kube-ovn-ipsec, --check=livez]
+          periodSeconds: 10
+          timeoutSeconds: 3
+        readinessProbe:
+          exec:
+            command: [/kube-ovn/kube-ovn-ipsec, --check=readyz]
+          periodSeconds: 5
+          timeoutSeconds: 3
+        resources:
+          {{- toYaml .Values.ipsec.resources | nindent 10 }}
+      {{- end }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+        - name: ipsec-protection
+          hostPath:
+            path: /run/kube-ovn-ipsec-protection
+            type: DirectoryOrCreate
         {{- if .Values.func.ENABLE_TPROXY }}
         - name: tproxy-socket
           emptyDir: {}
@@ -348,10 +462,9 @@ spec:
           hostPath:
             path: {{ .Values.cni_conf.LOCAL_BIN_DIR }}
         {{- end }}
-        {{- if .Values.func.ENABLE_OVN_IPSEC }}
         - name: ovs-ipsec-keys
           hostPath:
             path: {{ .Values.OVN_IPSEC_KEY_DIR }}
-        {{- end }}
+            type: DirectoryOrCreate
 
 {{- end }}

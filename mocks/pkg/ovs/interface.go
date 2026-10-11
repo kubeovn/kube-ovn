@@ -188,6 +188,21 @@ func (m *MockNBGlobal) EXPECT() *MockNBGlobalMockRecorder {
 	return m.recorder
 }
 
+// GetIPsecGlobal mocks base method.
+func (m *MockNBGlobal) GetIPsecGlobal(arg0 context.Context) (*ovs.IPsecGlobalState, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIPsecGlobal", arg0)
+	ret0, _ := ret[0].(*ovs.IPsecGlobalState)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIPsecGlobal indicates an expected call of GetIPsecGlobal.
+func (mr *MockNBGlobalMockRecorder) GetIPsecGlobal(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIPsecGlobal", reflect.TypeOf((*MockNBGlobal)(nil).GetIPsecGlobal), arg0)
+}
+
 // GetNbGlobal mocks base method.
 func (m *MockNBGlobal) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	m.ctrl.T.Helper()
@@ -4908,6 +4923,21 @@ func (mr *MockNbClientMockRecorder) GetHAChassisGroup(name, ignoreNotFound any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHAChassisGroup", reflect.TypeOf((*MockNbClient)(nil).GetHAChassisGroup), name, ignoreNotFound)
 }
 
+// GetIPsecGlobal mocks base method.
+func (m *MockNbClient) GetIPsecGlobal(arg0 context.Context) (*ovs.IPsecGlobalState, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIPsecGlobal", arg0)
+	ret0, _ := ret[0].(*ovs.IPsecGlobalState)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIPsecGlobal indicates an expected call of GetIPsecGlobal.
+func (mr *MockNbClientMockRecorder) GetIPsecGlobal(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIPsecGlobal", reflect.TypeOf((*MockNbClient)(nil).GetIPsecGlobal), arg0)
+}
+
 // GetLoadBalancer mocks base method.
 func (m *MockNbClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
 	m.ctrl.T.Helper()
@@ -6947,6 +6977,21 @@ func (m *MockSbClient) GetEntityInfo(entity any) error {
 func (mr *MockSbClientMockRecorder) GetEntityInfo(entity any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEntityInfo", reflect.TypeOf((*MockSbClient)(nil).GetEntityInfo), entity)
+}
+
+// GetIPsecGlobal mocks base method.
+func (m *MockSbClient) GetIPsecGlobal(arg0 context.Context) (*ovs.IPsecGlobalState, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIPsecGlobal", arg0)
+	ret0, _ := ret[0].(*ovs.IPsecGlobalState)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIPsecGlobal indicates an expected call of GetIPsecGlobal.
+func (mr *MockSbClientMockRecorder) GetIPsecGlobal(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIPsecGlobal", reflect.TypeOf((*MockSbClient)(nil).GetIPsecGlobal), arg0)
 }
 
 // GetKubeOvnChassises mocks base method.

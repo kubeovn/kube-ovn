@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha256"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -11,7 +12,6 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
-	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -23,8 +23,8 @@ import (
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
+	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
-	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
 	"github.com/onsi/ginkgo/v2"
 
@@ -46,13 +46,44 @@ func TestE2E(t *testing.T) {
 	e2e.RunE2ETests(t)
 }
 
+// Old supported branches keep IPsec in cni-server. New installations must
+// execute certificate and runtime checks in the dedicated container.
+func runIPsecCommand(pod corev1.Pod, command string) (string, error) {
+	container := "cni-server"
+	for _, candidate := range pod.Spec.Containers {
+		if candidate.Name == "ipsec" {
+			container = "ipsec"
+			break
+		}
+	}
+	return e2ekubectl.RunKubectl(pod.Namespace, "exec", pod.Name, "-c", container, "--", "/bin/sh", "-c", command)
+}
+
+func currentCertificateCommand(pod corev1.Pod, remove bool) string {
+	for _, container := range pod.Spec.Containers {
+		if container.Name == "ipsec" {
+			operation := "cat"
+			if remove {
+				operation = "rm"
+			}
+			return `path=$(ovs-vsctl --if-exists get Open_vSwitch . other_config:certificate | tr -d '\"'); test -n "$path" && ` + operation + ` -- "$path"`
+		}
+	}
+	if remove {
+		return "rm /etc/ovs_ipsec_keys/ipsec-cert-*.pem"
+	}
+	return "cat /etc/ovs_ipsec_keys/ipsec-cert-*.pem"
+}
+
 func checkPodXfrmState(pod corev1.Pod, node1IP, node2IP string) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Checking ip xfrm state for pod " + pod.Name + " on node " + pod.Spec.NodeName + " from " + node1IP + " to " + node2IP)
 	framework.WaitUntil(0, time.Second*120, func(_ context.Context) (bool, error) {
-		cmd := fmt.Sprintf("ip xfrm state list src %s dst %s", node1IP, node2IP)
-		output, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, cmd)
+		// Return only SA selector headers, so kubectl diagnostics cannot expose
+		// the authentication/encryption keys in a full XFRM state dump.
+		cmd := fmt.Sprintf("ip xfrm state list src %s dst %s | sed -n '/^src /p'", node1IP, node2IP)
+		output, err := runIPsecCommand(pod, cmd)
 		if err != nil {
 			return false, err
 		}
@@ -75,21 +106,20 @@ func checkXfrmState(pods []corev1.Pod, node1IP, node2IP string) {
 func checkPodCACert(pod corev1.Pod, expectedCACerts []string) (bool, error) {
 	ginkgo.GinkgoHelper()
 
-	actualCACert, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, "cat /etc/ipsec.d/cacerts/*")
+	actualCACert, err := runIPsecCommand(pod, "cat /etc/ipsec.d/cacerts/*")
 	if err != nil {
 		if strings.Contains(err.Error(), "No such file or directory") {
 			return false, nil
 		}
 		return false, fmt.Errorf("reading CA certs: %w", err)
 	}
-	framework.Logf("Got CA cert from pod %s:\n%s", pod.Name, actualCACert)
 
 	actualCerts := splitCerts(actualCACert)
 	if !slices.Equal(actualCerts, expectedCACerts) {
 		return false, nil
 	}
 
-	output, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, "ipsec listcacerts")
+	output, err := runIPsecCommand(pod, "ipsec listcacerts")
 	if err != nil {
 		return false, fmt.Errorf("running ipsec listcacerts: %w", err)
 	}
@@ -100,7 +130,14 @@ func checkPodCACert(pod corev1.Pod, expectedCACerts []string) (bool, error) {
 func getPodCert(pod corev1.Pod) (string, error) {
 	ginkgo.GinkgoHelper()
 
-	return e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, "cat /etc/ovs_ipsec_keys/ipsec-cert-*.pem")
+	output, err := runIPsecCommand(pod, currentCertificateCommand(pod, false))
+	if err != nil {
+		return "", err
+	}
+	if strings.TrimSpace(output) == "" {
+		return "", fmt.Errorf("pod %s has an empty IPsec certificate", pod.Name)
+	}
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(output))), nil
 }
 
 func getValueFromSecret(cs clientset.Interface, namespace, secretName, fieldName string) (string, error) {
@@ -194,7 +231,7 @@ var _ = framework.OrderedDescribe("[group:ipsec]", func() {
 		for _, node := range nodeList.Items {
 			for _, addr := range node.Status.Addresses {
 				if addr.Type == corev1.NodeInternalIP {
-					nodeIPs = append(nodeIPs, node.Status.Addresses[0].Address)
+					nodeIPs = append(nodeIPs, addr.Address)
 					break
 				}
 			}
@@ -235,7 +272,7 @@ var _ = framework.OrderedDescribe("[group:ipsec]", func() {
 		for _, node := range nodeList.Items {
 			for _, addr := range node.Status.Addresses {
 				if addr.Type == corev1.NodeInternalIP {
-					nodeIPs = append(nodeIPs, node.Status.Addresses[0].Address)
+					nodeIPs = append(nodeIPs, addr.Address)
 					break
 				}
 			}
@@ -269,16 +306,14 @@ var _ = framework.OrderedDescribe("[group:ipsec]", func() {
 		framework.ExpectNoError(err)
 		secondaryCA, err := generateSelfSignedCA(secondaryKey)
 		framework.ExpectNoError(err)
-		framework.Logf("Generated secondary CA:\n%s", secondaryCA)
 
 		ginkgo.By("Adding secondary CA to secret bundle")
 		ovnIpsecSecret, err := cs.CoreV1().Secrets(framework.KubeOvnNamespace).Get(context.Background(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
 		framework.ExpectNoError(err)
 		updatedCA := initialOVNCA + secondaryCA
 		ovnIpsecSecret.Data["cacert"] = []byte(updatedCA)
-		ovnIpsecSecret, err = cs.CoreV1().Secrets(framework.KubeOvnNamespace).Update(context.Background(), ovnIpsecSecret, metav1.UpdateOptions{})
+		_, err = cs.CoreV1().Secrets(framework.KubeOvnNamespace).Update(context.Background(), ovnIpsecSecret, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
-		framework.Logf("Updated secret %s with new CA:\n%s", util.DefaultOVNIPSecCA, string(ovnIpsecSecret.Data["cacert"]))
 
 		ginkgo.By("Verifying new trust bundle distributed")
 		for _, pod := range podList.Items {
@@ -316,7 +351,7 @@ var _ = framework.OrderedDescribe("[group:ipsec]", func() {
 		for _, pod := range podList.Items {
 			// clearing the certificate on disk and restarting the pod should
 			// trigger a new certificate request
-			_, err := e2epodoutput.RunHostCmd(pod.Namespace, pod.Name, "rm /etc/ovs_ipsec_keys/ipsec-cert-*.pem")
+			_, err := runIPsecCommand(pod, currentCertificateCommand(pod, true))
 			framework.ExpectNoError(err)
 		}
 		daemonSetClient.RestartSync(ds)
@@ -374,8 +409,10 @@ func splitCerts(content string) []string {
 		if !found {
 			continue
 		}
-		certs = append(certs, strings.TrimSpace(prefix))
+		// Assertions need equality only; retain fingerprints so a mismatch
+		// does not cause Ginkgo to print certificate contents.
+		certs = append(certs, fmt.Sprintf("%x", sha256.Sum256([]byte(strings.TrimSpace(prefix)))))
 	}
-	sort.Strings(certs) // Sort to ensure consistent order
+	slices.Sort(certs) // Sort to ensure consistent order
 	return certs
 }

@@ -295,6 +295,7 @@ talos-install-prepare:
 talos-install: talos-install-prepare
 	@OVN_DIR=/var/lib/ovn \
 		OPENVSWITCH_DIR=/var/lib/openvswitch \
+		OVN_IPSEC_KEY_DIR=/var/lib/ovs_ipsec_keys \
 		DISABLE_MODULES_MANAGEMENT=true \
 		MOUNT_LOCAL_BIN_DIR=false \
 		ENABLE_TPROXY=true \

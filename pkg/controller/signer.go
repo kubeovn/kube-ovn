@@ -11,10 +11,11 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"os"
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/kubeovn/kube-ovn/pkg/ipsec"
 
 	csrv1 "k8s.io/api/certificates/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -25,21 +26,26 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func (c *Controller) validateCsrName(name string) error {
+func (c *Controller) validateCsrName(csr *csrv1.CertificateSigningRequest) error {
+	name := csr.Name
 	after, found := strings.CutPrefix(name, "ovn-ipsec-")
 	if !found || len(after) == 0 {
 		return fmt.Errorf("CSR name %s is invalid, must be in format ovn-ipsec-<node-name>", name)
 	}
 
-	node, err := c.nodesLister.Get(after)
+	nodeName := after
+	if csr.Annotations[ipsec.NodeNameAnnotation] != "" {
+		nodeName = csr.Annotations[ipsec.NodeNameAnnotation]
+	}
+	node, err := c.nodesLister.Get(nodeName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			return fmt.Errorf("node %s not found for CSR %s", after, name)
+			return fmt.Errorf("node %s not found for CSR %s", nodeName, name)
 		}
-		return fmt.Errorf("failed to get node %s for CSR %s: %w", after, name, err)
+		return fmt.Errorf("failed to get node %s for CSR %s: %w", nodeName, name, err)
 	}
 	if node.Status.NodeInfo.OperatingSystem != "linux" {
-		return fmt.Errorf("node %s is not linux, CSR %s is invalid", after, name)
+		return fmt.Errorf("node %s is not linux, CSR %s is invalid", nodeName, name)
 	}
 
 	return nil
@@ -51,7 +57,7 @@ func (c *Controller) isOVNIPSecCSR(csr *csrv1.CertificateSigningRequest) bool {
 		!slices.Equal(csr.Spec.Usages, []csrv1.KeyUsage{csrv1.UsageIPsecTunnel}) {
 		return false
 	}
-	if err := c.validateCsrName(csr.Name); err != nil {
+	if err := c.validateCsrName(csr); err != nil {
 		klog.Warningf("CSR %s validation failed: %v", csr.Name, err)
 		return false
 	}
@@ -101,10 +107,24 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 		return nil
 	}
 
-	// We will make the assumption that anyone with permission to issue a
-	// certificate signing request to this signer is automatically approved. This
-	// is somewhat protected by permissions on the CSR resource.
-	// TODO: We may need a more robust way to do this later
+	for _, condition := range csr.Status.Conditions {
+		if condition.Status == "True" && (condition.Type == csrv1.CertificateDenied || condition.Type == csrv1.CertificateFailed) {
+			return nil
+		}
+	}
+	csr = csr.DeepCopy()
+	certReq, err := decodeCertificateRequest(csr.Spec.Request)
+	if err != nil {
+		return c.updateCSRStatusConditions(csr, "InvalidRequest", err.Error())
+	}
+	if err := c.validateIPsecRequester(csr, certReq); err != nil {
+		if _, invalid := errors.AsType[*ipsecIdentityError](err); invalid {
+			return c.updateCSRStatusConditions(csr, "InvalidIdentity", err.Error())
+		}
+		// API/authentication lookup failures are retryable. Never make a
+		// temporary API outage terminal for a persisted pending private key.
+		return err
+	}
 	if !isCertificateRequestApproved(csr) {
 		csr.Status.Conditions = append(csr.Status.Conditions, csrv1.CertificateSigningRequestCondition{
 			Type:    csrv1.CertificateApproved,
@@ -122,56 +142,50 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 		return nil
 	}
 	// From this point we are dealing with an approved CSR
-	// Get CA in from ovn-ipsec-ca
-	caSecret, err := c.config.KubeClient.CoreV1().Secrets(os.Getenv(util.EnvPodNamespace)).Get(context.TODO(), util.DefaultOVNIPSecCA, metav1.GetOptions{})
+	if c.config.CertManagerIPSecCert {
+		return c.signIPsecWithCertManager(csr)
+	}
+	// Read the private CA from the controller-only signer Secret.
+	caSecret, err := c.config.KubeClient.CoreV1().Secrets(c.config.PodNamespace).Get(context.TODO(), util.DefaultOVNIPSecSigner, metav1.GetOptions{})
 	if err != nil {
-		c.signerFailure(csr, "CAFailure",
-			fmt.Sprintf("Could not get CA certificate and key: %v", err))
 		return err
 	}
 
-	// Decode the certificate request from PEM format.
-	certReq, err := decodeCertificateRequest(csr.Spec.Request)
-	if err != nil {
-		// We don't degrade the status of the controller as this is due to a
-		// malformed CSR rather than an issue with the controller.
-		if err := c.updateCSRStatusConditions(csr, "CSRDecodeFailure", fmt.Sprintf("Could not decode Certificate Request: %v", err)); err != nil {
-			klog.Error(err)
-		}
-		return nil
-	}
-
 	// Decode the CA certificate from PEM format.
+	if err := validateIPsecCA(caSecret.Data["cacert"], caSecret.Data["cakey"]); err != nil {
+		return err
+	}
 	caCert, err := decodeCertificate(caSecret.Data["cacert"])
 	if err != nil {
-		c.signerFailure(csr, "CorruptCACert",
-			fmt.Sprintf("Unable to decode CA certificate for %v: %v", util.SignerName, err))
-		return nil
+		return err
 	}
 
 	caKey, err := decodePrivateKey(caSecret.Data["cakey"])
 	if err != nil {
-		c.signerFailure(csr, "CorruptCAKey",
-			fmt.Sprintf("Unable to decode CA private key for %v: %v", util.SignerName, err))
-		return nil
+		return err
 	}
 
 	// Create a new certificate using the certificate template and certificate.
 	// We can then sign this using the CA.
-	signedCert, err := signCSR(newCertificateTemplate(certReq), certReq.PublicKey, caCert, caKey)
+	duration := 2 * 365 * 24 * time.Hour
+	if csr.Spec.ExpirationSeconds != nil {
+		duration = min(duration, time.Duration(*csr.Spec.ExpirationSeconds)*time.Second)
+	}
+	template, err := newCertificateTemplate(certReq)
 	if err != nil {
-		c.signerFailure(csr, "SigningFailure",
-			fmt.Sprintf("Unable to sign certificate for %v and signer %v: %v", csr.Name, util.SignerName, err))
-		return nil
+		return err
+	}
+	template.NotAfter = minTime(time.Now().Add(duration), caCert.NotAfter.Add(-time.Minute))
+	if duration < 10*time.Minute || !template.NotAfter.After(time.Now().Add(10*time.Minute)) {
+		return c.updateCSRStatusConditions(csr, "InvalidDuration", "CA or requested lifetime is too short")
+	}
+	signedCert, err := signCSR(template, certReq.PublicKey, caCert, caKey)
+	if err != nil {
+		return err
 	}
 
 	// Encode the certificate into PEM format and add to the status of the CSR
-	csr.Status.Certificate, err = encodeCertificates(signedCert)
-	if err != nil {
-		c.signerFailure(csr, "EncodeFailure",
-			fmt.Sprintf("Could not encode certificate: %v", err))
-		return nil
-	}
+	csr.Status.Certificate = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: signedCert.Raw})
 
 	if err := c.updateCsrStatus(csr); err != nil {
 		return err
@@ -179,15 +193,6 @@ func (c *Controller) handleAddOrUpdateCsr(key string) (err error) {
 
 	klog.Infof("Certificate signed, issued and approved for %s by %s", csr.Name, util.SignerName)
 	return nil
-}
-
-// Something has gone wrong with the signer controller so we update the statusmanager, the csr
-// and log.
-func (c *Controller) signerFailure(csr *csrv1.CertificateSigningRequest, reason, message string) {
-	klog.Errorf("%s: %s", reason, message)
-	if err := c.updateCSRStatusConditions(csr, reason, message); err != nil {
-		klog.Error(err)
-	}
 }
 
 // Update the status conditions on the CSR object
@@ -224,6 +229,9 @@ func isCertificateRequestApproved(csr *csrv1.CertificateSigningRequest) bool {
 
 func getCertApprovalCondition(status *csrv1.CertificateSigningRequestStatus) (approved, denied bool) {
 	for _, c := range status.Conditions {
+		if c.Status != "True" {
+			continue
+		}
 		if c.Type == csrv1.CertificateApproved {
 			approved = true
 		}
@@ -234,11 +242,11 @@ func getCertApprovalCondition(status *csrv1.CertificateSigningRequestStatus) (ap
 	return approved, denied
 }
 
-func newCertificateTemplate(certReq *x509.CertificateRequest) *x509.Certificate {
+func newCertificateTemplate(certReq *x509.CertificateRequest) (*x509.Certificate, error) {
 	serialNumber, err := rand.Int(rand.Reader, big.NewInt(1<<62))
 	if err != nil {
 		klog.Errorf("failed to generate serial number: %v", err)
-		return nil
+		return nil, err
 	}
 
 	template := &x509.Certificate{
@@ -247,14 +255,15 @@ func newCertificateTemplate(certReq *x509.CertificateRequest) *x509.Certificate 
 		SignatureAlgorithm: x509.SHA512WithRSA,
 
 		NotBefore:    time.Now().Add(-1 * time.Second),
-		NotAfter:     time.Now().Add(10 * 365 * 24 * time.Hour), // CA expire Time 10 year
+		NotAfter:     time.Now().Add(2 * 365 * 24 * time.Hour),
 		SerialNumber: serialNumber,
 
 		DNSNames:              certReq.DNSNames,
 		BasicConstraintsValid: true,
+		KeyUsage:              x509.KeyUsageDigitalSignature,
 	}
 
-	return template
+	return template, nil
 }
 
 func signCSR(template *x509.Certificate, requestKey c.PublicKey, issuer *x509.Certificate, issuerKey c.PrivateKey) (*x509.Certificate, error) {
@@ -275,53 +284,55 @@ func signCSR(template *x509.Certificate, requestKey c.PublicKey, issuer *x509.Ce
 }
 
 func decodeCertificateRequest(pemBytes []byte) (*x509.CertificateRequest, error) {
-	block, _ := pem.Decode(pemBytes)
-	if block == nil || block.Type != "CERTIFICATE REQUEST" {
+	block, rest := pem.Decode(pemBytes)
+	if block == nil || block.Type != "CERTIFICATE REQUEST" || len(bytes.TrimSpace(rest)) != 0 {
 		err := errors.New("certificate PEM block type must be CERTIFICATE_REQUEST")
 		return nil, err
 	}
 
-	return x509.ParseCertificateRequest(block.Bytes)
+	req, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	if err := req.CheckSignature(); err != nil {
+		return nil, err
+	}
+	return req, nil
 }
 
 func decodeCertificate(pemBytes []byte) (*x509.Certificate, error) {
-	block, _ := pem.Decode(pemBytes)
-	if block == nil || block.Type != "CERTIFICATE" {
-		err := errors.New("certificate PEM block type must be CERTIFICATE")
+	certs, err := ipsec.Certificates(pemBytes)
+	if err != nil {
 		return nil, err
 	}
-
-	return x509.ParseCertificate(block.Bytes)
+	if len(certs) != 1 {
+		return nil, errors.New("expected exactly one CA certificate")
+	}
+	return certs[0], nil
 }
 
 func decodePrivateKey(pemBytes []byte) (*rsa.PrivateKey, error) {
-	block, _ := pem.Decode(pemBytes)
-	if block == nil || block.Type != "PRIVATE KEY" {
-		err := errors.New("certificate PEM block type must be PRIVATE KEY")
-		return nil, err
+	block, rest := pem.Decode(pemBytes)
+	if block == nil || len(bytes.TrimSpace(rest)) != 0 {
+		return nil, errors.New("invalid IPsec CA private key PEM")
 	}
-
+	if block.Type == "RSA PRIVATE KEY" {
+		key, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+		if err != nil {
+			return nil, err
+		}
+		return key, key.Validate()
+	}
+	if block.Type != "PRIVATE KEY" {
+		return nil, errors.New("unsupported IPsec CA private key PEM")
+	}
 	key, err := x509.ParsePKCS8PrivateKey(block.Bytes)
 	if err != nil {
-		klog.Error(err)
 		return nil, err
 	}
-
 	rsaKey, ok := key.(*rsa.PrivateKey)
 	if !ok {
-		err := errors.New("failed to convert private key to RSA private key")
-		return nil, err
+		return nil, errors.New("IPsec CA key is not RSA")
 	}
-
-	return rsaKey, nil
-}
-
-func encodeCertificates(certs ...*x509.Certificate) ([]byte, error) {
-	b := bytes.Buffer{}
-	for _, cert := range certs {
-		if err := pem.Encode(&b, &pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}); err != nil {
-			return []byte{}, err
-		}
-	}
-	return b.Bytes(), nil
+	return rsaKey, rsaKey.Validate()
 }

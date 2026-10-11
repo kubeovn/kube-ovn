@@ -1,0 +1,250 @@
+--- a/ipsec/ovs-monitor-ipsec.in
++++ b/ipsec/ovs-monitor-ipsec.in
+@@ -18,6 +18,9 @@
+ import ipaddress
+ import os
+ import re
++import hashlib
++import json
++import tempfile
+ import subprocess
+ import sys
+ import time
+@@ -287,10 +290,14 @@
+             tunnel_name = line.strip().split(":")
+             if len(tunnel_name) < 2:
+                 continue
+-            m = re.match(r"(.*)(-in-\d+|-out-\d+|-\d+).*", tunnel_name[0])
++            m = re.match(r"(.+?)(-in-\d+|-out-\d+|-\d+)(?:\[\d+\]|\{\d+\})?$", tunnel_name[0])
+             if not m:
+                 continue
+             ifname = m.group(1)
++            if monitor.connection_prefix:
++                if not ifname.startswith(monitor.connection_prefix):
++                    continue
++                ifname = ifname[len(monitor.connection_prefix):]
+             if ifname not in conns:
+                 conns[ifname] = {}
+             (conns[ifname])[tunnel_name[0]] = line
+@@ -349,6 +356,8 @@
+         vals = tunnel.conf.copy()
+         vals["auth_section"] = auth_section
+         vals["version"] = tunnel.version
++        vals["ifname"] = monitor.connection_prefix + tunnel.name
++        monitor.record_connection_intent(tunnel)
+         conf_text = transp_tmpl[tunnel.conf["tunnel_type"]].substitute(vals)
+         self.conf_file.write(conf_text)
+
+@@ -371,9 +380,24 @@
+         Linux distributions this function could be simplified."""
+         vlog.info("Refreshing StrongSwan configuration")
+
+-        run_command([self.IPSEC, "update"],
+-                    "update StrongSwan's configuration")
+-        run_command([self.IPSEC, "rereadsecrets"], "re-read secrets")
++        monitor.applied_pki = None
++        monitor.persist_connection_intent()
++        ret, _, _ = run_command([self.IPSEC, "update"],
++                               "update StrongSwan's configuration")
++        if ret:
++            raise RuntimeError("StrongSwan configuration update failed")
++        ret, _, _ = run_command([self.IPSEC, "rereadsecrets"], "re-read secrets")
++        if ret:
++            raise RuntimeError("StrongSwan secret reload failed")
++        pki = monitor.conf_in_use["pki"]
++        if pki["certificate"] and pki["ca_cert"]:
++            # Snapshot public content after successful refresh. Never read,
++            # return or hash a private key through the diagnostic endpoint.
++            with open(pki["certificate"], "rb") as cert_file:
++                certificate = hashlib.sha256(cert_file.read()).hexdigest()
++            with open(pki["ca_cert"], "rb") as trust_file:
++                trust = hashlib.sha256(trust_file.read()).hexdigest()
++            monitor.applied_pki = {"certificate": certificate, "trust": trust}
+
+         # "ipsec update" command does not remove those tunnels that were
+         # updated or that disappeared from the ipsec.conf file.  So, we have
+@@ -390,14 +414,15 @@
+             for conn in conns:
+                 # IPsec "connection" names that we choose in strongswan
+                 # must start with Interface name
+-                if not conn.startswith(ifname):
++                stem = monitor.connection_prefix + ifname
++                if not conn.startswith(stem):
+                     vlog.err("%s does not start with %s" % (conn, ifname))
+                     continue
+
+                 # version number should be the first integer after
+                 # interface name in IPsec "connection"
+                 try:
+-                    ver = int(re.findall(r'\d+', conn[len(ifname):])[0])
++                    ver = int(re.findall(r'\d+', conn[len(stem):])[0])
+                 except IndexError:
+                     vlog.err("%s does not contain version number")
+                     continue
+@@ -1074,6 +1099,7 @@
+
+         new_conf = {
+             "ifname": self.name,
++            "interface_uuid": str(row.uuid),
+             "tunnel_type": row.type,
+             "local_ip": options.get("local_ip", "%defaultroute"),
+             "remote_ip": options.get("remote_ip"),
+@@ -1228,6 +1254,18 @@
+     def __init__(self, root_prefix, ike_daemon, restart, args):
+         self.IPSEC = root_prefix + "/usr/sbin/ipsec"
+         self.tunnels = {}
++        self.ovn_owned_only = args.ovn_owned_only
++        self.applied_pki = None
++        self.connection_prefix = args.connection_prefix
++        self.connection_intent_file = args.connection_intent
++        self.connection_intent = {}
++        self.connection_owner = {"version": 1,
++                                 "bootID": args.connection_owner_boot_id,
++                                 "nodeUID": args.connection_owner_node_uid,
++                                 "lease": args.connection_owner_lease,
++                                 "mark": args.connection_owner_mark,
++                                 "reqid": args.connection_owner_reqid,
++                                 "prefix": args.connection_prefix}
+
+         # Global configuration shared by all tunnels
+         self.conf = {
+@@ -1332,7 +1370,15 @@
+         table."""
+         ifaces = set()
+
++        owned = set()
++        if self.ovn_owned_only:
++            for port in data["Port"].rows.values():
++                if port.external_ids.get("ovn-chassis-id"):
++                    owned.update(interface.uuid for interface in port.interfaces)
++
+         for row in data["Interface"].rows.values():
++            if self.ovn_owned_only and row.uuid not in owned:
++                continue
+             if not self.is_tunneling_type_supported(row.type):
+                 continue
+             if not self.is_ipsec_required(row.options):
+@@ -1347,6 +1393,52 @@
+         for tunnel in self.tunnels.keys():
+             if tunnel not in ifaces:
+                 self.del_tunnel(tunnel)
++
++    def record_connection_intent(self, tunnel):
++        if not self.ovn_owned_only:
++            return
++        options = tunnel.conf["custom_options"]
++        reqid = int(options.get("reqid", "0"))
++        mark = options.get("mark_out", "")
++        if (tunnel.conf["tunnel_type"] not in ("geneve", "vxlan")
++                or reqid != self.connection_owner["reqid"]
++                or mark != "%d/0xffffffff" % self.connection_owner["mark"]):
++            raise RuntimeError("owned connection lacks protection selectors")
++        ipaddress.ip_address(tunnel.conf["local_ip"])
++        ipaddress.ip_address(tunnel.conf["remote_ip"])
++        # Retain obsolete versions: IKE deletion is asynchronous. These are
++        # configuration claims only, never private keys or SA deletion proof.
++        for direction in ("in", "out"):
++            name = "%s%s-%s-%d" % (self.connection_prefix, tunnel.name,
++                                     direction, tunnel.version)
++            self.connection_intent[name] = {
++                "interfaceUUID": tunnel.conf["interface_uuid"],
++                "localIP": tunnel.conf["local_ip"],
++                "remoteIP": tunnel.conf["remote_ip"],
++                "reqid": reqid, "markOut": mark,
++                "tunnelType": tunnel.conf["tunnel_type"]}
++
++    def persist_connection_intent(self):
++        if not self.ovn_owned_only:
++            return
++        parent = os.path.dirname(self.connection_intent_file)
++        fd, temporary = tempfile.mkstemp(prefix=".intent-", dir=parent)
++        try:
++            with os.fdopen(fd, "w") as intent:
++                data = dict(self.connection_owner)
++                data["connections"] = self.connection_intent
++                json.dump(data, intent, sort_keys=True)
++                intent.flush()
++                os.fsync(intent.fileno())
++            os.replace(temporary, self.connection_intent_file)
++            directory = os.open(parent, os.O_RDONLY | os.O_DIRECTORY)
++            try:
++                os.fsync(directory)
++            finally:
++                os.close(directory)
++        finally:
++            if os.path.exists(temporary):
++                os.unlink(temporary)
+
+     def read_ovsdb(self, data):
+         """This function reads all configuration from OVSDB that
+@@ -1408,7 +1500,7 @@
+         if ret:
+             return None
+
+-        m = re.search(r"CN=(.+?),", pout.strip())
++        m = re.search(r"(?:^subject=\s*|,)CN=([^,]+)(?:,|$)", pout.strip())
+         if not m:
+             vlog.warn("No CN in the certificate subject (%s)." % cert)
+             return None
+@@ -1453,6 +1545,13 @@
+     policies = xfrm.get_policies()
+     securities = xfrm.get_securities()
+     monitor.show(conn, policies, securities)
++
++
++def unixctl_configuration(conn, unused_argv, unused_aux):
++    if monitor.applied_pki is None:
++        conn.reply_error("IPsec configuration has not been refreshed")
++    else:
++        conn.reply(json.dumps(monitor.applied_pki))
+
+
+ def unixctl_refresh(conn, unused_argv, unused_aux):
+@@ -1524,9 +1623,29 @@
+                         " not set ike/esp/ikev2 in connections"
+                         " (libreswan only)")
+
++    parser.add_argument("--ovn-owned-only", action="store_true",
++                        help="Manage only interfaces belonging to an OVN tunnel port.")
++    parser.add_argument("--connection-prefix", default="")
++    parser.add_argument("--connection-intent")
++    parser.add_argument("--connection-owner-node-uid")
++    parser.add_argument("--connection-owner-boot-id")
++    parser.add_argument("--connection-owner-lease")
++    parser.add_argument("--connection-owner-mark", type=int, default=0)
++    parser.add_argument("--connection-owner-reqid", type=int, default=0)
+     ovs.vlog.add_args(parser)
+     ovs.daemon.add_args(parser)
+     args = parser.parse_args()
++    if args.ovn_owned_only:
++        if (args.ike_daemon != "strongswan"
++                or not re.fullmatch(r"ko[A-Za-z0-9]{20,64}-", args.connection_prefix)
++                or not args.connection_intent or not args.connection_owner_node_uid
++                or not args.connection_owner_boot_id
++                or not args.connection_owner_lease
++                or not 0 < args.connection_owner_mark < (1 << 32)
++                or not 0 < args.connection_owner_reqid < (1 << 31)):
++            parser.error("owned IPsec requires a persistent connection namespace")
++    elif args.connection_prefix or args.connection_intent:
++        parser.error("connection intent requires --ovn-owned-only")
+     ovs.vlog.handle_args(args)
+     ovs.daemon.handle_args(args)
+
+@@ -1546,6 +1665,8 @@
+                                    ["name", "type", "options", "cfm_fault",
+                                     "ofport"])
+     schema_helper.register_columns("Open_vSwitch", ["other_config"])
++    if args.ovn_owned_only:
++        schema_helper.register_columns("Port", ["interfaces", "external_ids"])
+     idl = ovs.db.idl.Idl(remote, schema_helper)
+
+     ovs.daemon.daemonize()
+@@ -1559,6 +1680,8 @@
+                                  unixctl_ipsec_status, None)
+     ovs.unixctl.command_register("tunnels/show", "", 0, 0,
+                                  unixctl_show, None)
++    ovs.unixctl.command_register("configuration/get", "", 0, 0,
++                                 unixctl_configuration, None)
+     ovs.unixctl.command_register("refresh", "", 0, 0, unixctl_refresh, None)
+     ovs.unixctl.command_register("exit", "[--no-cleanup]", 0, 1,
+                                  unixctl_exit, None)

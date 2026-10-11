@@ -1,0 +1,37 @@
+{{- if .Values.ipsec.certManager.enabled }}
+{{- if not (semverCompare ">=1.30-0" .Capabilities.KubeVersion.Version) }}
+{{- fail "IPsec cert-manager authorization requires Kubernetes >= 1.30 and ValidatingAdmissionPolicy" }}
+{{- end }}
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: kube-ovn-ipsec-issuer
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [cert-manager.io]
+        apiVersions: [v1]
+        operations: [CREATE, UPDATE]
+        resources: [certificaterequests]
+  matchConditions:
+    - name: dedicated-ipsec-issuer
+      expression: >-
+        object.spec.issuerRef.name == {{ .Values.ipsec.certManager.issuerName | toJson }} &&
+        has(object.spec.issuerRef.kind) && object.spec.issuerRef.kind == "ClusterIssuer" &&
+        (!has(object.spec.issuerRef.group) || object.spec.issuerRef.group == "cert-manager.io")
+  validations:
+    - expression: >-
+        (request.operation == "UPDATE" && object.spec == oldObject.spec) ||
+        request.userInfo.username == "system:serviceaccount:{{ .Values.namespace }}:ovn" &&
+        object.metadata.namespace == {{ .Values.namespace | toJson }}
+      message: The IPsec ClusterIssuer accepts only authorized kube-ovn-controller requests
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: kube-ovn-ipsec-issuer
+spec:
+  policyName: kube-ovn-ipsec-issuer
+  validationActions: [Deny]
+{{- end }}
