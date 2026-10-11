@@ -1050,6 +1050,7 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: ${{ matrix.mode }}
+          E2E_MAX_SECONDS: 4200
         run: >-
           python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" run
           "$GITHUB_WORKSPACE/network-e2e-diagnostics"
@@ -1279,6 +1280,7 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           NP_ENFORCEMENT: ${{ matrix.np-enforcement }}
+          E2E_MAX_SECONDS: 4200
         run: >-
           python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" run
           "$GITHUB_WORKSPACE/network-e2e-diagnostics"
