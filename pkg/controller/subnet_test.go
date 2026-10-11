@@ -224,6 +224,7 @@ func TestAddPolicyRouteForU2OInterconn_OverlayOnlyRouting(t *testing.T) {
 	}
 
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs:    []*kubeovnv1.Vpc{{Name: util.DefaultVpc}},
 		Subnets: []*kubeovnv1.Subnet{subnet, overlaySubnet},
 	})
 	require.NoError(t, err)
@@ -298,6 +299,7 @@ func TestAddPolicyRouteForU2OInterconn_OverlayOnlyRoutingDeletesLegacyPolicies(t
 	}
 
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs:    []*kubeovnv1.Vpc{{Name: util.DefaultVpc}},
 		Subnets: []*kubeovnv1.Subnet{subnet, overlaySubnet},
 	})
 	require.NoError(t, err)
@@ -520,6 +522,7 @@ func TestSyncU2OOverlayCIDRsAddressSet_UpdatesAfterOverlaySubnetDeletion(t *test
 	}
 
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs:    []*kubeovnv1.Vpc{{Name: vpcName}},
 		Subnets: []*kubeovnv1.Subnet{overlayA, overlayB, underlay},
 	})
 	require.NoError(t, err)
@@ -564,9 +567,26 @@ func TestSyncU2OOverlayCIDRsAddressSet_UpdatesAfterOverlaySubnetDeletion(t *test
 	require.Equal(t, []string{overlayAV6}, v6CIDRs)
 }
 
+func TestSyncU2OOverlayCIDRsAddressSet_DeletesWhenVpcIsGone(t *testing.T) {
+	t.Parallel()
+
+	const vpcName = "deleted-vpc"
+	fc, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+
+	v4Name, v6Name := u2oOverlayCIDRsAddressSetNames(vpcName)
+	fc.mockOvnClient.EXPECT().DeleteAddressSet(v4Name, v6Name).Return(nil)
+
+	v4CIDRs, v6CIDRs, err := fc.fakeController.syncU2OOverlayCIDRsAddressSet(vpcName, "")
+	require.NoError(t, err)
+	require.Empty(t, v4CIDRs)
+	require.Empty(t, v6CIDRs)
+}
+
 func TestSyncU2OOverlayCIDRsAddressSetSerializesPerVPC(t *testing.T) {
 	const vpcName = util.DefaultVpc
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs: []*kubeovnv1.Vpc{{Name: vpcName}},
 		Subnets: []*kubeovnv1.Subnet{{
 			Name: "overlay-a",
 			Spec: kubeovnv1.SubnetSpec{

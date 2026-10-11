@@ -754,7 +754,17 @@ func (c *Controller) gcAddressSet() error {
 	}
 
 	asList := make([]string, 0)
+	u2oAddressSetsByVpc := make(map[string][]string)
 	for _, as := range addressSets {
+		if as.ExternalIDs[u2oOverlayCIDRsKey] == "true" {
+			vpcName := as.ExternalIDs[u2oOverlayCIDRsVpcKey]
+			if vpcName == "" {
+				continue
+			}
+			u2oAddressSetsByVpc[vpcName] = append(u2oAddressSetsByVpc[vpcName], as.Name)
+			continue
+		}
+
 		sg := as.ExternalIDs[sgKey]
 		if sg == "" {
 			continue
@@ -765,6 +775,26 @@ func (c *Controller) gcAddressSet() error {
 			asList = append(asList, as.Name)
 		}
 	}
+
+	for vpcName, names := range u2oAddressSetsByVpc {
+		c.vpcKeyMutex.LockKey(vpcName)
+		_, err := c.vpcsLister.Get(vpcName)
+		if err == nil {
+			_ = c.vpcKeyMutex.UnlockKey(vpcName)
+			continue
+		}
+		if !k8serrors.IsNotFound(err) {
+			_ = c.vpcKeyMutex.UnlockKey(vpcName)
+			return err
+		}
+		klog.Infof("ready to gc address sets %v for deleted vpc %s", names, vpcName)
+		if err := c.OVNNbClient.DeleteAddressSet(names...); err != nil {
+			_ = c.vpcKeyMutex.UnlockKey(vpcName)
+			return err
+		}
+		_ = c.vpcKeyMutex.UnlockKey(vpcName)
+	}
+
 	if len(asList) == 0 {
 		klog.Infof("finish to gc address set")
 		return nil
