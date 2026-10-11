@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"slices"
 	"testing"
 	"time"
 
@@ -112,6 +113,20 @@ func TestEnqueueEndpointSliceServicePriority(t *testing.T) {
 			regularQueue.ShutDown()
 			priorityQueue.ShutDown()
 		})
+	}
+}
+
+func TestServiceProtocolsPreservesPortOrder(t *testing.T) {
+	ports := []corev1.ServicePort{
+		{Protocol: corev1.ProtocolUDP},
+		{Protocol: corev1.ProtocolTCP},
+		{Protocol: corev1.ProtocolUDP},
+		{Protocol: corev1.ProtocolSCTP},
+	}
+	got := serviceProtocols(ports)
+	want := []corev1.Protocol{corev1.ProtocolUDP, corev1.ProtocolTCP, corev1.ProtocolSCTP}
+	if !slices.Equal(got, want) {
+		t.Fatalf("serviceProtocols() = %v, want %v", got, want)
 	}
 }
 

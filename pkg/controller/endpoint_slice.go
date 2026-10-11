@@ -191,6 +191,7 @@ type endpointSliceReconcileContext struct {
 	loadBalancers              serviceLoadBalancerSet
 	scopedLBAttachments        []ovs.LoadBalancerAttachment
 	scopedLBAttachmentsApplied bool
+	preparedScopedLBs          map[string]struct{}
 	desiredScopedVIPs          map[string]map[string]struct{}
 }
 
@@ -265,6 +266,7 @@ func (c *Controller) reconcileServiceEndpointSlices(svc *v1.Service, endpointSli
 			current:  make(map[v1.Protocol]string),
 			previous: make(map[v1.Protocol]string),
 		},
+		preparedScopedLBs: make(map[string]struct{}),
 		desiredScopedVIPs: make(map[string]map[string]struct{}),
 	}
 	if err := c.prepareServiceScopedLoadBalancers(reconcileCtx); err != nil {
@@ -380,23 +382,47 @@ func serviceLoadBalancers(vpc *kubeovnv1.Vpc, affinity v1.ServiceAffinity) servi
 	return serviceLoadBalancerSet{current: regular, previous: session}
 }
 
+// serviceProtocols returns the protocols in Service port order, without
+// duplicates. Endpoint reconciliation uses this order so a multi-protocol
+// Service can expose its first port as soon as its own load balancer is ready;
+// unrelated protocol setup must not delay that first VIP.
+func serviceProtocols(ports []v1.ServicePort) []v1.Protocol {
+	protocols := make([]v1.Protocol, 0, len(ports))
+	for _, port := range ports {
+		if !slices.Contains(protocols, port.Protocol) {
+			protocols = append(protocols, port.Protocol)
+		}
+	}
+	return protocols
+}
+
 func (c *Controller) prepareServiceScopedLoadBalancers(reconcileCtx *endpointSliceReconcileContext) error {
 	svc := reconcileCtx.service
 	if !serviceUsesScopedLB(svc) {
 		return nil
 	}
-	protocols := make(map[v1.Protocol]struct{}, len(svc.Spec.Ports))
-	for _, port := range svc.Spec.Ports {
-		protocols[port.Protocol] = struct{}{}
+	if reconcileCtx.preparedScopedLBs == nil {
+		reconcileCtx.preparedScopedLBs = make(map[string]struct{})
+	}
+	protocols := serviceProtocols(svc.Spec.Ports)
+	preparedProtocols := protocols
+	// EndpointSlice reconciliation handles one protocol at a time below. For
+	// ordinary Services, defer the remaining protocol LBs until their VIP is
+	// reconciled so a TCP client is not racing unrelated UDP/SCTP setup.
+	if len(preparedProtocols) > 1 &&
+		(svc.Spec.Type == v1.ServiceTypeNodePort || svc.Spec.Type == v1.ServiceTypeClusterIP) &&
+		!serviceUsesTemplateLB(svc) {
+		preparedProtocols = preparedProtocols[:1]
 	}
 	owner := serviceScopedLBOwner(svc)
 	if owner.kind == switchLBRuleLBOwnerKind || owner.kind == routerLBRuleLBOwnerKind {
 		lbNames := make([]string, 0, len(protocols))
-		for protocol := range protocols {
+		for _, protocol := range protocols {
 			lbName, err := c.ensureServiceScopedLBExternalTraffic(svc, protocol)
 			if err != nil {
 				return err
 			}
+			reconcileCtx.preparedScopedLBs[lbName] = struct{}{}
 			lbNames = append(lbNames, lbName)
 			reconcileCtx.loadBalancers.current[protocol] = lbName
 		}
@@ -404,13 +430,14 @@ func (c *Controller) prepareServiceScopedLoadBalancers(reconcileCtx *endpointSli
 	}
 
 	families := serviceScopedInternalLBFamilies(svc)
-	lbNames := make([]string, 0, len(protocols)*len(families)*2)
-	for protocol := range protocols {
+	lbNames := make([]string, 0, len(preparedProtocols)*len(families)*2)
+	for _, protocol := range preparedProtocols {
 		for _, family := range families {
 			lbName, err := c.ensureServiceScopedLB(svc, protocol, family)
 			if err != nil {
 				return err
 			}
+			reconcileCtx.preparedScopedLBs[lbName] = struct{}{}
 			lbNames = append(lbNames, lbName)
 			if family == "" {
 				reconcileCtx.loadBalancers.current[protocol] = lbName
@@ -550,6 +577,36 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 		if len(families) > 1 || (len(families) == 1 && families[0] != "") {
 			family := strings.ToLower(util.CheckProtocol(lbVip))
 			state.lb = serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBInternalTraffic, family)
+		}
+	}
+	if !isExternalVIP && serviceUsesScopedLB(svc) && !serviceUsesTemplateLB(svc) {
+		family := ""
+		families := serviceScopedInternalLBFamilies(svc)
+		if len(families) > 1 || (len(families) == 1 && families[0] != "") {
+			family = strings.ToLower(util.CheckProtocol(lbVip))
+		}
+		prepared := false
+		if reconcileCtx.preparedScopedLBs != nil {
+			_, prepared = reconcileCtx.preparedScopedLBs[state.lb]
+		}
+		if !prepared {
+			var err error
+			state.lb, err = c.ensureServiceScopedLB(svc, port.Protocol, family)
+			if err != nil {
+				return err
+			}
+			if family == "" {
+				reconcileCtx.loadBalancers.current[port.Protocol] = state.lb
+			}
+			if reconcileCtx.preparedScopedLBs == nil {
+				reconcileCtx.preparedScopedLBs = make(map[string]struct{})
+			}
+			reconcileCtx.preparedScopedLBs[state.lb] = struct{}{}
+			if svc.Spec.Type != v1.ServiceTypeClusterIP {
+				if err := c.reconcileResourceScopedLoadBalancerAttachments(svc, reconcileCtx.vpcName, reconcileCtx.subnetName, state.lb); err != nil {
+					return err
+				}
+			}
 		}
 	}
 
