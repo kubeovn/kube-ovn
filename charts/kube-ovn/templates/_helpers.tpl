@@ -57,10 +57,15 @@ nodeAffinity:
 {{- end -}}
 
 {{/*
-Number of master nodes
+Number of nodes used for component replicas. Data-plane-only installs count
+Kubernetes nodes directly because they do not require master node labels.
 */}}
 {{- define "kubeovn.nodeCount" -}}
+  {{- if eq .Values.installMode "dataPlaneOnly" -}}
+    {{- include "kubeovn.k8sNodeCount" . -}}
+  {{- else -}}
   {{- len (split "," (.Values.MASTER_NODES | default (include "kubeovn.nodeIPs" .))) }}
+  {{- end -}}
 {{- end -}}
 
 {{/*
@@ -68,10 +73,12 @@ Number of Kubernetes nodes, falling back to MASTER_NODES for offline rendering.
 */}}
 {{- define "kubeovn.k8sNodeCount" -}}
 {{- $nodes := lookup "v1" "Node" "" "" -}}
-{{- if and $nodes $nodes.items -}}
+{{- if and $nodes (hasKey $nodes "items") (gt (len $nodes.items) 0) -}}
 {{- len $nodes.items -}}
+{{- else if .Values.MASTER_NODES -}}
+{{- len (split "," .Values.MASTER_NODES) -}}
 {{- else -}}
-{{- include "kubeovn.nodeCount" . -}}
+1
 {{- end -}}
 {{- end -}}
 
@@ -272,13 +279,22 @@ true
 Render gate for components that only make sense in a single-cluster install:
 - ovn-dpdk DaemonSet (start-ovs-dpdk-v2.sh still talks to OVN_SB_SERVICE_HOST,
   no externalOvnCentral support yet)
-- pre-upgrade-ovs-ovn / upgrade-ovs-ovn hooks (upgrade-ovs.sh checks a local
-  deploy/ovn-central, so it fails on tenant-only installs)
 Use `kubeovn.renderFullOnly` when the resource is not yet ready for the
 split-cluster hosted ovn-central deployment.
 */}}
 {{- define "kubeovn.renderFullOnly" -}}
 {{- if eq .Values.installMode "full" -}}
+true
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render upgrade hooks for both full and data-plane-only installs. The hook
+script skips the local ovn-central rollout in dataPlaneOnly mode. The hook Job
+also exposes the external OVN endpoints supplied to the chart.
+*/}}
+{{- define "kubeovn.renderUpgradeHooks" -}}
+{{- if or (eq .Values.installMode "full") (eq .Values.installMode "dataPlaneOnly") -}}
 true
 {{- end -}}
 {{- end -}}

@@ -3,10 +3,13 @@
 set -ex
 
 POD_NAMESPACE=${POD_NAMESPACE:-kube-system}
+INSTALL_MODE=${INSTALL_MODE:-full}
 
 UPDATE_STRATEGY=`kubectl -n $POD_NAMESPACE get ds ovs-ovn -o jsonpath='{.spec.updateStrategy.type}'`
 
-kubectl -n $POD_NAMESPACE rollout status deploy ovn-central --timeout=120s
+if [ "$INSTALL_MODE" != "dataPlaneOnly" ]; then
+  kubectl -n $POD_NAMESPACE rollout status deploy ovn-central --timeout=120s
+fi
 
 if [ $UPDATE_STRATEGY = OnDelete ]; then
   dsChartVer=`kubectl get ds -n $POD_NAMESPACE ovs-ovn -o jsonpath={.spec.template.metadata.annotations.chart-version}`
