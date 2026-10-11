@@ -60,3 +60,51 @@ func TestEnqueueUpdatePodWhenRoutedChanges(t *testing.T) {
 	controller.updateNpQueue.Done(item)
 	require.Equal(t, "default/default-deny", item)
 }
+
+func TestEnqueueUpdatePodWhenLabelsStillMatchNetworkPolicy(t *testing.T) {
+	pod := &corev1.Pod{
+		Name:            "selected",
+		Namespace:       metav1.NamespaceDefault,
+		ResourceVersion: "1",
+		Labels:          map[string]string{"app": "old"},
+		Annotations: map[string]string{
+			util.LogicalSwitchAnnotation:                                    util.DefaultSubnet,
+			fmt.Sprintf(util.AllocatedAnnotationTemplate, util.OvnProvider): "true",
+		},
+	}
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Pods: []*corev1.Pod{pod},
+		Subnets: []*kubeovnv1.Subnet{{
+			Name: util.DefaultSubnet,
+		}},
+	})
+	require.NoError(t, err)
+	controller := fake.fakeController
+	controller.config.EnableNP = true
+	controller.namedPort = NewNamedPort()
+	controller.addOrUpdatePodQueue = newTypedRateLimitingQueue[string]("AddOrUpdatePod", nil)
+	controller.updateNpQueue = newTypedRateLimitingQueue[string]("UpdateNetworkPolicy", nil)
+
+	npIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	require.NoError(t, npIndexer.Add(&networkingv1.NetworkPolicy{
+		Name:      "default-deny",
+		Namespace: metav1.NamespaceDefault,
+		Spec: networkingv1.NetworkPolicySpec{PodSelector: metav1.LabelSelector{MatchExpressions: []metav1.LabelSelectorRequirement{{
+			Key: "app", Operator: metav1.LabelSelectorOpIn, Values: []string{"old", "new"},
+		}}}},
+	}))
+	controller.npsLister = networkinglister.NewNetworkPolicyLister(npIndexer)
+
+	oldPod := pod.DeepCopy()
+	newPod := pod.DeepCopy()
+	newPod.ResourceVersion = "2"
+	newPod.Labels["app"] = "new"
+
+	controller.enqueueUpdatePod(oldPod, newPod)
+
+	require.Equal(t, 1, controller.updateNpQueue.Len())
+	item, shutdown := controller.updateNpQueue.Get()
+	require.False(t, shutdown)
+	controller.updateNpQueue.Done(item)
+	require.Equal(t, "default/default-deny", item)
+}

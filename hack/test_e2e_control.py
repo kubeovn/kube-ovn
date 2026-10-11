@@ -21,9 +21,9 @@ class E2EControlTest(unittest.TestCase):
         nonce = "b" * 16
         cases = {
             f"/test e2e --head {headSHA} --nonce {nonce}": ("dispatch", [], False),
-            f"/test e2e policy,multi-cni --head {headSHA} --nonce {nonce}": (
+            f"/test e2e policy,core --head {headSHA} --nonce {nonce}": (
                 "dispatch",
-                ["multi-cni", "policy"],
+                ["core", "policy"],
                 False,
             ),
             f"/test e2e-all --head {headSHA} --nonce {nonce}": ("dispatch", [], True),
@@ -466,14 +466,14 @@ class E2EControlTest(unittest.TestCase):
     def testTrustedControlledLabelsCanOnlyAddApprovedCoverage(self):
         grouped = self.dispatchDecision(
             body="/test e2e",
-            controlledLabels=["e2e:multi-cni", "e2e:policy"],
+            controlledLabels=["e2e:core", "e2e:policy"],
         )
         full = self.dispatchDecision(
             body="/test e2e policy",
             controlledLabels=["e2e:full"],
         )
 
-        self.assertEqual(grouped["requestedGroups"], ["multi-cni", "policy"])
+        self.assertEqual(grouped["requestedGroups"], ["core", "policy"])
         self.assertTrue(full["full"])
         self.assertEqual(full["requestedGroups"], [])
 
@@ -576,14 +576,14 @@ class E2EControlTest(unittest.TestCase):
         merged = e2eControl.mergeApprovedRequests(
             decision,
             [
-                {**decision, "requestedGroups": ["multi-cni"], "full": False},
+                {**decision, "requestedGroups": ["core"], "full": False},
                 {**decision, "headSHA": "b" * 40, "requestedGroups": ["nat-egress"], "full": True},
                 {**decision, "baseSHA": "c" * 40, "requestedGroups": ["nat-egress"], "full": True},
                 {**decision, "catalogRevision": "d" * 64, "requestedGroups": ["nat-egress"], "full": True},
             ],
         )
 
-        self.assertEqual(merged["requestedGroups"], ["multi-cni", "policy"])
+        self.assertEqual(merged["requestedGroups"], ["core", "policy"])
         self.assertFalse(merged["full"])
         self.assertNotEqual(merged["requestKey"], decision["requestKey"])
 
@@ -602,7 +602,7 @@ class E2EControlTest(unittest.TestCase):
             "baseSHA": "b" * 40,
             "approvalGeneration": 1001,
             "catalogRevision": "c" * 64,
-            "requestedGroups": ["multi-cni", "policy"],
+            "requestedGroups": ["core", "policy"],
             "full": False,
         }
         marker = e2eControl.renderRequestMarker(request)
@@ -808,7 +808,7 @@ class E2EControlTest(unittest.TestCase):
             "base": {"ref": "master", "sha": "b" * 40},
         }
         first = self.dispatchDecision(body="/test e2e policy")
-        second = {**first, "approvalGeneration": 1002, "requestedGroups": ["multi-cni"]}
+        second = {**first, "approvalGeneration": 1002, "requestedGroups": ["core"]}
         pages = [[
             {"user": {"login": "attacker", "type": "User"}, "body": e2eControl.renderRequestMarker(second)},
             {"user": {"login": "github-actions[bot]", "type": "Bot"}, "body": e2eControl.renderRequestMarker(first)},
@@ -818,7 +818,7 @@ class E2EControlTest(unittest.TestCase):
         request = e2eControl.approvedRequest(pullRequest, catalog, pages)
 
         self.assertEqual(request["approvalGeneration"], 1002)
-        self.assertEqual(request["requestedGroups"], ["multi-cni", "policy"])
+        self.assertEqual(request["requestedGroups"], ["core", "policy"])
         self.assertEqual(request["baseSHA"], "b" * 40)
 
     def testApprovedRequestRebindsTrustedMarkerToCurrentHead(self):
@@ -867,20 +867,20 @@ class E2EControlTest(unittest.TestCase):
             "approvalGeneration": 1001,
             "dispatchGeneration": 2001,
             "catalogRevision": "c" * 64,
-            "requestedGroups": ["multi-cni", "policy"],
+            "requestedGroups": ["core", "policy"],
             "full": False,
         }
         metadata = e2eControl.parseExecutorRunName(
             "x86-e2e pr=7231 head="
             + "a" * 40
-            + " approval=1001 generation=2001 mode=approved groups=multi-cni,policy labels=- full=0"
+            + " approval=1001 generation=2001 mode=approved groups=core,policy labels=- full=0"
         )
 
         self.assertEqual(metadata["prNumber"], 7231)
         self.assertEqual(metadata["headSHA"], "a" * 40)
         self.assertEqual(metadata["approvalGeneration"], 1001)
         self.assertEqual(metadata["dispatchGeneration"], 2001)
-        self.assertEqual(metadata["requestedGroups"], ["multi-cni", "policy"])
+        self.assertEqual(metadata["requestedGroups"], ["core", "policy"])
         self.assertEqual(metadata["controlledLabels"], [])
         self.assertFalse(metadata["automatic"])
         self.assertFalse(metadata["full"])
@@ -923,7 +923,7 @@ class E2EControlTest(unittest.TestCase):
             "headSHA": "a" * 40,
             "baseSHA": "d" * 40,
             "catalogRevision": "c" * 64,
-            "requestedGroups": ["multi-cni", "policy"],
+            "requestedGroups": ["core", "policy"],
             "full": False,
         }
 
@@ -978,7 +978,7 @@ class E2EControlTest(unittest.TestCase):
             e2eControl.parseExecutorRunName(
                 "x86-e2e pr=7231 head="
                 + "a" * 40
-                + " approval=0 generation=2001 mode=approved groups=multi-cni,policy labels=- full=0"
+                + " approval=0 generation=2001 mode=approved groups=core,policy labels=- full=0"
             )
 
     def testLatestExecutorRunRejectsUntrustedCandidates(self):
@@ -1784,14 +1784,14 @@ class E2EControlTest(unittest.TestCase):
             "inputs.headSHA || github.event.repository.default_branch }}",
             workflow,
         )
-        self.assertEqual(workflow.count("ref: ${{ env.E2E_SOURCE_REF }}"), 25)
+        self.assertEqual(workflow.count("ref: ${{ env.E2E_SOURCE_REF }}"), 3)
         self.assertNotIn("ref: ${{ inputs.headSHA || github.sha }}", workflow)
         self.assertNotIn("github.event.pull_request.head.sha || inputs.headSHA", workflow.replace(
             "EXECUTION_SHA: ${{ github.event_name == 'pull_request' && "
             "github.event.pull_request.head.sha || inputs.headSHA || github.sha }}",
             "",
         ))
-        self.assertGreaterEqual(workflow.count("ref: ${{ env.EXECUTION_SHA }}"), 31)
+        self.assertGreaterEqual(workflow.count("ref: ${{ env.EXECUTION_SHA }}"), 9)
         self.assertIn('git diff --name-only "$BASE_SHA...$HEAD_SHA"', workflow)
 
     def testTrustedExecutorKeepsBaselineBuildWithoutKindImageGate(self):
@@ -1869,10 +1869,7 @@ class E2EControlTest(unittest.TestCase):
             "matrix: ${{ fromJSON(needs.e2e-selection.outputs.k8sConformanceMatrix) }}",
             blocks["k8s-conformance-e2e"],
         )
-        self.assertIn(
-            "matrix: ${{ fromJSON(needs.e2e-selection.outputs.kubeOvnConformanceMatrix) }}",
-            blocks["kube-ovn-conformance-e2e"],
-        )
+        self.assertEqual(testJobs, {"k8s-conformance-e2e", "k8s-netpol-e2e"})
         normalizedWorkflow = " ".join(workflow.split())
         self.assertIn(
             "if: >- steps.lookup-go-cache.outputs.cache-hit != 'true' && "
@@ -1935,7 +1932,7 @@ class E2EControlTest(unittest.TestCase):
             testJobs | {"e2e-selection", "e2e-control-validation"},
         )
         pushNeeds = set(re.findall(r"(?m)^      - ([a-z0-9-]+)$", blocks["push"]))
-        self.assertEqual(pushNeeds, {"e2e-executor-result"})
+        self.assertEqual(pushNeeds, {"e2e-executor-result", "build-vpc-nat-gateway"})
         for jobId in testJobs:
             with self.subTest(jobId=jobId):
                 self.assertIn(f"      - {jobId}\n", resultBlock)
@@ -1954,29 +1951,20 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("needs.e2e-executor-result.result == 'success'", blocks["push"])
         self.assertNotIn("github.event_name != 'workflow_dispatch'", blocks["push"])
 
-    def testKubeOvnConformanceTimeoutCoversValgrindDualUnderlay(self):
+    def testTemporaryNetworkDiagnosticScopeAndArtifacts(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
         blocks = e2eSelector.workflowJobBlocks(workflow)
-        self.assertRegex(
-            blocks["kube-ovn-conformance-e2e"],
-            r"(?m)^    timeout-minutes: 60$",
-        )
-        self.assertRegex(
-            blocks["kubevirt-e2e"],
-            r"(?m)^    timeout-minutes: 45$",
-        )
-
-        makefile = (repoRoot / "makefiles/e2e.mk").read_text()
-        self.assertIn(
-            "--timeout=60m --focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test",
-            makefile,
-        )
-
+        self.assertEqual(e2eSelector.workflowTestJobs(workflow), {"k8s-conformance-e2e", "k8s-netpol-e2e"})
+        for jobId in e2eSelector.workflowTestJobs(workflow):
+            self.assertIn("network_e2e_diagnostics.py", blocks[jobId])
+            self.assertIn("Upload network diagnostics and test reports", blocks[jobId])
+            self.assertIn("if: always()", blocks[jobId])
         scheduled = (repoRoot / ".github/workflows/scheduled-e2e.yaml").read_text()
-        self.assertRegex(
-            scheduled,
-            r"kube-ovn-conformance-e2e:\n    name: Kube-OVN Conformance E2E\n    runs-on: ubuntu-24.04\n    timeout-minutes: 40\n",
-        )
+        scheduledBlocks = e2eSelector.workflowJobBlocks(scheduled)
+        self.assertEqual(set(scheduledBlocks), {"k8s-conformance-e2e", "k8s-netpol-e2e"})
+        for block in scheduledBlocks.values():
+            self.assertIn("network_e2e_diagnostics.py", block)
+            self.assertIn("Upload network diagnostics and test reports", block)
 
     def testKindPullUsesAnonymousGhcrWhenTokenIsAbsent(self):
         makefile = (repoRoot / "makefiles/kind.mk").read_text()
