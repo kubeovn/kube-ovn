@@ -189,9 +189,15 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > live-pull-request.json
           # Only queued/running candidates need cancellation; bound the response to
           # recent runs so the large workflow history does not trigger API 502s.
-          gh api \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
-            | jq '{workflow_runs: .workflow_runs}' > executor-runs.json
+          for attempt in 1 2 3 4 5; do
+            if gh api \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+              | jq '{workflow_runs: .workflow_runs}' > executor-runs.json; then
+              break
+            fi
+            [ "$attempt" -eq 5 ] && exit 1
+            sleep "$((attempt * 2))"
+          done
           python3 - "$PR_NUMBER" <<'PY' > stale-runs.txt
           import json
           import sys
@@ -351,9 +357,15 @@ jobs:
           requestKey="automatic-$PR_NUMBER-$headSHA"
           # Only queued/running candidates need cancellation; bound the response to
           # recent runs so the large workflow history does not trigger API 502s.
-          gh api \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
-            | jq '{workflow_runs: .workflow_runs}' > automatic-executor-runs.json
+          for attempt in 1 2 3 4 5; do
+            if gh api \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+              | jq '{workflow_runs: .workflow_runs}' > automatic-executor-runs.json; then
+              break
+            fi
+            [ "$attempt" -eq 5 ] && exit 1
+            sleep "$((attempt * 2))"
+          done
           python3 - "$PR_NUMBER" "$headSHA" <<'PY' > stale-automatic-runs.txt
           import json
           import sys
