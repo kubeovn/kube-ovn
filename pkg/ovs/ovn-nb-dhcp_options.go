@@ -267,20 +267,24 @@ func (c *OVNNbClient) DeleteDHCPOptions(lsName, protocol string) error {
 	return c.deleteDHCPOptions(lsName, protocol, false)
 }
 
-func (c *OVNNbClient) deleteDHCPOptions(lsName, protocol string, keepPerPort bool) error {
+// DeleteDHCPOptionsOp returns operations that remove DHCP options owned by a
+// logical switch. It is used by callers that need to combine DHCP cleanup
+// with other logical switch changes in one transaction.
+func (c *OVNNbClient) DeleteDHCPOptionsOp(lsName, protocol string, keepPerPort bool) ([]ovsdb.Operation, error) {
 	if protocol == kubeovnv1.ProtocolDual {
 		protocol = ""
 	}
 	externalIDs := map[string]string{
 		LogicalSwitchKey: lsName,
-		"protocol":       protocol, // list all protocol dhcp options when protocol is ""
+		"protocol":       protocol,
 	}
-
-	filter := dhcpOptionsFilter(true, externalIDs)
-	op, err := c.WhereCache(func(o *ovnnb.DHCPOptions) bool {
-		// Disabling subnet DHCP must preserve options owned by individual ports.
-		return filter(o) && (!keepPerPort || o.ExternalIDs[PortKey] == "")
+	return c.WhereCache(func(o *ovnnb.DHCPOptions) bool {
+		return dhcpOptionsFilter(true, externalIDs)(o) && (!keepPerPort || o.ExternalIDs[PortKey] == "")
 	}).Delete()
+}
+
+func (c *OVNNbClient) deleteDHCPOptions(lsName, protocol string, keepPerPort bool) error {
+	op, err := c.DeleteDHCPOptionsOp(lsName, protocol, keepPerPort)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operation for deleting dhcp options: %w", err)

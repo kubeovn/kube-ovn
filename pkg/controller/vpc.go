@@ -1345,17 +1345,6 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 
 // createVpcRouter create router to connect logical switches in vpc
 func (c *Controller) createVpcRouter(lr string, learnFromARPRequest bool) error {
-	if err := c.OVNNbClient.CreateLogicalRouter(lr); err != nil {
-		klog.Errorf("create logical router %s failed: %v", lr, err)
-		return err
-	}
-
-	vpcRouter, err := c.OVNNbClient.GetLogicalRouter(lr, false)
-	if err != nil {
-		klog.Errorf("get logical router %s failed: %v", lr, err)
-		return err
-	}
-
 	lrOptions := map[string]string{
 		"mac_binding_age_threshold": "300",
 		"dynamic_neigh_routers":     "true",
@@ -1363,12 +1352,28 @@ func (c *Controller) createVpcRouter(lr string, learnFromARPRequest bool) error 
 	if !learnFromARPRequest {
 		lrOptions["always_learn_from_arp_request"] = "false"
 	}
-	if !maps.Equal(vpcRouter.Options, lrOptions) {
-		vpcRouter.Options = lrOptions
-		if err = c.OVNNbClient.UpdateLogicalRouter(vpcRouter, &vpcRouter.Options); err != nil {
-			klog.Errorf("failed to update options of logical router %s: %v", lr, err)
+	createRouter := func() error {
+		if client, ok := c.OVNNbClient.(interface {
+			CreateLogicalRouterWithOptions(string, map[string]string) error
+		}); ok {
+			return client.CreateLogicalRouterWithOptions(lr, lrOptions)
+		}
+		if err := c.OVNNbClient.CreateLogicalRouter(lr); err != nil {
 			return err
 		}
+		vpcRouter, err := c.OVNNbClient.GetLogicalRouter(lr, false)
+		if err != nil {
+			return err
+		}
+		if maps.Equal(vpcRouter.Options, lrOptions) {
+			return nil
+		}
+		vpcRouter.Options = lrOptions
+		return c.OVNNbClient.UpdateLogicalRouter(vpcRouter, &vpcRouter.Options)
+	}
+	if err := createRouter(); err != nil {
+		klog.Errorf("create or update logical router %s failed: %v", lr, err)
+		return err
 	}
 
 	return nil

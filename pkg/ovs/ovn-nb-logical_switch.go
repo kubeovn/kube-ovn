@@ -11,6 +11,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 
+	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -58,13 +59,19 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 			return fmt.Errorf("update logical router port %s", lrpName)
 		}
 	} else {
-		if err := c.CreateBareLogicalSwitch(lsName); err != nil {
+		if needRouter && switchNetworks != "" {
+			if err := c.createLogicalSwitchWithPatchPort(lsName, lrName, switchNetworks, gatewayMAC); err != nil {
+				klog.Error(err)
+				return err
+			}
+			return nil
+		} else if err := c.CreateBareLogicalSwitch(lsName); err != nil {
 			klog.Error(err)
 			return fmt.Errorf("create logical switch %s", lsName)
 		}
 	}
 
-	if needRouter && switchNetworks != "" {
+	if needRouter && switchNetworks != "" && exist {
 		if err := c.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, switchNetworks, gatewayMAC); err != nil {
 			klog.Error(err)
 			return err
@@ -80,6 +87,82 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 		}
 	}
 
+	return nil
+}
+
+// createLogicalSwitchWithPatchPort creates a new logical switch and its
+// router patch ports in one northbound transaction. The parent rows are
+// addressed by named UUIDs so the switch, router port, and switch port are
+// committed atomically.
+func (c *OVNNbClient) createLogicalSwitchWithPatchPort(lsName, lrName, networks, gatewayMAC string) error {
+	lr, err := c.GetLogicalRouter(lrName, false)
+	if err != nil {
+		return fmt.Errorf("get logical router %s: %w", lrName, err)
+	}
+	if gatewayMAC == "" {
+		gatewayMAC = util.GenerateMac()
+	}
+
+	ls := &ovnnb.LogicalSwitch{
+		UUID:        ovsclient.NamedUUID(),
+		Name:        lsName,
+		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
+	}
+	lspName := fmt.Sprintf("%s-%s", lsName, lrName)
+	lrpName := fmt.Sprintf("%s-%s", lrName, lsName)
+	lsp := &ovnnb.LogicalSwitchPort{
+		UUID:      ovsclient.NamedUUID(),
+		Name:      lspName,
+		Addresses: []string{"router"},
+		Type:      "router",
+		Options:   map[string]string{"router-port": lrpName},
+		ExternalIDs: map[string]string{
+			LogicalSwitchKey: lsName,
+			"vendor":         util.CniTypeName,
+		},
+	}
+	lrp := &ovnnb.LogicalRouterPort{
+		UUID:     ovsclient.NamedUUID(),
+		Name:     lrpName,
+		Networks: strings.Split(networks, ","),
+		MAC:      gatewayMAC,
+		ExternalIDs: map[string]string{
+			logicalRouterKey: lrName,
+			"vendor":         util.CniTypeName,
+		},
+	}
+
+	lsCreateOps, err := c.Create(ls)
+	if err != nil {
+		return fmt.Errorf("generate logical switch %s: %w", lsName, err)
+	}
+	lspCreateOps, err := c.Create(lsp)
+	if err != nil {
+		return fmt.Errorf("generate logical switch port %s: %w", lspName, err)
+	}
+	lrpCreateOps, err := c.Create(lrp)
+	if err != nil {
+		return fmt.Errorf("generate logical router port %s: %w", lrpName, err)
+	}
+	lsAttachOps, err := c.Where(ls).Mutate(ls, model.Mutation{Field: &ls.Ports, Value: []string{lsp.UUID}, Mutator: ovsdb.MutateOperationInsert})
+	if err != nil {
+		return fmt.Errorf("attach logical switch port %s: %w", lspName, err)
+	}
+	lrAttachOps, err := c.Where(lr).Mutate(lr, model.Mutation{Field: &lr.Ports, Value: []string{lrp.UUID}, Mutator: ovsdb.MutateOperationInsert})
+	if err != nil {
+		return fmt.Errorf("attach logical router port %s: %w", lrpName, err)
+	}
+	waitOp := ConstructWaitForNameNotExistsOperation(lsName, "Logical_Switch")
+	ops := make([]ovsdb.Operation, 0, 1+len(lsCreateOps)+len(lspCreateOps)+len(lrpCreateOps)+len(lsAttachOps)+len(lrAttachOps))
+	ops = append(ops, waitOp)
+	ops = append(ops, lsCreateOps...)
+	ops = append(ops, lspCreateOps...)
+	ops = append(ops, lrpCreateOps...)
+	ops = append(ops, lsAttachOps...)
+	ops = append(ops, lrAttachOps...)
+	if _, err := c.TransactConditional("ls-lrp-lsp-add", ops); err != nil {
+		return fmt.Errorf("create logical switch %s and patch ports: %w", lsName, err)
+	}
 	return nil
 }
 
@@ -253,6 +336,31 @@ func (c *OVNNbClient) DeleteLogicalSwitch(lsName string) error {
 		return fmt.Errorf("delete logical switch %s: %w", lsName, err)
 	}
 
+	return nil
+}
+
+// DeleteLogicalSwitchResources removes subnet-owned ACLs, DHCP options, and
+// the logical switch in one northbound transaction.
+func (c *OVNNbClient) DeleteLogicalSwitchResources(lsName, protocol string) error {
+	aclOps, err := c.DeleteAclsOps(lsName, LogicalSwitchKey, "", nil)
+	if err != nil {
+		return fmt.Errorf("generate ACL cleanup for logical switch %s: %w", lsName, err)
+	}
+	dhcpOps, err := c.DeleteDHCPOptionsOp(lsName, protocol, false)
+	if err != nil {
+		return fmt.Errorf("generate DHCP cleanup for logical switch %s: %w", lsName, err)
+	}
+	lsOps, err := c.DeleteLogicalSwitchOp(lsName)
+	if err != nil {
+		return fmt.Errorf("generate logical switch deletion for %s: %w", lsName, err)
+	}
+	ops := make([]ovsdb.Operation, 0, len(aclOps)+len(dhcpOps)+len(lsOps))
+	ops = append(ops, aclOps...)
+	ops = append(ops, dhcpOps...)
+	ops = append(ops, lsOps...)
+	if err := c.Transact("subnet-ls-delete", ops); err != nil {
+		return fmt.Errorf("delete logical switch %s resources: %w", lsName, err)
+	}
 	return nil
 }
 

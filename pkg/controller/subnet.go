@@ -899,18 +899,21 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 		return nil
 	}
 
-	// clear acl when direction is ""
-	if err = c.OVNNbClient.DeleteAcls(key, logicalSwitchKey, "", nil); err != nil {
-		klog.Errorf("clear logical switch %s acls: %v", key, err)
-		return err
+	deleteLogicalSwitch := func() error {
+		if client, ok := c.OVNNbClient.(interface {
+			DeleteLogicalSwitchResources(string, string) error
+		}); ok {
+			return client.DeleteLogicalSwitchResources(key, kubeovnv1.ProtocolDual)
+		}
+		if err := c.OVNNbClient.DeleteAcls(key, logicalSwitchKey, "", nil); err != nil {
+			return err
+		}
+		if err := c.OVNNbClient.DeleteDHCPOptions(key, kubeovnv1.ProtocolDual); err != nil {
+			return err
+		}
+		return c.OVNNbClient.DeleteLogicalSwitch(key)
 	}
-
-	if err = c.OVNNbClient.DeleteDHCPOptions(key, kubeovnv1.ProtocolDual); err != nil {
-		klog.Errorf("failed to delete dhcp options of logical switch %s %v", key, err)
-		return err
-	}
-
-	if err = c.OVNNbClient.DeleteLogicalSwitch(key); err != nil {
+	if err = deleteLogicalSwitch(); err != nil {
 		klog.Errorf("delete logical switch %s: %v", key, err)
 		return err
 	}
