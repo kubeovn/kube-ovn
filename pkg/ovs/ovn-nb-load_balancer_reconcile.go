@@ -95,6 +95,9 @@ func (c *OVNNbClient) resourceLoadBalancerOps(reconciliation LoadBalancerReconci
 		return nil, err
 	}
 	ops = append(ops, variableOps...)
+	if !slices.ContainsFunc(ops, func(op ovsdb.Operation) bool { return op.Op != ovsdb.OperationWait }) {
+		return nil, nil
+	}
 	return ops, nil
 }
 
@@ -319,12 +322,12 @@ func (c *OVNNbClient) resourceLoadBalancerRowOps(row *loadBalancerReconcileRow) 
 	}
 	old := row.original
 	fields := []any{&old.Protocol, &old.SelectionFields, &old.Options, &old.ExternalIDs, &old.Vips, &old.IPPortMappings, &old.HealthCheck}
-	if !row.deleted && loadBalancerStateEqual(old, row.desired) {
-		return nil, nil
-	}
 	guards, err := c.Where(old).Wait(ovsdb.WaitConditionEqual, new(0), old, fields...)
 	if err != nil {
 		return nil, err
+	}
+	if !row.deleted && loadBalancerStateEqual(old, row.desired) {
+		return guards, nil
 	}
 	if row.deleted {
 		ops, err := c.Where(old).Delete()
