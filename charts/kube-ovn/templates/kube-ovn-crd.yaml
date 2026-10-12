@@ -4296,6 +4296,11 @@ spec:
                 x-kubernetes-validations:
                 - message: This field is immutable.
                   rule: self == oldSelf
+              priorityClassName:
+                description: |-
+                  Optional PriorityClass name applied to the workload pods.
+                  If not specified, the cluster's default Pod priority applies.
+                type: string
               replicas:
                 default: 1
                 description: workload replicas

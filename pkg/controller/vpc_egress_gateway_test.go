@@ -14,6 +14,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
+	appslisters "k8s.io/client-go/listers/apps/v1"
 	ktesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -730,6 +732,68 @@ func TestReconcileVpcEgressGatewayWorkloadIPPoolAnnotations(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "int-pool", deploy.Spec.Template.Annotations[util.IPPoolAnnotation])
 	require.Equal(t, "ext-pool", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)])
+}
+
+func TestReconcileVpcEgressGatewayWorkloadPriorityClassName(t *testing.T) {
+	for _, priorityClassName := range []string{"", "gateway-critical"} {
+		t.Run("priorityClassName="+priorityClassName, func(t *testing.T) {
+			c, intSubnet, extSubnet := newVpcEgressGatewayWorkloadTestController(t, nil)
+			gw := newVpcEgressGatewayForWorkloadTest(intSubnet, extSubnet)
+			gw.Spec.PriorityClassName = priorityClassName
+
+			_, _, _, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "", "")
+			require.NoError(t, err)
+			stored, err := c.config.KubeClient.AppsV1().Deployments(gw.Namespace).Get(t.Context(), gw.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Equal(t, priorityClassName, deploy.Spec.Template.Spec.PriorityClassName)
+			require.Equal(t, priorityClassName, stored.Spec.Template.Spec.PriorityClassName)
+		})
+	}
+}
+
+func TestReconcileVpcEgressGatewayWorkloadPriorityClassNameChanges(t *testing.T) {
+	c, intSubnet, extSubnet := newVpcEgressGatewayWorkloadTestController(t, nil)
+	gw := newVpcEgressGatewayForWorkloadTest(intSubnet, extSubnet)
+	kubeClient := c.config.KubeClient.(*k8sfake.Clientset)
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	c.deploymentsLister = appslisters.NewDeploymentLister(indexer)
+
+	tests := []struct {
+		name              string
+		priorityClassName string
+		verb              string
+	}{
+		{name: "create without priority", verb: "create"},
+		{name: "set priority", priorityClassName: "gateway-critical", verb: "update"},
+		{name: "unchanged priority", priorityClassName: "gateway-critical"},
+		{name: "change priority", priorityClassName: "gateway-high", verb: "update"},
+		{name: "clear priority", verb: "update"},
+		{name: "unchanged empty priority"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gw.Spec.PriorityClassName = tt.priorityClassName
+			kubeClient.ClearActions()
+			_, _, _, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "", "")
+			require.NoError(t, err)
+			var verbs []string
+			for _, action := range kubeClient.Actions() {
+				if action.GetResource().Resource == "deployments" {
+					verbs = append(verbs, action.GetVerb())
+				}
+			}
+			if tt.verb == "" {
+				require.Empty(t, verbs)
+			} else {
+				require.Equal(t, []string{tt.verb}, verbs)
+			}
+			stored, err := kubeClient.AppsV1().Deployments(gw.Namespace).Get(t.Context(), gw.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Equal(t, tt.priorityClassName, stored.Spec.Template.Spec.PriorityClassName)
+			require.Equal(t, stored.Annotations[util.GenerateHashAnnotation], deploy.Annotations[util.GenerateHashAnnotation])
+			require.NoError(t, indexer.Update(stored.DeepCopy()))
+		})
+	}
 }
 
 func TestReconcileVpcEgressGatewayWorkloadIPPoolSubnetMismatch(t *testing.T) {

@@ -2705,9 +2705,18 @@ func u2oOverlayCIDRsAddressSetExternalIDs(vpcName string) map[string]string {
 	// These ExternalIDs mark OVN address sets that cache overlay CIDRs per VPC.
 	// They are resource ownership metadata for lookup/debugging, not route policy labels.
 	return map[string]string{
-		"isU2OOverlayCIDRs": "true",
-		"vpc":               vpcName,
+		u2oOverlayCIDRsKey:    "true",
+		u2oOverlayCIDRsVpcKey: vpcName,
 	}
+}
+
+func (c *Controller) deleteU2OOverlayCIDRsAddressSets(vpcName string) error {
+	v4Name, v6Name := u2oOverlayCIDRsAddressSetNames(vpcName)
+	if err := c.OVNNbClient.DeleteAddressSet(v4Name, v6Name); err != nil {
+		klog.Errorf("delete u2o overlay cidrs address sets for vpc %s: %v", vpcName, err)
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) syncU2OOverlayCIDRsAddressSet(vpcName, excludeSubnet string) (v4CIDRs, v6CIDRs []string, err error) {
@@ -2722,6 +2731,16 @@ func (c *Controller) syncU2OOverlayCIDRsAddressSet(vpcName, excludeSubnet string
 	defer func() { _ = c.vpcKeyMutex.UnlockKey(vpcName) }()
 
 	v4Name, v6Name := u2oOverlayCIDRsAddressSetNames(vpcName)
+	if _, err := c.vpcsLister.Get(vpcName); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			return nil, nil, err
+		}
+		if err := c.deleteU2OOverlayCIDRsAddressSets(vpcName); err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, nil
+	}
+
 	externalIDs := u2oOverlayCIDRsAddressSetExternalIDs(vpcName)
 	if v4CIDRs, v6CIDRs, err = c.buildU2OOverlayCIDRs(vpcName, excludeSubnet); err != nil {
 		return nil, nil, err

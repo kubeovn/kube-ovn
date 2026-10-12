@@ -22,6 +22,29 @@ type blockingMonitorClient struct {
 	monitorOptions    int
 }
 
+func TestHasMultipleEndpoints(t *testing.T) {
+	tests := map[string]struct {
+		addr string
+		want bool
+	}{
+		"single tcp endpoint": {
+			addr: "tcp:127.0.0.1:6641",
+		},
+		"single ssl endpoint": {
+			addr: "ssl:127.0.0.1:6641",
+		},
+		"multiple endpoints": {
+			addr: "tcp:127.0.0.1:6641,tcp:127.0.0.1:6642",
+			want: true,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			require.Equal(t, tt.want, hasMultipleEndpoints(tt.addr))
+		})
+	}
+}
+
 func newBlockingMonitorClient() *blockingMonitorClient {
 	return &blockingMonitorClient{
 		disconnectStarted: make(chan struct{}),
