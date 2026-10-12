@@ -88,6 +88,10 @@ func (c *Controller) enqueueDeleteService(obj any) {
 		if vpc == "" {
 			vpc = svc.Annotations[util.LogicalRouterAnnotation]
 		}
+		if _, ok := c.OVNNbClient.(resourceLoadBalancerClient); ok && serviceUsesScopedLB(svc) {
+			c.deleteServiceQueue.Add(&vpcService{Vpc: vpc, Svc: svc})
+			return
+		}
 		for _, port := range svc.Spec.Ports {
 			vpcSvc := &vpcService{
 				Protocol: port.Protocol,
@@ -193,6 +197,15 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 		klog.Errorf("failed to list svc, %v", err)
 		return err
 	}
+	if _, ok := c.OVNNbClient.(resourceLoadBalancerClient); ok && serviceUsesScopedLB(service.Svc) {
+		if err := c.deleteServiceLoadBalancerState(service, svcs); err != nil {
+			return err
+		}
+		if service.Svc.Spec.Type == v1.ServiceTypeLoadBalancer && c.config.EnablePodLbSvc {
+			return c.deleteLbSvc(service.Svc)
+		}
+		return nil
+	}
 
 	var (
 		vpcLB             [2]string
@@ -294,12 +307,18 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 		klog.Error(err)
 		return err
 	}
-	if svcObject.oldTrafficDistribution && (!serviceUsesTrafficDistribution(svc) || serviceUsesDistributedLB(svc)) {
+	_, atomicLBs := c.OVNNbClient.(resourceLoadBalancerClient)
+	if atomicLBs && !serviceUsesScopedLB(svc) {
+		if err := c.deleteServiceScopedLoadBalancers(svc); err != nil {
+			return err
+		}
+	}
+	if svcObject.oldTrafficDistribution && (!serviceUsesTrafficDistribution(svc) || serviceUsesDistributedLB(svc)) && (!atomicLBs || !serviceUsesScopedLB(svc)) {
 		if err := c.cleanupServiceTrafficDistributionState(svc); err != nil {
 			return err
 		}
 	}
-	if svcObject.oldExternalLocalTemplate && !serviceUsesExternalLocalTemplate(svc) {
+	if svcObject.oldExternalLocalTemplate && !serviceUsesExternalLocalTemplate(svc) && (!atomicLBs || !serviceUsesScopedLB(svc)) {
 		if err := c.cleanupServiceExternalLocalTemplateState(svc); err != nil {
 			return err
 		}

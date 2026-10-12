@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -336,49 +335,19 @@ func (c *Controller) ensureServiceScopedLB(svc *v1.Service, protocol v1.Protocol
 
 func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, protocol v1.Protocol, trafficClass serviceLBTrafficClass, family string) (string, error) {
 	name := serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, trafficClass, family)
-	vpcName := serviceVPCName(svc, c.config.ClusterRouter)
 	timeout, err := serviceSessionAffinityTimeout(svc)
 	if err != nil {
 		return "", err
 	}
 	distributed := trafficClass == serviceLBInternalTraffic && serviceUsesDistributedLB(svc)
-	options := make(map[string]string)
-	deleteOptions := make([]string, 0, 2)
-	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
-		options["affinity_timeout"] = strconv.Itoa(timeout)
-	} else {
-		deleteOptions = append(deleteOptions, "affinity_timeout")
-	}
-	if distributed {
-		options["distributed"] = "true"
-	} else {
-		deleteOptions = append(deleteOptions, "distributed")
-	}
 	if serviceLB, ok := c.OVNNbClient.(interface {
 		ReconcileLoadBalancer(config ovs.LoadBalancerConfig) error
 	}); ok {
-		switch {
-		case serviceUsesTemplateLB(svc) && trafficClass == serviceLBInternalTraffic:
-			options["template"] = "true"
-			if family != "" {
-				options["address-family"] = family
-			}
-		case serviceUsesExternalLocalTemplate(svc) && trafficClass == serviceLBExternalTraffic:
-			options["template"] = "true"
-			if family != "" {
-				options["address-family"] = family
-			}
-		case distributed || trafficClass == serviceLBExternalTraffic:
-			options["template"] = "false"
+		config, err := c.serviceScopedLBConfig(svc, protocol, trafficClass, family)
+		if err != nil {
+			return "", err
 		}
-		if err := serviceLB.ReconcileLoadBalancer(ovs.LoadBalancerConfig{
-			Name:            name,
-			Protocol:        strings.ToLower(string(protocol)),
-			SelectionFields: nil,
-			ExternalIDs:     serviceScopedLBExternalIDs(svc, vpcName, trafficClass),
-			Options:         options,
-			DeleteOptions:   deleteOptions,
-		}); err != nil {
+		if err := serviceLB.ReconcileLoadBalancer(config); err != nil {
 			return "", fmt.Errorf("reconcile service-scoped load balancer %s: %w", name, err)
 		}
 		return name, nil
@@ -389,7 +358,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, nil); err != nil {
 		return "", fmt.Errorf("set selection fields on service-scoped load balancer %s: %w", name, err)
 	}
-	if err := c.OVNNbClient.SetLoadBalancerExternalIDs(name, serviceScopedLBExternalIDs(svc, vpcName, trafficClass)); err != nil {
+	if err := c.OVNNbClient.SetLoadBalancerExternalIDs(name, serviceScopedLBExternalIDs(svc, serviceVPCName(svc, c.config.ClusterRouter), trafficClass)); err != nil {
 		return "", fmt.Errorf("set ownership metadata on service-scoped load balancer %s: %w", name, err)
 	}
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
@@ -688,6 +657,9 @@ func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
 	owner := serviceScopedLBOwner(svc)
 	if owner.uid == "" {
 		return nil
+	}
+	if client, ok := c.OVNNbClient.(resourceLoadBalancerClient); ok {
+		return client.ReconcileLoadBalancers(newServiceLoadBalancerReconciliation(svc).batch)
 	}
 	if err := c.OVNNbClient.DeleteLoadBalancers(owner.ownsLoadBalancer); err != nil {
 		return fmt.Errorf("delete service-scoped load balancers for %s/%s: %w", svc.Namespace, svc.Name, err)
