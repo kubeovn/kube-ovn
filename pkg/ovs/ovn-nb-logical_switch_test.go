@@ -328,6 +328,15 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitch() {
 		require.ErrorContains(t, err, "not found logical switch")
 	})
 
+	t.Run("delete subnet resources in one operation", func(t *testing.T) {
+		t.Parallel()
+		name := "test-delete-subnet-resources"
+		require.NoError(t, nbClient.CreateBareLogicalSwitch(name))
+		require.NoError(t, nbClient.DeleteLogicalSwitchResources(name, "Dual"))
+		_, err := nbClient.GetLogicalSwitch(name, false)
+		require.ErrorContains(t, err, "not found logical switch")
+	})
+
 	t.Run("no err when delete non-existent logical switch", func(t *testing.T) {
 		t.Parallel()
 		err := nbClient.DeleteLogicalSwitch("test-delete-ls-non-existent")
