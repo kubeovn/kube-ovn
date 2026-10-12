@@ -225,3 +225,46 @@ func TestServiceLoadBalancerEmptyEndpointsIsAtomic(t *testing.T) {
 		require.Empty(t, lb.HealthCheck)
 	}
 }
+
+func TestRuleServiceLoadBalancersAreAtomic(t *testing.T) {
+	for _, kind := range []string{switchLBRuleLBOwnerKind, routerLBRuleLBOwnerKind} {
+		t.Run(kind, func(t *testing.T) {
+			ctrl, nbClient, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeClusterIP, false)
+			svc.Name = generateSvcName("rule")
+			if kind == routerLBRuleLBOwnerKind {
+				svc.Name = generateRlrSvcName("rule")
+			}
+			setServiceScopedLBOwner(svc, kind, "rule", "rule-uid")
+			svc.Spec.ClusterIP = corev1.ClusterIPNone
+			svc.Spec.ClusterIPs = nil
+			svc.Annotations[util.ServiceHealthCheck] = "false"
+			annotation := util.SwitchLBRuleVipsAnnotation
+			if kind == routerLBRuleLBOwnerKind {
+				annotation = util.RouterLBRuleVipsAnnotation
+			}
+			svc.Annotations[annotation] = "10.96.0.10"
+			recorder := &serviceLBTransactionClient{Client: nbClient.Client}
+			nbClient.Client = recorder
+			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
+			require.Len(t, recorder.transactions, 1)
+			lbs, err := nbClient.ListLoadBalancers(serviceScopedLBOwner(svc).ownsLoadBalancer)
+			require.NoError(t, err)
+			require.Len(t, lbs, 2)
+			var uuids []string
+			for _, lb := range lbs {
+				uuids = append(uuids, lb.UUID)
+				require.NotEmpty(t, lb.Vips)
+			}
+			ls, err := nbClient.GetLogicalSwitch("subnet", false)
+			require.NoError(t, err)
+			require.ElementsMatch(t, uuids, ls.LoadBalancer)
+			lr, err := nbClient.GetLogicalRouter("vpc", false)
+			require.NoError(t, err)
+			if kind == routerLBRuleLBOwnerKind {
+				require.ElementsMatch(t, uuids, lr.LoadBalancer)
+			} else {
+				require.Empty(t, lr.LoadBalancer)
+			}
+		})
+	}
+}

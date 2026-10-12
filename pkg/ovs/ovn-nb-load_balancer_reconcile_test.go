@@ -185,3 +185,24 @@ func TestReconcileResourceLoadBalancersRejectsStaleSnapshot(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "keep", tcp.ExternalIDs["concurrent"], "retry must preserve the concurrent metadata update")
 }
+
+func TestReconcileResourceLoadBalancersGuardsUnchangedRows(t *testing.T) {
+	nbClient := newResourceLoadBalancerTestClient(t)
+	reconciliation := resourceLoadBalancerFixture(t, nbClient)
+	require.NoError(t, nbClient.ReconcileLoadBalancers(reconciliation))
+	reconciliation.LoadBalancers = append(reconciliation.LoadBalancers, LoadBalancerDesiredState{
+		Config: LoadBalancerConfig{Name: "new-sctp", Protocol: "sctp", ExternalIDs: maps.Clone(reconciliation.OwnerExternalIDs)},
+		VIPs:   map[string]string{"10.96.0.10:90": "10.0.0.3:9090"}, LogicalSwitches: []string{"subnet"},
+	})
+	ops, err := nbClient.resourceLoadBalancerOps(reconciliation)
+	require.NoError(t, err)
+	require.NoError(t, nbClient.DeleteLoadBalancer("tcp"))
+	require.Error(t, nbClient.Transact("vanished-resource-lb", ops))
+	sctp, err := nbClient.GetLoadBalancer("new-sctp", true)
+	require.NoError(t, err)
+	require.Nil(t, sctp, "a vanished unchanged TCP LB must roll back the new SCTP LB")
+	require.NoError(t, nbClient.ReconcileLoadBalancers(reconciliation))
+	tcp, err := nbClient.GetLoadBalancer("tcp", false)
+	require.NoError(t, err)
+	require.Equal(t, reconciliation.LoadBalancers[0].VIPs, tcp.Vips)
+}
