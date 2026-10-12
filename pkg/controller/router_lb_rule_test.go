@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -834,4 +835,49 @@ func Test_enqueueUpdateRouterLBRule_isRecreate(t *testing.T) {
 			assert.Equal(t, tt.wantIsRecreate, info.IsRecreate)
 		})
 	}
+}
+
+func TestHandleUpdateRouterLBRuleClearedEIPDeletesOldService(t *testing.T) {
+	service := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "rlr-rlr1",
+			Namespace: metav1.NamespaceDefault,
+			UID:       types.UID("service-uid"),
+		},
+	}
+	setServiceScopedLBOwner(service, routerLBRuleLBOwnerKind, "rlr1", "rlr-uid")
+	rule := &kubeovnv1.RouterLBRule{
+		ObjectMeta: metav1.ObjectMeta{Name: "rlr1", UID: "rlr-uid"},
+		Spec: kubeovnv1.RouterLBRuleSpec{
+			Vpc: "vpc1", Namespace: metav1.NamespaceDefault,
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		RouterLBRules: []*kubeovnv1.RouterLBRule{rule},
+		Services:      []*corev1.Service{service},
+	})
+	require.NoError(t, err)
+	fc.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).DoAndReturn(func(filter func(*ovnnb.LoadBalancer) bool) error {
+		matching := &ovnnb.LoadBalancer{ExternalIDs: serviceScopedLBExternalIDs(service, "vpc1", serviceLBExternalTraffic)}
+		if !filter(matching) {
+			t.Fatal("cleanup filter must select the RouterLBRule load balancer")
+		}
+		other := &ovnnb.LoadBalancer{ExternalIDs: map[string]string{
+			serviceLBOwnerExternalID: "other-uid",
+		}}
+		if filter(other) {
+			t.Fatal("cleanup filter must not select another owner's load balancer")
+		}
+		return nil
+	})
+
+	err = fc.fakeController.handleUpdateRouterLBRule(&RouterLBRuleInfo{
+		Name: "rlr1", Namespace: metav1.NamespaceDefault, UID: "rlr-uid", OvnEip: "old-eip",
+		Vpc: "vpc1", Ports: []int32{80}, IsRecreate: true,
+	})
+	require.NoError(t, err)
+	_, err = fc.fakeController.config.KubeClient.CoreV1().Services(metav1.NamespaceDefault).Get(
+		context.Background(), "rlr-rlr1", metav1.GetOptions{},
+	)
+	assert.True(t, k8serrors.IsNotFound(err), "old generated service must be deleted")
 }

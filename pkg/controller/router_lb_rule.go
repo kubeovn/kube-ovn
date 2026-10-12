@@ -498,6 +498,18 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 
 func (c *Controller) handleUpdateRouterLBRule(info *RouterLBRuleInfo) error {
 	klog.V(3).Infof("handleUpdateRouterLBRule %s", info.Name)
+	if info.IsRecreate {
+		// Clearing Spec.OvnEip leaves no desired Service state for the add/update
+		// worker to reconcile. Remove the old generated Service and its scoped
+		// load balancers using the snapshot carried in the update event.
+		if rlr, err := c.routerLBRuleLister.Get(info.Name); err == nil {
+			if rlr.Spec.OvnEip == "" {
+				return c.handleDelRouterLBRule(info)
+			}
+		} else if !k8serrors.IsNotFound(err) {
+			klog.Warningf("failed to get RouterLBRule %s while checking cleared EIP: %v", info.Name, err)
+		}
+	}
 	if info.IsRecreate && routerLBRuleNamespaceChanged(c, info) {
 		if err := c.handleDelRouterLBRule(info); err != nil {
 			klog.Errorf("failed to delete RouterLBRule %s during update: %v", info.Name, err)
