@@ -130,6 +130,8 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 		oldSvc.Annotations[util.VpcAnnotation] == newSvc.Annotations[util.VpcAnnotation] &&
 		oldSvc.Annotations[util.LogicalRouterAnnotation] == newSvc.Annotations[util.LogicalRouterAnnotation] &&
 		oldSvc.Annotations[util.LogicalSwitchAnnotation] == newSvc.Annotations[util.LogicalSwitchAnnotation] &&
+		oldSvc.Annotations[util.SwitchLBRuleVipsAnnotation] == newSvc.Annotations[util.SwitchLBRuleVipsAnnotation] &&
+		oldSvc.Annotations[util.RouterLBRuleVipsAnnotation] == newSvc.Annotations[util.RouterLBRuleVipsAnnotation] &&
 		slices.Equal(oldClusterIps, newClusterIps) &&
 		reflect.DeepEqual(oldSvc.Spec, newSvc.Spec) {
 		return
@@ -165,7 +167,9 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	endpointReconcile := !reflect.DeepEqual(oldSpec, newSpec) ||
 		oldSvc.Annotations[util.VpcAnnotation] != newSvc.Annotations[util.VpcAnnotation] ||
 		oldSvc.Annotations[util.LogicalRouterAnnotation] != newSvc.Annotations[util.LogicalRouterAnnotation] ||
-		oldSvc.Annotations[util.LogicalSwitchAnnotation] != newSvc.Annotations[util.LogicalSwitchAnnotation]
+		oldSvc.Annotations[util.LogicalSwitchAnnotation] != newSvc.Annotations[util.LogicalSwitchAnnotation] ||
+		oldSvc.Annotations[util.SwitchLBRuleVipsAnnotation] != newSvc.Annotations[util.SwitchLBRuleVipsAnnotation] ||
+		oldSvc.Annotations[util.RouterLBRuleVipsAnnotation] != newSvc.Annotations[util.RouterLBRuleVipsAnnotation]
 	if endpointReconcile && (serviceUsesScopedLB(oldSvc) || serviceUsesScopedLB(newSvc)) && c.addOrUpdateEndpointSliceQueue != nil {
 		c.enqueueEndpointSliceService(cache.MetaObjectToName(newSvc).String(), oldSvc, newSvc)
 	}
@@ -182,14 +186,22 @@ func (c *Controller) handleDeleteService(service *vpcService) error {
 	defer func() { _ = c.svcKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle delete service %s", key)
 
-	// SwitchLBRule and RouterLBRule services use resource-scoped load balancers.
-	// Their generated headless Services can be deleted after the six fixed VPC
-	// load balancers have already been retired, so do not try to clean those
-	// legacy names here. The rule deletion handlers also call this cleanup and
-	// make the operation idempotent when both delete events race.
+	// SwitchLBRule and RouterLBRule deletion handlers own the complete cleanup
+	// transaction for their generated Services. Waiting for that handler avoids
+	// splitting scoped LB and legacy VIP cleanup across two NB transactions when
+	// informer delete events race.
 	if owner := serviceScopedLBOwner(service.Svc); owner.kind == switchLBRuleLBOwnerKind || owner.kind == routerLBRuleLBOwnerKind ||
 		service.Svc.Annotations[util.SwitchLBRuleVipsAnnotation] != "" || service.Svc.Annotations[util.RouterLBRuleVipsAnnotation] != "" {
-		return c.deleteServiceScopedLoadBalancers(service.Svc)
+		if _, ok := c.OVNNbClient.(resourceLoadBalancerClient); !ok {
+			return c.deleteServiceScopedLoadBalancers(service.Svc)
+		}
+		var vips []string
+		for _, ip := range getVipIps(service.Svc) {
+			for _, port := range service.Svc.Spec.Ports {
+				vips = append(vips, util.JoinHostPort(ip, port.Port))
+			}
+		}
+		return c.deleteServiceScopedLoadBalancersWithLegacyVIPs(service.Svc, service.Vpc, vips)
 	}
 
 	svcs, err := c.servicesLister.Services(v1.NamespaceAll).List(labels.Everything())

@@ -328,6 +328,7 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 	svcName := generateRlrSvcName(info.Name)
 	ownerSvc := &corev1.Service{Name: svcName, Namespace: info.Namespace}
 	setServiceScopedLBOwner(ownerSvc, routerLBRuleLBOwnerKind, info.Name, info.UID)
+	_, atomicLB := c.OVNNbClient.(resourceLoadBalancerClient)
 
 	var vips []string
 	vpcForRlr := info.Vpc
@@ -374,9 +375,12 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 		}
 	}
 
+	lbhcUUIDsToDelete := set.New[string]()
 	if len(vips) > 0 {
-		if err := c.deleteLegacyVpcVIPs(vpcForRlr, vips); err != nil {
-			return err
+		if !atomicLB {
+			if err := c.deleteLegacyVpcVIPs(vpcForRlr, vips); err != nil {
+				return err
+			}
 		}
 
 		lbhcs, err := c.OVNNbClient.ListLoadBalancerHealthChecks(
@@ -390,7 +394,6 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 		}
 
 		vipSubnets := make(map[string]struct{})
-		lbhcUUIDsToDelete := set.New[string]()
 		for _, lbhc := range lbhcs {
 			lbs, e := c.OVNNbClient.ListLoadBalancers(
 				func(lb *ovnnb.LoadBalancer) bool {
@@ -404,6 +407,13 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 
 			belongsToOwner := false
 			referencedByOtherOwner := false
+			if len(lbs) == 0 {
+				// The Service deletion handler may have removed the LB reference
+				// before the RouterLBRule worker observes the event. Router VIPs
+				// are unique, so an unreferenced health check for this VIP belongs
+				// to the rule cleanup and must be deleted in the same transaction.
+				belongsToOwner = true
+			}
 			for _, lb := range lbs {
 				if !serviceOwnsScopedLB(ownerSvc, &lb) {
 					referencedByOtherOwner = true
@@ -411,13 +421,15 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 				}
 				belongsToOwner = true
 
-				if e = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID); e != nil && !k8serrors.IsNotFound(e) {
-					klog.Errorf("failed to delete LBHC %s from LB %s: %v", lbhc.Vip, lb.Name, e)
-					return e
-				}
-				if e = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip); e != nil && !k8serrors.IsNotFound(e) {
-					klog.Errorf("failed to delete IP port mapping %s from LB %s: %v", lbhc.Vip, lb.Name, e)
-					return e
+				if !atomicLB {
+					if e = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID); e != nil && !k8serrors.IsNotFound(e) {
+						klog.Errorf("failed to delete LBHC %s from LB %s: %v", lbhc.Vip, lb.Name, e)
+						return e
+					}
+					if e = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip); e != nil && !k8serrors.IsNotFound(e) {
+						klog.Errorf("failed to delete IP port mapping %s from LB %s: %v", lbhc.Vip, lb.Name, e)
+						return e
+					}
 				}
 			}
 
@@ -431,13 +443,18 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 			}
 		}
 
-		if lbhcUUIDsToDelete.Len() > 0 {
+		if !atomicLB && lbhcUUIDsToDelete.Len() > 0 {
 			if err = c.OVNNbClient.DeleteLoadBalancerHealthChecks(
 				func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 					return lbhcUUIDsToDelete.Has(lbhc.UUID)
 				},
 			); err != nil && !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete LBHCs for RLR %s: %v", info.Name, err)
+				return err
+			}
+		}
+		if atomicLB {
+			if err := c.deleteServiceScopedLoadBalancersWithLegacyVIPs(ownerSvc, vpcForRlr, vips, lbhcUUIDsToDelete.UnsortedList()); err != nil {
 				return err
 			}
 		}
@@ -459,15 +476,21 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 			}
 		}
 	}
-
+	if atomicLB && len(vips) == 0 {
+		if err := c.deleteServiceScopedLoadBalancersWithLegacyVIPs(ownerSvc, vpcForRlr, vips, lbhcUUIDsToDelete.UnsortedList()); err != nil {
+			return err
+		}
+	}
 	if err := c.config.KubeClient.CoreV1().Services(info.Namespace).Delete(context.Background(), svcName, metav1.DeleteOptions{}); err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to delete service %s: %v", svcName, err)
 			return err
 		}
 	}
-	if err := c.deleteServiceScopedLoadBalancers(ownerSvc); err != nil {
-		return err
+	if !atomicLB {
+		if err := c.deleteServiceScopedLoadBalancers(ownerSvc); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -475,7 +498,7 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 
 func (c *Controller) handleUpdateRouterLBRule(info *RouterLBRuleInfo) error {
 	klog.V(3).Infof("handleUpdateRouterLBRule %s", info.Name)
-	if info.IsRecreate {
+	if info.IsRecreate && routerLBRuleNamespaceChanged(c, info) {
 		if err := c.handleDelRouterLBRule(info); err != nil {
 			klog.Errorf("failed to delete RouterLBRule %s during update: %v", info.Name, err)
 			return err
@@ -486,6 +509,11 @@ func (c *Controller) handleUpdateRouterLBRule(info *RouterLBRuleInfo) error {
 		return err
 	}
 	return nil
+}
+
+func routerLBRuleNamespaceChanged(c *Controller, info *RouterLBRuleInfo) bool {
+	rlr, err := c.routerLBRuleLister.Get(info.Name)
+	return err == nil && rlr.Spec.Namespace != info.Namespace
 }
 
 func generateRlrHeadlessService(rlr *kubeovnv1.RouterLBRule, oldSvc *corev1.Service, svcName, namespace, vip string) *corev1.Service {

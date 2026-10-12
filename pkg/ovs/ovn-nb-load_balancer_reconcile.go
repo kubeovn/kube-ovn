@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
@@ -34,6 +35,7 @@ type LoadBalancerDesiredState struct {
 type LoadBalancerReconciliation struct {
 	OwnerExternalIDs         map[string]string
 	LoadBalancers            []LoadBalancerDesiredState
+	HealthCheckDeletions     []string
 	VIPDeletions             []TemplateVIPDeletion
 	TemplateVariables        []ChassisTemplateVariableReconciliation
 	TemplateVariablePrefixes []string
@@ -41,9 +43,10 @@ type LoadBalancerReconciliation struct {
 }
 
 type loadBalancerReconcileRow struct {
-	original *ovnnb.LoadBalancer
-	desired  *ovnnb.LoadBalancer
-	deleted  bool
+	original          *ovnnb.LoadBalancer
+	desired           *ovnnb.LoadBalancer
+	deleted           bool
+	staleHealthChecks []*ovnnb.LoadBalancerHealthCheck
 }
 
 // ReconcileLoadBalancers atomically applies a resource's LB additions, updates,
@@ -90,6 +93,11 @@ func (c *OVNNbClient) resourceLoadBalancerOps(reconciliation LoadBalancerReconci
 		return nil, err
 	}
 	ops = append(ops, attachmentOps...)
+	healthCheckDeleteOps, err := c.resourceLoadBalancerHealthCheckDeleteOps(rows, reconciliation.HealthCheckDeletions)
+	if err != nil {
+		return nil, err
+	}
+	ops = append(ops, healthCheckDeleteOps...)
 	variableOps, err := c.resourceLoadBalancerVariableOps(reconciliation)
 	if err != nil {
 		return nil, err
@@ -138,6 +146,13 @@ func (c *OVNNbClient) resourceLoadBalancerRows(reconciliation LoadBalancerReconc
 		row, err := c.resourceLoadBalancerRow(rows, name)
 		if err != nil {
 			return nil, err
+		}
+		if row.original != nil {
+			for key, value := range reconciliation.OwnerExternalIDs {
+				if row.original.ExternalIDs[key] != value {
+					return nil, fmt.Errorf("load balancer %s exists but belongs to another resource", name)
+				}
+			}
 		}
 		row.deleted = false
 		applyLoadBalancerDesiredState(row.desired, desired)
@@ -277,15 +292,41 @@ func (c *OVNNbClient) resourceLoadBalancerHealthCheckOps(row *loadBalancerReconc
 		}
 	}
 	row.desired.HealthCheck = nil
+	row.staleHealthChecks = nil
 	var ops []ovsdb.Operation
 	for _, vip := range slices.Sorted(maps.Keys(desired)) {
 		if uuid := existing[vip]; uuid != "" {
 			row.desired.HealthCheck = append(row.desired.HealthCheck, uuid)
+			hc := &ovnnb.LoadBalancerHealthCheck{UUID: uuid}
+			if err := c.getResourceLoadBalancerHealthCheck(hc); err != nil {
+				return nil, err
+			}
+			updated := *hc
+			updated.ExternalIDs = maps.Clone(desired[vip])
+			updated.Options = loadBalancerHealthCheckOptions()
+			if !maps.Equal(hc.ExternalIDs, updated.ExternalIDs) || !maps.Equal(hc.Options, updated.Options) {
+				waitOps, err := c.Where(hc).Wait(ovsdb.WaitConditionEqual, new(0), hc, &hc.Vip, &hc.ExternalIDs, &hc.Options)
+				if err != nil {
+					return nil, err
+				}
+				updateOps, err := c.Where(hc).Update(&updated, &updated.ExternalIDs, &updated.Options)
+				if err != nil {
+					return nil, err
+				}
+				ops = append(ops, waitOps...)
+				ops = append(ops, updateOps...)
+			} else {
+				waitOps, err := c.Where(hc).Wait(ovsdb.WaitConditionEqual, new(0), hc, &hc.Vip, &hc.ExternalIDs, &hc.Options)
+				if err != nil {
+					return nil, err
+				}
+				ops = append(ops, waitOps...)
+			}
 			continue
 		}
 		hc := &ovnnb.LoadBalancerHealthCheck{
 			UUID: ovsclient.NamedUUID(), Vip: vip, ExternalIDs: maps.Clone(desired[vip]),
-			Options: map[string]string{"timeout": "20", "interval": "5", "success_count": "3", "failure_count": "3"},
+			Options: loadBalancerHealthCheckOptions(),
 		}
 		createOps, err := c.Create(hc)
 		if err != nil {
@@ -293,6 +334,109 @@ func (c *OVNNbClient) resourceLoadBalancerHealthCheckOps(row *loadBalancerReconc
 		}
 		ops = append(ops, createOps...)
 		row.desired.HealthCheck = append(row.desired.HealthCheck, hc.UUID)
+	}
+	if row.original != nil {
+		for _, uuid := range row.original.HealthCheck {
+			if slices.Contains(row.desired.HealthCheck, uuid) {
+				continue
+			}
+			hc := &ovnnb.LoadBalancerHealthCheck{UUID: uuid}
+			if err := c.getResourceLoadBalancerHealthCheck(hc); err != nil {
+				return nil, err
+			}
+			row.staleHealthChecks = append(row.staleHealthChecks, hc)
+		}
+	}
+	return ops, nil
+}
+
+func loadBalancerHealthCheckOptions() map[string]string {
+	return map[string]string{"timeout": "20", "interval": "5", "success_count": "3", "failure_count": "3"}
+}
+
+func (c *OVNNbClient) resourceLoadBalancerHealthCheckDeleteOps(rows map[string]*loadBalancerReconcileRow, explicitUUIDs []string) ([]ovsdb.Operation, error) {
+	if len(rows) == 0 && len(explicitUUIDs) == 0 {
+		return nil, nil
+	}
+	allLoadBalancers, err := c.ListLoadBalancers(nil)
+	if err != nil {
+		return nil, err
+	}
+	ownedUUIDs := make(map[string]struct{}, len(rows))
+	retainedUUIDs := make(map[string]struct{})
+	for _, row := range rows {
+		if row.original != nil {
+			ownedUUIDs[row.original.UUID] = struct{}{}
+		}
+		if row.desired != nil && !row.deleted {
+			for _, uuid := range row.desired.HealthCheck {
+				retainedUUIDs[uuid] = struct{}{}
+			}
+		}
+	}
+	var ops []ovsdb.Operation
+	scheduled := make(map[string]struct{})
+	deleteHealthCheck := func(hc *ovnnb.LoadBalancerHealthCheck) error {
+		if _, retained := retainedUUIDs[hc.UUID]; retained {
+			return nil
+		}
+		if _, alreadyScheduled := scheduled[hc.UUID]; alreadyScheduled {
+			return nil
+		}
+		referencedElsewhere := slices.ContainsFunc(allLoadBalancers, func(lb ovnnb.LoadBalancer) bool {
+			if _, owned := ownedUUIDs[lb.UUID]; owned {
+				return false
+			}
+			return slices.Contains(lb.HealthCheck, hc.UUID)
+		})
+		if referencedElsewhere {
+			return nil
+		}
+		waitOps, err := c.Where(hc).Wait(ovsdb.WaitConditionEqual, new(0), hc, &hc.Vip, &hc.ExternalIDs, &hc.Options)
+		if err != nil {
+			return err
+		}
+		deleteOps, err := c.Where(hc).Delete()
+		if err != nil {
+			return err
+		}
+		scheduled[hc.UUID] = struct{}{}
+		ops = append(ops, waitOps...)
+		ops = append(ops, deleteOps...)
+		return nil
+	}
+	for _, row := range rows {
+		staleHealthChecks := row.staleHealthChecks
+		if row.deleted && row.original != nil {
+			staleHealthChecks = make([]*ovnnb.LoadBalancerHealthCheck, 0, len(row.original.HealthCheck))
+			for _, uuid := range row.original.HealthCheck {
+				hc := &ovnnb.LoadBalancerHealthCheck{UUID: uuid}
+				if err := c.getResourceLoadBalancerHealthCheck(hc); err != nil {
+					return nil, err
+				}
+				staleHealthChecks = append(staleHealthChecks, hc)
+			}
+		}
+		for _, hc := range staleHealthChecks {
+			if err := deleteHealthCheck(hc); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for _, uuid := range explicitUUIDs {
+		if uuid == "" {
+			continue
+		}
+		hc := &ovnnb.LoadBalancerHealthCheck{UUID: uuid}
+		if err := c.getResourceLoadBalancerHealthCheck(hc); err != nil {
+			if errors.Is(err, client.ErrNotFound) {
+				continue
+			}
+			return nil, err
+		}
+		if err := deleteHealthCheck(hc); err != nil {
+			return nil, err
+		}
 	}
 	return ops, nil
 }
@@ -306,6 +450,8 @@ func (c *OVNNbClient) pruneResourceLoadBalancerHealthChecks(row *loadBalancerRec
 		}
 		if _, ok := row.desired.Vips[hc.Vip]; ok {
 			uuids = append(uuids, uuid)
+		} else {
+			row.staleHealthChecks = append(row.staleHealthChecks, hc)
 		}
 	}
 	row.desired.HealthCheck = uuids
@@ -392,6 +538,11 @@ func (c *OVNNbClient) resourceLoadBalancerVariableOps(reconciliation LoadBalance
 			continue
 		}
 		if maps.Equal(row.Variables, desired[chassis]) {
+			guards, err := c.Where(row).Wait(ovsdb.WaitConditionEqual, new(0), row, &row.Variables)
+			if err != nil {
+				return nil, err
+			}
+			ops = append(ops, guards...)
 			continue
 		}
 		guards, err := c.Where(row).Wait(ovsdb.WaitConditionEqual, new(0), row, &row.Variables)
