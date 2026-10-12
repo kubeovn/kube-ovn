@@ -369,3 +369,55 @@ func TestGcNodeKeepsPolicyAdoptedBySameNameReplacement(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, remaining, 1, "the policy of a same-name replacement node must survive gc")
 }
+
+func TestGcAddressSetDeletesOrphanedU2OOverlayCIDRs(t *testing.T) {
+	t.Parallel()
+
+	const liveVpc = "live-vpc"
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs: []*kubeovnv1.Vpc{{Name: liveVpc}},
+	})
+	require.NoError(t, err)
+
+	orphanV4, orphanV6 := u2oOverlayCIDRsAddressSetNames("orphan-vpc")
+	liveV4, liveV6 := u2oOverlayCIDRsAddressSetNames(liveVpc)
+	addressSets := []ovnnb.AddressSet{
+		{Name: orphanV4, ExternalIDs: u2oOverlayCIDRsAddressSetExternalIDs("orphan-vpc")},
+		{Name: orphanV6, ExternalIDs: u2oOverlayCIDRsAddressSetExternalIDs("orphan-vpc")},
+		{Name: liveV4, ExternalIDs: u2oOverlayCIDRsAddressSetExternalIDs(liveVpc)},
+		{Name: liveV6, ExternalIDs: u2oOverlayCIDRsAddressSetExternalIDs(liveVpc)},
+	}
+
+	fc.mockOvnClient.EXPECT().ListAddressSets(map[string]string{"vendor": util.CniTypeName}).Return(addressSets, nil)
+	fc.mockOvnClient.EXPECT().DeleteAddressSet(orphanV4, orphanV6).Return(nil)
+
+	require.NoError(t, fc.fakeController.gcAddressSet())
+}
+
+func TestGcAddressSetSkipsVpcRecreatedWhileWaitingForLock(t *testing.T) {
+	t.Parallel()
+
+	const vpcName = "recreated-vpc"
+	fc, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	ctrl.vpcKeyMutex = keymutex.NewHashed(1)
+	orphanV4, orphanV6 := u2oOverlayCIDRsAddressSetNames(vpcName)
+	listed := make(chan struct{})
+	fc.mockOvnClient.EXPECT().ListAddressSets(map[string]string{"vendor": util.CniTypeName}).DoAndReturn(func(map[string]string) ([]ovnnb.AddressSet, error) {
+		close(listed)
+		return []ovnnb.AddressSet{
+			{Name: orphanV4, ExternalIDs: u2oOverlayCIDRsAddressSetExternalIDs(vpcName)},
+			{Name: orphanV6, ExternalIDs: u2oOverlayCIDRsAddressSetExternalIDs(vpcName)},
+		}, nil
+	})
+
+	ctrl.vpcKeyMutex.LockKey(vpcName)
+	errCh := make(chan error, 1)
+	go func() { errCh <- ctrl.gcAddressSet() }()
+	<-listed
+	require.NoError(t, fc.fakeInformers.vpcInformer.Informer().GetStore().Add(&kubeovnv1.Vpc{Name: vpcName}))
+	_ = ctrl.vpcKeyMutex.UnlockKey(vpcName)
+
+	require.NoError(t, <-errCh)
+}

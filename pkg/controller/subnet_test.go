@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -149,7 +151,10 @@ func TestAddPolicyRouteForU2OInterconn_OverlayOnlyRouting(t *testing.T) {
 		},
 	}
 
-	fc := newFakeController(t)
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs: []*kubeovnv1.Vpc{{Name: util.DefaultVpc}},
+	})
+	require.NoError(t, err)
 	ctrl := fc.fakeController
 	mockOvnClient := fc.mockOvnClient
 	require.NoError(t, fc.fakeInformers.subnetInformer.Informer().GetStore().Add(subnet))
@@ -188,7 +193,7 @@ func TestAddPolicyRouteForU2OInterconn_OverlayOnlyRouting(t *testing.T) {
 		"subnet":           subnet.Name,
 	}, true).Return(nil, nil)
 
-	err := ctrl.addPolicyRouteForU2OInterconn(subnet)
+	err = ctrl.addPolicyRouteForU2OInterconn(subnet)
 	require.NoError(t, err)
 }
 
@@ -212,7 +217,10 @@ func TestSyncU2OOverlayCIDRsAddressSet_UpdatesAfterOverlaySubnetDeletion(t *test
 	overlayB := &kubeovnv1.Subnet{Name: overlayBName, Spec: kubeovnv1.SubnetSpec{Vpc: vpcName, CIDRBlock: overlayBV4 + "," + overlayBV6}}
 	underlay := &kubeovnv1.Subnet{Name: underlayName, Spec: kubeovnv1.SubnetSpec{Vpc: vpcName, Vlan: underlayVlan, CIDRBlock: underlayCIDR}}
 
-	fc := newFakeController(t)
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs: []*kubeovnv1.Vpc{{Name: vpcName}},
+	})
+	require.NoError(t, err)
 	ctrl := fc.fakeController
 	mockOvnClient := fc.mockOvnClient
 	require.NoError(t, fc.fakeInformers.subnetInformer.Informer().GetStore().Add(overlayA))
@@ -245,6 +253,66 @@ func TestSyncU2OOverlayCIDRsAddressSet_UpdatesAfterOverlaySubnetDeletion(t *test
 	require.NoError(t, err)
 	require.Equal(t, []string{overlayAV4}, v4CIDRs)
 	require.Equal(t, []string{overlayAV6}, v6CIDRs)
+}
+
+func TestSyncU2OOverlayCIDRsAddressSet_DeletesWhenVpcIsGone(t *testing.T) {
+	t.Parallel()
+
+	const vpcName = "deleted-vpc"
+	fc, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+
+	v4Name, v6Name := u2oOverlayCIDRsAddressSetNames(vpcName)
+	fc.mockOvnClient.EXPECT().DeleteAddressSet(v4Name, v6Name).Return(nil)
+
+	v4CIDRs, v6CIDRs, err := fc.fakeController.syncU2OOverlayCIDRsAddressSet(vpcName, "")
+	require.NoError(t, err)
+	require.Empty(t, v4CIDRs)
+	require.Empty(t, v6CIDRs)
+}
+
+func TestSyncU2OOverlayCIDRsAddressSetSerializesPerVPC(t *testing.T) {
+	const vpcName = util.DefaultVpc
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs: []*kubeovnv1.Vpc{{Name: vpcName}},
+		Subnets: []*kubeovnv1.Subnet{{
+			Name: "overlay-a",
+			Spec: kubeovnv1.SubnetSpec{Vpc: vpcName, CIDRBlock: "10.244.0.0/16,fd00:244::/64"},
+		}},
+	})
+	require.NoError(t, err)
+
+	var active, maxActive atomic.Int32
+	fc.mockOvnClient.EXPECT().CreateAddressSet(gomock.Any(), gomock.Any()).DoAndReturn(func(string, map[string]string) error {
+		current := active.Add(1)
+		for {
+			observed := maxActive.Load()
+			if current <= observed || maxActive.CompareAndSwap(observed, current) {
+				break
+			}
+		}
+		time.Sleep(10 * time.Millisecond)
+		active.Add(-1)
+		return nil
+	}).AnyTimes()
+	fc.mockOvnClient.EXPECT().AddressSetUpdateAddress(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+
+	const calls = 8
+	var wg sync.WaitGroup
+	errCh := make(chan error, calls)
+	for range calls {
+		wg.Go(func() {
+			_, _, syncErr := fc.fakeController.syncU2OOverlayCIDRsAddressSet(vpcName, "")
+			errCh <- syncErr
+		})
+	}
+	wg.Wait()
+	close(errCh)
+	for syncErr := range errCh {
+		require.NoError(t, syncErr)
+	}
+
+	require.Equal(t, int32(1), maxActive.Load())
 }
 
 func Test_reconcileVips(t *testing.T) {

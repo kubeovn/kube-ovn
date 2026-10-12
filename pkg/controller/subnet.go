@@ -2556,9 +2556,18 @@ func u2oOverlayCIDRsAddressSetNames(vpcName string) (string, string) {
 
 func u2oOverlayCIDRsAddressSetExternalIDs(vpcName string) map[string]string {
 	return map[string]string{
-		"isU2OOverlayCIDRs": "true",
-		"vpc":               vpcName,
+		u2oOverlayCIDRsKey:    "true",
+		u2oOverlayCIDRsVpcKey: vpcName,
 	}
+}
+
+func (c *Controller) deleteU2OOverlayCIDRsAddressSets(vpcName string) error {
+	v4Name, v6Name := u2oOverlayCIDRsAddressSetNames(vpcName)
+	if err := c.OVNNbClient.DeleteAddressSet(v4Name, v6Name); err != nil {
+		klog.Errorf("delete u2o overlay cidrs address sets for vpc %s: %v", vpcName, err)
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) syncU2OOverlayCIDRsAddressSet(vpcName, excludeSubnet string) (v4CIDRs, v6CIDRs []string, err error) {
@@ -2566,7 +2575,23 @@ func (c *Controller) syncU2OOverlayCIDRsAddressSet(vpcName, excludeSubnet string
 		return nil, nil, nil
 	}
 
+	// Multiple subnet workers can reconcile different subnets in the same VPC at
+	// the same time. Serialize the shared address-set create/update sequence so
+	// they cannot race with each other or VPC deletion.
+	c.vpcKeyMutex.LockKey(vpcName)
+	defer func() { _ = c.vpcKeyMutex.UnlockKey(vpcName) }()
+
 	v4Name, v6Name := u2oOverlayCIDRsAddressSetNames(vpcName)
+	if _, err := c.vpcsLister.Get(vpcName); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			return nil, nil, err
+		}
+		if err := c.deleteU2OOverlayCIDRsAddressSets(vpcName); err != nil {
+			return nil, nil, err
+		}
+		return nil, nil, nil
+	}
+
 	externalIDs := u2oOverlayCIDRsAddressSetExternalIDs(vpcName)
 	if v4CIDRs, v6CIDRs, err = c.buildU2OOverlayCIDRs(vpcName, excludeSubnet); err != nil {
 		return nil, nil, err
