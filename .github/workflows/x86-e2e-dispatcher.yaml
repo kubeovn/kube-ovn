@@ -187,9 +187,11 @@ jobs:
         run: |
           set -euo pipefail
           gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" > live-pull-request.json
-          gh api --paginate --slurp \
+          # Only queued/running candidates need cancellation; bound the response to
+          # recent runs so the large workflow history does not trigger API 502s.
+          gh api \
             "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
-            | jq '{workflow_runs: [.[].workflow_runs[]]}' > executor-runs.json
+            | jq '{workflow_runs: .workflow_runs}' > executor-runs.json
           python3 - "$PR_NUMBER" <<'PY' > stale-runs.txt
           import json
           import sys
@@ -347,9 +349,11 @@ jobs:
             automatic-context.json)
           approvalGeneration=1
           requestKey="automatic-$PR_NUMBER-$headSHA"
-          gh api --paginate --slurp \
+          # Only queued/running candidates need cancellation; bound the response to
+          # recent runs so the large workflow history does not trigger API 502s.
+          gh api \
             "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
-            | jq '{workflow_runs: [.[].workflow_runs[]]}' > automatic-executor-runs.json
+            | jq '{workflow_runs: .workflow_runs}' > automatic-executor-runs.json
           python3 - "$PR_NUMBER" "$headSHA" <<'PY' > stale-automatic-runs.txt
           import json
           import sys
