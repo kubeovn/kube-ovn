@@ -87,7 +87,7 @@ func TestHandleAddOrUpdateSgForceRecordsRuleHashes(t *testing.T) {
 	ctrl := fc.fakeController
 
 	sg := &kubeovnv1.SecurityGroup{
-		ObjectMeta: metav1.ObjectMeta{Name: "test-sg"},
+		Name: "test-sg",
 		Spec: kubeovnv1.SecurityGroupSpec{
 			Tier: util.SecurityGroupAPITierMinimum,
 			IngressRules: []kubeovnv1.SecurityGroupRule{{
