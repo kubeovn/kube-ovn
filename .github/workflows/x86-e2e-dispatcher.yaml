@@ -191,7 +191,7 @@ jobs:
           # recent runs so the large workflow history does not trigger API 502s.
           for attempt in 1 2 3 4 5; do
             if gh api \
-              "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=10" \
               | jq '{workflow_runs: .workflow_runs}' > executor-runs.json; then
               break
             fi
@@ -359,7 +359,7 @@ jobs:
           # recent runs so the large workflow history does not trigger API 502s.
           for attempt in 1 2 3 4 5; do
             if gh api \
-              "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=100" \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/build-x86-image.yaml/runs?event=workflow_dispatch&per_page=10" \
               | jq '{workflow_runs: .workflow_runs}' > automatic-executor-runs.json; then
               break
             fi
