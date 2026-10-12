@@ -498,6 +498,28 @@ func (c *Controller) handleDelRouterLBRule(info *RouterLBRuleInfo) error {
 
 func (c *Controller) handleUpdateRouterLBRule(info *RouterLBRuleInfo) error {
 	klog.V(3).Infof("handleUpdateRouterLBRule %s", info.Name)
+	if info.IsRecreate {
+		// Clearing Spec.OvnEip leaves no desired Service state for the add/update
+		// worker to reconcile. Remove the old generated Service and its scoped
+		// load balancers using the snapshot carried in the update event.
+		if rlr, err := c.routerLBRuleLister.Get(info.Name); err == nil {
+			if rlr.Spec.OvnEip == "" {
+				return c.handleDelRouterLBRule(info)
+			}
+			if rlr.Spec.OvnEip == info.OvnEip {
+				if _, eipErr := c.ovnEipsLister.Get(rlr.Spec.OvnEip); k8serrors.IsNotFound(eipErr) {
+					// The referenced EIP was deleted while the rule still points to it.
+					// Remove the old Service and its scoped load balancers instead of
+					// retrying an add that can never resolve the EIP.
+					return c.handleDelRouterLBRule(info)
+				} else if eipErr != nil {
+					klog.Warningf("failed to get OvnEip %s while checking deleted EIP: %v", rlr.Spec.OvnEip, eipErr)
+				}
+			}
+		} else if !k8serrors.IsNotFound(err) {
+			klog.Warningf("failed to get RouterLBRule %s while checking cleared EIP: %v", info.Name, err)
+		}
+	}
 	if info.IsRecreate && routerLBRuleNamespaceChanged(c, info) {
 		if err := c.handleDelRouterLBRule(info); err != nil {
 			klog.Errorf("failed to delete RouterLBRule %s during update: %v", info.Name, err)
