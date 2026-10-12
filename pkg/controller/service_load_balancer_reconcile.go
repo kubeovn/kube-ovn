@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -211,4 +212,35 @@ func (c *Controller) deleteServiceLoadBalancerState(service *vpcService, service
 		}
 	}
 	return c.OVNNbClient.(resourceLoadBalancerClient).ReconcileLoadBalancers(plan.batch)
+}
+
+func (c *Controller) deleteServiceScopedLoadBalancersWithLegacyVIPs(svc *v1.Service, vpcName string, vips []string, healthCheckDeletions ...[]string) error {
+	client, ok := c.OVNNbClient.(resourceLoadBalancerClient)
+	if !ok {
+		if err := c.deleteLegacyVpcVIPs(vpcName, vips); err != nil {
+			return err
+		}
+		return c.deleteServiceScopedLoadBalancers(svc)
+	}
+	plan := newServiceLoadBalancerReconciliation(svc)
+	if len(healthCheckDeletions) > 0 {
+		plan.batch.HealthCheckDeletions = slices.Clone(healthCheckDeletions[0])
+	}
+	if vpcName != "" {
+		vpc, err := c.vpcsLister.Get(vpcName)
+		if err != nil && !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("get vpc %s for legacy load balancer cleanup: %w", vpcName, err)
+		}
+		if err == nil {
+			regular, session := c.legacyVpcLoadBalancerNames(vpc)
+			for _, names := range []map[v1.Protocol]string{regular, session} {
+				for _, name := range names {
+					for _, vip := range vips {
+						plan.batch.VIPDeletions = append(plan.batch.VIPDeletions, ovs.TemplateVIPDeletion{LoadBalancer: name, VIP: vip})
+					}
+				}
+			}
+		}
+	}
+	return client.ReconcileLoadBalancers(plan.batch)
 }

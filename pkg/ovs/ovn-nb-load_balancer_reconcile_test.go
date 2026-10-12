@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -205,4 +206,69 @@ func TestReconcileResourceLoadBalancersGuardsUnchangedRows(t *testing.T) {
 	tcp, err := nbClient.GetLoadBalancer("tcp", false)
 	require.NoError(t, err)
 	require.Equal(t, reconciliation.LoadBalancers[0].VIPs, tcp.Vips)
+}
+
+func TestReconcileResourceLoadBalancersCleansHealthChecks(t *testing.T) {
+	nbClient := newResourceLoadBalancerTestClient(t)
+	reconciliation := resourceLoadBalancerFixture(t, nbClient)
+	require.NoError(t, nbClient.ReconcileLoadBalancers(reconciliation))
+	healthChecks, err := nbClient.ListLoadBalancerHealthChecks(nil)
+	require.NoError(t, err)
+	require.Len(t, healthChecks, 1)
+
+	reconciliation.LoadBalancers[0].HealthChecks["10.96.0.10:80"] = map[string]string{"subnet": "new-subnet"}
+	require.NoError(t, nbClient.ReconcileLoadBalancers(reconciliation))
+	healthChecks, err = nbClient.ListLoadBalancerHealthChecks(nil)
+	require.NoError(t, err)
+	require.Len(t, healthChecks, 1)
+	require.Equal(t, "new-subnet", healthChecks[0].ExternalIDs["subnet"])
+
+	delete(reconciliation.LoadBalancers[0].VIPs, "10.96.0.10:80")
+	delete(reconciliation.LoadBalancers[0].HealthChecks, "10.96.0.10:80")
+	require.NoError(t, nbClient.ReconcileLoadBalancers(reconciliation))
+	healthChecks, err = nbClient.ListLoadBalancerHealthChecks(nil)
+	require.NoError(t, err)
+	require.Empty(t, healthChecks)
+
+	reconciliation.LoadBalancers = nil
+	require.NoError(t, nbClient.ReconcileLoadBalancers(reconciliation))
+	healthChecks, err = nbClient.ListLoadBalancerHealthChecks(nil)
+	require.NoError(t, err)
+	require.Empty(t, healthChecks)
+}
+
+func TestReconcileResourceLoadBalancersDeletesSharedHealthCheckOnce(t *testing.T) {
+	nbClient := newResourceLoadBalancerTestClient(t)
+	reconciliation := resourceLoadBalancerFixture(t, nbClient)
+	require.NoError(t, nbClient.ReconcileLoadBalancers(reconciliation))
+	tcp, err := nbClient.GetLoadBalancer("tcp", false)
+	require.NoError(t, err)
+	require.Len(t, tcp.HealthCheck, 1)
+	ops, err := nbClient.LoadBalancerUpdateHealthCheckOp("udp", tcp.HealthCheck, ovsdb.MutateOperationInsert)
+	require.NoError(t, err)
+	require.NoError(t, nbClient.Transact("share-resource-lb-health-check", ops))
+
+	reconciliation.LoadBalancers = nil
+	reconciliation.TemplateVariables = nil
+	require.NoError(t, nbClient.ReconcileLoadBalancers(reconciliation), "a shared health check must be deleted only once")
+	healthChecks, err := nbClient.ListLoadBalancerHealthChecks(nil)
+	require.NoError(t, err)
+	require.Empty(t, healthChecks)
+}
+
+func TestReconcileResourceLoadBalancersRejectsForeignSameName(t *testing.T) {
+	nbClient := newResourceLoadBalancerTestClient(t)
+	reconciliation := resourceLoadBalancerFixture(t, nbClient)
+	require.NoError(t, nbClient.ReconcileLoadBalancers(reconciliation))
+	require.NoError(t, nbClient.ReconcileLoadBalancer(LoadBalancerConfig{
+		Name: "foreign", Protocol: "udp", ExternalIDs: map[string]string{"owner": "other"},
+	}))
+	reconciliation.LoadBalancers = append(reconciliation.LoadBalancers, LoadBalancerDesiredState{
+		Config: LoadBalancerConfig{Name: "foreign", Protocol: "sctp", ExternalIDs: reconciliation.OwnerExternalIDs},
+	})
+	require.Error(t, nbClient.ReconcileLoadBalancers(reconciliation))
+	foreign, err := nbClient.GetLoadBalancer("foreign", false)
+	require.NoError(t, err)
+	require.Equal(t, "udp", *foreign.Protocol)
+	require.Equal(t, "other", foreign.ExternalIDs["owner"])
 }
