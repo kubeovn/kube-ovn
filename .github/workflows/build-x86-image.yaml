@@ -43,7 +43,7 @@ jobs:
     outputs:
       build-base: ${{ steps.check.outputs.build-base }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -66,7 +66,7 @@ jobs:
           fi
           rm -frv "$tmp_dir"
 
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         if: steps.check.outputs.build-base == 1
         with:
           android: true
@@ -74,7 +74,7 @@ jobs:
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
       - uses: docker/setup-buildx-action@v4
@@ -82,7 +82,7 @@ jobs:
         with:
           driver-opts: env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         if: steps.check.outputs.build-base == 1
         id: setup-go
         with:
@@ -121,7 +121,7 @@ jobs:
     outputs:
       build-dpdk-base: ${{ steps.check.outputs.build-dpdk-base }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -140,7 +140,7 @@ jobs:
           fi
           rm -frv "$tmp_dir"
 
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         if: steps.check.outputs.build-dpdk-base == 1
         with:
           android: true
@@ -148,7 +148,7 @@ jobs:
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
       - uses: docker/setup-buildx-action@v4
@@ -175,19 +175,19 @@ jobs:
       - build-kube-ovn-base
       - build-kube-ovn-dpdk-base
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v4
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: go.mod
@@ -200,7 +200,7 @@ jobs:
           echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
@@ -248,7 +248,7 @@ jobs:
           docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk
 
       - name: Scan base image
-        uses: aquasecurity/trivy-action@0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         env:
           TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         with:
@@ -360,17 +360,17 @@ jobs:
     name: Build vpc-nat-gateway
     runs-on: ubuntu-24.04
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Build
         run: |
@@ -388,7 +388,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -396,7 +396,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -410,7 +410,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -422,7 +422,7 @@ jobs:
 
       - name: Lookup Go cache
         id: lookup-go-cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -431,7 +431,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
           lookup-only: true
 
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         if: steps.lookup-go-cache.outputs.cache-hit != 'true'
         with:
           android: true
@@ -439,7 +439,7 @@ jobs:
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
       - name: Go cache
@@ -448,7 +448,7 @@ jobs:
           steps.lookup-go-cache.outputs.cache-hit != 'true' &&
           github.event_name == 'push' &&
           github.ref_name == github.event.repository.default_branch
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
@@ -467,8 +467,8 @@ jobs:
     outputs:
       test-netpol: ${{ steps.filter.outputs.kube-ovn-controller }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: go.mod
@@ -513,17 +513,17 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -531,7 +531,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -550,7 +550,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -561,7 +561,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -570,7 +570,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -697,20 +697,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
       - uses: actions/checkout@v7
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -791,17 +791,17 @@ jobs:
           - standard
           - lax
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -809,7 +809,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -828,7 +828,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -839,7 +839,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -850,7 +850,7 @@ jobs:
       - name: Install kind
         env:
           NP_ENFORCEMENT: "${{ matrix.np-enforcement }}"
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -987,17 +987,17 @@ jobs:
           - standard
           - lax
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1005,7 +1005,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1020,7 +1020,7 @@ jobs:
           fi
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1156,17 +1156,17 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1174,7 +1174,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1188,7 +1188,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1199,7 +1199,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -1208,7 +1208,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1339,17 +1339,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1357,7 +1357,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1371,7 +1371,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1382,7 +1382,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -1391,7 +1391,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1494,17 +1494,17 @@ jobs:
           - dual
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1512,7 +1512,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1526,7 +1526,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1537,7 +1537,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -1546,7 +1546,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1651,17 +1651,17 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1669,7 +1669,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1683,7 +1683,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1694,7 +1694,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -1703,7 +1703,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1796,17 +1796,17 @@ jobs:
         ip-family:
           - ipv4
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1814,7 +1814,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -1833,7 +1833,7 @@ jobs:
           sudo sed -i '/^search/d' /etc/resolv.conf
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -1844,7 +1844,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -1853,7 +1853,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1972,14 +1972,14 @@ jobs:
             tenant-control-plane: ha
             tenant-control-plane-replicas: 3
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
       - uses: actions/checkout@v7
@@ -2029,7 +2029,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2131,20 +2131,20 @@ jobs:
           - "false"
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2197,20 +2197,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2261,20 +2261,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2327,20 +2327,20 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2396,17 +2396,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2414,7 +2414,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2428,7 +2428,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -2439,7 +2439,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -2448,7 +2448,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2539,17 +2539,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2557,7 +2557,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2571,7 +2571,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -2582,7 +2582,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -2591,7 +2591,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2653,20 +2653,20 @@ jobs:
         k8s-version:
           - v1.29.14
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2728,17 +2728,17 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Install talosctl
         run: |
@@ -2814,17 +2814,17 @@ jobs:
         mode:
           - overlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2832,7 +2832,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2846,7 +2846,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -2857,7 +2857,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -2866,7 +2866,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2962,17 +2962,17 @@ jobs:
         mode:
           - overlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2980,7 +2980,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -2994,7 +2994,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -3005,7 +3005,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -3014,7 +3014,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3113,18 +3113,18 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
-      - uses: azure/setup-helm@v5.0.0
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v5
         with:
           version: '${{ env.HELM_VERSION }}'
 
@@ -3134,7 +3134,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -3157,7 +3157,7 @@ jobs:
           # restart docker
           sudo systemctl restart docker
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -3168,7 +3168,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -3177,7 +3177,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3280,17 +3280,17 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3298,7 +3298,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -3312,7 +3312,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -3323,7 +3323,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -3332,7 +3332,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3402,17 +3402,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3420,7 +3420,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -3435,7 +3435,7 @@ jobs:
           fi
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3507,17 +3507,17 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3525,7 +3525,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -3539,7 +3539,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -3550,7 +3550,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -3559,7 +3559,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3683,17 +3683,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3701,7 +3701,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -3715,7 +3715,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -3726,7 +3726,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -3735,7 +3735,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3826,17 +3826,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3844,7 +3844,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -3858,7 +3858,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -3869,7 +3869,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -3878,7 +3878,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3969,17 +3969,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3987,7 +3987,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -4001,7 +4001,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -4012,7 +4012,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -4021,7 +4021,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4107,17 +4107,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4125,7 +4125,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -4139,7 +4139,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -4150,7 +4150,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -4159,7 +4159,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4249,17 +4249,17 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4267,7 +4267,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -4281,7 +4281,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -4292,7 +4292,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -4301,7 +4301,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4361,17 +4361,17 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4379,7 +4379,7 @@ jobs:
 
       - name: Check out the default branch
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
@@ -4393,7 +4393,7 @@ jobs:
             echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
           fi
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         id: setup-go
         with:
           go-version-file: ${{ env.E2E_DIR }}/go.mod
@@ -4404,7 +4404,7 @@ jobs:
         run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
 
       - name: Go cache
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: |
             ~/.cache/go-build
@@ -4413,7 +4413,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.14.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4522,17 +4522,17 @@ jobs:
     if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-24.04
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2
         with:
           android: true
           dotnet: true
           haskell: true
           docker-images: false
           large-packages: false
-          tool-cache: false
+          preinstalled-runtimes: false
           swap-storage: false
 
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Download kube-ovn image
         uses: actions/download-artifact@v8

@@ -34,7 +34,7 @@ jobs:
     name: Build
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if: (github.event.inputs.branch || matrix.branch) == matrix.branch
         with:
           ref: ${{ matrix.branch }}
@@ -44,7 +44,7 @@ jobs:
         with:
           driver-opts: env.BUILDKIT_STEP_LOG_MAX_SIZE=50000000
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         id: setup-go
         with:
@@ -94,7 +94,7 @@ jobs:
     name: push
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         with:
           ref: ${{ matrix.branch }}
