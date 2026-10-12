@@ -39,24 +39,13 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 		return err
 	}
 
-	// only update logical router port networks when logical switch exist
+	// Reconcile existing patch ports in a single transaction.
 	if exist && switchNetworks != "" {
+		if needRouter {
+			return c.reconcileLogicalSwitchPatchPort(lsName, lrName, lspName, lrpName, switchNetworks, gatewayMAC, randomAllocateGW)
+		}
 		if randomAllocateGW {
 			return nil
-		}
-
-		lrp := &ovnnb.LogicalRouterPort{
-			Name:     lrpName,
-			Networks: strings.Split(switchNetworks, ","),
-		}
-		fields := []any{&lrp.Networks}
-		if gatewayMAC != "" {
-			lrp.MAC = gatewayMAC
-			fields = append(fields, &lrp.MAC)
-		}
-		if err := c.UpdateLogicalRouterPort(lrp, fields...); err != nil {
-			klog.Error(err)
-			return fmt.Errorf("update logical router port %s", lrpName)
 		}
 	} else {
 		if needRouter && switchNetworks != "" {
@@ -71,22 +60,70 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 		}
 	}
 
-	if needRouter && switchNetworks != "" && exist {
-		if err := c.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, switchNetworks, gatewayMAC); err != nil {
-			klog.Error(err)
-			return err
-		}
-	} else {
-		if randomAllocateGW {
-			return nil
-		}
-
-		if err := c.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
-			klog.Error(err)
-			return fmt.Errorf("remove router type port %s and %s: %w", lspName, lrpName, err)
-		}
+	if randomAllocateGW {
+		return nil
+	}
+	if err := c.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("remove router type port %s and %s: %w", lspName, lrpName, err)
 	}
 
+	return nil
+}
+
+func (c *OVNNbClient) reconcileLogicalSwitchPatchPort(lsName, lrName, lspName, lrpName, networks, gatewayMAC string, randomAllocateGW bool) error {
+	lrp, err := c.GetLogicalRouterPort(lrpName, true)
+	if err != nil {
+		return err
+	}
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		return err
+	}
+	var ops []ovsdb.Operation
+	if lrp == nil {
+		if gatewayMAC == "" {
+			gatewayMAC = util.GenerateMac()
+		}
+		lrp = &ovnnb.LogicalRouterPort{
+			UUID:     ovsclient.NamedUUID(),
+			Name:     lrpName,
+			Networks: strings.Split(networks, ","),
+			MAC:      gatewayMAC,
+			ExternalIDs: map[string]string{
+				"vendor": util.CniTypeName,
+			},
+		}
+		ops, err = c.CreateLogicalRouterPortOp(lrp, lrName)
+	} else if !randomAllocateGW {
+		lrp.Networks = strings.Split(networks, ",")
+		fields := []any{&lrp.Networks}
+		if gatewayMAC != "" {
+			lrp.MAC = gatewayMAC
+			fields = append(fields, &lrp.MAC)
+		}
+		ops, err = c.Where(lrp).Update(lrp, fields...)
+	}
+	if err != nil {
+		return fmt.Errorf("generate operations for logical router port %s: %w", lrpName, err)
+	}
+	if lsp == nil {
+		lsp = &ovnnb.LogicalSwitchPort{
+			UUID:      ovsclient.NamedUUID(),
+			Name:      lspName,
+			Addresses: []string{"router"},
+			Type:      "router",
+			Options:   map[string]string{"router-port": lrpName},
+		}
+		lspOps, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
+		if err != nil {
+			return fmt.Errorf("generate operations for logical switch port %s: %w", lspName, err)
+		}
+		ops = append(ops, lspOps...)
+	}
+	if err := c.Transact("ls-patch-port-update", ops); err != nil {
+		return fmt.Errorf("reconcile logical switch %s patch ports: %w", lsName, err)
+	}
 	return nil
 }
 
@@ -160,8 +197,12 @@ func (c *OVNNbClient) createLogicalSwitchWithPatchPort(lsName, lrName, networks,
 	ops = append(ops, lrpCreateOps...)
 	ops = append(ops, lsAttachOps...)
 	ops = append(ops, lrAttachOps...)
-	if _, err := c.TransactConditional("ls-lrp-lsp-add", ops); err != nil {
+	created, err := c.TransactConditional("ls-lrp-lsp-add", ops)
+	if err != nil {
 		return fmt.Errorf("create logical switch %s and patch ports: %w", lsName, err)
+	}
+	if !created {
+		return fmt.Errorf("logical switch %s was created concurrently; retry reconciling patch ports", lsName)
 	}
 	return nil
 }
@@ -340,11 +381,37 @@ func (c *OVNNbClient) DeleteLogicalSwitch(lsName string) error {
 }
 
 // DeleteLogicalSwitchResources removes subnet-owned ACLs, DHCP options, and
-// the logical switch in one northbound transaction.
-func (c *OVNNbClient) DeleteLogicalSwitchResources(lsName, protocol string) error {
-	aclOps, err := c.DeleteAclsOps(lsName, LogicalSwitchKey, "", nil)
+// the logical switch and its router patch ports in one northbound transaction.
+func (c *OVNNbClient) DeleteLogicalSwitchResources(lsName, protocol string, routerPortNames ...string) error {
+	ls, err := c.GetLogicalSwitch(lsName, true)
 	if err != nil {
-		return fmt.Errorf("generate ACL cleanup for logical switch %s: %w", lsName, err)
+		return err
+	}
+	var ops []ovsdb.Operation
+	if ls != nil {
+		aclOps, err := c.DeleteAclsOps(lsName, LogicalSwitchKey, "", nil)
+		if err != nil {
+			return fmt.Errorf("generate ACL cleanup for logical switch %s: %w", lsName, err)
+		}
+		ops = append(ops, aclOps...)
+	}
+	ports, err := c.ListLogicalSwitchPorts(false, map[string]string{LogicalSwitchKey: lsName}, func(lsp *ovnnb.LogicalSwitchPort) bool {
+		return lsp.Type == "router"
+	})
+	if err != nil {
+		return err
+	}
+	for _, port := range ports {
+		if name := port.Options["router-port"]; name != "" && !slices.Contains(routerPortNames, name) {
+			routerPortNames = append(routerPortNames, name)
+		}
+	}
+	for _, portName := range routerPortNames {
+		portOps, err := c.DeleteLogicalRouterPortOp(portName)
+		if err != nil {
+			return fmt.Errorf("generate router port cleanup for logical switch %s: %w", lsName, err)
+		}
+		ops = append(ops, portOps...)
 	}
 	dhcpOps, err := c.DeleteDHCPOptionsOp(lsName, protocol, false)
 	if err != nil {
@@ -354,8 +421,6 @@ func (c *OVNNbClient) DeleteLogicalSwitchResources(lsName, protocol string) erro
 	if err != nil {
 		return fmt.Errorf("generate logical switch deletion for %s: %w", lsName, err)
 	}
-	ops := make([]ovsdb.Operation, 0, len(aclOps)+len(dhcpOps)+len(lsOps))
-	ops = append(ops, aclOps...)
 	ops = append(ops, dhcpOps...)
 	ops = append(ops, lsOps...)
 	if err := c.Transact("subnet-ls-delete", ops); err != nil {

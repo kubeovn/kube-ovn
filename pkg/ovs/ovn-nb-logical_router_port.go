@@ -18,6 +18,74 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+// ReconcileBFDLogicalRouterPort configures or removes a VPC BFD port and its
+// HA chassis group in one transaction.
+func (c *OVNNbClient) ReconcileBFDLogicalRouterPort(lrName, portName string, networks, chassises []string, enabled bool) error {
+	if !enabled {
+		ops, err := c.DeleteLogicalRouterPortOp(portName)
+		if err != nil {
+			return err
+		}
+		lrp, err := c.GetLogicalRouterPort(portName, true)
+		if err != nil {
+			return err
+		}
+		if lrp != nil {
+			portOps, err := c.Where(lrp).Delete()
+			if err != nil {
+				return err
+			}
+			ops = append(ops, portOps...)
+		}
+		group, err := c.GetHAChassisGroup(portName, true)
+		if err != nil {
+			return err
+		}
+		if group != nil {
+			groupOps, err := c.Where(group).Delete()
+			if err != nil {
+				return err
+			}
+			ops = append(ops, groupOps...)
+		}
+		return c.Transact("vpc-bfd-port-delete", ops)
+	}
+	lrp, err := c.GetLogicalRouterPort(portName, true)
+	if err != nil {
+		return err
+	}
+	group, ops, err := c.createHAChassisGroupOps(portName, chassises, map[string]string{"lrp": portName})
+	if err != nil {
+		return err
+	}
+	create := lrp == nil
+	if create {
+		lrp = &ovnnb.LogicalRouterPort{
+			UUID: ovsclient.NamedUUID(),
+			Name: portName,
+			MAC:  util.GenerateMac(),
+		}
+	}
+	lrp.Networks = networks
+	lrp.Options = maps.Clone(lrp.Options)
+	if lrp.Options == nil {
+		lrp.Options = make(map[string]string)
+	}
+	lrp.Options["bfd-only"] = "true"
+	lrp.HaChassisGroup = &group.UUID
+	var portOps []ovsdb.Operation
+	if create {
+		portOps, err = c.CreateLogicalRouterPortOp(lrp, lrName)
+	} else {
+		portOps, err = c.Where(lrp).Update(lrp, &lrp.Networks, &lrp.Options, &lrp.HaChassisGroup)
+	}
+	if err != nil {
+		return err
+	}
+	ops = append(ops, portOps...)
+	return c.Transact("vpc-bfd-port-reconcile", ops)
+}
+
 func (c *OVNNbClient) CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error {
 	localRouterPort := fmt.Sprintf("%s-%s", localRouter, remoteRouter)
 	remoteRouterPort := fmt.Sprintf("%s-%s", remoteRouter, localRouter)
@@ -62,10 +130,18 @@ func (c *OVNNbClient) CreatePeerRouterPort(localRouter, remoteRouter, localRoute
 }
 
 func (c *OVNNbClient) UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error {
+	ops, err := c.logicalRouterPortRAOp(lrpName, ipv6RAConfigsStr, enableIPv6RA)
+	if err != nil {
+		return err
+	}
+	return c.Transact("lrp-update", ops)
+}
+
+func (c *OVNNbClient) logicalRouterPortRAOp(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) ([]ovsdb.Operation, error) {
 	lrp, err := c.GetLogicalRouterPort(lrpName, false)
 	if err != nil {
 		klog.Error(err)
-		return err
+		return nil, err
 	}
 
 	if !enableIPv6RA {
@@ -78,11 +154,11 @@ func (c *OVNNbClient) UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string
 		// dhcpv6 works only with Ipv6Prefix and Ipv6RaConfigs
 		if len(lrp.Ipv6Prefix) == 0 || len(lrp.Ipv6RaConfigs) == 0 {
 			klog.Warningf("dhcpv6 works only with Ipv6Prefix and Ipv6RaConfigs")
-			return nil
+			return nil, nil
 		}
 	}
 
-	return c.UpdateLogicalRouterPort(lrp, &lrp.Ipv6Prefix, &lrp.Ipv6RaConfigs)
+	return c.Where(lrp).Update(lrp, &lrp.Ipv6Prefix, &lrp.Ipv6RaConfigs)
 }
 
 func (c *OVNNbClient) UpdateLogicalRouterPortNetworks(lrpName string, networks []string) error {

@@ -22,9 +22,28 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	"github.com/kubeovn/kube-ovn/pkg/internal"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestHandleDeleteLogicalSwitchResources(t *testing.T) {
+	t.Parallel()
+	failure := errors.New("resource deletion failed")
+	for _, deletionErr := range []error{nil, failure} {
+		t.Run(fmt.Sprintf("error=%v", deletionErr), func(t *testing.T) {
+			t.Parallel()
+			fake := newFakeController(t)
+			name := "delete-subnet"
+			fake.mockOvnClient.EXPECT().LogicalSwitchExists(name).Return(true, nil)
+			fake.mockOvnClient.EXPECT().DeleteLogicalSwitchResources(name, kubeovnv1.ProtocolDual).Return(deletionErr)
+			if deletionErr == nil {
+				fake.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(ovs.GetLocalnetName(name)).Return(nil)
+			}
+			require.ErrorIs(t, fake.fakeController.handleDeleteLogicalSwitch(name), deletionErr)
+		})
+	}
+}
 
 func Test_readyToRemoveFinalizer(t *testing.T) {
 	t.Parallel()

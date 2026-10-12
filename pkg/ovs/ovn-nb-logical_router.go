@@ -75,9 +75,13 @@ func (c *OVNNbClient) CreateLogicalRouterWithOptions(lrName string, options map[
 	waitOp := ConstructWaitForNameNotExistsOperation(lrName, "Logical_Router")
 	ops := append([]ovsdb.Operation{waitOp}, createOps...)
 
-	if _, err := c.TransactConditional("lr-add", ops); err != nil {
+	created, err := c.TransactConditional("lr-add", ops)
+	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("create logical router %s: %w", lrName, err)
+	}
+	if !created && options != nil {
+		return fmt.Errorf("logical router %s was created concurrently; retry applying options", lrName)
 	}
 
 	return nil
