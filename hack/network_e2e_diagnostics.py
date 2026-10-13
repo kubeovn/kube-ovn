@@ -308,8 +308,8 @@ class Diagnostics:
         self.failureSequence = 0
         self.pendingFailure = None
         self.pendingFastFailure = None
-        self.lastFailureSnapshot = 0.0
-        self.lastFastFailure = 0.0
+        self.lastFailureSnapshot = None
+        self.lastFastFailure = None
 
     def recordFailure(self, line, kind):
         """Record every failure line, while sampling only a bounded subset."""
@@ -333,11 +333,12 @@ class Diagnostics:
         with self.failureStateLock:
             marker = self.lastFastFailure if fast else self.lastFailureSnapshot
             cooldown = fastFailureCooldown if fast else failureSnapshotCooldown
+            ready = marker is None or now - marker >= cooldown
             signal = self.fastFailure if fast else self.failure
             pending = self.pendingFastFailure if fast else self.pendingFailure
             if signal.is_set():
                 signal.clear()
-                if pending is not None and now - marker >= cooldown:
+                if pending is not None and ready:
                     event = pending
                     if fast:
                         self.pendingFastFailure = None
@@ -347,7 +348,7 @@ class Diagnostics:
                         self.lastFastFailure = now
                     else:
                         self.lastFailureSnapshot = now
-                elif pending is None and now - marker >= cooldown:
+                elif pending is None and ready:
                     event = {"phase": "signal", "observed": timestamp(),
                              "kind": "unknown", "line": None}
                 elif pending is not None:
