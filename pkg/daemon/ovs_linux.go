@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -965,67 +964,6 @@ func (c *Controller) loopTunnelCheck() {
 			klog.Errorf("fail to bring up nic: %s, %v", tunnelNic, err)
 		}
 	}
-}
-
-func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS) error {
-	exists, err := ovs.PortExists(util.NodeGwNic)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	filters := labels.Set{util.OvnEipTypeLabel: util.OvnEipTypeLRP}
-	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(filters))
-	if err != nil {
-		klog.Errorf("failed to list ovn eip, %v", err)
-		return err
-	}
-	if len(ovnEips) == 0 {
-		klog.Errorf("failed to get type %s ovn eip, %v", util.OvnEipTypeLRP, err)
-		// node ext gw eip need lrp eip to establish bfd session
-		return nil
-	}
-	if exists {
-		return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-			err = waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3, nil)
-			if err == nil {
-				if output, err := exec.Command("bfdd-control", "status").CombinedOutput(); err != nil {
-					err := fmt.Errorf("failed to get bfdd status, %w, %s", err, output)
-					klog.Error(err)
-					return err
-				}
-				for _, eip := range ovnEips {
-					if eip.Status.Ready {
-						// #nosec G204
-						cmd := exec.Command("bfdd-control", "status", "remote", eip.Spec.V4Ip, "local", nodeExtIP)
-						var outb bytes.Buffer
-						cmd.Stdout = &outb
-						if err := cmd.Run(); err == nil {
-							out := outb.String()
-							klog.V(3).Info(out)
-							if strings.Contains(out, "No session") {
-								// not exist
-								cmd = exec.Command("bfdd-control", "allow", eip.Spec.V4Ip) // #nosec G204
-								if err := cmd.Run(); err != nil {
-									err := fmt.Errorf("failed to add lrp %s ip %s into bfd listening list, %w", eip.Name, eip.Status.V4Ip, err)
-									klog.Error(err)
-									return err
-								}
-							}
-						} else {
-							err := fmt.Errorf("failed to check bfd status remote %s local %s", eip.Spec.V4Ip, nodeExtIP)
-							klog.Error(err)
-							return err
-						}
-					}
-				}
-			}
-			return err
-		})
-	}
-
-	err = errors.New("node external gw not ready")
-	klog.Error(err)
-	return err
 }
 
 func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int, gwNS ns.NetNS) error {

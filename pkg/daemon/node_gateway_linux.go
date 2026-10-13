@@ -197,21 +197,27 @@ func serveNodeGatewayConnections(listener *net.UnixListener, handle func(NodeGat
 			defer conn.Close()
 			_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 			response := nodeGatewayResponse{}
-			if err := authorizeNodeGatewayPeer(conn); err != nil {
-				response.Error = err.Error()
-			} else {
+			authorizeErr := authorizeNodeGatewayPeer(conn)
+			switch {
+			case authorizeErr != nil:
+				response.Error = authorizeErr.Error()
+			default:
 				payload := make([]byte, nodeGatewayMaxPacket)
 				n, _, flags, _, err := conn.ReadMsgUnix(payload, nil)
-				if err != nil {
+				switch {
+				case err != nil:
 					response.Error = err.Error()
-				} else if flags&unix.MSG_TRUNC != 0 {
+				case flags&unix.MSG_TRUNC != 0:
 					response.Error = "node gateway request too large"
-				} else {
+				default:
 					var request NodeGatewayRequest
 					if err := json.Unmarshal(payload[:n], &request); err != nil {
 						response.Error = err.Error()
-					} else if err := handle(request); err != nil {
-						response.Error = err.Error()
+					}
+					if response.Error == "" {
+						if err := handle(request); err != nil {
+							response.Error = err.Error()
+						}
 					}
 				}
 			}
@@ -352,9 +358,7 @@ func containsNoSession(output string) bool {
 }
 
 func deleteNodeGateway() error {
-	return withHostMountNamespace(func() error {
-		return deleteNodeGatewayInHostMountNamespace()
-	})
+	return withHostMountNamespace(deleteNodeGatewayInHostMountNamespace)
 }
 
 func deleteNodeGatewayInHostMountNamespace() error {
