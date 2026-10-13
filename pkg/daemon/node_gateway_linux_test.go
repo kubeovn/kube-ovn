@@ -2,7 +2,11 @@
 
 package daemon
 
-import "testing"
+import (
+	"testing"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+)
 
 func TestNodeGatewayRequestValidate(t *testing.T) {
 	valid := NodeGatewayRequest{
@@ -48,5 +52,26 @@ func TestContainsNoSession(t *testing.T) {
 	}
 	if containsNoSession("Session Up\n") {
 		t.Fatal("active session was incorrectly detected as absent")
+	}
+}
+
+func TestCheckNodeGatewayBFDSkipsWithoutPeers(t *testing.T) {
+	if err := checkNodeGatewayBFD(NodeGatewayRequest{}); err != nil {
+		t.Fatalf("BFD check without peers returned an error: %v", err)
+	}
+}
+
+func TestReadyNodeGatewayPeersRequiresReadyIPv4LRP(t *testing.T) {
+	eips := []*kubeovnv1.OvnEip{
+		{Status: kubeovnv1.OvnEipStatus{Ready: false}, Spec: kubeovnv1.OvnEipSpec{V4Ip: "192.0.2.10"}},
+		{Status: kubeovnv1.OvnEipStatus{Ready: true}, Spec: kubeovnv1.OvnEipSpec{}},
+		{Status: kubeovnv1.OvnEipStatus{Ready: true}, Spec: kubeovnv1.OvnEipSpec{V4Ip: "192.0.2.20"}},
+	}
+	peers := readyNodeGatewayPeers(eips)
+	if len(peers) != 1 || peers[0] != "192.0.2.20" {
+		t.Fatalf("ready node gateway peers = %v, want only ready IPv4 peer", peers)
+	}
+	if got := readyNodeGatewayPeers(eips[:2]); len(got) != 0 {
+		t.Fatalf("unready LRP peers unexpectedly enabled node gateway: %v", got)
 	}
 }

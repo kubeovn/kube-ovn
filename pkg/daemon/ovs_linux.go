@@ -18,7 +18,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/containerd/containerd/v2/pkg/netns"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/k8snetworkplumbingwg/sriovnet"
 	sriovutilfs "github.com/k8snetworkplumbingwg/sriovnet/pkg/utils/filesystem"
@@ -1050,7 +1049,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 	} else {
 		klog.V(3).Infof("node external nic %q already in ns %s", util.NodeGwNic, util.NodeGwNsPath)
 	}
-	return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
+	return withCurrentThreadNetNS(gwNS, func(_ ns.NetNS) error {
 		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true, true, false, false); err != nil {
 			klog.Errorf("failed to configure node gw nic %s, %v", util.NodeGwNic, err)
 			return err
@@ -1125,15 +1124,24 @@ func removeNodeGwNic() error {
 }
 
 func removeNodeGwNs() error {
-	ns := netns.LoadNetNS(util.NodeGwNsPath)
-	ok, err := ns.Closed()
+	// Keep the fixed regular-file mount point after unmounting. The host
+	// /var/run/netns directory is normally root:root 0755, so the non-root
+	// helper cannot unlink it; retaining the placeholder also makes the next
+	// helper start able to recover without a writable host directory.
+	mountedNS, err := ns.GetNS(util.NodeGwNsPath)
 	if err != nil {
-		return fmt.Errorf("failed to remove node external gw ns %s: %w", util.NodeGwNs, err)
-	}
-	if !ok {
-		if err = ns.Remove(); err != nil {
-			return fmt.Errorf("failed to remove node external gw ns %s: %w", util.NodeGwNs, err)
+		var notNS ns.NSPathNotNSErr
+		var notExist ns.NSPathNotExistErr
+		if errors.As(err, &notNS) || errors.As(err, &notExist) {
+			return nil
 		}
+		return fmt.Errorf("failed to open node external gw ns %s: %w", util.NodeGwNs, err)
+	}
+	if err := mountedNS.Close(); err != nil {
+		return fmt.Errorf("failed to close node external gw ns %s: %w", util.NodeGwNs, err)
+	}
+	if err := unix.Unmount(util.NodeGwNsPath, unix.MNT_DETACH); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to unmount node external gw ns %s: %w", util.NodeGwNs, err)
 	}
 	klog.Infof("node external gw ns %s removed", util.NodeGwNs)
 	return nil
@@ -1216,11 +1224,12 @@ func (c *Controller) loopOvnExt0Check() {
 		return
 	}
 	klog.Infof("setup nic ovnext0 ip %s, mac %v, mtu %d", ipAddr, mac, c.config.MTU)
-	peers := make([]string, 0, len(cachedEips))
-	for _, eip := range cachedEips {
-		if eip.Status.Ready && eip.Spec.V4Ip != "" {
-			peers = append(peers, eip.Spec.V4Ip)
-		}
+	peers := readyNodeGatewayPeers(cachedEips)
+	if len(peers) == 0 {
+		// The node gateway BFD session is anchored to a ready LRP peer. Keep
+		// the EIP and node label pending until the peer is available.
+		klog.Infof("waiting for a ready LRP OVN EIP before setting up node gateway")
+		return
 	}
 	request := NodeGatewayRequest{
 		Operation:  nodeGatewayEnsure,
@@ -1247,6 +1256,16 @@ func (c *Controller) loopOvnExt0Check() {
 		klog.Errorf("failed to patch status for eip %s, %v", portName, err)
 		return
 	}
+}
+
+func readyNodeGatewayPeers(eips []*kubeovnv1.OvnEip) []string {
+	peers := make([]string, 0, len(eips))
+	for _, eip := range eips {
+		if eip.Status.Ready && eip.Spec.V4Ip != "" {
+			peers = append(peers, eip.Spec.V4Ip)
+		}
+	}
+	return peers
 }
 
 func (c *Controller) patchOvnEipStatus(key string, ready bool) error {

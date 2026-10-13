@@ -8871,8 +8871,10 @@ TPROXY_CONTAINER=""
 TPROXY_SECURITY_CONTEXT=""
 TPROXY_SOCKET_MOUNT=""
 TPROXY_SOCKET_VOLUME=""
-if [[ "$ENABLE_TPROXY" == "true" ]]; then
+if [[ "$ENABLE_TPROXY" == "true" || "$ENABLE_NODE_GATEWAY_HELPER" == "true" ]]; then
   TPROXY_SECURITY_CONTEXT="        fsGroup: 65534"
+fi
+if [[ "$ENABLE_TPROXY" == "true" ]]; then
   TPROXY_CONTAINER=$(cat <<EOF
       - name: tproxy
         image: "$REGISTRY/kube-ovn:$VERSION"
@@ -9257,6 +9259,15 @@ ${TPROXY_SECURITY_CONTEXT}
           - |
             chmod +t /usr/local/sbin
             chown -R nobody: /var/log/kube-ovn
+            if [ "$ENABLE_NODE_GATEWAY_HELPER" = "true" ]; then
+              if [ ! -e /var/run/netns/ovnext ]; then
+                touch /var/run/netns/ovnext
+              fi
+              if [ -f /var/run/netns/ovnext ]; then
+                chown 65534:65534 /var/run/netns/ovnext || true
+                chmod 0660 /var/run/netns/ovnext || true
+              fi
+            fi
             iptables -V
         securityContext:
           allowPrivilegeEscalation: true
