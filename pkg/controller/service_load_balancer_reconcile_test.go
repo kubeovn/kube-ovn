@@ -11,10 +11,12 @@ import (
 	metallbv1beta1 "go.universe.tf/metallb/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/keymutex"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -130,6 +132,49 @@ func TestServiceLoadBalancersReconcileAtomically(t *testing.T) {
 			}
 			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 			require.Len(t, recorder.transactions, 1, "an unchanged Service must not produce another NB transaction")
+		})
+	}
+}
+
+func TestDeleteServiceLoadBalancerStateCleansEmptyLegacyLoadBalancers(t *testing.T) {
+	for _, kind := range []string{serviceLBOwnerKind, switchLBRuleLBOwnerKind, routerLBRuleLBOwnerKind} {
+		t.Run(kind, func(t *testing.T) {
+			ctrl, nbClient, svc, _ := serviceLBReconcileFixture(t, corev1.ServiceTypeClusterIP, false)
+			ctrl.config.ClusterTCPLoadBalancer = "vpc-tcp-load"
+			ctrl.config.ClusterTCPSessionLoadBalancer = "vpc-tcp-sess-load"
+			vpc, err := ctrl.vpcsLister.Get("vpc")
+			require.NoError(t, err)
+			vpc = vpc.DeepCopy()
+			legacy := ctrl.GenVpcLoadBalancer("vpc")
+			vpc.Status.TCPLoadBalancer = legacy.TCPLoadBalancer
+			vpc.Status.TCPSessionLoadBalancer = legacy.TCPSessLoadBalancer
+			_, err = ctrl.config.KubeOvnClient.KubeovnV1().Vpcs().UpdateStatus(t.Context(), vpc, metav1.UpdateOptions{})
+			require.NoError(t, err)
+			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+			require.NoError(t, indexer.Add(vpc))
+			ctrl.vpcsLister = kubeovnlister.NewVpcLister(indexer)
+			require.NoError(t, nbClient.CreateLoadBalancer(legacy.TCPLoadBalancer, "tcp"))
+			require.NoError(t, nbClient.CreateLoadBalancer(legacy.TCPSessLoadBalancer, "tcp"))
+			require.NoError(t, nbClient.LoadBalancerAddVip(legacy.TCPLoadBalancer, "10.96.0.10:80", "10.0.0.2:8080"))
+			require.NoError(t, nbClient.LoadBalancerAddVip(legacy.TCPSessLoadBalancer, "10.96.0.10:80", "10.0.0.2:8080"))
+			require.NoError(t, nbClient.LoadBalancerAddVip(legacy.TCPSessLoadBalancer, "10.96.0.99:80", "10.0.0.9:8080"))
+
+			if kind == serviceLBOwnerKind {
+				require.NoError(t, ctrl.deleteServiceLoadBalancerState(&vpcService{Svc: svc, Vpc: "vpc"}, nil))
+			} else {
+				setServiceScopedLBOwner(svc, kind, "rule", "rule-uid")
+				require.NoError(t, ctrl.deleteServiceScopedLoadBalancersWithLegacyVIPs(svc, "vpc", []string{"10.96.0.10:80"}))
+			}
+			lb, err := nbClient.GetLoadBalancer(legacy.TCPLoadBalancer, true)
+			require.NoError(t, err)
+			require.Nil(t, lb)
+			session, err := nbClient.GetLoadBalancer(legacy.TCPSessLoadBalancer, false)
+			require.NoError(t, err)
+			require.Equal(t, map[string]string{"10.96.0.99:80": "10.0.0.9:8080"}, session.Vips)
+			updated, err := ctrl.config.KubeOvnClient.KubeovnV1().Vpcs().Get(t.Context(), "vpc", metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Empty(t, updated.Status.TCPLoadBalancer)
+			require.Equal(t, legacy.TCPSessLoadBalancer, updated.Status.TCPSessionLoadBalancer)
 		})
 	}
 }
