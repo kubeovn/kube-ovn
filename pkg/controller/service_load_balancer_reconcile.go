@@ -11,6 +11,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -198,9 +199,23 @@ func (c *Controller) commitServiceLoadBalancers(ctx *endpointSliceReconcileConte
 
 func (c *Controller) deleteServiceLoadBalancerState(service *vpcService, services []*v1.Service) error {
 	plan := newServiceLoadBalancerReconciliation(service.Svc)
+	var vpc *kubeovnv1.Vpc
+	if service.Vpc != "" {
+		var err error
+		vpc, err = c.vpcsLister.Get(service.Vpc)
+		if err != nil && !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("get vpc %s for legacy load balancer cleanup: %w", service.Vpc, err)
+		}
+	}
 	legacy := c.GenVpcLoadBalancer(service.Vpc)
 	regular := map[v1.Protocol]string{v1.ProtocolTCP: legacy.TCPLoadBalancer, v1.ProtocolUDP: legacy.UDPLoadBalancer, v1.ProtocolSCTP: legacy.SctpLoadBalancer}
 	session := map[v1.Protocol]string{v1.ProtocolTCP: legacy.TCPSessLoadBalancer, v1.ProtocolUDP: legacy.UDPSessLoadBalancer, v1.ProtocolSCTP: legacy.SctpSessLoadBalancer}
+	if vpc != nil {
+		regular, session = c.legacyVpcLoadBalancerNames(vpc)
+		for _, names := range []map[v1.Protocol]string{regular, session} {
+			plan.batch.DeleteEmptyLoadBalancers = append(plan.batch.DeleteEmptyLoadBalancers, slices.Collect(maps.Values(names))...)
+		}
+	}
 	for _, ip := range getVipIps(service.Svc) {
 		if slices.ContainsFunc(services, func(svc *v1.Service) bool { return slices.Contains(util.ServiceClusterIPs(*svc), ip) }) {
 			continue
@@ -211,7 +226,13 @@ func (c *Controller) deleteServiceLoadBalancerState(service *vpcService, service
 			}
 		}
 	}
-	return c.OVNNbClient.(resourceLoadBalancerClient).ReconcileLoadBalancers(plan.batch)
+	if err := c.OVNNbClient.(resourceLoadBalancerClient).ReconcileLoadBalancers(plan.batch); err != nil {
+		return err
+	}
+	if vpc != nil {
+		return c.cleanupLegacyVpcLoadBalancers(vpc)
+	}
+	return nil
 }
 
 func (c *Controller) deleteServiceScopedLoadBalancersWithLegacyVIPs(svc *v1.Service, vpcName string, vips []string, healthCheckDeletions ...[]string) error {
@@ -234,6 +255,7 @@ func (c *Controller) deleteServiceScopedLoadBalancersWithLegacyVIPs(svc *v1.Serv
 		if err == nil {
 			regular, session := c.legacyVpcLoadBalancerNames(vpc)
 			for _, names := range []map[v1.Protocol]string{regular, session} {
+				plan.batch.DeleteEmptyLoadBalancers = append(plan.batch.DeleteEmptyLoadBalancers, slices.Collect(maps.Values(names))...)
 				for _, name := range names {
 					for _, vip := range vips {
 						plan.batch.VIPDeletions = append(plan.batch.VIPDeletions, ovs.TemplateVIPDeletion{LoadBalancer: name, VIP: vip})
@@ -242,5 +264,15 @@ func (c *Controller) deleteServiceScopedLoadBalancersWithLegacyVIPs(svc *v1.Serv
 			}
 		}
 	}
-	return client.ReconcileLoadBalancers(plan.batch)
+	if err := client.ReconcileLoadBalancers(plan.batch); err != nil {
+		return err
+	}
+	if vpcName != "" {
+		if vpc, err := c.vpcsLister.Get(vpcName); err == nil {
+			return c.cleanupLegacyVpcLoadBalancers(vpc)
+		} else if !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("get vpc %s for legacy load balancer cleanup: %w", vpcName, err)
+		}
+	}
+	return nil
 }

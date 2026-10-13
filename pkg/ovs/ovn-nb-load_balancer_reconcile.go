@@ -623,7 +623,15 @@ func (c *OVNNbClient) resourceLoadBalancerParentOps(parent model.Model, field *[
 	if len(mutations) == 0 {
 		return nil, nil
 	}
-	return c.Where(parent).Mutate(parent, mutations...)
+	guards, err := c.Where(parent).Wait(ovsdb.WaitConditionEqual, new(0), parent, field)
+	if err != nil {
+		return nil, err
+	}
+	mutateOps, err := c.Where(parent).Mutate(parent, mutations...)
+	if err != nil {
+		return nil, err
+	}
+	return append(guards, mutateOps...), nil
 }
 
 func (c *OVNNbClient) getResourceLoadBalancerHealthCheck(hc *ovnnb.LoadBalancerHealthCheck) error {

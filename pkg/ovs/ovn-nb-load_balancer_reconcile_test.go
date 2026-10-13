@@ -99,6 +99,28 @@ func TestReconcileResourceLoadBalancers(t *testing.T) {
 	require.Len(t, recorder.transactions, 1, "an unchanged resource must not submit another transaction")
 }
 
+func TestResourceLoadBalancerAttachmentsGuardParentSnapshot(t *testing.T) {
+	nbClient := newResourceLoadBalancerTestClient(t)
+	reconciliation := resourceLoadBalancerFixture(t, nbClient)
+	ops, err := nbClient.resourceLoadBalancerOps(reconciliation)
+	require.NoError(t, err)
+
+	var switchGuard, routerGuard bool
+	for _, op := range ops {
+		if op.Op != ovsdb.OperationWait || len(op.Columns) != 1 || op.Columns[0] != "load_balancer" {
+			continue
+		}
+		switch op.Table {
+		case ovnnb.LogicalSwitchTable:
+			switchGuard = true
+		case ovnnb.LogicalRouterTable:
+			routerGuard = true
+		}
+	}
+	require.True(t, switchGuard, "logical switch attachment mutation must guard its snapshot")
+	require.True(t, routerGuard, "logical router attachment mutation must guard its snapshot")
+}
+
 func TestReconcileResourceLoadBalancersRollsBack(t *testing.T) {
 	nbClient := newResourceLoadBalancerTestClient(t)
 	reconciliation := resourceLoadBalancerFixture(t, nbClient)
