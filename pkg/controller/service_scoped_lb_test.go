@@ -73,6 +73,112 @@ func TestServiceSessionAffinityTimeout(t *testing.T) {
 	}
 }
 
+func TestServiceScopedLBSelectionFields(t *testing.T) {
+	svc := &corev1.Service{Spec: corev1.ServiceSpec{SessionAffinity: corev1.ServiceAffinityClientIP}}
+	want := []string{ovnnb.LoadBalancerSelectionFieldsIPSrc, ovnnb.LoadBalancerSelectionFieldsIpv6Src}
+	for _, protocol := range []corev1.Protocol{corev1.ProtocolUDP, corev1.ProtocolSCTP} {
+		if got := serviceScopedLBSelectionFields(svc, protocol, 10, ""); !slices.Equal(got, want) {
+			t.Fatalf("serviceScopedLBSelectionFields(%s) = %v, want %v", protocol, got, want)
+		}
+	}
+	if got := serviceScopedLBSelectionFields(svc, corev1.ProtocolTCP, util.DefaultServiceSessionStickinessTimeout, ""); !slices.Equal(got, want) {
+		t.Fatalf("serviceScopedLBSelectionFields(default tcp) = %v, want %v", got, want)
+	}
+	for _, tt := range []struct {
+		name       string
+		clusterIP  string
+		clusterIPs []string
+		want       []string
+	}{
+		{name: "ipv4", clusterIP: "10.96.0.10", want: []string{ovnnb.LoadBalancerSelectionFieldsIPSrc}},
+		{name: "ipv6", clusterIP: "fd00:10:96::a", want: []string{ovnnb.LoadBalancerSelectionFieldsIpv6Src}},
+		{name: "ipv4 ignores invalid secondary address", clusterIP: "10.96.0.10", clusterIPs: []string{"10.96.0.10", "not-an-ip"}, want: []string{ovnnb.LoadBalancerSelectionFieldsIPSrc}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			svc.Spec.ClusterIP = tt.clusterIP
+			svc.Spec.ClusterIPs = tt.clusterIPs
+			if len(svc.Spec.ClusterIPs) == 0 {
+				svc.Spec.ClusterIPs = []string{tt.clusterIP}
+			}
+			if got := serviceScopedLBSelectionFields(svc, corev1.ProtocolUDP, 10, ""); !slices.Equal(got, tt.want) {
+				t.Fatalf("serviceScopedLBSelectionFields(%s) = %v, want %v", tt.name, got, tt.want)
+			}
+		})
+	}
+	svc.Spec.ClusterIPs = []string{"10.96.0.10", "fd00:10:96::a"}
+	if got := serviceScopedLBSelectionFields(svc, corev1.ProtocolUDP, 10, ""); !slices.Equal(got, want) {
+		t.Fatalf("serviceScopedLBSelectionFields(dual-stack) = %v, want %v", got, want)
+	}
+	if got := serviceScopedLBSelectionFields(svc, corev1.ProtocolTCP, 10, ""); got != nil {
+		t.Fatalf("serviceScopedLBSelectionFields(explicit tcp) = %v, want nil", got)
+	}
+	svc.Spec.SessionAffinity = corev1.ServiceAffinityNone
+	if got := serviceScopedLBSelectionFields(svc, corev1.ProtocolUDP, 10, ""); got != nil {
+		t.Fatalf("serviceScopedLBSelectionFields without affinity = %v, want nil", got)
+	}
+}
+
+func TestEnsureServiceScopedLBAffinityUsesLoadBalancerFamily(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		clusterIPs   []string
+		ingressIP    string
+		annotations  map[string]string
+		trafficClass serviceLBTrafficClass
+		family       string
+		timeout      int32
+		noAffinity   bool
+		want         []string
+	}{
+		{name: "ipv6 ingress with ipv4 cluster IP", clusterIPs: []string{"10.96.0.10"}, ingressIP: "fd00::100", trafficClass: serviceLBExternalTraffic, family: "ipv6", want: []string{ovnnb.LoadBalancerSelectionFieldsIpv6Src}},
+		{name: "ipv4 ingress with ipv6 cluster IP", clusterIPs: []string{"fd00::10"}, ingressIP: "192.0.2.100", trafficClass: serviceLBExternalTraffic, family: "ipv4", want: []string{ovnnb.LoadBalancerSelectionFieldsIPSrc}},
+		{name: "dual stack ipv4 template", clusterIPs: []string{"10.96.0.10", "fd00::10"}, trafficClass: serviceLBInternalTraffic, family: "ipv4", want: []string{ovnnb.LoadBalancerSelectionFieldsIPSrc}},
+		{name: "dual stack ipv6 template", clusterIPs: []string{"10.96.0.10", "fd00::10"}, trafficClass: serviceLBInternalTraffic, family: "ipv6", want: []string{ovnnb.LoadBalancerSelectionFieldsIpv6Src}},
+		{name: "ipv6 switch rule VIP", clusterIPs: []string{"10.96.0.10"}, annotations: map[string]string{util.SwitchLBRuleVipsAnnotation: "fd00::100"}, trafficClass: serviceLBExternalTraffic, want: []string{ovnnb.LoadBalancerSelectionFieldsIpv6Src}},
+		{name: "router rule VIP families", clusterIPs: []string{"10.96.0.10"}, annotations: map[string]string{util.RouterLBRuleVipsAnnotation: "fd00::100, 192.0.2.100"}, trafficClass: serviceLBExternalTraffic, want: []string{ovnnb.LoadBalancerSelectionFieldsIpv6Src, ovnnb.LoadBalancerSelectionFieldsIPSrc}},
+		{name: "explicit TCP timeout", clusterIPs: []string{"10.96.0.10"}, ingressIP: "fd00::100", trafficClass: serviceLBExternalTraffic, family: "ipv6", timeout: 10},
+		{name: "no affinity", clusterIPs: []string{"10.96.0.10"}, ingressIP: "fd00::100", trafficClass: serviceLBExternalTraffic, family: "ipv6", noAffinity: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := newFakeController(t).fakeController
+			nbClient := newInMemoryOVNNbClient(t)
+			ctrl.OVNNbClient = nbClient
+			svc := &corev1.Service{
+				Namespace: "default", Name: "web", UID: types.UID("uid-affinity-family"), Annotations: tt.annotations,
+				Spec: corev1.ServiceSpec{
+					Type:            corev1.ServiceTypeLoadBalancer,
+					ClusterIP:       tt.clusterIPs[0],
+					ClusterIPs:      tt.clusterIPs,
+					SessionAffinity: corev1.ServiceAffinityClientIP,
+				},
+			}
+			if tt.ingressIP != "" {
+				svc.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{IP: tt.ingressIP}}
+			} else if tt.trafficClass == serviceLBInternalTraffic {
+				svc.Spec.Type = corev1.ServiceTypeClusterIP
+				svc.Spec.TrafficDistribution = new(corev1.ServiceTrafficDistributionPreferSameNode)
+			}
+			if tt.timeout != 0 {
+				svc.Spec.SessionAffinityConfig = &corev1.SessionAffinityConfig{ClientIP: &corev1.ClientIPConfig{TimeoutSeconds: new(tt.timeout)}}
+			}
+			if tt.noAffinity {
+				svc.Spec.SessionAffinity = corev1.ServiceAffinityNone
+			}
+			lbName, err := ctrl.ensureServiceScopedLBForTrafficClass(svc, corev1.ProtocolTCP, tt.trafficClass, tt.family)
+			if err != nil {
+				t.Fatal(err)
+			}
+			lb, err := nbClient.GetLoadBalancer(lbName, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(lb.SelectionFields, tt.want) {
+				t.Fatalf("load balancer %s selection fields = %v, want %v", lbName, lb.SelectionFields, tt.want)
+			}
+		})
+	}
+}
+
 func TestServiceScopedLBIdentityAndPolicy(t *testing.T) {
 	local := corev1.ServiceInternalTrafficPolicyLocal
 	svc := &corev1.Service{
@@ -466,7 +572,7 @@ func TestEnsureServiceScopedLBExternalTrafficDoesNotDistribute(t *testing.T) {
 	lbName := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
 	gomock.InOrder(
 		fake.mockOvnClient.EXPECT().CreateLoadBalancer(lbName, "tcp").Return(nil),
-		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, []string(nil)).Return(nil),
+		fake.mockOvnClient.EXPECT().SetLoadBalancerSelectionFields(lbName, []string{ovnnb.LoadBalancerSelectionFieldsIPSrc, ovnnb.LoadBalancerSelectionFieldsIpv6Src}).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerExternalIDs(lbName, gomock.Eq(serviceScopedLBExternalIDs(svc, ctrl.config.ClusterRouter, serviceLBExternalTraffic))).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerAffinityTimeout(lbName, util.DefaultServiceSessionStickinessTimeout).Return(nil),
 		fake.mockOvnClient.EXPECT().SetLoadBalancerDistributed(lbName, false).Return(nil),

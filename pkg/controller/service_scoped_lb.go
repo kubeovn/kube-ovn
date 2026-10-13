@@ -182,6 +182,60 @@ func serviceSessionAffinityTimeout(svc *v1.Service) (int, error) {
 	return timeout, nil
 }
 
+func serviceScopedLBSelectionFields(svc *v1.Service, protocol v1.Protocol, timeout int, family string) []string {
+	if svc.Spec.SessionAffinity != v1.ServiceAffinityClientIP {
+		return nil
+	}
+
+	// Datagram clients create a new flow for every request. Keep their fallback
+	// selection keyed by source address so each request reaches the affinity
+	// learning flow's backend. The default TCP timeout also needs source-based
+	// selection because every HTTP request opens a new connection. Explicit TCP
+	// timeouts keep OVN's flow hash so the backend can change after expiry.
+	if protocol == v1.ProtocolTCP && timeout != util.DefaultServiceSessionStickinessTimeout {
+		return nil
+	}
+	if protocol != v1.ProtocolTCP && protocol != v1.ProtocolUDP && protocol != v1.ProtocolSCTP {
+		return nil
+	}
+
+	// A family-specific LB may serve an ingress address whose family differs
+	// from the ClusterIP. Select fields for that LB before inferring VIP families.
+	switch family {
+	case "ipv4":
+		return []string{ovnnb.LoadBalancerSelectionFieldsIPSrc}
+	case "ipv6":
+		return []string{ovnnb.LoadBalancerSelectionFieldsIpv6Src}
+	}
+	// Rule VIPs replace ClusterIPs in the endpoint reconciliation profile.
+	ips := slices.Values(util.ServiceClusterIPs(*svc))
+	if vip := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; vip != "" {
+		ips = slices.Values([]string{vip})
+	} else if vips := svc.Annotations[util.RouterLBRuleVipsAnnotation]; vips != "" {
+		ips = strings.SplitSeq(vips, ",")
+	}
+	fields := make([]string, 0, 2)
+	for ip := range ips {
+		switch strings.ToLower(util.CheckProtocol(strings.TrimSpace(ip))) {
+		case "ipv4":
+			if !slices.Contains(fields, ovnnb.LoadBalancerSelectionFieldsIPSrc) {
+				fields = append(fields, ovnnb.LoadBalancerSelectionFieldsIPSrc)
+			}
+		case "ipv6":
+			if !slices.Contains(fields, ovnnb.LoadBalancerSelectionFieldsIpv6Src) {
+				fields = append(fields, ovnnb.LoadBalancerSelectionFieldsIpv6Src)
+			}
+		}
+	}
+	if len(fields) != 0 {
+		return fields
+	}
+	return []string{
+		ovnnb.LoadBalancerSelectionFieldsIPSrc,
+		ovnnb.LoadBalancerSelectionFieldsIpv6Src,
+	}
+}
+
 func serviceScopedLBName(svc *v1.Service, protocol v1.Protocol) string {
 	return serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, serviceLBInternalTraffic, "")
 }
@@ -354,6 +408,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	} else {
 		deleteOptions = append(deleteOptions, "distributed")
 	}
+	selectionFields := serviceScopedLBSelectionFields(svc, protocol, timeout, family)
 	if serviceLB, ok := c.OVNNbClient.(interface {
 		ReconcileLoadBalancer(config ovs.LoadBalancerConfig) error
 	}); ok {
@@ -374,7 +429,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 		if err := serviceLB.ReconcileLoadBalancer(ovs.LoadBalancerConfig{
 			Name:            name,
 			Protocol:        strings.ToLower(string(protocol)),
-			SelectionFields: nil,
+			SelectionFields: selectionFields,
 			ExternalIDs:     serviceScopedLBExternalIDs(svc, vpcName, trafficClass),
 			Options:         options,
 			DeleteOptions:   deleteOptions,
@@ -386,7 +441,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	if err := c.OVNNbClient.CreateLoadBalancer(name, strings.ToLower(string(protocol))); err != nil {
 		return "", fmt.Errorf("create service-scoped load balancer %s: %w", name, err)
 	}
-	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, nil); err != nil {
+	if err := c.OVNNbClient.SetLoadBalancerSelectionFields(name, selectionFields); err != nil {
 		return "", fmt.Errorf("set selection fields on service-scoped load balancer %s: %w", name, err)
 	}
 	if err := c.OVNNbClient.SetLoadBalancerExternalIDs(name, serviceScopedLBExternalIDs(svc, vpcName, trafficClass)); err != nil {
