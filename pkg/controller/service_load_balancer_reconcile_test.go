@@ -130,6 +130,13 @@ func TestServiceLoadBalancersReconcileAtomically(t *testing.T) {
 					continue
 				}
 				require.NotEmpty(t, lb.Vips)
+				isTemplate := tc.template && (tc.serviceType == corev1.ServiceTypeClusterIP ||
+					lb.ExternalIDs[serviceLBScopeExternalID] == "logical-switch/external")
+				if isTemplate {
+					require.Equal(t, "true", lb.Options["ct_flush"], lb.Name)
+				} else {
+					require.NotContains(t, lb.Options, "ct_flush", lb.Name)
+				}
 			}
 			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 			require.Len(t, recorder.transactions, 1, "an unchanged Service must not produce another NB transaction")
@@ -301,6 +308,7 @@ func TestServiceLoadBalancerTemplateTransitionIsAtomic(t *testing.T) {
 			require.NoError(t, err)
 			for _, lb := range lbs {
 				require.Equal(t, "false", lb.Options["template"])
+				require.NotContains(t, lb.Options, "ct_flush", lb.Name)
 			}
 			var variables []ovnnb.ChassisTemplateVar
 			require.NoError(t, nbClient.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(t.Context(), &variables))

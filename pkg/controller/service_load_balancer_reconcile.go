@@ -66,11 +66,17 @@ func (c *Controller) serviceScopedLBConfig(svc *v1.Service, protocol v1.Protocol
 	if (trafficClass == serviceLBInternalTraffic && serviceUsesTemplateLB(svc)) ||
 		(trafficClass == serviceLBExternalTraffic && serviceUsesExternalLocalTemplate(svc)) {
 		config.Options["template"] = "true"
+		// Template LBs are per-Service and select a backend from chassis
+		// variables. Flush conntrack entries when an endpoint is removed so a
+		// connection created before the EndpointSlice update cannot continue
+		// using the deleted backend after the template variable changes.
+		config.Options["ct_flush"] = "true"
 		if family != "" {
 			config.Options["address-family"] = family
 		}
 	} else {
 		config.DeleteOptions = append(config.DeleteOptions, "address-family")
+		config.DeleteOptions = append(config.DeleteOptions, "ct_flush")
 	}
 	return config, nil
 }
