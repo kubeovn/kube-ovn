@@ -19,6 +19,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -40,6 +41,9 @@ type updateSvcObject struct {
 func (c *Controller) enqueueAddService(obj any) {
 	svc := obj.(*v1.Service)
 	key := cache.MetaObjectToName(svc).String()
+	if c.config.EnableOvnLB && svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+		c.enqueueServiceProxyFallbackSubnetUpdates()
+	}
 
 	// the queue consumers only run when EnableOvnLB is set, so skip
 	// enqueueing to avoid unbounded accumulation when it is not
@@ -79,6 +83,9 @@ func (c *Controller) enqueueDeleteService(obj any) {
 	}
 
 	klog.Infof("enqueue delete service %s/%s", svc.Namespace, svc.Name)
+	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
+		c.enqueueServiceProxyFallbackSubnetUpdates()
+	}
 
 	c.enqueueNftableLbService(cache.MetaObjectToName(svc).String())
 
@@ -120,6 +127,9 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 
 	oldClusterIps := getVipIps(oldSvc)
 	newClusterIps := getVipIps(newSvc)
+	if serviceProxyFallbackPolicyChanged(oldSvc, newSvc) {
+		c.enqueueServiceProxyFallbackSubnetUpdates()
+	}
 
 	// skip updates that touch none of the fields consumed by handleUpdateService,
 	// e.g. status noise or third-party annotation churn bumping the resource version.
@@ -176,6 +186,29 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	if newSvc.Spec.Type == v1.ServiceTypeLoadBalancer &&
 		oldSvc.Spec.ExternalTrafficPolicy != newSvc.Spec.ExternalTrafficPolicy {
 		c.enqueueEndpointSliceService(cache.MetaObjectToName(newSvc).String(), oldSvc, newSvc)
+	}
+}
+
+func serviceProxyFallbackPolicyChanged(oldSvc, newSvc *v1.Service) bool {
+	return oldSvc.Spec.SessionAffinity != newSvc.Spec.SessionAffinity ||
+		!slices.Equal(getVipIps(oldSvc), getVipIps(newSvc)) ||
+		oldSvc.Annotations[util.VpcAnnotation] != newSvc.Annotations[util.VpcAnnotation] ||
+		oldSvc.Annotations[util.LogicalRouterAnnotation] != newSvc.Annotations[util.LogicalRouterAnnotation]
+}
+
+func (c *Controller) enqueueServiceProxyFallbackSubnetUpdates() {
+	if c.subnetsLister == nil || c.addOrUpdateSubnetQueue == nil {
+		return
+	}
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list subnets for service proxy fallback policy update: %v", err)
+		return
+	}
+	for _, subnet := range subnets {
+		if subnet.Spec.Vpc == c.config.ClusterRouter && subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
+			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+		}
 	}
 }
 
