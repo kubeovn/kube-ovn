@@ -19,8 +19,10 @@ grep -Fq 'COPY kube-ovn-acl-sample /kube-ovn/kube-ovn-acl-sample-listener' <<<"$
 grep -Fq 'setcap CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-cmd' <<<"$setcap_stage"
 grep -Fq 'setcap CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-controller' <<<"$setcap_stage"
 grep -Fq 'setcap CAP_NET_ADMIN,CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-daemon' <<<"$setcap_stage"
+grep -Fq 'setcap CAP_SYS_ADMIN,CAP_SYS_CHROOT,CAP_NET_ADMIN,CAP_NET_RAW,CAP_NET_BIND_SERVICE+eip /kube-ovn/kube-ovn-node-gw' <<<"$setcap_stage"
 grep -Fq 'setcap CAP_NET_ADMIN+eip /kube-ovn/vpc-egress-gateway-observer' <<<"$setcap_stage"
 ! grep -Eq 'setcap .*CAP_SYS_ADMIN.*kube-ovn-daemon' <<<"$setcap_stage"
+! grep -Eq 'setcap .*CAP_SYS_CHROOT.*kube-ovn-daemon' <<<"$setcap_stage"
 
 final_stage=$(sed -n '/^FROM kubeovn\/kube-ovn-base:\$BASE_TAG$/,$p' "$IMAGE_DOCKERFILE")
 ! grep -Eq '(^|[[:space:]])setcap[[:space:]]' <<<"$final_stage"
@@ -32,6 +34,7 @@ grep -Fq 'test "$(getcap /kube-ovn/kube-ovn-acl-sample-listener)" = "/kube-ovn/k
 grep -Fq 'test "$(getcap /kube-ovn/kube-ovn-cmd)" = "/kube-ovn/kube-ovn-cmd cap_net_bind_service=eip"' <<<"$final_stage"
 grep -Fq 'test "$(getcap /kube-ovn/kube-ovn-controller)" = "/kube-ovn/kube-ovn-controller cap_net_bind_service,cap_net_raw=eip"' <<<"$final_stage"
 grep -Fq 'test "$(getcap /kube-ovn/kube-ovn-daemon)" = "/kube-ovn/kube-ovn-daemon cap_net_bind_service,cap_net_admin,cap_net_raw=eip"' <<<"$final_stage"
+grep -Fq 'test "$(getcap /kube-ovn/kube-ovn-node-gw)" = "/kube-ovn/kube-ovn-node-gw cap_net_bind_service,cap_net_admin,cap_net_raw,cap_sys_chroot,cap_sys_admin=eip"' <<<"$final_stage"
 grep -Fq 'test "$(getcap /kube-ovn/vpc-egress-gateway-observer)" = "/kube-ovn/vpc-egress-gateway-observer cap_net_admin=eip"' <<<"$final_stage"
 
 # Evaluate the installer inputs and the generated capability selection without
