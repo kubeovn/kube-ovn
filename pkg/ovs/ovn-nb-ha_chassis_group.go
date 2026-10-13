@@ -19,10 +19,21 @@ import (
 
 // CreateHAChassisGroup adds or updates the ha chassis group
 func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, externalIDs map[string]string) error {
+	_, ops, err := c.createHAChassisGroupOps(name, chassises, externalIDs)
+	if err != nil {
+		return err
+	}
+	if err := c.Transact("ha-chassis-group-add", ops); err != nil {
+		return fmt.Errorf("failed to add/update HA chassis group %s: %w", name, err)
+	}
+	return nil
+}
+
+func (c *OVNNbClient) createHAChassisGroupOps(name string, chassises []string, externalIDs map[string]string) (*ovnnb.HAChassisGroup, []ovsdb.Operation, error) {
 	group, err := c.GetHAChassisGroup(name, true)
 	if err != nil {
 		klog.Error(err)
-		return err
+		return nil, nil, err
 	}
 
 	var ops []ovsdb.Operation
@@ -36,7 +47,7 @@ func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, exte
 		createOps, err := c.Create(group)
 		if err != nil {
 			klog.Error(err)
-			return err
+			return nil, nil, err
 		}
 		ops = append(ops, createOps...)
 	} else {
@@ -45,21 +56,30 @@ func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, exte
 		updateOps, err := c.Where(group).Update(group, &group.ExternalIDs)
 		if err != nil {
 			klog.Error(err)
-			return err
+			return nil, nil, err
 		}
 		ops = append(ops, updateOps...)
 	}
 
+	chassisOps, err := c.haChassisGroupMembersOps(group, chassises)
+	if err != nil {
+		return nil, nil, err
+	}
+	return group, append(ops, chassisOps...), nil
+}
+
+func (c *OVNNbClient) haChassisGroupMembersOps(group *ovnnb.HAChassisGroup, chassises []string) ([]ovsdb.Operation, error) {
+	var ops []ovsdb.Operation
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 
 	haChassises := make([]*ovnnb.HAChassis, 0, max(len(group.HaChassis), len(chassises)))
 	if len(group.HaChassis) != 0 {
-		if err = c.ovsDbClient.WhereCache(func(c *ovnnb.HAChassis) bool {
+		if err := c.ovsDbClient.WhereCache(func(c *ovnnb.HAChassis) bool {
 			return slices.Contains(group.HaChassis, c.UUID)
 		}).List(ctx, &haChassises); err != nil {
 			klog.Error(err)
-			return err
+			return nil, err
 		}
 	}
 
@@ -78,7 +98,7 @@ func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, exte
 				updateOps, err := c.Where(chassis).Update(chassis, &chassis.Priority)
 				if err != nil {
 					klog.Error(err)
-					return err
+					return nil, err
 				}
 				ops = append(ops, updateOps...)
 			}
@@ -95,7 +115,7 @@ func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, exte
 		})
 		if err != nil {
 			klog.Error(err)
-			return err
+			return nil, err
 		}
 		ops = append(ops, deleteOps...)
 	}
@@ -106,12 +126,12 @@ func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, exte
 			UUID:        ovsclient.NamedUUID(),
 			ChassisName: chassis,
 			Priority:    priority,
-			ExternalIDs: map[string]string{"group": name, "vendor": util.CniTypeName},
+			ExternalIDs: map[string]string{"group": group.Name, "vendor": util.CniTypeName},
 		}
 		createOps, err := c.Create(haChassis)
 		if err != nil {
 			klog.Error(err)
-			return err
+			return nil, err
 		}
 		insertOps, err := c.Where(group).Mutate(group, model.Mutation{
 			Field:   &group.HaChassis,
@@ -120,18 +140,13 @@ func (c *OVNNbClient) CreateHAChassisGroup(name string, chassises []string, exte
 		})
 		if err != nil {
 			klog.Error(err)
-			return err
+			return nil, err
 		}
 		ops = append(ops, createOps...)
 		ops = append(ops, insertOps...)
 	}
 
-	if err = c.Transact("ha-chassis-group-add", ops); err != nil {
-		err := fmt.Errorf("failed to add/update HA chassis group %s: %w", name, err)
-		klog.Error(err)
-		return err
-	}
-	return nil
+	return ops, nil
 }
 
 // GetHAChassisGroup gets the ha chassis group
