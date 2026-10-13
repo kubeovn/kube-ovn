@@ -286,7 +286,7 @@ def collectSnapshot(directory, full=False, cancel=None):
     jobs["nodes"] = kubectl("get", "nodes", "-o", "wide")
     central = podNames("app=ovn-central", cancel)
     if central:
-        tables = "NB_Global Load_Balancer ACL Address_Set Port_Group"
+        tables = "NB_Global Logical_Router Logical_Router_Policy Load_Balancer ACL Address_Set Port_Group"
         if full:
             tables += " Logical_Switch Logical_Switch_Port"
         jobs["ovn-nb"] = kubectl("exec", "-n", "kube-system", central[0], "-c", "ovn-central", "--", "sh", "-c",
