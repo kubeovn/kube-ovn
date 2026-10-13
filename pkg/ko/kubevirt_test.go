@@ -191,7 +191,7 @@ func TestCaptureKubeVirtPreservesBinaryOutput(t *testing.T) {
 				require.Equal(t, []byte{0, 255, 10, 13, 0}, out.Bytes())
 				require.Equal(t, "agent", executor.calls[1].target.Container)
 				require.Contains(t, stderr.String(), "VMI app/vm-a through Pod source on node node-a")
-				require.Equal(t, []string{"nsenter", "--net=/var/run/netns/vm-a", "--", "tcpdump", "-nn", "-i", "eth0", "-w", "-", "-c", "1"}, executor.calls[1].argv)
+				require.Equal(t, []string{"capture", "--netns", "/var/run/netns/vm-a", "--interface", "eth0", "--count", "1", "--pcap"}, executor.calls[1].argv)
 			})
 		}
 	}

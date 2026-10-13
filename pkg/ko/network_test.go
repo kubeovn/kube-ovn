@@ -66,9 +66,12 @@ func TestTCPDumpUsesNetNSAndPreservesBinary(t *testing.T) {
 			if internal {
 				pod.Annotations[annotationPrefix+"pod_nic_type"] = "internal-port"
 			}
-			ovs := readyPod("ovs-a", "node-a", "openvswitch", map[string]string{"app": "ovs"})
-			cni := readyPod("cni-a", "node-a", "cni-server", map[string]string{"app": "kube-ovn-cni"})
-			app, executor, out, _ := testApplication(t, pod, ovs, cni, &corev1.Node{Name: "node-a"})
+			agent := readyPod("agent-a", "node-a", "agent", map[string]string{"app": "kubectl-ko-node-agent"})
+			app, executor, out, _ := testApplication(t, pod, agent, &corev1.Node{Name: "node-a"})
+			client, err := app.newClient()
+			require.NoError(t, err)
+			client.ComponentFree = true
+			app.client = client
 			executor.run = func(_ context.Context, _ Target, argv []string, s Streams) error {
 				if argv[0] == "ovs-vsctl" {
 					_, err := io.WriteString(s.Out, `{"headings":["name","external_ids","ofport"],"data":[["nic-a",["map",[["pod_netns","/var/run/netns/pod-a"]]],4]]}`)
@@ -82,11 +85,46 @@ func TestTCPDumpUsesNetNSAndPreservesBinary(t *testing.T) {
 			if internal {
 				nic = "nic-a"
 			}
-			require.Equal(t, []string{"nsenter", "--net=/var/run/netns/pod-a", "--", "tcpdump", "-nn", "-i", nic, "-w", "-", "-c", "1"}, executor.calls[1].argv)
-			require.Equal(t, "cni-server", executor.calls[1].target.Container)
+			require.Equal(t, []string{"capture", "--netns", "/var/run/netns/pod-a", "--interface", nic, "--count", "1", "--pcap"}, executor.calls[1].argv)
+			require.Equal(t, "agent", executor.calls[1].target.Container)
+			// The native capture writes a pcap stream; the executor fixture keeps
+			// its binary payload unchanged to verify that stdout is not decorated.
 			require.Equal(t, []byte{0, 255, 10, 13, 0}, out.Bytes())
 		})
 	}
+}
+
+func TestTCPDumpFallsBackToPodNetNS(t *testing.T) {
+	pod := &corev1.Pod{Name: "web", Namespace: "app", UID: "web-id", Spec: corev1.PodSpec{NodeName: "node-a"}, Annotations: map[string]string{}}
+	agent := readyPod("agent-a", "node-a", "agent", map[string]string{"app": "kubectl-ko-node-agent"})
+	app, executor, _, _ := testApplication(t, pod, agent, &corev1.Node{Name: "node-a"})
+	client, err := app.newClient()
+	require.NoError(t, err)
+	client.ComponentFree = true
+	app.client = client
+	executor.run = func(_ context.Context, _ Target, argv []string, streams Streams) error {
+		switch argv[0] {
+		case "ovs-vsctl":
+			_, err := io.WriteString(streams.Out, `{"headings":["name","external_ids","ofport"],"data":[]}`)
+			return err
+		case "/kube-ovn/kubectl-ko-node-agent":
+			_, err := io.WriteString(streams.Out, "/proc/42/ns/net\n")
+			return err
+		default:
+			_, err := streams.Out.Write([]byte{0, 255, 10, 13, 0})
+			return err
+		}
+	}
+
+	require.NoError(t, app.Execute(t.Context(), []string{"capture", "--pod", "app/web", "--", "-c", "1"}))
+	var captureCall []string
+	for _, call := range executor.calls {
+		if len(call.argv) > 0 && call.argv[0] == "capture" {
+			captureCall = call.argv
+			break
+		}
+	}
+	require.Equal(t, []string{"capture", "--netns", "/proc/42/ns/net", "--interface", "eth0", "--count", "1"}, captureCall)
 }
 
 func TestVMPortResolvedBeforeInterfaceLookup(t *testing.T) {

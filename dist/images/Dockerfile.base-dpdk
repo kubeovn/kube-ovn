@@ -100,13 +100,15 @@ ARG DEBIAN_FRONTEND=noninteractive
 ARG PIP_BREAK_SYSTEM_PACKAGES=1
 
 RUN apt update && apt upgrade -y && apt install ca-certificates python3 libunwind8 netbase \
-        ethtool iproute2 ncat libunbound8 libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
-        tcpdump ipvsadm ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack iputils-tracepath \
-        gzip logrotate dnsutils net-tools strongswan strongswan-pki libcharon-extra-plugins \
+        ethtool iproute2 libunbound8 libatomic1 kmod iptables python3-netifaces python3-sortedcontainers \
+        ipvsadm ipset curl uuid-runtime openssl inetutils-ping arping ndisc6 conntrack iputils-tracepath \
+        gzip logrotate dnsutils strongswan strongswan-pki libcharon-extra-plugins \
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins \
         python3-pip build-essential libssl-dev libibverbs-dev libnuma-dev libpcap-dev -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \
         rm -rf /etc/localtime
+
+RUN test ! -e /usr/bin/tcpdump && test ! -e /usr/bin/ncat && test ! -e /usr/bin/nc
 
 RUN pip3 install meson ninja pyelftools
 

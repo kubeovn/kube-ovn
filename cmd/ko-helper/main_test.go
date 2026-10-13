@@ -30,6 +30,16 @@ func TestRemoteTool(_ *testing.T) {
 	os.Exit(17)
 }
 
+func TestBuiltInValidation(t *testing.T) {
+	result, handled := runBuiltIn(t.Context(), []string{"environment", "unexpected"}, io.Discard, io.Discard)
+	if !handled {
+		t.Fatal("environment was not handled as a built-in")
+	}
+	if result.Code != 2 || result.Error != "environment does not accept arguments" {
+		t.Fatalf("built-in validation result = %#v, want exit 2", result)
+	}
+}
+
 func TestHelperStdioProcess(t *testing.T) {
 	executable, err := os.Executable()
 	if err != nil {
