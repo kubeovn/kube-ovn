@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -22,8 +24,9 @@ import (
 )
 
 type execCall struct {
-	target Target
-	argv   []string
+	target  Target
+	argv    []string
+	streams Streams
 }
 type recordingExecutor struct {
 	calls []execCall
@@ -31,7 +34,7 @@ type recordingExecutor struct {
 }
 
 func (r *recordingExecutor) Exec(ctx context.Context, target Target, argv []string, streams Streams) error {
-	r.calls = append(r.calls, execCall{target: target, argv: slices.Clone(argv)})
+	r.calls = append(r.calls, execCall{target: target, argv: slices.Clone(argv), streams: streams})
 	if r.run != nil {
 		return r.run(ctx, target, argv, streams)
 	}
@@ -103,6 +106,97 @@ func TestNodePassthrough(t *testing.T) {
 			require.NoError(t, app.Execute(t.Context(), []string{"exec", name, "--node", "worker", "--", "--timeout=7", "--", "show"}))
 			require.Equal(t, []string{"ovs-" + name, "--timeout=7", "--", "show"}, executor.calls[0].argv)
 			require.Equal(t, "openvswitch", executor.calls[0].target.Container)
+		})
+	}
+}
+
+func TestExecResolvesKubectlStyleResources(t *testing.T) {
+	pod := readyPod("web-pod", "worker", "app", map[string]string{"app": "web"})
+	pod.Namespace = "app"
+	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}}
+	objects := []runtime.Object{
+		pod,
+		&appsv1.Deployment{Name: "web", Namespace: "app", Spec: appsv1.DeploymentSpec{Selector: selector}},
+		&appsv1.DaemonSet{Name: "web", Namespace: "app", Spec: appsv1.DaemonSetSpec{Selector: selector}},
+		&corev1.Service{Name: "web", Namespace: "app", Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "web"}}},
+		&batchv1.Job{Name: "web", Namespace: "app", Spec: batchv1.JobSpec{Selector: selector}},
+	}
+	for _, reference := range []string{"deploy/web", "ds/web", "svc/web", "job/web"} {
+		t.Run(reference, func(t *testing.T) {
+			app, executor, _, _ := testApplication(t, objects...)
+			require.NoError(t, app.Execute(t.Context(), []string{"exec", reference, "--", "date"}))
+			require.Len(t, executor.calls, 1)
+			require.Equal(t, Target{Namespace: "app", Pod: "web-pod", Container: "app", Node: "worker"}, executor.calls[0].target)
+			require.Equal(t, []string{"date"}, executor.calls[0].argv)
+		})
+	}
+}
+
+func TestExecSelectorChoosesRunningPod(t *testing.T) {
+	first := readyPod("web-a", "worker-a", "app", map[string]string{"app": "web"})
+	first.Namespace = "app"
+	second := readyPod("web-b", "worker-b", "app", map[string]string{"app": "web"})
+	second.Namespace = "app"
+	app, executor, _, _ := testApplication(t, second, first)
+	require.NoError(t, app.Execute(t.Context(), []string{"exec", "-l", "app=web", "--", "sh", "-c", "echo ok"}))
+	require.Len(t, executor.calls, 1)
+	require.Equal(t, "web-a", executor.calls[0].target.Pod)
+	require.Equal(t, []string{"sh", "-c", "echo ok"}, executor.calls[0].argv)
+}
+
+func TestExecSelectorPrefersReadyPod(t *testing.T) {
+	notReady := readyPod("web-a", "worker-a", "app", map[string]string{"app": "web"})
+	notReady.Namespace = "app"
+	notReady.Status.ContainerStatuses[0].Ready = false
+	notReady.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionFalse}}
+	ready := readyPod("web-b", "worker-b", "app", map[string]string{"app": "web"})
+	ready.Namespace = "app"
+	ready.Status.Conditions = []corev1.PodCondition{{Type: corev1.PodReady, Status: corev1.ConditionTrue}}
+	app, executor, _, _ := testApplication(t, notReady, ready)
+	require.NoError(t, app.Execute(t.Context(), []string{"exec", "-l", "app=web", "--", "date"}))
+	require.Equal(t, "web-b", executor.calls[0].target.Pod)
+}
+
+func TestExecWaitsForNamedPodToRun(t *testing.T) {
+	pod := &corev1.Pod{Name: "pending", Namespace: "app", Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "app"}}}, Status: corev1.PodStatus{Phase: corev1.PodPending}}
+	app, executor, _, _ := testApplication(t, pod)
+	err := app.Execute(t.Context(), []string{"exec", "pending", "--pod-running-timeout", "1ms", "--", "date"})
+	require.ErrorContains(t, err, "wait for pod \"pending\" to be running")
+	require.Empty(t, executor.calls)
+}
+
+func TestExecTTYRequiresStdinAndTerminal(t *testing.T) {
+	pod := readyPod("web", "worker", "app", nil)
+	pod.Namespace = "app"
+	app, executor, _, stderr := testApplication(t, pod)
+	require.NoError(t, app.Execute(t.Context(), []string{"exec", "web", "-t", "--", "date"}))
+	require.False(t, executor.calls[0].streams.TTY)
+	require.Nil(t, executor.calls[0].streams.In)
+	require.Empty(t, stderr.String())
+
+	var input bytes.Buffer
+	app = New(genericiooptions.IOStreams{In: &input, Out: io.Discard, ErrOut: stderr})
+	executor = &recordingExecutor{}
+	app.newClient = func() (*Client, error) {
+		return &Client{Kubernetes: fake.NewClientset(pod), Executor: executor, WorkloadNamespace: "app", DiscoveryTimeout: time.Millisecond}, nil
+	}
+	require.NoError(t, app.Execute(t.Context(), []string{"exec", "web", "-i", "-t", "--", "date"}))
+	require.False(t, executor.calls[0].streams.TTY)
+	require.Same(t, &input, executor.calls[0].streams.In)
+	require.Contains(t, stderr.String(), "Unable to use a TTY")
+}
+
+func TestExecRejectsMissingResourceOrSelector(t *testing.T) {
+	for _, args := range [][]string{
+		{"exec", "--", "date"},
+		{"exec", "-l", "app=web", "pod/web", "--", "date"},
+	} {
+		t.Run(fmt.Sprint(args), func(t *testing.T) {
+			app, executor, _, _ := testApplication(t)
+			err := app.Execute(t.Context(), args)
+			require.Error(t, err)
+			require.Equal(t, 2, ExitCode(err))
+			require.Empty(t, executor.calls)
 		})
 	}
 }
