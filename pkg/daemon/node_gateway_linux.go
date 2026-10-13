@@ -24,6 +24,7 @@ import (
 
 const (
 	nodeGatewaySocket    = "/run/kube-ovn-node-gw/node-gw.sock"
+	nodeGatewayHostMount = "/run/kube-ovn-node-gw-host-mnt"
 	nodeGatewayEnsure    = "ensure"
 	nodeGatewayDelete    = "delete"
 	nodeGatewayMaxPacket = 64 * 1024
@@ -250,29 +251,13 @@ func authorizeNodeGatewayPeer(conn *net.UnixConn) error {
 }
 
 func ensureNodeGateway(request NodeGatewayRequest) error {
-	return withHostMountNamespace(func() error {
-		return ensureNodeGatewayInHostMountNamespace(request)
-	})
-}
-
-// ensureNodeGatewayInHostMountNamespace must run in the node's mount
-// namespace. The helper container's /var/run/netns mount is HostToContainer;
-// bind mounts created in that private mount namespace disappear on restart.
-func ensureNodeGatewayInHostMountNamespace(request NodeGatewayRequest) error {
-	gwNS, err := ns.GetNS(util.NodeGwNsPath)
-	if err != nil {
-		var notExist ns.NSPathNotExistErr
-		var notNS ns.NSPathNotNSErr
-		if !errors.As(err, &notExist) && !errors.As(err, &notNS) {
-			return fmt.Errorf("get node gateway namespace: %w", err)
-		}
-		if err := newNetNSInCurrentMountNamespace(util.NodeGwNsPath); err != nil {
-			return fmt.Errorf("create node gateway namespace: %w", err)
-		}
-		gwNS, err = ns.GetNS(util.NodeGwNsPath)
-		if err != nil {
-			return fmt.Errorf("open node gateway namespace: %w", err)
-		}
+	var gwNS ns.NetNS
+	if err := withHostMountNamespace(func() error {
+		var err error
+		gwNS, err = getOrCreateNodeGatewayNS(util.NodeGwNsPath, newNetNSInCurrentMountNamespace)
+		return err
+	}); err != nil {
+		return err
 	}
 	defer gwNS.Close()
 	if err := nodeGatewayReady(request, gwNS); err == nil {
@@ -284,14 +269,35 @@ func ensureNodeGatewayInHostMountNamespace(request NodeGatewayRequest) error {
 		return err
 	}
 	if err := configureNodeGwNic(request.NodeName, ipAddr, request.Gateway, mac, request.MTU, gwNS); err != nil {
-		_ = removeNodeGwNic()
-		_ = removeNodeGwNs()
-		return fmt.Errorf("configure node gateway: %w", err)
+		return errors.Join(fmt.Errorf("configure node gateway: %w", err), deleteNodeGateway())
 	}
 	if err := nodeGatewayReady(request, gwNS); err != nil {
 		return fmt.Errorf("node gateway is not ready: %w", err)
 	}
 	return nil
+}
+
+// Recheck the namespace in the host mount namespace before creating it. The
+// helper's HostToContainer view can lag behind mount propagation; an open FD
+// also avoids depending on that view for subsequent network operations.
+func getOrCreateNodeGatewayNS(path string, create func(string) error) (ns.NetNS, error) {
+	gwNS, err := ns.GetNS(path)
+	if err == nil {
+		return gwNS, nil
+	}
+	_, notExist := errors.AsType[ns.NSPathNotExistErr](err)
+	_, notNS := errors.AsType[ns.NSPathNotNSErr](err)
+	if !notExist && !notNS {
+		return nil, fmt.Errorf("get node gateway namespace: %w", err)
+	}
+	if err := create(path); err != nil {
+		return nil, fmt.Errorf("create node gateway namespace: %w", err)
+	}
+	gwNS, err = ns.GetNS(path)
+	if err != nil {
+		return nil, fmt.Errorf("open node gateway namespace: %w", err)
+	}
+	return gwNS, nil
 }
 
 func nodeGatewayReady(request NodeGatewayRequest, gwNS ns.NetNS) error {
@@ -302,7 +308,7 @@ func nodeGatewayReady(request NodeGatewayRequest, gwNS ns.NetNS) error {
 	if !exists {
 		return errors.New("node gateway OVS port does not exist")
 	}
-	if err := withCurrentThreadNetNS(gwNS, func(_ ns.NetNS) error {
+	if err := gwNS.Do(func(_ ns.NetNS) error {
 		if err := waitNetworkReady(util.NodeGwNic, request.IP, request.Gateway, true, true, 3, nil); err != nil {
 			return err
 		}
@@ -311,24 +317,6 @@ func nodeGatewayReady(request NodeGatewayRequest, gwNS ns.NetNS) error {
 		return err
 	}
 	return nil
-}
-
-// withCurrentThreadNetNS is the synchronous counterpart of ns.WithNetNSPath.
-// The latter starts a goroutine, which can run on a thread in the helper's
-// private mount namespace. Node gateway operations are already running on a
-// locked thread in the host mount namespace, so preserve that thread while
-// switching only its network namespace.
-func withCurrentThreadNetNS(target ns.NetNS, fn func(ns.NetNS) error) error {
-	original, err := ns.GetNS(getCurrentThreadNetNSPath())
-	if err != nil {
-		return err
-	}
-	defer original.Close()
-	if err := target.Set(); err != nil {
-		return err
-	}
-	defer func() { _ = original.Set() }()
-	return fn(target)
 }
 
 func checkNodeGatewayBFD(request NodeGatewayRequest) error {
@@ -358,51 +346,38 @@ func containsNoSession(output string) bool {
 }
 
 func deleteNodeGateway() error {
-	return withHostMountNamespace(deleteNodeGatewayInHostMountNamespace)
+	// OVS tools and BFD must use the helper image's root and PATH. Only fixed
+	// namespace-file operations enter the host mount namespace.
+	portErr := removeNodeGwNic()
+	namespaceErr := withHostMountNamespace(removeNodeGwNs)
+	return errors.Join(portErr, namespaceErr)
 }
 
-func deleteNodeGatewayInHostMountNamespace() error {
-	var errs []error
-	if err := removeNodeGwNic(); err != nil {
-		errs = append(errs, err)
-	}
-	if _, err := os.Stat(util.NodeGwNsPath); err == nil {
-		if err := removeNodeGwNs(); err != nil {
-			errs = append(errs, err)
-		}
-	} else if !errors.Is(err, os.ErrNotExist) {
-		errs = append(errs, err)
-	}
-	return errors.Join(errs...)
-}
-
-// withHostMountNamespace temporarily enters the host mount namespace on a
-// locked OS thread. The helper retains its own mount namespace for the RPC
-// socket, then switches only while touching the fixed host network namespace
-// and OVS paths. hostPID makes /proc/1 the node's init process; SYS_ADMIN is
-// scoped to this helper container and no privileged container is required.
+// withHostMountNamespace runs fixed namespace-file operations on a disposable
+// OS thread. Unsharing CLONE_FS is required before entering another mount
+// namespace in a multithreaded Go process. The thread stays locked and exits
+// without returning its changed mount namespace/root/cwd to the runtime.
 func withHostMountNamespace(fn func() error) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-
-	tid := unix.Gettid()
-	currentPath := fmt.Sprintf("/proc/self/task/%d/ns/mnt", tid)
-	currentFD, err := unix.Open(currentPath, unix.O_RDONLY|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return fmt.Errorf("open current mount namespace: %w", err)
-	}
-	defer unix.Close(currentFD)
-	hostFD, err := unix.Open("/proc/1/ns/mnt", unix.O_RDONLY|unix.O_CLOEXEC, 0)
-	if err != nil {
-		return fmt.Errorf("open host mount namespace: %w", err)
-	}
-	defer unix.Close(hostFD)
-	if err := unix.Setns(hostFD, unix.CLONE_NEWNS); err != nil {
-		return fmt.Errorf("enter host mount namespace: %w", err)
-	}
-	operationErr := fn()
-	if err := unix.Setns(currentFD, unix.CLONE_NEWNS); err != nil {
-		return errors.Join(operationErr, fmt.Errorf("restore helper mount namespace: %w", err))
-	}
-	return operationErr
+	result := make(chan error, 1)
+	go func() {
+		runtime.LockOSThread()
+		// Use the kubelet-mounted namespace file: directly reading /proc/1/ns
+		// would require ptrace access to the root-owned host init process.
+		hostFD, err := unix.Open(nodeGatewayHostMount, unix.O_RDONLY|unix.O_CLOEXEC, 0)
+		if err != nil {
+			result <- fmt.Errorf("open host mount namespace: %w", err)
+			return
+		}
+		defer unix.Close(hostFD)
+		if err := unix.Unshare(unix.CLONE_FS); err != nil {
+			result <- fmt.Errorf("unshare filesystem state: %w", err)
+			return
+		}
+		if err := unix.Setns(hostFD, unix.CLONE_NEWNS); err != nil {
+			result <- fmt.Errorf("enter host mount namespace: %w", err)
+			return
+		}
+		result <- fn()
+	}()
+	return <-result
 }

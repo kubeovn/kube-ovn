@@ -8946,8 +8946,10 @@ if [[ "$ENABLE_NODE_GATEWAY_HELPER" == "true" ]]; then
               - ALL
             add:
               - SYS_ADMIN
+              - SYS_CHROOT
               - NET_ADMIN
               - NET_RAW
+              - NET_BIND_SERVICE
         env:
           - name: NODE_NAME
             valueFrom:
@@ -8956,6 +8958,9 @@ if [[ "$ENABLE_NODE_GATEWAY_HELPER" == "true" ]]; then
         volumeMounts:
           - name: node-gateway-socket
             mountPath: /run/kube-ovn-node-gw
+          - name: node-gateway-host-mnt
+            mountPath: /run/kube-ovn-node-gw-host-mnt
+            readOnly: true
           - name: host-run-ovs
             mountPath: /run/openvswitch
             readOnly: true
@@ -8974,6 +8979,10 @@ EOF
   NODE_GATEWAY_SOCKET_VOLUME=$(cat <<EOF
         - name: node-gateway-socket
           emptyDir: {}
+        - name: node-gateway-host-mnt
+          hostPath:
+            path: /proc/1/ns/mnt
+            type: File
 EOF
   )
 fi

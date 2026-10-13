@@ -3,6 +3,9 @@
 package daemon
 
 import (
+	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -73,5 +76,64 @@ func TestReadyNodeGatewayPeersRequiresReadyIPv4LRP(t *testing.T) {
 	}
 	if got := readyNodeGatewayPeers(eips[:2]); len(got) != 0 {
 		t.Fatalf("unready LRP peers unexpectedly enabled node gateway: %v", got)
+	}
+}
+
+func TestGetOrCreateNodeGatewayNSReusesMountedNamespace(t *testing.T) {
+	gwNS, err := getOrCreateNodeGatewayNS("/proc/self/ns/net", func(string) error {
+		t.Error("existing network namespace must not be bind-mounted again")
+		return errors.New("unexpected create")
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := gwNS.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestGetOrCreateNodeGatewayNSRecoversStaleFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ovnext")
+	if err := os.WriteFile(path, nil, 0o660); err != nil {
+		t.Fatal(err)
+	}
+	createErr := errors.New("namespace creation failed")
+	created := false
+	_, err := getOrCreateNodeGatewayNS(path, func(got string) error {
+		created = true
+		if got != path {
+			t.Fatalf("namespace path = %q, want %q", got, path)
+		}
+		return createErr
+	})
+	if !created || !errors.Is(err, createErr) {
+		t.Fatalf("stale-file recovery: created=%v, error=%v", created, err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("failed recovery removed the reusable placeholder: %v", err)
+	}
+}
+
+func TestGetOrCreateNodeGatewayNSRejectsCreateWithoutMountedNamespace(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "ovnext")
+	_, err := getOrCreateNodeGatewayNS(path, func(got string) error {
+		return os.WriteFile(got, nil, 0o660)
+	})
+	if err == nil {
+		t.Fatal("ordinary file returned as a network namespace")
+	}
+}
+
+func TestHostMountNamespaceUnavailableDoesNotRunOperation(t *testing.T) {
+	if _, err := os.Stat(nodeGatewayHostMount); err == nil {
+		t.Skip("host mount namespace is present in the test environment")
+	}
+	called := false
+	err := withHostMountNamespace(func() error {
+		called = true
+		return nil
+	})
+	if err == nil || called {
+		t.Fatalf("missing host mount namespace: error=%v, callback called=%v", err, called)
 	}
 }
