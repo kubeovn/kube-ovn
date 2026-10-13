@@ -589,7 +589,7 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 			state.lb = serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBInternalTraffic, family)
 		}
 	}
-	if !isExternalVIP && serviceUsesScopedLB(svc) && !serviceUsesTemplateLB(svc) {
+	if reconcileCtx.lbReconciliation == nil && !isExternalVIP && serviceUsesScopedLB(svc) && !serviceUsesTemplateLB(svc) {
 		family := ""
 		families := serviceScopedInternalLBFamilies(svc)
 		if len(families) > 1 || (len(families) == 1 && families[0] != "") {
