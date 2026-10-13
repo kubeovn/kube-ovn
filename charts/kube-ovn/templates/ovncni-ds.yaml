@@ -31,7 +31,7 @@ spec:
       hostNetwork: true
       hostPID: true
       securityContext:
-        {{- if .Values.func.ENABLE_TPROXY }}
+        {{- if or .Values.func.ENABLE_TPROXY .Values.func.ENABLE_NODE_GATEWAY_HELPER }}
         fsGroup: 65534
         {{- end }}
         seccompProfile:
@@ -46,7 +46,19 @@ spec:
           - |
             chmod +t /usr/local/sbin
             chown -R nobody: /var/log/kube-ovn
+            if [ "$ENABLE_NODE_GATEWAY_HELPER" = "true" ]; then
+              if [ ! -e /var/run/netns/ovnext ]; then
+                touch /var/run/netns/ovnext
+              fi
+              if [ -f /var/run/netns/ovnext ]; then
+                chown 65534:65534 /var/run/netns/ovnext || true
+                chmod 0660 /var/run/netns/ovnext || true
+              fi
+            fi
             iptables -V
+        env:
+          - name: ENABLE_NODE_GATEWAY_HELPER
+            value: "{{ .Values.func.ENABLE_NODE_GATEWAY_HELPER }}"
         securityContext:
           allowPrivilegeEscalation: true
           capabilities:

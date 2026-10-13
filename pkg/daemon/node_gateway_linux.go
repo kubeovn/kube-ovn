@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -243,12 +244,23 @@ func authorizeNodeGatewayPeer(conn *net.UnixConn) error {
 }
 
 func ensureNodeGateway(request NodeGatewayRequest) error {
+	return withHostMountNamespace(func() error {
+		return ensureNodeGatewayInHostMountNamespace(request)
+	})
+}
+
+// ensureNodeGatewayInHostMountNamespace must run in the node's mount
+// namespace. The helper container's /var/run/netns mount is HostToContainer;
+// bind mounts created in that private mount namespace disappear on restart.
+func ensureNodeGatewayInHostMountNamespace(request NodeGatewayRequest) error {
 	gwNS, err := ns.GetNS(util.NodeGwNsPath)
 	if err != nil {
-		if _, ok := err.(ns.NSPathNotExistErr); !ok {
+		var notExist ns.NSPathNotExistErr
+		var notNS ns.NSPathNotNSErr
+		if !errors.As(err, &notExist) && !errors.As(err, &notNS) {
 			return fmt.Errorf("get node gateway namespace: %w", err)
 		}
-		if err := newNetNS(util.NodeGwNsPath); err != nil {
+		if err := newNetNSInCurrentMountNamespace(util.NodeGwNsPath); err != nil {
 			return fmt.Errorf("create node gateway namespace: %w", err)
 		}
 		gwNS, err = ns.GetNS(util.NodeGwNsPath)
@@ -284,29 +296,53 @@ func nodeGatewayReady(request NodeGatewayRequest, gwNS ns.NetNS) error {
 	if !exists {
 		return errors.New("node gateway OVS port does not exist")
 	}
-	if err := ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
+	if err := withCurrentThreadNetNS(gwNS, func(_ ns.NetNS) error {
 		if err := waitNetworkReady(util.NodeGwNic, request.IP, request.Gateway, true, true, 3, nil); err != nil {
 			return err
 		}
-		if output, err := exec.Command("bfdd-control", "status").CombinedOutput(); err != nil {
-			return fmt.Errorf("get bfdd status: %w, %s", err, output)
-		}
-		for _, peer := range request.BFDPeers {
-			cmd := exec.Command("bfdd-control", "status", "remote", peer, "local", request.BFDLocalIP)
-			var output []byte
-			output, err = cmd.CombinedOutput()
-			if err != nil {
-				return fmt.Errorf("check BFD peer %s: %w, %s", peer, err, output)
-			}
-			if string(output) != "" && containsNoSession(string(output)) {
-				if err := exec.Command("bfdd-control", "allow", peer).Run(); err != nil {
-					return fmt.Errorf("allow BFD peer %s: %w", peer, err)
-				}
-			}
-		}
-		return nil
+		return checkNodeGatewayBFD(request)
 	}); err != nil {
 		return err
+	}
+	return nil
+}
+
+// withCurrentThreadNetNS is the synchronous counterpart of ns.WithNetNSPath.
+// The latter starts a goroutine, which can run on a thread in the helper's
+// private mount namespace. Node gateway operations are already running on a
+// locked thread in the host mount namespace, so preserve that thread while
+// switching only its network namespace.
+func withCurrentThreadNetNS(target ns.NetNS, fn func(ns.NetNS) error) error {
+	original, err := ns.GetNS(getCurrentThreadNetNSPath())
+	if err != nil {
+		return err
+	}
+	defer original.Close()
+	if err := target.Set(); err != nil {
+		return err
+	}
+	defer func() { _ = original.Set() }()
+	return fn(target)
+}
+
+func checkNodeGatewayBFD(request NodeGatewayRequest) error {
+	if len(request.BFDPeers) == 0 {
+		return nil
+	}
+	if output, err := exec.Command("bfdd-control", "status").CombinedOutput(); err != nil {
+		return fmt.Errorf("get bfdd status: %w, %s", err, output)
+	}
+	for _, peer := range request.BFDPeers {
+		cmd := exec.Command("bfdd-control", "status", "remote", peer, "local", request.BFDLocalIP)
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("check BFD peer %s: %w, %s", peer, err, output)
+		}
+		if containsNoSession(string(output)) {
+			if err := exec.Command("bfdd-control", "allow", peer).Run(); err != nil {
+				return fmt.Errorf("allow BFD peer %s: %w", peer, err)
+			}
+		}
 	}
 	return nil
 }
@@ -316,6 +352,12 @@ func containsNoSession(output string) bool {
 }
 
 func deleteNodeGateway() error {
+	return withHostMountNamespace(func() error {
+		return deleteNodeGatewayInHostMountNamespace()
+	})
+}
+
+func deleteNodeGatewayInHostMountNamespace() error {
 	var errs []error
 	if err := removeNodeGwNic(); err != nil {
 		errs = append(errs, err)
@@ -328,4 +370,35 @@ func deleteNodeGateway() error {
 		errs = append(errs, err)
 	}
 	return errors.Join(errs...)
+}
+
+// withHostMountNamespace temporarily enters the host mount namespace on a
+// locked OS thread. The helper retains its own mount namespace for the RPC
+// socket, then switches only while touching the fixed host network namespace
+// and OVS paths. hostPID makes /proc/1 the node's init process; SYS_ADMIN is
+// scoped to this helper container and no privileged container is required.
+func withHostMountNamespace(fn func() error) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	tid := unix.Gettid()
+	currentPath := fmt.Sprintf("/proc/self/task/%d/ns/mnt", tid)
+	currentFD, err := unix.Open(currentPath, unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("open current mount namespace: %w", err)
+	}
+	defer unix.Close(currentFD)
+	hostFD, err := unix.Open("/proc/1/ns/mnt", unix.O_RDONLY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return fmt.Errorf("open host mount namespace: %w", err)
+	}
+	defer unix.Close(hostFD)
+	if err := unix.Setns(hostFD, unix.CLONE_NEWNS); err != nil {
+		return fmt.Errorf("enter host mount namespace: %w", err)
+	}
+	operationErr := fn()
+	if err := unix.Setns(currentFD, unix.CLONE_NEWNS); err != nil {
+		return errors.Join(operationErr, fmt.Errorf("restore helper mount namespace: %w", err))
+	}
+	return operationErr
 }
