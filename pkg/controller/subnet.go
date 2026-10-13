@@ -2432,7 +2432,7 @@ func (c *Controller) reconcileServiceProxyFallbackDropPolicies(subnet *kubeovnv1
 		subnetEnablesServiceLB(subnet, c.config.EnableOvnLB)
 	pgName := getOverlaySubnetsPortGroupName(subnet.Name, nodeName)
 	if !eligible {
-		return c.deleteStaleServiceProxyFallbackDropPolicies(subnet, nodeName, policies, desired)
+		return c.deleteStaleServiceProxyFallbackDropPolicies(policies, desired)
 	}
 	subnetProtocols := make(map[string]struct{}, 2)
 	for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
@@ -2472,10 +2472,10 @@ func (c *Controller) reconcileServiceProxyFallbackDropPolicies(subnet *kubeovnv1
 			}
 		}
 	}
-	return c.deleteStaleServiceProxyFallbackDropPolicies(subnet, nodeName, policies, desired)
+	return c.deleteStaleServiceProxyFallbackDropPolicies(policies, desired)
 }
 
-func (c *Controller) deleteStaleServiceProxyFallbackDropPolicies(subnet *kubeovnv1.Subnet, nodeName string, policies []*ovnnb.LogicalRouterPolicy, desired map[string]struct{}) error {
+func (c *Controller) deleteStaleServiceProxyFallbackDropPolicies(policies []*ovnnb.LogicalRouterPolicy, desired map[string]struct{}) error {
 	for _, policy := range policies {
 		if _, ok := desired[policy.Match]; ok {
 			continue
