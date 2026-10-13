@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "expectedRunnerJobs": 85,
+  "expectedRunnerJobs": 84,
   "forceFull": false,
   "fullThreshold": 3,
   "productionPrefixes": ["cmd/", "fastpath/", "pkg/", "versions/"],
@@ -52,9 +52,9 @@
   "pathRules": [
     {
       "patterns": ["test/e2e/kube-ovn/**"],
-      "groups": ["core", "service-lb-underlay"],
+      "groups": ["core"],
       "owner": "networking-e2e",
-      "reason": "Kube-OVN conformance and router load balancer suites"
+      "reason": "Kube-OVN conformance suites"
     },
     {
       "patterns": ["test/e2e/kubevirt/**"],
@@ -211,8 +211,7 @@
         {"id": "underlay-logical-gateway-installation-test"},
         {"id": "no-ovn-lb-test"},
         {"id": "lb-svc-e2e"},
-        {"id": "kube-ovn-underlay-metallb-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"]}},
-        {"id": "router-lb-rule-e2e"}
+        {"id": "kube-ovn-underlay-metallb-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"]}}
       ]
     },
     "install-platform": {
