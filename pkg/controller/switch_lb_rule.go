@@ -231,6 +231,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 	name = generateSvcName(info.Name)
 	ownerSvc := &corev1.Service{Name: name, Namespace: info.Namespace}
 	setServiceScopedLBOwner(ownerSvc, switchLBRuleLBOwnerKind, info.Name, info.UID)
+	_, atomicLB := c.OVNNbClient.(resourceLoadBalancerClient)
 	// Read the subnet annotation before deleting the service, so we can use it as a
 	// fallback to clean up the health-check VIP when no LBHC is found (e.g. the LBHC
 	// was already removed because the service was deleted before the SLR).
@@ -263,8 +264,10 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 			return err
 		}
 	}
-	if err := c.deleteLegacyVpcVIPs(vpcForSlr, info.Vips); err != nil {
-		return err
+	if !atomicLB {
+		if err := c.deleteLegacyVpcVIPs(vpcForSlr, info.Vips); err != nil {
+			return err
+		}
 	}
 
 	if lbhcs, err = c.OVNNbClient.ListLoadBalancerHealthChecks(
@@ -309,16 +312,18 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 			}
 			belongsToOwner = true
 
-			err = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID)
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete load balancer health check %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
-				return err
-			}
+			if !atomicLB {
+				err = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID)
+				if err != nil && !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete load balancer health check %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
+					return err
+				}
 
-			err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip)
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete ip port mappings %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
-				return err
+				err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip)
+				if err != nil && !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete ip port mappings %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
+					return err
+				}
 			}
 		}
 
@@ -343,13 +348,18 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 		vips[subnetForVip] = struct{}{}
 	}
 
-	if lbhcUUIDsToDelete.Len() > 0 {
+	if !atomicLB && lbhcUUIDsToDelete.Len() > 0 {
 		if err = c.OVNNbClient.DeleteLoadBalancerHealthChecks(
 			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 				return lbhcUUIDsToDelete.Has(lbhc.UUID)
 			},
 		); err != nil && !k8serrors.IsNotFound(err) {
 			klog.Errorf("delete load balancer health checks matched vip %s, err: %v", info.Vips, err)
+			return err
+		}
+	}
+	if atomicLB {
+		if err := c.deleteServiceScopedLoadBalancersWithLegacyVIPs(ownerSvc, vpcForSlr, info.Vips, lbhcUUIDsToDelete.UnsortedList()); err != nil {
 			return err
 		}
 	}
@@ -373,8 +383,10 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 		}
 	}
 
-	if err := c.deleteServiceScopedLoadBalancers(ownerSvc); err != nil {
-		return err
+	if !atomicLB {
+		if err := c.deleteServiceScopedLoadBalancers(ownerSvc); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -382,7 +394,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 
 func (c *Controller) handleUpdateSwitchLBRule(info *SwitchLBRuleInfo) error {
 	klog.V(3).Infof("handleUpdateSwitchLBRule %s", info.Name)
-	if info.IsRecreate {
+	if info.IsRecreate && switchLBRuleNamespaceChanged(c, info) {
 		if err := c.handleDelSwitchLBRule(info); err != nil {
 			klog.Errorf("failed to update switchLBRule, %s", err)
 			return err
@@ -394,6 +406,11 @@ func (c *Controller) handleUpdateSwitchLBRule(info *SwitchLBRuleInfo) error {
 		return err
 	}
 	return nil
+}
+
+func switchLBRuleNamespaceChanged(c *Controller, info *SwitchLBRuleInfo) bool {
+	slr, err := c.switchLBRuleLister.Get(info.Name)
+	return err == nil && slr.Spec.Namespace != info.Namespace
 }
 
 func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service) *corev1.Service {

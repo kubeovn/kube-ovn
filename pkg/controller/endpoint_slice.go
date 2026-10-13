@@ -192,6 +192,7 @@ type endpointSliceReconcileContext struct {
 	scopedLBAttachments        []ovs.LoadBalancerAttachment
 	scopedLBAttachmentsApplied bool
 	desiredScopedVIPs          map[string]map[string]struct{}
+	lbReconciliation           *serviceLoadBalancerReconciliation
 }
 
 type serviceEndpointVIPState struct {
@@ -267,11 +268,14 @@ func (c *Controller) reconcileServiceEndpointSlices(svc *v1.Service, endpointSli
 		},
 		desiredScopedVIPs: make(map[string]map[string]struct{}),
 	}
+	if _, ok := c.OVNNbClient.(resourceLoadBalancerClient); ok && serviceUsesScopedLB(svc) {
+		reconcileCtx.lbReconciliation = newServiceLoadBalancerReconciliation(svc)
+	}
 	if err := c.prepareServiceScopedLoadBalancers(reconcileCtx); err != nil {
 		return err
 	}
 	if serviceUsesTrafficDistribution(svc) {
-		if err := c.reconcileServiceTrafficDistribution(svc, endpointSlices, vpc, profile.lbVips, profile.trafficClasses); err != nil {
+		if err := c.reconcileServiceTrafficDistribution(svc, endpointSlices, vpc, profile.lbVips, profile.trafficClasses, reconcileCtx.lbReconciliation); err != nil {
 			return err
 		}
 	}
@@ -381,6 +385,9 @@ func serviceLoadBalancers(vpc *kubeovnv1.Vpc, affinity v1.ServiceAffinity) servi
 }
 
 func (c *Controller) prepareServiceScopedLoadBalancers(reconcileCtx *endpointSliceReconcileContext) error {
+	if reconcileCtx.lbReconciliation != nil {
+		return c.planServiceScopedLoadBalancers(reconcileCtx)
+	}
 	svc := reconcileCtx.service
 	if !serviceUsesScopedLB(svc) {
 		return nil
@@ -476,6 +483,9 @@ func (c *Controller) serviceScopedLBAttachments(vpcName string) ([]ovs.LoadBalan
 }
 
 func (c *Controller) clearServiceExternalTrafficLocalMarkers(reconcileCtx *endpointSliceReconcileContext) error {
+	if reconcileCtx.lbReconciliation != nil {
+		return nil
+	}
 	svc := reconcileCtx.service
 	for _, lbs := range []map[v1.Protocol]string{reconcileCtx.loadBalancers.current, reconcileCtx.loadBalancers.previous} {
 		if err := c.clearLoadBalancerVIPExternalTrafficLocal(svc, lbs[v1.ProtocolTCP], lbs[v1.ProtocolUDP], lbs[v1.ProtocolSCTP]); err != nil {
@@ -616,6 +626,10 @@ func (c *Controller) serviceVIPIPPortMapping(reconcileCtx *endpointSliceReconcil
 }
 
 func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileContext, state *serviceEndpointVIPState) error {
+	if reconcileCtx.lbReconciliation != nil {
+		c.planServiceEndpointVIP(reconcileCtx, state)
+		return nil
+	}
 	svc, profile := reconcileCtx.service, reconcileCtx.profile
 	klog.Infof("add vip endpoint %s, backends %v to LB %s", state.vip, state.backends, state.lb)
 	candidates := c.serviceLBMigrationCandidates(svc, state.port.Protocol, reconcileCtx.vpc, state.trafficClass)
@@ -660,6 +674,10 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 }
 
 func (c *Controller) deleteServiceEndpointVIP(reconcileCtx *endpointSliceReconcileContext, state *serviceEndpointVIPState) error {
+	if reconcileCtx.lbReconciliation != nil {
+		c.planServiceEndpointVIP(reconcileCtx, state)
+		return nil
+	}
 	if err := c.OVNNbClient.LoadBalancerDeleteVip(state.lb, state.vip, true); err != nil {
 		return fmt.Errorf("delete vip %s from load balancer %s: %w", state.vip, state.lb, err)
 	}
@@ -679,6 +697,11 @@ func (c *Controller) deleteServiceEndpointVIP(reconcileCtx *endpointSliceReconci
 
 func (c *Controller) finishServiceEndpointSliceReconcile(reconcileCtx *endpointSliceReconcileContext) error {
 	svc := reconcileCtx.service
+	if reconcileCtx.lbReconciliation != nil {
+		if err := c.commitServiceLoadBalancers(reconcileCtx); err != nil {
+			return err
+		}
+	}
 	if len(reconcileCtx.scopedLBAttachments) != 0 && !reconcileCtx.scopedLBAttachmentsApplied {
 		lbNames := make([]string, 0, len(reconcileCtx.loadBalancers.current))
 		for _, name := range reconcileCtx.loadBalancers.current {
@@ -695,6 +718,9 @@ func (c *Controller) finishServiceEndpointSliceReconcile(reconcileCtx *endpointS
 		if err := util.PatchAnnotations(c.config.KubeClient.CoreV1().Services(svc.Namespace), svc.Name, patch); err != nil {
 			return fmt.Errorf("patch service %s/%s vpc annotation: %w", svc.Namespace, svc.Name, err)
 		}
+	}
+	if reconcileCtx.lbReconciliation != nil {
+		return c.cleanupLegacyVpcLoadBalancers(reconcileCtx.vpc)
 	}
 	if !serviceUsesScopedLB(svc) {
 		return c.deleteServiceScopedLoadBalancers(svc)
@@ -1407,7 +1433,7 @@ func (c *Controller) reconcileServiceExternalLocalTemplate(reconcileCtx *endpoin
 		}
 	}
 
-	if err := c.reconcileServiceTemplateState(svc, prefix, migrations, desiredTemplateVIPs, variablesByChassis); err != nil {
+	if err := c.reconcileServiceTemplateState(svc, prefix, migrations, desiredTemplateVIPs, variablesByChassis, reconcileCtx.lbReconciliation); err != nil {
 		return fmt.Errorf("reconcile external local template for service %s/%s: %w", svc.Namespace, svc.Name, err)
 	}
 	return nil
@@ -1446,7 +1472,7 @@ func (c *Controller) cleanupServiceTrafficDistributionState(svc *v1.Service) err
 	return nil
 }
 
-func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpointSlices []*discoveryv1.EndpointSlice, vpc *kubeovnv1.Vpc, lbVips []string, classes map[string]serviceLBTrafficClass) error {
+func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpointSlices []*discoveryv1.EndpointSlice, vpc *kubeovnv1.Vpc, lbVips []string, classes map[string]serviceLBTrafficClass, plans ...*serviceLoadBalancerReconciliation) error {
 	chassises, err := c.OVNSbClient.ListChassis()
 	if err != nil {
 		return fmt.Errorf("list OVN chassis for service %s/%s traffic distribution: %w", svc.Namespace, svc.Name, err)
@@ -1503,13 +1529,16 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 			}
 		}
 	}
-	if err := c.reconcileServiceTemplateState(svc, prefix, migrations, desiredTemplateVIPs, variablesByChassis); err != nil {
+	if err := c.reconcileServiceTemplateState(svc, prefix, migrations, desiredTemplateVIPs, variablesByChassis, plans...); err != nil {
 		return fmt.Errorf("reconcile traffic distribution for service %s/%s: %w", svc.Namespace, svc.Name, err)
 	}
 	return nil
 }
 
-func (c *Controller) reconcileServiceTemplateState(svc *v1.Service, prefix string, migrations []ovs.TemplateVIPMigration, desiredTemplateVIPs, variablesByChassis map[string]map[string]string) error {
+func (c *Controller) reconcileServiceTemplateState(svc *v1.Service, prefix string, migrations []ovs.TemplateVIPMigration, desiredTemplateVIPs, variablesByChassis map[string]map[string]string, plans ...*serviceLoadBalancerReconciliation) error {
+	if len(plans) != 0 && plans[0] != nil {
+		return plans[0].addTemplateState(prefix, migrations, desiredTemplateVIPs, variablesByChassis)
+	}
 	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
 		return lb.ExternalIDs[serviceLBOwnerExternalID] == string(svc.UID)
 	})
