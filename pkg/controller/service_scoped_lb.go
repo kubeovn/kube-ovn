@@ -182,7 +182,7 @@ func serviceSessionAffinityTimeout(svc *v1.Service) (int, error) {
 	return timeout, nil
 }
 
-func serviceScopedLBSelectionFields(svc *v1.Service, protocol v1.Protocol, timeout int) []string {
+func serviceScopedLBSelectionFields(svc *v1.Service, protocol v1.Protocol, timeout int, family string) []string {
 	if svc.Spec.SessionAffinity != v1.ServiceAffinityClientIP {
 		return nil
 	}
@@ -199,14 +199,24 @@ func serviceScopedLBSelectionFields(svc *v1.Service, protocol v1.Protocol, timeo
 		return nil
 	}
 
-	// Keep the selection key aligned with the Service address family. OVN
-	// generates separate logical flows for IPv4 and IPv6; carrying an
-	// inapplicable source field into a single-stack LB can make the fallback
-	// selection differ between overlay datapaths before the affinity flow is
-	// learned.
+	// A family-specific LB may serve an ingress address whose family differs
+	// from the ClusterIP. Select fields for that LB before inferring VIP families.
+	switch family {
+	case "ipv4":
+		return []string{ovnnb.LoadBalancerSelectionFieldsIPSrc}
+	case "ipv6":
+		return []string{ovnnb.LoadBalancerSelectionFieldsIpv6Src}
+	}
+	// Rule VIPs replace ClusterIPs in the endpoint reconciliation profile.
+	ips := slices.Values(util.ServiceClusterIPs(*svc))
+	if vip := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; vip != "" {
+		ips = slices.Values([]string{vip})
+	} else if vips := svc.Annotations[util.RouterLBRuleVipsAnnotation]; vips != "" {
+		ips = strings.SplitSeq(vips, ",")
+	}
 	fields := make([]string, 0, 2)
-	for _, clusterIP := range util.ServiceClusterIPs(*svc) {
-		switch strings.ToLower(util.CheckProtocol(clusterIP)) {
+	for ip := range ips {
+		switch strings.ToLower(util.CheckProtocol(strings.TrimSpace(ip))) {
 		case "ipv4":
 			if !slices.Contains(fields, ovnnb.LoadBalancerSelectionFieldsIPSrc) {
 				fields = append(fields, ovnnb.LoadBalancerSelectionFieldsIPSrc)
@@ -398,7 +408,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	} else {
 		deleteOptions = append(deleteOptions, "distributed")
 	}
-	selectionFields := serviceScopedLBSelectionFields(svc, protocol, timeout)
+	selectionFields := serviceScopedLBSelectionFields(svc, protocol, timeout, family)
 	if serviceLB, ok := c.OVNNbClient.(interface {
 		ReconcileLoadBalancer(config ovs.LoadBalancerConfig) error
 	}); ok {
