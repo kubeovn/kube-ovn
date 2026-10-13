@@ -281,6 +281,7 @@ const (
 	IptablesFip = "iptables"
 
 	GatewayRouterPolicyPriority      = 29000
+	ServiceProxyFallbackDropPriority = 30050
 	EgressGatewayDropPolicyPriority  = 29090
 	EgressGatewayPolicyPriority      = 29100
 	EgressGatewayLocalPolicyPriority = 29150
