@@ -5,6 +5,7 @@ import argparse
 import collections
 import concurrent.futures
 import datetime
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -84,7 +85,56 @@ def podNames(selector, cancel=None):
     return result.get("stdout", "").split()
 
 
-def prepareDebug(directory):
+def isolateServiceProxyFallback(directory):
+    """Keep overlay Conformance's Pod ClusterIP requests on the OVN path."""
+    evidence = {"started": timestamp(), "nodes": []}
+    try:
+        subnet = capture(kubectl("get", "subnet", "ovn-default", "-o", "json"))
+        spec = json.loads(subnet.get("stdout", "")).get("spec", {})
+        if not spec.get("enableLb") or spec.get("vlan"):
+            raise ValueError("Service proxy isolation requires an overlay subnet with OVN LB enabled")
+        sources = [ipaddress.ip_network(cidr.strip()) for cidr in spec["cidrBlock"].split(",")]
+        listing = capture(kubectl("get", "servicecidrs", "-o", "json"))
+        services = {ipaddress.ip_network(cidr) for item in json.loads(listing.get("stdout", "")).get("items", [])
+                    if any(condition.get("type") == "Ready" and condition.get("status") == "True"
+                           for condition in item.get("status", {}).get("conditions", []))
+                    for cidr in item.get("spec", {}).get("cidrs", [])}
+        pairs = [(source, service) for source in sources
+                 for service in sorted(services, key=lambda cidr: (cidr.version, int(cidr.network_address), cidr.prefixlen))
+                 if source.version == service.version]
+        nodes = capture(kubectl("get", "nodes", "-o", "name")).get("stdout", "").split()
+        if not pairs or not nodes:
+            raise ValueError("cannot determine Pod/Service CIDRs or Kind nodes for isolation")
+        evidence["cidrs"] = [[str(source), str(service)] for source, service in pairs]
+        for node in nodes:
+            name = node.removeprefix("node/")
+            if not name.startswith("kube-ovn-"):
+                raise ValueError(f"unexpected Kind node: {name}")
+            for source, service in pairs:
+                command = ["docker", "exec", name, "bash", "-ec", '''
+iptables="$1"
+pod_cidr="$2"
+service_cidr="$3"
+# A missed OVN VIP otherwise reaches kube-proxy and learns a different backend.
+# Only un-DNATed traffic entering from the OVN host interface is isolated;
+# hostNetwork/NodePort traffic and successful OVN DNAT keep their normal path.
+rule=(-i ovn0 -s "$pod_cidr" -d "$service_cidr" -m comment --comment kube-ovn-e2e-service-isolation -j DROP)
+"$iptables" -w 5 -t raw -C PREROUTING "${rule[@]}" 2>/dev/null ||
+  "$iptables" -w 5 -t raw -I PREROUTING 1 "${rule[@]}"
+"$iptables" -w 5 -t raw -L PREROUTING -n -v --line-numbers
+''', "bash", "iptables" if source.version == 4 else "ip6tables", str(source), str(service)]
+                result = capture(command, seconds=15)
+                evidence["nodes"].append(result)
+                if result.get("returncode") != 0:
+                    raise ValueError(f"failed to isolate Service fallback on {name}")
+    except (ValueError, KeyError) as error:
+        evidence["error"] = str(error)
+    evidence["finished"] = timestamp()
+    (directory / "service-proxy-isolation.json").write_text(json.dumps(evidence, indent=2) + "\n")
+    return int("error" in evidence)
+
+
+def prepareDebug(directory, isolateServiceProxy=False):
     """Enable diagnostics before E2E; wait for the controller restart to finish."""
     directory.mkdir(parents=True, exist_ok=True)
     result = capture(kubectl("get", "deployment", "kube-ovn-controller", "-n", "kube-system", "-o", "json"))
@@ -145,7 +195,14 @@ done
 '''))
         # Older scheduled images may use different sockets/modules; retain the result.
         (directory / f"ovn-controller-vlog-{pod}.json").write_text(json.dumps(result, indent=2))
-    return int(failed or not central)
+    if failed or not central:
+        return 1
+    if isolateServiceProxy:
+        if "--enable-lb=false" in controller.get("args", []):
+            (directory / "service-proxy-isolation.json").write_text(json.dumps({"error": "controller OVN LB is disabled"}))
+            return 1
+        return isolateServiceProxyFallback(directory)
+    return 0
 
 
 def runtimeJobs(central, cancel=None):
@@ -253,6 +310,8 @@ timeout 3 ovs-vsctl --timeout=2 show
 timeout 3 ovs-vsctl --timeout=2 --columns=name,ofport,error,external_ids list Interface
 echo '=== OpenFlow and learned affinity flows ==='
 timeout 3 ovs-ofctl -O OpenFlow13 dump-flows br-int "$1"
+echo '=== load balancer selection groups ==='
+timeout 3 ovs-ofctl -O OpenFlow13 dump-groups br-int
 echo '=== datapath ==='
 timeout 3 ovs-appctl -T 2 dpif/show
 echo '=== conntrack ==='
@@ -272,6 +331,13 @@ ip -details addr
 ip route
 ip -6 route
 ip neigh
+echo '=== node Service proxy and fallback rules ==='
+for save in iptables-save iptables-legacy-save ip6tables-save ip6tables-legacy-save; do
+  if command -v "$save" >/dev/null 2>&1; then
+    timeout 3 "$save" -c -t raw
+    timeout 3 "$save" -c -t nat
+  fi
+done
 cat /proc/loadavg
 cat /proc/meminfo
 echo '=== cgroup CPU throttling and memory pressure ==='
@@ -473,7 +539,7 @@ done
             prefix = ["kubectl", "--request-timeout=0", "exec", "-n", "kube-system", pod, "-c", "openvswitch", "--"]
             targets.append((f"ovn-controller-file-{pod}", prefix + ["tail", "-n", "100", "-F", "/var/log/ovn/ovn-controller.log"]))
             targets.append((f"service-packet-headers-{pod}", prefix + ["tcpdump", "-i", "any", "-p", "-nn", "-tttt", "-S", "-l",
-                "tcp port 80 or tcp port 81 or tcp port 9376"]))
+                "tcp port 80 or tcp port 81 or tcp port 9376 or tcp port 8083 or udp port 90 or udp port 8081"]))
         for name, command in targets:
             thread = threading.Thread(target=self.guard, args=(self.stream, (name, command)), daemon=True)
             with self.lock:
@@ -762,13 +828,15 @@ def main():
     parser.add_argument("directory", type=Path)
     parser.add_argument("--suite", choices=("k8s-conformance-e2e", "k8s-netpol-e2e"))
     parser.add_argument("--interval", type=float, default=30)
+    parser.add_argument("--isolate-service-proxy-fallback", action="store_true",
+                        help="isolate overlay Conformance Pod ClusterIP traffic from the Kind node proxy")
     parser.add_argument("--max-seconds", type=int,
                         default=int(os.environ.get("E2E_MAX_SECONDS", "4200")))
     args = parser.parse_args()
     if args.interval <= 0:
         parser.error("interval must be positive")
     if args.action == "prepare":
-        return prepareDebug(args.directory)
+        return prepareDebug(args.directory, isolateServiceProxy=args.isolate_service_proxy_fallback)
     if args.action == "snapshot":
         collectSnapshot(args.directory, full=True)
         return 0

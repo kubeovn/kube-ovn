@@ -1039,9 +1039,13 @@ jobs:
 
       - name: Enable networking debug logs before E2E
         timeout-minutes: 5
-        run: >-
-          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" prepare
-          "$GITHUB_WORKSPACE/network-e2e-diagnostics/preparation"
+        run: |
+          args=()
+          if [ '${{ matrix.mode }}' = overlay ]; then
+            args+=(--isolate-service-proxy-fallback)
+          fi
+          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" prepare \
+            "$GITHUB_WORKSPACE/network-e2e-diagnostics/preparation" "${args[@]}"
 
       - name: Run E2E
         id: e2e
