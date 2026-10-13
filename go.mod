@@ -76,7 +76,7 @@ require (
 	k8s.io/streaming v0.37.1
 	k8s.io/utils v0.0.0-20260707023825-cf1189d6abe3
 	kernel.org/pub/linux/libs/security/libcap/cap v1.2.78
-	kubevirt.io/api v1.9.0
+	kubevirt.io/api v1.9.1
 	kubevirt.io/client-go v1.9.0
 	sigs.k8s.io/controller-runtime v0.25.2
 	sigs.k8s.io/knftables v0.0.22
