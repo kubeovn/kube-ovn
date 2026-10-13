@@ -151,6 +151,58 @@ class NetworkDiagnosticsTest(unittest.TestCase):
                 mock.patch.object(diagnostics, "capture", return_value={"returncode": 1, "stderr": "offline"}):
             self.assertEqual(diagnostics.prepareDebug(Path(temporary)), 1)
 
+    def testServiceProxyIsolationOnlyUsesReadyMatchingCIDRs(self):
+        commands = []
+
+        def capture(command, **kwargs):
+            commands.append(command)
+            if "subnet" in command:
+                stdout = json.dumps({"spec": {"enableLb": True, "cidrBlock": "10.16.0.0/16,fd00:10:16::/64"}})
+            elif "servicecidrs" in command:
+                stdout = json.dumps({"items": [
+                    {"spec": {"cidrs": ["10.96.0.0/12", "fd00:10:96::/108"]},
+                     "status": {"conditions": [{"type": "Ready", "status": "True"}]}},
+                    {"spec": {"cidrs": ["10.200.0.0/16"]},
+                     "status": {"conditions": [{"type": "Ready", "status": "False"}]}},
+                ]})
+            else:
+                stdout = "node/kube-ovn-control-plane\nnode/kube-ovn-worker\n"
+            return {"stdout": stdout, "returncode": 0}
+
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(diagnostics, "capture", capture):
+            self.assertEqual(diagnostics.isolateServiceProxyFallback(Path(temporary)), 0)
+            evidence = json.loads((Path(temporary) / "service-proxy-isolation.json").read_text())
+        applied = [command for command in commands if command[0] == "docker"]
+        self.assertEqual(len(applied), 4)
+        self.assertEqual({tuple(command[-3:]) for command in applied}, {
+            ("iptables", "10.16.0.0/16", "10.96.0.0/12"),
+            ("ip6tables", "fd00:10:16::/64", "fd00:10:96::/108"),
+        })
+        self.assertEqual(len(evidence["nodes"]), 4)
+
+    def testServiceProxyIsolationRejectsDisabledOrUnderlayLB(self):
+        for spec in ({"enableLb": False}, {"enableLb": True, "vlan": "physical"}):
+            with self.subTest(spec=spec), tempfile.TemporaryDirectory() as temporary, \
+                    mock.patch.object(diagnostics, "capture", return_value={"stdout": json.dumps({"spec": spec})}) as capture:
+                self.assertEqual(diagnostics.isolateServiceProxyFallback(Path(temporary)), 1)
+                self.assertEqual(capture.call_count, 1)
+                self.assertIn("error", json.loads((Path(temporary) / "service-proxy-isolation.json").read_text()))
+
+    def testServiceProxyIsolationFailsWhenNodeRuleCannotBeInstalled(self):
+        responses = [
+            {"stdout": json.dumps({"spec": {"enableLb": True, "cidrBlock": "10.16.0.0/16"}})},
+            {"stdout": json.dumps({"items": [{"spec": {"cidrs": ["10.96.0.0/12"]},
+                "status": {"conditions": [{"type": "Ready", "status": "True"}]}}]})},
+            {"stdout": "node/kube-ovn-worker\n"},
+            {"returncode": 1, "stderr": "cannot install rule"},
+        ]
+        with tempfile.TemporaryDirectory() as temporary, \
+                mock.patch.object(diagnostics, "capture", side_effect=responses):
+            self.assertEqual(diagnostics.isolateServiceProxyFallback(Path(temporary)), 1)
+            evidence = json.loads((Path(temporary) / "service-proxy-isolation.json").read_text())
+        self.assertIn("failed to isolate", evidence["error"])
+        self.assertEqual(evidence["nodes"][0]["returncode"], 1)
+
     def testIndependentClientProbeHasTotalTimeoutAndLeavesOriginalLoopAlone(self):
         socket = diagnostics.kubectl("exec", "-n", "traffic-distribution-1", "client-0", "--", "sh", "-c", "original socket probe")
         with mock.patch.object(diagnostics, "runtimeJobs", return_value={"client-test-sockets": socket}), \
