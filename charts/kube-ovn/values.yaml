@@ -106,6 +106,7 @@ networking:
   ENABLE_COMPACT: false
 
 func:
+  ENABLE_NODE_GATEWAY_HELPER: false
   ENABLE_LB: true
   ENABLE_NP: true
   NP_ENFORCEMENT: standard

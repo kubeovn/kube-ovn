@@ -1140,6 +1140,9 @@ func removeNodeGwNs() error {
 }
 
 func (c *Controller) loopOvnExt0Check() {
+	if !c.config.EnableNodeGatewayHelper || c.nodeGatewayRPC == nil {
+		return
+	}
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
@@ -1170,11 +1173,10 @@ func (c *Controller) loopOvnExt0Check() {
 	}
 
 	if needClean {
-		if err := removeNodeGwNic(); err != nil {
-			klog.Error(err)
-			return
-		}
-		if err := removeNodeGwNs(); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := c.nodeGatewayRPC.Delete(ctx, c.config.NodeName)
+		cancel()
+		if err != nil {
 			klog.Error(err)
 			return
 		}
@@ -1189,6 +1191,12 @@ func (c *Controller) loopOvnExt0Check() {
 		klog.Errorf("ecmp gateway ovn eip still has no ip")
 		return
 	}
+	filters := labels.Set{util.OvnEipTypeLabel: util.OvnEipTypeLRP}
+	cachedEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(filters))
+	if err != nil {
+		klog.Errorf("failed to list LRP ovn eips: %v", err)
+		return
+	}
 	ips := util.GetStringIP(cachedEip.Status.V4Ip, cachedEip.Status.V6Ip)
 	cachedSubnet, err := c.subnetsLister.Get(cachedEip.Spec.ExternalSubnet)
 	if err != nil {
@@ -1201,34 +1209,33 @@ func (c *Controller) loopOvnExt0Check() {
 		klog.Errorf("failed to parse mac %s, %v", cachedEip.Status.MacAddress, err)
 		return
 	}
-	gwNS, err := ns.GetNS(util.NodeGwNsPath)
-	if err != nil {
-		if _, ok := err.(ns.NSPathNotExistErr); !ok {
-			klog.Errorf("failed to get netns from path %s: %v", util.NodeGwNsPath, err)
-			return
-		}
-		if err = newNetNS(util.NodeGwNsPath); err != nil {
-			klog.Error(fmt.Errorf("failed to create gw ns %s: %w", util.NodeGwNs, err))
-			return
-		}
-		if gwNS, err = ns.GetNS(util.NodeGwNsPath); err != nil {
-			klog.Errorf("failed to get netns from path %s: %v", util.NodeGwNsPath, err)
-			return
-		}
-	}
-	defer gwNS.Close()
 	nodeExtIP := cachedEip.Spec.V4Ip
 	ipAddr, err := util.GetIPAddrWithMask(ips, cachedSubnet.Spec.CIDRBlock)
 	if err != nil {
 		klog.Errorf("failed to get ip addr with mask %s, %v", ips, err)
 		return
 	}
-	if err := c.checkNodeGwNicInNs(nodeExtIP, ipAddr, gw, gwNS); err == nil {
-		// add all lrp ip in bfd listening list
-		return
-	}
 	klog.Infof("setup nic ovnext0 ip %s, mac %v, mtu %d", ipAddr, mac, c.config.MTU)
-	if err := configureNodeGwNic(portName, ipAddr, gw, mac, c.config.MTU, gwNS); err != nil {
+	peers := make([]string, 0, len(cachedEips))
+	for _, eip := range cachedEips {
+		if eip.Status.Ready && eip.Spec.V4Ip != "" {
+			peers = append(peers, eip.Spec.V4Ip)
+		}
+	}
+	request := NodeGatewayRequest{
+		Operation:  nodeGatewayEnsure,
+		NodeName:   c.config.NodeName,
+		IP:         ipAddr,
+		Gateway:    gw,
+		MAC:        mac.String(),
+		MTU:        c.config.MTU,
+		BFDLocalIP: nodeExtIP,
+		BFDPeers:   peers,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	err = c.nodeGatewayRPC.Ensure(ctx, request)
+	cancel()
+	if err != nil {
 		klog.Errorf("failed to setup ovnext0, %v", err)
 		return
 	}

@@ -213,6 +213,8 @@ networking:
 # -- Features of Kube-OVN we wish to enable/disable.
 # @section -- Opt-in/out Features
 features:
+  # Enable the node gateway helper sidecar.
+  enableNodeGatewayHelper: false
   # -- Enable Kube-OVN loadbalancers
   # @section -- Opt-in/out Features
   enableLoadbalancer: true

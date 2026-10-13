@@ -160,6 +160,7 @@ spec:
           {{- end }}
           - --kubelet-dir={{ .Values.kubelet.directory }}
           - --enable-tproxy={{ .Values.features.enableTproxy }}
+          - --enable-node-gateway-helper={{ .Values.features.enableNodeGatewayHelper }}
           - --ovs-vsctl-concurrency={{ .Values.performance.ovsVsctlConcurrency }}
           - --secure-serving={{- .Values.features.enableSecureServing }}
           {{- if or .Values.networking.tlsMinVersion .Values.networking.tlsMaxVersion .Values.networking.tlsCipherSuites }}
@@ -217,6 +218,10 @@ spec:
           {{- if .Values.features.enableTproxy }}
           - name: tproxy-socket
             mountPath: /run/kube-ovn-tproxy
+          {{- end }}
+          {{- if .Values.features.enableNodeGatewayHelper }}
+          - name: node-gateway-socket
+            mountPath: /run/kube-ovn-node-gw
           {{- end }}
           - name: usr-local-sbin
             mountPath: /usr/local/sbin
@@ -313,11 +318,47 @@ spec:
             cpu: 100m
             memory: 128Mi
       {{- end }}
+      {{- if .Values.features.enableNodeGatewayHelper }}
+      - name: node-gateway-helper
+        image: {{ $agentImage.prefix }}{{ $agentImage.repository }}:{{ $agentImage.tag }}
+        imagePullPolicy: {{ $agentImage.pullPolicy }}
+        command:
+          - /kube-ovn/kube-ovn-node-gw
+        securityContext:
+          runAsUser: 65534
+          runAsGroup: 65534
+          runAsNonRoot: true
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+            add: [SYS_ADMIN, NET_ADMIN, NET_RAW]
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+        volumeMounts:
+          - name: node-gateway-socket
+            mountPath: /run/kube-ovn-node-gw
+          - name: host-run-ovs
+            mountPath: /run/openvswitch
+            readOnly: true
+          - name: host-ns
+            mountPath: /var/run/netns
+            mountPropagation: HostToContainer
+          - name: usr-local-sbin
+            mountPath: /usr/local/sbin
+      {{- end }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
         {{- if .Values.features.enableTproxy }}
         - name: tproxy-socket
+          emptyDir: {}
+        {{- end }}
+        {{- if .Values.features.enableNodeGatewayHelper }}
+        - name: node-gateway-socket
           emptyDir: {}
         {{- end }}
         - name: usr-local-sbin
