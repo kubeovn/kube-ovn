@@ -46,10 +46,11 @@ func (c *Controller) serviceScopedLBConfig(svc *v1.Service, protocol v1.Protocol
 		return ovs.LoadBalancerConfig{}, err
 	}
 	config := ovs.LoadBalancerConfig{
-		Name:        serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, trafficClass, family),
-		Protocol:    strings.ToLower(string(protocol)),
-		ExternalIDs: serviceScopedLBExternalIDs(svc, serviceVPCName(svc, c.config.ClusterRouter), trafficClass),
-		Options:     make(map[string]string),
+		Name:            serviceScopedLBNameForTrafficClassAndFamily(svc, protocol, trafficClass, family),
+		Protocol:        strings.ToLower(string(protocol)),
+		SelectionFields: serviceScopedLBSelectionFields(svc, protocol, timeout, family),
+		ExternalIDs:     serviceScopedLBExternalIDs(svc, serviceVPCName(svc, c.config.ClusterRouter), trafficClass),
+		Options:         make(map[string]string),
 	}
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
 		config.Options["affinity_timeout"] = strconv.Itoa(timeout)

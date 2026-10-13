@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ovn-kubernetes/libovsdb/client"
@@ -132,6 +133,62 @@ func TestServiceLoadBalancersReconcileAtomically(t *testing.T) {
 			}
 			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 			require.Len(t, recorder.transactions, 1, "an unchanged Service must not produce another NB transaction")
+		})
+	}
+}
+
+func TestServiceLoadBalancerReconciliationPreservesAffinityFields(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		serviceType corev1.ServiceType
+		template    bool
+		timeout     int32
+	}{
+		{"ClusterIP", corev1.ServiceTypeClusterIP, false, 0},
+		{"NodePort", corev1.ServiceTypeNodePort, false, 0},
+		{"LoadBalancer", corev1.ServiceTypeLoadBalancer, false, 0},
+		{"traffic distribution", corev1.ServiceTypeClusterIP, true, 0},
+		{"external local template", corev1.ServiceTypeLoadBalancer, true, 0},
+		{"explicit TCP timeout", corev1.ServiceTypeClusterIP, false, 42},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl, nbClient, svc, endpoints := serviceLBReconcileFixture(t, tc.serviceType, tc.template)
+			svc.Spec.SessionAffinity = corev1.ServiceAffinityClientIP
+			if tc.timeout != 0 {
+				svc.Spec.SessionAffinityConfig = &corev1.SessionAffinityConfig{ClientIP: &corev1.ClientIPConfig{TimeoutSeconds: new(tc.timeout)}}
+			}
+			recorder := &serviceLBTransactionClient{Client: nbClient.Client}
+			nbClient.Client = recorder
+			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
+			require.Len(t, recorder.transactions, 1)
+			lbs, err := nbClient.ListLoadBalancers(serviceScopedLBOwner(svc).ownsLoadBalancer)
+			require.NoError(t, err)
+			require.NotEmpty(t, lbs)
+			for _, lb := range lbs {
+				fields := []string{ovnnb.LoadBalancerSelectionFieldsIPSrc, ovnnb.LoadBalancerSelectionFieldsIpv6Src}
+				switch {
+				case strings.HasSuffix(lb.Name, ":ipv4"):
+					fields = []string{ovnnb.LoadBalancerSelectionFieldsIPSrc}
+				case strings.HasSuffix(lb.Name, ":ipv6"):
+					fields = []string{ovnnb.LoadBalancerSelectionFieldsIpv6Src}
+				}
+				if tc.timeout != 0 && lb.Protocol != nil && *lb.Protocol == "tcp" {
+					require.Empty(t, lb.SelectionFields, lb.Name)
+				} else {
+					require.ElementsMatch(t, fields, lb.SelectionFields, lb.Name)
+				}
+			}
+			svc.Spec.SessionAffinity = corev1.ServiceAffinityNone
+			svc.Spec.SessionAffinityConfig = nil
+			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
+			require.Len(t, recorder.transactions, 2)
+			lbs, err = nbClient.ListLoadBalancers(serviceScopedLBOwner(svc).ownsLoadBalancer)
+			require.NoError(t, err)
+			require.NotEmpty(t, lbs)
+			for _, lb := range lbs {
+				require.Empty(t, lb.SelectionFields, lb.Name)
+				require.NotContains(t, lb.Options, "affinity_timeout", lb.Name)
+			}
 		})
 	}
 }
