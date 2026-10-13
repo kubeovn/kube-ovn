@@ -2156,6 +2156,12 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 	}
 
 	subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]
+	if subnet, err := c.getVMPodDefaultSubnet(pod, subnetNames); err != nil {
+		klog.Error(err)
+		return nil, err
+	} else if subnet != nil {
+		return subnet, nil
+	}
 	for subnetName := range strings.SplitSeq(subnetNames, ",") {
 		if subnetName == "" {
 			err = fmt.Errorf("namespace %s default logical switch is not found", ns.Name)
@@ -2197,6 +2203,39 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 		return subnet, nil
 	}
 	return nil, ipam.ErrNoAvailable
+}
+
+// getVMPodDefaultSubnet keeps an existing VM allocation ahead of capacity-based
+// subnet selection. Reusing an address does not require a free address, and a
+// newly available subnet must not move a migrating VM away from its source.
+func (c *Controller) getVMPodDefaultSubnet(pod *v1.Pod, subnetNames string) (*kubeovnv1.Subnet, error) {
+	if !c.config.EnableKeepVMIP {
+		return nil, nil
+	}
+	isVM, vmName := isVMPod(pod)
+	if !isVM {
+		return nil, nil
+	}
+	ipName := ovs.PodNameToPortName(vmName, pod.Namespace, util.OvnProvider)
+	ip, err := c.ipsLister.Get(ipName)
+	if k8serrors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get IP %s for VM subnet selection: %w", ipName, err)
+	}
+	// A namespace subnet change still allows the VM to move to its new network.
+	if ip.Spec.Subnet == "" || !slices.Contains(strings.Split(subnetNames, ","), ip.Spec.Subnet) {
+		return nil, nil
+	}
+	subnet, err := c.subnetsLister.Get(ip.Spec.Subnet)
+	if k8serrors.IsNotFound(err) && !pod.DeletionTimestamp.IsZero() {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subnet %s for VM IP %s: %w", ip.Spec.Subnet, ipName, err)
+	}
+	return subnet, nil
 }
 
 func (c *Controller) podCanUseExcludeIPs(pod *v1.Pod, subnet *kubeovnv1.Subnet) bool {
