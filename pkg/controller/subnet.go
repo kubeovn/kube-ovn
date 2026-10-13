@@ -2431,23 +2431,37 @@ func (c *Controller) reconcileServiceProxyFallbackDropPolicies(subnet *kubeovnv1
 		(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
 		subnetEnablesServiceLB(subnet, c.config.EnableOvnLB)
 	pgName := getOverlaySubnetsPortGroupName(subnet.Name, nodeName)
+	if !eligible {
+		return c.deleteStaleServiceProxyFallbackDropPolicies(subnet, nodeName, policies, desired)
+	}
+	subnetProtocols := make(map[string]struct{}, 2)
 	for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-		if !eligible {
-			break
+		if cidrBlock != "" {
+			subnetProtocols[util.CheckProtocol(cidrBlock)] = struct{}{}
 		}
-		if cidrBlock == "" {
+	}
+
+	services, err := c.servicesLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("list services for subnet %s and node %s: %w", subnet.Name, nodeName, err)
+	}
+	for _, svc := range services {
+		if svc.Spec.SessionAffinity != v1.ServiceAffinityClientIP || svc.Spec.ClusterIP == v1.ClusterIPNone {
 			continue
 		}
-		ipSuffix := getIPSuffix(util.CheckProtocol(cidrBlock))
-		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
-		serviceCIDRs := c.serviceCIDRsByProtocol(util.CheckProtocol(cidrBlock))
-		for _, serviceCIDR := range serviceCIDRs {
-			match := fmt.Sprintf("%s.src == $%s && %s.dst == %s", ipSuffix, pgAs, ipSuffix, serviceCIDR)
+		for _, serviceIP := range util.ServiceClusterIPs(*svc) {
+			protocol := util.CheckProtocol(serviceIP)
+			if _, ok := subnetProtocols[protocol]; !ok {
+				continue
+			}
+			ipSuffix := getIPSuffix(protocol)
+			pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+			match := fmt.Sprintf("%s.src == $%s && %s.dst == %s", ipSuffix, pgAs, ipSuffix, serviceIP)
 			desired[match] = struct{}{}
 			policyExternalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{
 				"isServiceProxyFallbackDropPolicy": "true",
 				"node":                             nodeName,
-				"serviceCIDR":                      serviceCIDR,
+				"serviceIP":                        serviceIP,
 			})
 			if err := c.addPolicyRouteToVpc(c.config.ClusterRouter, &kubeovnv1.PolicyRoute{
 				Priority: util.ServiceProxyFallbackDropPriority,
@@ -2458,7 +2472,10 @@ func (c *Controller) reconcileServiceProxyFallbackDropPolicies(subnet *kubeovnv1
 			}
 		}
 	}
+	return c.deleteStaleServiceProxyFallbackDropPolicies(subnet, nodeName, policies, desired)
+}
 
+func (c *Controller) deleteStaleServiceProxyFallbackDropPolicies(subnet *kubeovnv1.Subnet, nodeName string, policies []*ovnnb.LogicalRouterPolicy, desired map[string]struct{}) error {
 	for _, policy := range policies {
 		if _, ok := desired[policy.Match]; ok {
 			continue
@@ -2468,13 +2485,6 @@ func (c *Controller) reconcileServiceProxyFallbackDropPolicies(subnet *kubeovnv1
 		}
 	}
 	return nil
-}
-
-func (c *Controller) serviceCIDRsByProtocol(protocol string) []string {
-	if protocol == kubeovnv1.ProtocolIPv6 {
-		return c.serviceCIDRStore.V6CIDRs()
-	}
-	return c.serviceCIDRStore.V4CIDRs()
 }
 
 func (c *Controller) deletePolicyRouteForDistributedSubnet(subnet *kubeovnv1.Subnet, nodeName string) error {
