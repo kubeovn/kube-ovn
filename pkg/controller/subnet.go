@@ -2434,34 +2434,20 @@ func (c *Controller) reconcileServiceProxyFallbackDropPolicies(subnet *kubeovnv1
 	if !eligible {
 		return c.deleteStaleServiceProxyFallbackDropPolicies(policies, desired)
 	}
-	subnetProtocols := make(map[string]struct{}, 2)
 	for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
-		if cidrBlock != "" {
-			subnetProtocols[util.CheckProtocol(cidrBlock)] = struct{}{}
-		}
-	}
-
-	services, err := c.servicesLister.List(labels.Everything())
-	if err != nil {
-		return fmt.Errorf("list services for subnet %s and node %s: %w", subnet.Name, nodeName, err)
-	}
-	for _, svc := range services {
-		if svc.Spec.SessionAffinity != v1.ServiceAffinityClientIP || svc.Spec.ClusterIP == v1.ClusterIPNone {
+		if cidrBlock == "" {
 			continue
 		}
-		for _, serviceIP := range util.ServiceClusterIPs(*svc) {
-			protocol := util.CheckProtocol(serviceIP)
-			if _, ok := subnetProtocols[protocol]; !ok {
-				continue
-			}
-			ipSuffix := getIPSuffix(protocol)
-			pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
-			match := fmt.Sprintf("%s.src == $%s && %s.dst == %s", ipSuffix, pgAs, ipSuffix, serviceIP)
+		protocol := util.CheckProtocol(cidrBlock)
+		ipSuffix := getIPSuffix(protocol)
+		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+		for _, serviceCIDR := range c.serviceCIDRsByProtocol(protocol) {
+			match := fmt.Sprintf("%s.src == $%s && %s.dst == %s", ipSuffix, pgAs, ipSuffix, serviceCIDR)
 			desired[match] = struct{}{}
 			policyExternalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{
 				"isServiceProxyFallbackDropPolicy": "true",
 				"node":                             nodeName,
-				"serviceIP":                        serviceIP,
+				"serviceCIDR":                      serviceCIDR,
 			})
 			if err := c.addPolicyRouteToVpc(c.config.ClusterRouter, &kubeovnv1.PolicyRoute{
 				Priority: util.ServiceProxyFallbackDropPriority,
@@ -2473,6 +2459,13 @@ func (c *Controller) reconcileServiceProxyFallbackDropPolicies(subnet *kubeovnv1
 		}
 	}
 	return c.deleteStaleServiceProxyFallbackDropPolicies(policies, desired)
+}
+
+func (c *Controller) serviceCIDRsByProtocol(protocol string) []string {
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		return c.serviceCIDRStore.V6CIDRs()
+	}
+	return c.serviceCIDRStore.V4CIDRs()
 }
 
 func (c *Controller) deleteStaleServiceProxyFallbackDropPolicies(policies []*ovnnb.LogicalRouterPolicy, desired map[string]struct{}) error {

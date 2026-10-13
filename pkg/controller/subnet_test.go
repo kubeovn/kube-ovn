@@ -137,27 +137,11 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 func TestReconcileServiceProxyFallbackDropPolicies(t *testing.T) {
 	t.Parallel()
 
-	affinityTimeout := int32(10800)
-	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Services: []*corev1.Service{
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "affinity", Namespace: "default"},
-			Spec: corev1.ServiceSpec{
-				ClusterIP:       "10.96.0.10",
-				ClusterIPs:      []string{"10.96.0.10", "fd00:10:96::10"},
-				SessionAffinity: corev1.ServiceAffinityClientIP,
-				SessionAffinityConfig: &corev1.SessionAffinityConfig{ClientIP: &corev1.ClientIPConfig{
-					TimeoutSeconds: &affinityTimeout,
-				}},
-			},
-		},
-		{
-			ObjectMeta: metav1.ObjectMeta{Name: "ordinary", Namespace: "default"},
-			Spec:       corev1.ServiceSpec{ClusterIP: "10.96.0.11", ClusterIPs: []string{"10.96.0.11"}},
-		},
-	}})
+	fc, err := newFakeControllerWithOptions(t, nil)
 	require.NoError(t, err)
 	ctrl := fc.fakeController
 	ctrl.config.EnableOvnLB = true
+	ctrl.serviceCIDRStore = util.NewServiceCIDRStore("10.96.0.0/12,fd00:10:96::/108")
 	subnet := &kubeovnv1.Subnet{
 		Name: "ovn-default",
 		Spec: kubeovnv1.SubnetSpec{
@@ -178,18 +162,18 @@ func TestReconcileServiceProxyFallbackDropPolicies(t *testing.T) {
 		Match: staleMatch,
 	}}, nil)
 	for _, tc := range []struct {
-		protocol  string
-		serviceIP string
+		protocol    string
+		serviceCIDR string
 	}{
-		{protocol: kubeovnv1.ProtocolIPv4, serviceIP: "10.96.0.10"},
-		{protocol: kubeovnv1.ProtocolIPv6, serviceIP: "fd00:10:96::10"},
+		{protocol: kubeovnv1.ProtocolIPv4, serviceCIDR: "10.96.0.0/12"},
+		{protocol: kubeovnv1.ProtocolIPv6, serviceCIDR: "fd00:10:96::/108"},
 	} {
 		ipSuffix := getIPSuffix(tc.protocol)
-		match := fmt.Sprintf("%s.src == $%s_%s && %s.dst == %s", ipSuffix, pgName, ipSuffix, ipSuffix, tc.serviceIP)
+		match := fmt.Sprintf("%s.src == $%s_%s && %s.dst == %s", ipSuffix, pgName, ipSuffix, ipSuffix, tc.serviceCIDR)
 		externalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{
 			"isServiceProxyFallbackDropPolicy": "true",
 			"node":                             nodeName,
-			"serviceIP":                        tc.serviceIP,
+			"serviceCIDR":                      tc.serviceCIDR,
 		})
 		fc.mockOvnClient.EXPECT().AddLogicalRouterPolicy(util.DefaultVpc, util.ServiceProxyFallbackDropPriority, match, string(kubeovnv1.PolicyRouteActionDrop), []string(nil), []string(nil), externalIDs).Return(nil)
 	}
