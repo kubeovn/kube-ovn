@@ -95,9 +95,10 @@ type Controller struct {
 	ipsecServiceStarted sync.Once
 
 	// channel used for fdb sync
-	fdbSyncChan   chan struct{}
-	fdbSyncMutex  sync.Mutex
-	vswitchClient ovs.Vswitch
+	fdbSyncChan    chan struct{}
+	fdbSyncMutex   sync.Mutex
+	vswitchClient  ovs.Vswitch
+	nodeGatewayRPC nodeGatewayRPC
 }
 
 func newTypedRateLimitingQueue[T comparable](name string, rateLimiter workqueue.TypedRateLimiter[T]) workqueue.TypedRateLimitingInterface[T] {
@@ -130,7 +131,8 @@ func NewController(config *Configuration,
 	caSecretInformer := caSecretInformerFactory.Core().V1().Secrets()
 
 	controller := &Controller{
-		config: config,
+		config:         config,
+		nodeGatewayRPC: newNodeGatewayClient(nodeGatewaySocket),
 
 		providerNetworksLister:          providerNetworkInformer.Lister(),
 		providerNetworksSynced:          providerNetworkInformer.Informer().HasSynced,
@@ -1068,7 +1070,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	klog.Info("Started workers")
 	go wait.Until(c.loopOvn0Check, 5*time.Second, stopCh)
-	go wait.Until(c.loopOvnExt0Check, 5*time.Second, stopCh)
+	if c.config.EnableNodeGatewayHelper {
+		go wait.Until(c.loopOvnExt0Check, 5*time.Second, stopCh)
+	}
 	go wait.Until(c.loopTunnelCheck, 5*time.Second, stopCh)
 	go wait.Until(c.runAddOrUpdateProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runAddOrUpdateServiceWorker, time.Second, stopCh)
