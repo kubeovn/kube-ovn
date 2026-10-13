@@ -49,6 +49,34 @@ class NetworkDiagnosticsTest(unittest.TestCase):
     def testGinkgoImmediateFailureFreezesBeforeCleanup(self):
         self.runWithStubs(7, failureLine="[FAILED] Timed out after 120.000s.")
 
+    def testFirstFailureOnNewRunnerFreezesSnapshot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            collector = diagnostics.Diagnostics(root, interval=0)
+
+            def snapshot(directory, full=False, cancel=None):
+                directory.mkdir(parents=True, exist_ok=True)
+                (directory / "marker.json").write_text("{}")
+                collector.stop.set()
+
+            with mock.patch.object(diagnostics.time, "monotonic", return_value=1), \
+                    mock.patch.object(diagnostics, "collectSnapshot", side_effect=snapshot) as collect:
+                collector.recordFailure("Validation fixture FAILED", "probe")
+                collector.sample()
+            self.assertTrue(collect.call_args.kwargs["full"])
+            self.assertTrue((root / "failures/0/preceding-snapshots.json").exists())
+
+    def testFirstFailureOnNewRunnerTriggersBothCollectorsThenDebounces(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            collector = diagnostics.Diagnostics(Path(temporary), interval=0)
+            with mock.patch.object(diagnostics.time, "monotonic", return_value=1):
+                collector.recordFailure("[FAILED] fixture", "test")
+                self.assertIsNotNone(collector._consumeFailure())
+                self.assertIsNotNone(collector._consumeFailure(fast=True))
+                collector.recordFailure("[FAILED] repeated fixture", "test")
+                self.assertIsNone(collector._consumeFailure())
+                self.assertIsNone(collector._consumeFailure(fast=True))
+
     def testRepeatedFailuresAreDebouncedAndEventsPersist(self):
         with tempfile.TemporaryDirectory() as temporary:
             collector = diagnostics.Diagnostics(Path(temporary), interval=0)
