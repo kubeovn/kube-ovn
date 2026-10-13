@@ -3,8 +3,6 @@ package daemon
 import (
 	"fmt"
 	"os"
-	"runtime"
-	"sync"
 
 	"github.com/containernetworking/plugins/pkg/ns"
 	"golang.org/x/sys/unix"
@@ -18,19 +16,6 @@ func getCurrentThreadNetNSPath() string {
 	// of whatever thread this goroutine is running on.  Make sure we
 	// use the thread's net namespace since the thread is switching around
 	return fmt.Sprintf("/proc/%d/task/%d/ns/net", os.Getpid(), unix.Gettid())
-}
-
-func newNetNS(path string) error {
-	var err error
-	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		runtime.LockOSThread()
-		err = newNetNSInCurrentMountNamespace(path)
-	}()
-	wg.Wait()
-	return err
 }
 
 // newNetNSInCurrentMountNamespace must be called from a locked OS thread. It
