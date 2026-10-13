@@ -71,6 +71,8 @@ change: old command names and positional forms are not aliases.
 ```text
 kubectl ko
   exec
+    (POD | TYPE/NAME) [-c CONTAINER] [flags] -- COMMAND [args...]
+    -l SELECTOR -- COMMAND [args...]
     nbctl | sbctl | ic-nbctl | ic-sbctl -- [TOOL_ARGS...]
     vsctl | ofctl | dpctl | appctl --node NODE -- [TOOL_ARGS...]
   db
@@ -103,6 +105,8 @@ kubectl ko
 
 | New command | Complete capability and effects |
 | --- | --- |
+| `exec POD -- COMMAND`, `exec deploy/NAME -- COMMAND`, `exec svc/NAME -- COMMAND`, `exec ds/NAME -- COMMAND` | Resolve a Pod or a standard Kubernetes workload using the workload's selector, then execute the command through Kubernetes `pods/exec`. Supported resource aliases include `po`, `deploy`, `svc`, `ds`, `sts`, `rs`, `rc`, and `job`. The selected Pod must be running; workload and selector forms choose one running Pod deterministically. |
+| `exec -l SELECTOR -- COMMAND` | Select a running Pod by Kubernetes label selector. This form cannot be combined with a resource reference. |
 | `exec nbctl`, `exec sbctl` | Find the requested database leader independently and execute its OVN CLI through the node agent's mounted OVN socket. All CLI operations, including writes and multi-command transactions, remain available. |
 | `exec ic-nbctl`, `exec ic-sbctl` | Find the corresponding interconnection leader and execute its CLI. |
 | `exec vsctl/ofctl/dpctl/appctl --node NODE` | Execute the selected OVS tool through the node agent and its mounted OVS sockets. Remote commands may change live state. |
@@ -112,14 +116,14 @@ kubectl ko
 | `db nb kick SERVER_ID`, `db sb kick SERVER_ID` | Remove a stale cluster member. `--dry-run` prints the database leader Pod and exact command without requiring an agent or applying the change; actual removal runs through the agent on that leader's node. |
 | `db nb restore` | Reconstruct the central NB/SB cluster from the NB database already present on the explicit bootstrap node. Verify the shared hostPath, use temporary per-node helpers when OVS does not mount the databases, stop central, preserve originals and RAFT headers, rebuild, verify storage and restart OVS. Helpers use the central image and security context and are cleaned up by UID. This is not local-file import; SB-only restore is not supported. |
 | `trace` | Resolve Pod/Node addresses, MACs and logical ports, trace through OVN, then OVS. Supports IPv4/IPv6, ICMP/TCP/UDP, IPv4 ARP request/reply, explicit destination MAC, hostNetwork, Underlay/U2O and VM logical ports. `--engine ovn` runs only OVN trace. |
-| `capture` | Execute tcpdump in a Pod or KubeVirt launcher network namespace, including hostNetwork and internal-port paths. Use exactly one of `--pod`, `--vm`, or `--vmi`. A remote `-w PATH` stays remote; `-w -` streams the original pcap bytes locally. |
+| `capture` | Capture packets in a Pod or KubeVirt launcher network namespace through the independent Go node agent. Use exactly one of `--pod`, `--vm`, or `--vmi`. Supported capture flags are `-D` (list interfaces), `-i`, `-c`, `-s`, `-nn` and `-w -`; the last option streams a pcap locally. |
 | `network inspect` | Show the Pod network namespace path, every interface's index, kind, MAC, MTU, state and addresses, plus the host-side veth peer when one exists. For `macvlan`/`ipvlan`, also show the parent host NIC with its link details. `--output=json` emits machine-readable data. Host-network Pods use the host namespace and expose peer indexes for host links. |
 | `diagnose cluster` | Check cluster configuration, component rollout and leaders; create a unique temporary NodePort Service and run active checks from independent temporary probe Pods in the original pinger network namespaces. |
 | `diagnose node NODE` | Perform configuration checks and restrict the independent active probes to one node. |
 | `diagnose subnet SUBNET` | Check the subnet, create an isolated temporary DaemonSet and NodePort Service, and check peer TCP/UDP, node ICMP and NodePort connectivity from those subnet Pods. Does not require optional CNI node TCP/UDP listeners. |
 | `diagnose connectivity` | Check configuration and probe explicit TCP/UDP IP endpoints using independent temporary Pods in the existing pinger network namespaces. Does not create NodePort Services or subnet DaemonSets. |
 | `diagnose environment` | Discover Linux nodes from the Kubernetes API and run the environment checker through one independent agent per node, including nodes without CNI Pods. |
-| `logs` | Collect component files, container logs and Linux node state in parallel; limit each item and record partial failures in a manifest. |
+| `logs` | Collect component files, container logs and Linux node state in parallel; limit each item and record partial failures in a manifest. `netstat.log` contains raw `/proc/net/{tcp,tcp6,udp,udp6,unix}` socket tables, including socket inodes, without process PID/name resolution. |
 | `restart` | Restart and wait for central, OVS, controller, CNI, pinger and monitor in dependency order. |
 | `perf run` | Create isolated probe Pods/Service; measure Pod, host, Service and multicast performance. Temporarily configure an OVN LB and multicast membership, then clean up owned changes. Does not delete central leaders. |
 | `perf recovery --yes` | Deliberately delete NB, SB and northd leader Pods in sequence and measure their recovery. Does not run the traffic benchmark. |
@@ -144,6 +148,7 @@ selected by `--kube-ovn-namespace`, `KUBE_OVN_NS`, then `kube-system`.
 | Scope | Parameters and defaults |
 | --- | --- |
 | Global | `--timeout=0` bounds the whole invocation; zero allows long streams. `--discovery-timeout=10s` bounds target selection. Kubernetes `--request-timeout` does not truncate an established exec stream. |
+| Kubernetes exec | `exec` accepts `POD` or `TYPE/NAME`, `-c/--container`, `-l/--selector`, `-i/--stdin`, `-t/--tty`, `-q/--quiet`, and `--pod-running-timeout=1m`. A command must follow `--`. |
 | Raw tools / capture | `exec` OVS tools require `--node`; `capture` requires exactly one of `--pod`, `--vm`, or `--vmi`. All remote arguments must follow `--`. |
 | Network inspection | `network inspect` requires `--pod`; `--output=table` is the default and `--output=json` is intended for automation. |
 | Trace | Exactly one of `--pod` / `--node`; required `--dst-ip`; `--protocol=icmp`, `--engine=all`, optional `--dst-mac`. TCP/UDP require `--dst-port=1..65535`. ARP uses `--arp-op=request|reply` and IPv4. |
@@ -155,6 +160,9 @@ selected by `--kube-ovn-namespace`, `KUBE_OVN_NS`, then `kube-system`.
 | ACL | `acl decode COOKIE`; `acl listen --node NODE`. |
 
 ```console
+kubectl ko exec deploy/web -- date
+kubectl ko exec svc/web -c app -- sh -c 'echo ready'
+kubectl ko exec -n app -l app=web -- curl http://localhost:8080/healthz
 kubectl ko exec nbctl --context staging -- --format=json show
 kubectl ko exec nbctl -- -- ls-add example -- lsp-add example example-port
 kubectl ko exec vsctl --node worker-a -- --timeout=5 show
@@ -175,6 +183,10 @@ kubectl ko perf run --image registry.example/test:v1.13.0 --duration 2s
 The separator belongs to the plugin and is removed exactly once. Every argument
 after it, including another `--`, `--help`, `--timeout`, `-n`, `-c`, whitespace or
 quotes within a single argument, belongs to the remote tool and is preserved.
+Kubernetes-style resource execution accepts one Pod or workload reference before
+the separator; `-l/--selector` is an alternative that selects one running Pod.
+The resource and selector forms never execute against multiple Pods in one
+invocation.
 `exec nbctl --help` shows local help; `exec nbctl -- --help` shows remote help.
 `exec nbctl show` is rejected instead of guessing the argument boundary.
 
@@ -205,7 +217,9 @@ No public Internet endpoint is required for the default cluster health check.
 Each node operation uses Kubernetes `pods/exec` to start an isolated helper
 process in the independent agent. A versioned gRPC stream runs over that
 process's stdin/stdout. Concurrent operations have separate streams and do not
-restart the agent. It does not execute in Kube-OVN component Pods.
+restart the agent. It does not execute in Kube-OVN component Pods. Packet
+capture uses the agent's native Linux `AF_PACKET` socket and `setns(2)`;
+it does not start `tcpdump`, `nsenter`, or a shell.
 `network inspect` resolves the Pod netns from OVSDB through the agent, with a
 Pod-UID lookup in host process cgroups when no OVS interface exists, then
 reads Pod and host links with `ip -s -j -d addr show`; it reports the host-side veth peer by

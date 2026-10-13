@@ -40,6 +40,7 @@ type NBGlobal interface {
 
 type LogicalRouter interface {
 	CreateLogicalRouter(lrName string) error
+	CreateLogicalRouterWithOptions(lrName string, options map[string]string) error
 	UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...any) error
 	DeleteLogicalRouter(lrName string) error
 	LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.Mutator, lbNames ...string) error
@@ -50,6 +51,7 @@ type LogicalRouter interface {
 }
 
 type LogicalRouterPort interface {
+	ReconcileBFDLogicalRouterPort(lrName, portName string, networks, chassises []string, enabled bool) error
 	CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error
 	CreateLogicalRouterPort(lrName, lrpName, mac string, networks []string) error
 	UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error
@@ -99,6 +101,7 @@ type LogicalSwitch interface {
 	LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.Mutator, lbNames ...string) error
 	LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error
 	DeleteLogicalSwitch(lsName string) error
+	DeleteLogicalSwitchResources(lsName, protocol string, routerPortNames ...string) error
 	ListLogicalSwitch(needVendorFilter bool, filter func(ls *ovnnb.LogicalSwitch) bool) ([]ovnnb.LogicalSwitch, error)
 	ListLogicalSwitchNames(needVendorFilter bool, filter func(ls *ovnnb.LogicalSwitch) bool) ([]string, error)
 	LogicalSwitchExists(lsName string) (bool, error)
@@ -274,7 +277,7 @@ type NAT interface {
 }
 
 type DHCPOptions interface {
-	UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHCPOptionsUUIDs, error)
+	UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int, routerPortNames ...string) (*DHCPOptionsUUIDs, error)
 	UpdateDHCPOptionsForPort(lsName, portName, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*DHCPOptionsUUIDs, error)
 	DeleteDHCPOptions(lsName, protocol string) error
 	DeleteDHCPOptionsForPort(portName string) error

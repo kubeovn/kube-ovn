@@ -57,6 +57,23 @@ func (suite *OvnClientTestSuite) testCreateLogicalRouter() {
 		require.NoError(t, err)
 	})
 
+	t.Run("test create and update logical router options atomically", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-lr-options"
+		options := map[string]string{"dynamic_neigh_routers": "true"}
+		require.NoError(t, nbClient.CreateLogicalRouterWithOptions(name, options))
+
+		lr, err := nbClient.GetLogicalRouter(name, false)
+		require.NoError(t, err)
+		require.Equal(t, options, lr.Options)
+
+		updatedOptions := map[string]string{"always_learn_from_arp_request": "false"}
+		require.NoError(t, nbClient.CreateLogicalRouterWithOptions(name, updatedOptions))
+		lr, err = nbClient.GetLogicalRouter(name, false)
+		require.NoError(t, err)
+		require.Equal(t, updatedOptions, lr.Options)
+	})
+
 	t.Run("test create logical router is idempotent with pre-existing entry", func(t *testing.T) {
 		t.Parallel()
 		name := "test-create-lr-preexisting"

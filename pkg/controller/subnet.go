@@ -524,24 +524,20 @@ func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter
 		return err
 	}
 
-	dhcpOptionsUUIDs, err := c.OVNNbClient.UpdateDHCPOptions(subnet, mtu)
-	if err != nil {
-		klog.Errorf("failed to update dhcp options for switch %s, %v", subnet.Name, err)
-		return err
-	}
-
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 	if err != nil {
 		klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
 		return err
 	}
 
+	var routerPortNames []string
 	if needRouter {
-		lrpName := fmt.Sprintf("%s-%s", vpc.Status.Router, subnet.Name)
-		if err := c.OVNNbClient.UpdateLogicalRouterPortRA(lrpName, subnet.Spec.IPv6RAConfigs, subnet.Spec.EnableIPv6RA); err != nil {
-			klog.Errorf("update ipv6 ra configs for logical router port %s, %v", lrpName, err)
-			return err
-		}
+		routerPortNames = append(routerPortNames, fmt.Sprintf("%s-%s", vpc.Status.Router, subnet.Name))
+	}
+	dhcpOptionsUUIDs, err := c.OVNNbClient.UpdateDHCPOptions(subnet, mtu, routerPortNames...)
+	if err != nil {
+		klog.Errorf("failed to update DHCP and RA options for switch %s: %v", subnet.Name, err)
+		return err
 	}
 
 	if subnet.Status.DHCPv4OptionsUUID != dhcpOptionsUUIDs.DHCPv4OptionsUUID || subnet.Status.DHCPv6OptionsUUID != dhcpOptionsUUIDs.DHCPv6OptionsUUID {
@@ -885,7 +881,7 @@ func (c *Controller) reconcileSubnetBaseACLs(subnet *kubeovnv1.Subnet, router st
 	}
 }
 
-func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
+func (c *Controller) handleDeleteLogicalSwitch(key string, routerPortNames ...string) (err error) {
 	c.ipam.DeleteSubnet(key)
 
 	exist, err := c.OVNNbClient.LogicalSwitchExists(key)
@@ -895,22 +891,11 @@ func (c *Controller) handleDeleteLogicalSwitch(key string) (err error) {
 	}
 
 	// not found, skip
-	if !exist {
+	if !exist && len(routerPortNames) == 0 {
 		return nil
 	}
 
-	// clear acl when direction is ""
-	if err = c.OVNNbClient.DeleteAcls(key, logicalSwitchKey, "", nil); err != nil {
-		klog.Errorf("clear logical switch %s acls: %v", key, err)
-		return err
-	}
-
-	if err = c.OVNNbClient.DeleteDHCPOptions(key, kubeovnv1.ProtocolDual); err != nil {
-		klog.Errorf("failed to delete dhcp options of logical switch %s %v", key, err)
-		return err
-	}
-
-	if err = c.OVNNbClient.DeleteLogicalSwitch(key); err != nil {
+	if err = c.OVNNbClient.DeleteLogicalSwitchResources(key, kubeovnv1.ProtocolDual, routerPortNames...); err != nil {
 		klog.Errorf("delete logical switch %s: %v", key, err)
 		return err
 	}
@@ -986,12 +971,6 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) (err error) {
 		return err
 	}
 
-	err = c.handleDeleteLogicalSwitch(subnet.Name)
-	if err != nil {
-		klog.Errorf("failed to delete logical switch %s %v", subnet.Name, err)
-		return err
-	}
-
 	var router string
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 	if err != nil {
@@ -1004,10 +983,9 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) (err error) {
 		router = vpc.Status.Router
 	}
 
-	lspName := fmt.Sprintf("%s-%s", subnet.Name, router)
 	lrpName := fmt.Sprintf("%s-%s", router, subnet.Name)
-	if err = c.OVNNbClient.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
-		klog.Errorf("delete router port %s and %s:%v", lspName, lrpName, err)
+	if err = c.handleDeleteLogicalSwitch(subnet.Name, lrpName); err != nil {
+		klog.Errorf("failed to delete logical switch %s resources: %v", subnet.Name, err)
 		return err
 	}
 

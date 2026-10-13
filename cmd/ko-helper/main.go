@@ -40,6 +40,9 @@ func (runner) Run(ctx context.Context, request kohelper.Request, stdout, stderr 
 	if len(request.Argv) == 0 || request.Argv[0] == "" {
 		return kohelper.Result{Code: 2, Error: "helper request has no command"}
 	}
+	if result, handled := runBuiltIn(ctx, request.Argv, stdout, stderr); handled {
+		return result
+	}
 	// Remote argv execution is intentional: pods/exec authorizes access to this
 	// privileged tool runner. Arguments are passed directly, without a shell.
 	command := exec.CommandContext(ctx, request.Argv[0], request.Argv[1:]...) // #nosec G204 -- Kubernetes-authorized remote tool execution.
@@ -61,6 +64,28 @@ func (runner) Run(ctx context.Context, request kohelper.Request, stdout, stderr 
 		return kohelper.Result{Code: 130, Error: err.Error()}
 	}
 	return kohelper.Result{Code: 1, Error: err.Error()}
+}
+
+func runBuiltIn(ctx context.Context, argv []string, stdout, stderr io.Writer) (kohelper.Result, bool) {
+	var err error
+	switch argv[0] {
+	case "environment":
+		if len(argv) != 1 {
+			return kohelper.Result{Code: 2, Error: "environment does not accept arguments"}, true
+		}
+		err = kohelper.RunEnvironment(ctx, stdout, stderr)
+	case "capture":
+		err = kohelper.RunCapture(ctx, argv[1:], stdout, stderr)
+	default:
+		return kohelper.Result{}, false
+	}
+	if err == nil {
+		return kohelper.Result{}, true
+	}
+	if ctx.Err() != nil {
+		return kohelper.Result{Code: 130, Error: ctx.Err().Error()}, true
+	}
+	return kohelper.Result{Code: 1, Error: err.Error()}, true
 }
 
 func main() {
@@ -89,6 +114,20 @@ func runHelper() int {
 	}
 	if len(os.Args) == 3 && os.Args[1] == "ipsec" {
 		if err := collectIPsec(ctx, "/host/proc", os.Args[2], os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+	if len(os.Args) == 2 && os.Args[1] == "environment" {
+		if err := kohelper.RunEnvironment(ctx, os.Stdout, os.Stderr); err != nil {
+			_, _ = fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}
+	if len(os.Args) >= 2 && os.Args[1] == "capture" {
+		if err := kohelper.RunCapture(ctx, os.Args[2:], os.Stdout, os.Stderr); err != nil {
 			_, _ = fmt.Fprintln(os.Stderr, err)
 			return 1
 		}

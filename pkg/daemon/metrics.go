@@ -81,7 +81,7 @@ var (
 	metricCheckSumErr = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
 			Name: "checksum_err_count",
-			Help: "Value of InCsumErrors for cmd `netstat -us`, checksum is error when value is greater than 0",
+			Help: "Value of InCsumErrors from `/proc/net/snmp`; checksum is error when value is greater than 0",
 		},
 		[]string{"hostname"},
 	)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -17,6 +18,13 @@ import (
 
 // CreateLogicalRouter create logical router in ovn
 func (c *OVNNbClient) CreateLogicalRouter(lrName string) error {
+	return c.CreateLogicalRouterWithOptions(lrName, nil)
+}
+
+// CreateLogicalRouterWithOptions creates a logical router and applies its
+// initial options in the same northbound transaction. Existing routers are
+// updated in one transaction when their options differ.
+func (c *OVNNbClient) CreateLogicalRouterWithOptions(lrName string, options map[string]string) error {
 	if lrName == "" {
 		return errors.New("empty logical router name")
 	}
@@ -33,12 +41,28 @@ func (c *OVNNbClient) CreateLogicalRouter(lrName string) error {
 		return fmt.Errorf("check existence of logical router %s: %w", lrName, err)
 	}
 	if len(existing) > 0 {
+		if options == nil {
+			return nil
+		}
+		lr := existing[0]
+		if maps.Equal(lr.Options, options) {
+			return nil
+		}
+		lr.Options = options
+		ops, err := c.UpdateLogicalRouterOp(&lr, &lr.Options)
+		if err != nil {
+			return fmt.Errorf("generate operations for updating logical router %s: %w", lrName, err)
+		}
+		if err := c.Transact("lr-create-or-update", ops); err != nil {
+			return fmt.Errorf("update logical router %s: %w", lrName, err)
+		}
 		return nil
 	}
 
 	// Slow path: atomic Wait + Insert to prevent concurrent duplicate creation.
 	lr := &ovnnb.LogicalRouter{
 		Name:        lrName,
+		Options:     options,
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 	}
 
@@ -51,9 +75,13 @@ func (c *OVNNbClient) CreateLogicalRouter(lrName string) error {
 	waitOp := ConstructWaitForNameNotExistsOperation(lrName, "Logical_Router")
 	ops := append([]ovsdb.Operation{waitOp}, createOps...)
 
-	if _, err := c.TransactConditional("lr-add", ops); err != nil {
+	created, err := c.TransactConditional("lr-add", ops)
+	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("create logical router %s: %w", lrName, err)
+	}
+	if !created && options != nil {
+		return fmt.Errorf("logical router %s was created concurrently; retry applying options", lrName)
 	}
 
 	return nil
