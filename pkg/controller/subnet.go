@@ -2371,6 +2371,10 @@ func (c *Controller) addPolicyRouteForDistributedSubnet(subnet *kubeovnv1.Subnet
 	}
 
 	pgName := getOverlaySubnetsPortGroupName(subnet.Name, nodeName)
+	if err := c.reconcileServiceProxyFallbackDropPolicies(subnet, nodeName); err != nil {
+		return err
+	}
+
 	for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 		ipSuffix := getIPSuffix(util.CheckProtocol(cidrBlock))
 		nodeIP := nodeIPv4
@@ -2401,7 +2405,76 @@ func (c *Controller) addPolicyRouteForDistributedSubnet(subnet *kubeovnv1.Subnet
 			return err
 		}
 	}
+
 	return nil
+}
+
+// reconcileServiceProxyFallbackDropPolicies prevents traffic for OVN-managed
+// Services from falling through to the node proxy while the OVN LB flows are
+// being installed. Successful OVN DNAT changes the destination before the
+// router policy stage, so only packets that still target a ServiceCIDR match.
+func (c *Controller) reconcileServiceProxyFallbackDropPolicies(subnet *kubeovnv1.Subnet, nodeName string) error {
+	if !c.config.EnableOvnLB {
+		return nil
+	}
+	externalIDs := map[string]string{
+		"isServiceProxyFallbackDropPolicy": "true",
+		"node":                             nodeName,
+	}
+	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, buildPolicyRouteExternalIDs(subnet.Name, externalIDs), true)
+	if err != nil {
+		return fmt.Errorf("list service proxy fallback policies for subnet %s and node %s: %w", subnet.Name, nodeName, err)
+	}
+
+	desired := make(map[string]struct{})
+	eligible := subnet.Name != c.config.NodeSwitch && subnet.Spec.Vpc == c.config.ClusterRouter &&
+		(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) &&
+		subnetEnablesServiceLB(subnet, c.config.EnableOvnLB)
+	pgName := getOverlaySubnetsPortGroupName(subnet.Name, nodeName)
+	for cidrBlock := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+		if !eligible {
+			break
+		}
+		if cidrBlock == "" {
+			continue
+		}
+		ipSuffix := getIPSuffix(util.CheckProtocol(cidrBlock))
+		pgAs := fmt.Sprintf("%s_%s", pgName, ipSuffix)
+		serviceCIDRs := c.serviceCIDRsByProtocol(util.CheckProtocol(cidrBlock))
+		for _, serviceCIDR := range serviceCIDRs {
+			match := fmt.Sprintf("%s.src == $%s && %s.dst == %s", ipSuffix, pgAs, ipSuffix, serviceCIDR)
+			desired[match] = struct{}{}
+			policyExternalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{
+				"isServiceProxyFallbackDropPolicy": "true",
+				"node":                             nodeName,
+				"serviceCIDR":                      serviceCIDR,
+			})
+			if err := c.addPolicyRouteToVpc(c.config.ClusterRouter, &kubeovnv1.PolicyRoute{
+				Priority: util.ServiceProxyFallbackDropPriority,
+				Match:    match,
+				Action:   kubeovnv1.PolicyRouteActionDrop,
+			}, policyExternalIDs); err != nil {
+				return fmt.Errorf("add service proxy fallback policy for subnet %s and node %s: %w", subnet.Name, nodeName, err)
+			}
+		}
+	}
+
+	for _, policy := range policies {
+		if _, ok := desired[policy.Match]; ok {
+			continue
+		}
+		if err := c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
+			return fmt.Errorf("delete stale service proxy fallback policy %s: %w", policy.UUID, err)
+		}
+	}
+	return nil
+}
+
+func (c *Controller) serviceCIDRsByProtocol(protocol string) []string {
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		return c.serviceCIDRStore.V6CIDRs()
+	}
+	return c.serviceCIDRStore.V4CIDRs()
 }
 
 func (c *Controller) deletePolicyRouteForDistributedSubnet(subnet *kubeovnv1.Subnet, nodeName string) error {
@@ -2414,6 +2487,25 @@ func (c *Controller) deletePolicyRouteForDistributedSubnet(subnet *kubeovnv1.Sub
 		if err := c.deletePolicyRouteFromVpc(c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match); err != nil {
 			klog.Errorf("failed to delete policy route for subnet %s: %v", subnet.Name, err)
 			return err
+		}
+	}
+	if err := c.deleteServiceProxyFallbackDropPolicies(subnet, nodeName); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) deleteServiceProxyFallbackDropPolicies(subnet *kubeovnv1.Subnet, nodeName string) error {
+	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, buildPolicyRouteExternalIDs(subnet.Name, map[string]string{
+		"isServiceProxyFallbackDropPolicy": "true",
+		"node":                             nodeName,
+	}), true)
+	if err != nil {
+		return fmt.Errorf("list service proxy fallback policies for deletion of subnet %s and node %s: %w", subnet.Name, nodeName, err)
+	}
+	for _, policy := range policies {
+		if err := c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
+			return fmt.Errorf("delete service proxy fallback policy %s: %w", policy.UUID, err)
 		}
 	}
 	return nil
