@@ -290,7 +290,7 @@ const (
 	U2OSubnetPolicyPriority             = 29400
 	OvnICPolicyPriority                 = 29500
 	ServiceProxyFallbackReroutePriority = 29800
-	ServiceProxyFallbackACLPriority     = 30000
+	ServiceProxyFallbackDropPriority    = 29900
 	NodeRouterPolicyPriority            = 30000
 	U2OPhysicalGatewayPolicyPriority    = 30050
 	U2OSameSubnetPolicyPriority         = 30060

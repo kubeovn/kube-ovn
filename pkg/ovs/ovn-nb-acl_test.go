@@ -1494,7 +1494,7 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPrivate() {
 
 	t.Run("should print log err when ls name is empty", func(t *testing.T) {
 		err := nbClient.SetLogicalSwitchPrivate("", cidrBlock, nodeSwitchCidrBlock, allowSubnets)
-		require.ErrorContains(t, err, "logical switch name is required")
+		require.ErrorContains(t, err, "the port group name or logical switch name is required")
 	})
 }
 
