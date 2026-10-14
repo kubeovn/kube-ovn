@@ -112,7 +112,14 @@ func TestCandidateEncryptedTraffic(t *testing.T) {
 	require.NoError(t, err)
 	trust, err := os.ReadFile("/fixtures/trust")
 	require.NoError(t, err)
+	coordination, err := json.Marshal(Coordination{
+		Version: 1, Generation: "traffic-generation", Epoch: "traffic-epoch", Phase: PreparePhase,
+		DaemonSetUID: "traffic-daemonset", TemplateHash: digest([]byte("traffic-template")), TrustHash: digest(trust),
+		Targets: map[string]string{node: "traffic-node-" + node},
+	})
+	require.NoError(t, err)
 	client := fake.NewClientset(
+		&corev1.ConfigMap{Name: CoordinationConfigMap, Namespace: "kube-system", Data: map[string]string{"state": string(coordination)}},
 		&corev1.Node{Name: node, UID: types.UID("traffic-node-" + node)},
 		&corev1.Secret{Name: util.DefaultOVNIPSecCA, Namespace: "kube-system", Data: map[string][]byte{"cacert": trust}},
 	)
