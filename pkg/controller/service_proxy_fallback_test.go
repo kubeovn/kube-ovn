@@ -19,7 +19,10 @@ func newServiceProxyFallbackController(t *testing.T) (*Controller, *kubeovnv1.Su
 		Gateway: "10.16.0.1,fd00:10:16::1", GatewayType: kubeovnv1.GWDistributedType,
 		EnableLb: new(true),
 	}}
-	node := &corev1.Node{Name: "worker-1"}
+	node := &corev1.Node{
+		Name: "worker-1", Annotations: map[string]string{util.IPAddressAnnotation: "100.64.0.2,fd00:100:64::2"},
+		Status: corev1.NodeStatus{Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionTrue}}},
+	}
 	ip := &kubeovnv1.IP{Name: util.NodeLspName(node.Name), Spec: kubeovnv1.IPSpec{
 		NodeName: node.Name, V4IPAddress: "100.64.0.2", V6IPAddress: "fd00:100:64::2",
 	}}
@@ -121,5 +124,31 @@ func TestServiceProxyFallbackOverlayToUnderlay(t *testing.T) {
 	for _, route := range routes {
 		require.Equal(t, ovnnb.LogicalRouterPolicyActionReroute, route.Action)
 		require.Equal(t, util.U2OSubnetPolicyPriority, route.Priority)
+	}
+}
+
+func TestServiceProxyFallbackCentralizedRetry(t *testing.T) {
+	ctrl, subnet := newServiceProxyFallbackController(t)
+	require.Len(t, serviceProxyFallbackPolicies(t, ctrl, subnet), 2)
+	subnet.Spec.GatewayType = kubeovnv1.GWCentralizedType
+	subnet.Spec.GatewayNode = "worker-1"
+	subnet.Spec.EnableLb = new(false)
+	// Simulate a restart after the active gateway was persisted but before the
+	// old distributed policies were removed.
+	subnet.Status.ActivateGateway = "worker-1"
+	require.NoError(t, ctrl.reconcileOvnDefaultVpcRoute(subnet))
+	require.Empty(t, serviceProxyFallbackPolicies(t, ctrl, subnet))
+	for _, cidr := range []struct {
+		family string
+		block  string
+	}{
+		{"ip4", "10.16.0.0/16"},
+		{"ip6", "fd00:10:16::/64"},
+	} {
+		routes, err := ctrl.OVNNbClient.GetLogicalRouterPolicy(ctrl.config.ClusterRouter,
+			util.GatewayRouterPolicyPriority, fmt.Sprintf("%s.src == %s", cidr.family, cidr.block), false)
+		require.NoError(t, err)
+		require.Len(t, routes, 1)
+		require.Equal(t, ovnnb.LogicalRouterPolicyActionReroute, routes[0].Action)
 	}
 }
