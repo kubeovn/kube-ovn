@@ -855,6 +855,15 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			subnetClient.CreateSync(framework.MakeSubnet(subnetAName, "", cidrA, "", "", "", nil, nil, []string{namespaceName}))
 			ginkgo.By("Creating namespace subnet " + subnetBName)
 			subnetClient.CreateSync(framework.MakeSubnet(subnetBName, "", cidrB, "", "", "", nil, nil, []string{namespaceName}))
+			gomega.Eventually(func(g gomega.Gomega) {
+				ns, err := f.ClientSet.CoreV1().Namespaces().Get(context.TODO(), namespaceName, metav1.GetOptions{})
+				if err != nil {
+					g.Expect(err).NotTo(gomega.HaveOccurred())
+					return
+				}
+				g.Expect(strings.Split(ns.Annotations[util.LogicalSwitchAnnotation], ",")).To(
+					gomega.ContainElements(subnetAName, subnetBName))
+			}).WithTimeout(60 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
 
 			ginkgo.By("Creating live-migratable VM " + vmName)
 			vm := framework.MakeVMLiveMigratableBridge(vmName, image, "small")
