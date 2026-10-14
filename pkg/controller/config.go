@@ -119,10 +119,11 @@ type Configuration struct {
 	ClusterUDPSessionLoadBalancer  string
 	ClusterSctpSessionLoadBalancer string
 
-	PodName        string
-	PodNamespace   string
-	PodNicType     string
-	LeaderElection LeaderElectionConfiguration
+	PodName                      string
+	PodNamespace                 string
+	ControllerServiceAccountName string
+	PodNicType                   string
+	LeaderElection               LeaderElectionConfiguration
 
 	WorkerNum       int
 	PprofPort       int32
@@ -368,6 +369,7 @@ func ParseFlags() (*Configuration, error) {
 		DefaultVlanName:                *argDefaultVlanName,
 		PodName:                        os.Getenv(util.EnvPodName),
 		PodNamespace:                   os.Getenv(util.EnvPodNamespace),
+		ControllerServiceAccountName:   controllerServiceAccountName(),
 		PodNicType:                     *argPodNicType,
 		LeaderElection:                 leaderElectionConfig,
 		EnableOvnLB:                    *argEnableOvnLB,
