@@ -2160,7 +2160,7 @@ func (c *OVNNbClient) MigrateACLTier() error {
 	var aclList []ovnnb.ACL
 	if err := c.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool {
 		// Service fallback protection intentionally precedes network policy tiers.
-		return acl.Tier == 0 && !(acl.ExternalIDs["vendor"] == util.CniTypeName && acl.ExternalIDs[serviceProxyFallbackACLKey] == "true")
+		return acl.Tier == 0 && (acl.ExternalIDs["vendor"] != util.CniTypeName || acl.ExternalIDs[serviceProxyFallbackACLKey] != "true")
 	}).List(ctx, &aclList); err != nil {
 		err = fmt.Errorf("failed to list acls with tier 0: %w", err)
 		klog.Error(err)

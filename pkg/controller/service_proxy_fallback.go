@@ -28,13 +28,13 @@ func (c *Controller) reconcileServiceProxyFallbackACL(subnet *kubeovnv1.Subnet) 
 		for _, protocol := range []string{kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6} {
 			ipSuffix := getIPSuffix(protocol)
 			for _, serviceCIDR := range c.serviceCIDRsByProtocol(protocol) {
-				match := fmt.Sprintf("%s.dst == %s", ipSuffix, serviceCIDR)
+				matchParts := []string{fmt.Sprintf("%s.dst == %s", ipSuffix, serviceCIDR)}
 				for _, dnsIP := range c.config.NodeLocalDNSIPs {
 					if util.CheckProtocol(dnsIP) == protocol && util.CIDRContainIP(serviceCIDR, dnsIP) {
-						match += fmt.Sprintf(" && %s.dst != %s", ipSuffix, dnsIP)
+						matchParts = append(matchParts, fmt.Sprintf("%s.dst != %s", ipSuffix, dnsIP))
 					}
 				}
-				matches = append(matches, match)
+				matches = append(matches, strings.Join(matchParts, " && "))
 			}
 		}
 	}
@@ -74,7 +74,7 @@ func (c *Controller) reconcileServiceProxyFallbackReroutePolicy(subnet *kubeovnv
 				ipSuffix := getIPSuffix(protocol)
 				for _, serviceCIDR := range c.serviceCIDRsByProtocol(protocol) {
 					match := fmt.Sprintf("%s.src == $%s_%s && %s.src == %s && %s.dst == %s", ipSuffix, nodePortName, ipSuffix, ipSuffix, subnetCIDR, ipSuffix, serviceCIDR)
-					nextHop := joinIP
+					var nextHop string
 					v4, v6 := util.SplitStringIP(joinIP)
 					if protocol == kubeovnv1.ProtocolIPv4 {
 						nextHop = v4
