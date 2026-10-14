@@ -672,7 +672,7 @@ func (c *OVNNbClient) UpdateACL(acl *ovnnb.ACL, fields ...any) error {
 // SetLogicalSwitchPrivate will drop all ingress traffic except allow subnets, same subnet and node subnet
 func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR string, allowSubnets []string) error {
 	// clear acls
-	if err := c.DeleteLogicalSwitchPolicyACLs(lsName); err != nil {
+	if err := c.DeleteAcls(lsName, LogicalSwitchKey, "", nil); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("clear logical switch %s acls: %w", lsName, err)
 	}
@@ -816,7 +816,7 @@ func (c *OVNNbClient) SetLogicalSwitchRouted(lsName, router, cidrBlock, gateway,
 		return fmt.Errorf("gateway MAC is required for routed subnet %s", lsName)
 	}
 
-	if err := c.DeleteLogicalSwitchPolicyACLs(lsName); err != nil {
+	if err := c.DeleteAcls(lsName, LogicalSwitchKey, "", nil); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("clear logical switch %s acls: %w", lsName, err)
 	}
@@ -2158,10 +2158,7 @@ func (c *OVNNbClient) MigrateACLTier() error {
 	defer cancel()
 
 	var aclList []ovnnb.ACL
-	if err := c.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool {
-		// Service fallback protection intentionally precedes network policy tiers.
-		return acl.Tier == 0 && (acl.ExternalIDs["vendor"] != util.CniTypeName || acl.ExternalIDs[serviceProxyFallbackACLKey] != "true")
-	}).List(ctx, &aclList); err != nil {
+	if err := c.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool { return acl.Tier == 0 }).List(ctx, &aclList); err != nil {
 		err = fmt.Errorf("failed to list acls with tier 0: %w", err)
 		klog.Error(err)
 		return err

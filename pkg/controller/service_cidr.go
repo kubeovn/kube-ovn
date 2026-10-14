@@ -124,7 +124,7 @@ func (c *Controller) reconcileForServiceCIDRChange() {
 		klog.Errorf("failed to list subnets: %v", err)
 	} else {
 		for _, s := range subnets {
-			if isOvnSubnet(s) && s.Name != c.config.NodeSwitch {
+			if isOvnSubnet(s) && s.Name != c.config.NodeSwitch && (s.Spec.Vpc == c.config.ClusterRouter || s.Spec.U2OInterconnection) {
 				c.addOrUpdateSubnetQueue.Add(s.Name)
 			}
 		}

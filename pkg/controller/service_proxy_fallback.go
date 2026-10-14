@@ -8,6 +8,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -18,27 +19,62 @@ func (c *Controller) serviceCIDRsByProtocol(protocol string) []string {
 	return c.serviceCIDRStore.V4CIDRs()
 }
 
-// Apply the drop after LS load balancing so DNATed Service traffic reaches its
-// backend, while unresolved Service destinations cannot escape to kube-proxy.
-// Binding to the LS covers every gateway mode, including physical underlay.
-func (c *Controller) reconcileServiceProxyFallbackACL(subnet *kubeovnv1.Subnet) error {
-	var matches []string
-	if c.config.EnableOvnLB && subnetEnablesServiceLB(subnet, c.config.EnableOvnLB) &&
-		subnet.Name != c.config.NodeSwitch && isOvnSubnet(subnet) {
+// These subnets use node join ports for host Service proxy access. Physical
+// underlay and custom VPCs retain their existing routing paths.
+func (c *Controller) subnetUsesNodeServiceProxy(subnet *kubeovnv1.Subnet) bool {
+	return subnet.Name != c.config.NodeSwitch && subnet.Spec.Vpc == c.config.ClusterRouter &&
+		(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && isOvnSubnet(subnet)
+}
+
+// LS load balancing precedes the router policy stage. Drop destinations still
+// in a ServiceCIDR before the node gateway reroute can send them to kube-proxy.
+// The router ingress port scopes protection to this LB-enabled subnet without
+// matching Pod source addresses or affecting other subnets sharing the router.
+func (c *Controller) reconcileServiceProxyFallbackDropPolicy(subnet *kubeovnv1.Subnet) error {
+	externalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{"isServiceProxyFallbackDropPolicy": "true"})
+	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, externalIDs, true)
+	if err != nil {
+		return fmt.Errorf("list service proxy fallback drop policies for subnet %s: %w", subnet.Name, err)
+	}
+	desired := make(map[string]struct{})
+	if c.subnetUsesNodeServiceProxy(subnet) && c.config.EnableOvnLB && subnetEnablesServiceLB(subnet, c.config.EnableOvnLB) {
+		subnetProtocol := util.CheckProtocol(subnet.Spec.CIDRBlock)
+		portName := ovs.LogicalRouterPortName(c.config.ClusterRouter, subnet.Name)
 		for _, protocol := range []string{kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6} {
+			if subnetProtocol != kubeovnv1.ProtocolDual && subnetProtocol != protocol {
+				continue
+			}
 			ipSuffix := getIPSuffix(protocol)
 			for _, serviceCIDR := range c.serviceCIDRsByProtocol(protocol) {
-				matchParts := []string{fmt.Sprintf("%s.dst == %s", ipSuffix, serviceCIDR)}
+				matchParts := []string{fmt.Sprintf("inport == %q && %s.dst == %s", portName, ipSuffix, serviceCIDR)}
 				for _, dnsIP := range c.config.NodeLocalDNSIPs {
 					if util.CheckProtocol(dnsIP) == protocol && util.CIDRContainIP(serviceCIDR, dnsIP) {
 						matchParts = append(matchParts, fmt.Sprintf("%s.dst != %s", ipSuffix, dnsIP))
 					}
 				}
-				matches = append(matches, strings.Join(matchParts, " && "))
+				match := strings.Join(matchParts, " && ")
+				desired[match] = struct{}{}
+				if err := c.addPolicyRouteToVpc(c.config.ClusterRouter, &kubeovnv1.PolicyRoute{
+					Priority: util.ServiceProxyFallbackDropPriority,
+					Match:    match,
+					Action:   kubeovnv1.PolicyRouteActionDrop,
+				}, externalIDs); err != nil {
+					return fmt.Errorf("add service proxy fallback drop policy for subnet %s: %w", subnet.Name, err)
+				}
 			}
 		}
 	}
-	return c.OVNNbClient.ReconcileServiceProxyFallbackACL(subnet.Name, matches)
+	for _, policy := range policies {
+		if policy.Priority == util.ServiceProxyFallbackDropPriority {
+			if _, ok := desired[policy.Match]; ok {
+				continue
+			}
+		}
+		if err := c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
+			return fmt.Errorf("delete stale service proxy fallback drop policy %s: %w", policy.UUID, err)
+		}
+	}
+	return nil
 }
 
 // The node port group identifies the Pod's current node, independently of the
@@ -52,9 +88,7 @@ func (c *Controller) reconcileServiceProxyFallbackReroutePolicy(subnet *kubeovnv
 	}
 	desired := make(map[string]struct{})
 	serviceLBEnabled := c.config.EnableOvnLB && subnetEnablesServiceLB(subnet, c.config.EnableOvnLB)
-	eligible := subnet.Name != c.config.NodeSwitch && subnet.Spec.Vpc == c.config.ClusterRouter &&
-		subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
-		(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && isOvnSubnet(subnet) && !serviceLBEnabled
+	eligible := c.subnetUsesNodeServiceProxy(subnet) && subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType && !serviceLBEnabled
 	if eligible {
 		nodes, listErr := c.nodesLister.List(labels.Everything())
 		if listErr != nil {
@@ -135,8 +169,7 @@ func (c *Controller) enqueueCentralizedServiceProxySubnets() {
 		return
 	}
 	for _, subnet := range subnets {
-		if subnet.Spec.Vpc == c.config.ClusterRouter && subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType &&
-			(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && isOvnSubnet(subnet) && subnet.Name != c.config.NodeSwitch {
+		if c.subnetUsesNodeServiceProxy(subnet) && subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
 			c.addOrUpdateSubnetQueue.Add(subnet.Name)
 		}
 	}

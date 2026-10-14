@@ -769,9 +769,6 @@ func (c *Controller) updateSubnetLoadBalancers(subnet *kubeovnv1.Subnet, vpc *ku
 }
 
 func (c *Controller) finishOvnSubnetReconcile(subnet *kubeovnv1.Subnet, vpc *kubeovnv1.Vpc) error {
-	if err := c.reconcileServiceProxyFallbackACL(subnet); err != nil {
-		return err
-	}
 	if err := c.reconcileSubnet(subnet); err != nil {
 		klog.Errorf("reconcile subnet for %s failed, %v", subnet.Name, err)
 		return c.recordResourceError(subnet, "ReconcileSubnetFailed", err)
@@ -869,7 +866,7 @@ func (c *Controller) reconcileSubnetBaseACLs(subnet *kubeovnv1.Subnet, router st
 		}
 		return nil
 	default:
-		if aclErr := c.OVNNbClient.DeleteLogicalSwitchPolicyACLs(subnet.Name); aclErr != nil {
+		if aclErr := c.OVNNbClient.DeleteAcls(subnet.Name, logicalSwitchKey, "", nil); aclErr != nil {
 			klog.Error(aclErr)
 			if patchErr := c.patchSubnetStatus(subnet, "ResetLogicalSwitchAclFailed", aclErr.Error()); patchErr != nil {
 				klog.Error(patchErr)
@@ -1662,7 +1659,8 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 		return nil
 	}
 
-	if err := c.deleteServiceProxyFallbackPolicies(subnet, "isServiceProxyFallbackDropPolicy"); err != nil {
+	if err := c.reconcileServiceProxyFallbackDropPolicy(subnet); err != nil {
+		klog.Error(err)
 		return err
 	}
 	if err := c.reconcileServiceProxyFallbackReroutePolicy(subnet); err != nil {
@@ -2412,7 +2410,6 @@ func (c *Controller) addPolicyRouteForDistributedSubnet(subnet *kubeovnv1.Subnet
 			return err
 		}
 	}
-
 	return nil
 }
 

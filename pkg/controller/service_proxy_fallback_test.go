@@ -10,7 +10,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -42,15 +41,6 @@ func newServiceProxyFallbackController(t *testing.T) (*fakeController, *kubeovnv
 	return fc, subnet
 }
 
-func serviceProxyFallbackACLs(t *testing.T, ctrl *Controller, subnet *kubeovnv1.Subnet) []ovnnb.ACL {
-	t.Helper()
-	acls, err := ctrl.OVNNbClient.(*ovs.OVNNbClient).ListAcls("", map[string]string{
-		"parent": subnet.Name, "vendor": util.CniTypeName, "isServiceProxyFallbackACL": "true",
-	})
-	require.NoError(t, err)
-	return acls
-}
-
 func serviceProxyFallbackPolicies(t *testing.T, ctrl *Controller, subnet *kubeovnv1.Subnet, owner string) []*ovnnb.LogicalRouterPolicy {
 	t.Helper()
 	policies, err := ctrl.OVNNbClient.ListLogicalRouterPolicies(ctrl.config.ClusterRouter, -1,
@@ -59,61 +49,146 @@ func serviceProxyFallbackPolicies(t *testing.T, ctrl *Controller, subnet *kubeov
 	return policies
 }
 
-func TestServiceProxyFallbackACLAllGatewayModes(t *testing.T) {
-	for _, mode := range []string{"distributed", "centralized", "underlay", "logical-gateway", "custom-vpc"} {
+func TestServiceProxyFallbackDropScope(t *testing.T) {
+	for _, mode := range []string{"distributed", "centralized", "logical-gateway", "inherited-lb", "physical-underlay", "u2o", "custom-vpc", "join", "non-ovn", "global-lb-disabled", "subnet-lb-disabled"} {
 		t.Run(mode, func(t *testing.T) {
 			fc, subnet := newServiceProxyFallbackController(t)
 			ctrl := fc.fakeController
+			want := 2
 			switch mode {
 			case "centralized":
 				subnet.Spec.GatewayType = kubeovnv1.GWCentralizedType
-			case "underlay", "logical-gateway":
+			case "logical-gateway":
 				subnet.Spec.Vlan = "vlan-1"
-				subnet.Spec.LogicalGateway = mode == "logical-gateway"
+				subnet.Spec.LogicalGateway = true
+			case "inherited-lb":
+				subnet.Spec.EnableLb = nil
+			case "physical-underlay", "u2o":
+				subnet.Spec.Vlan = "vlan-1"
+				subnet.Spec.U2OInterconnection = mode == "u2o"
+				want = 0
 			case "custom-vpc":
 				subnet.Spec.Vpc = "custom"
+				want = 0
+			case "join":
+				subnet.Name = ctrl.config.NodeSwitch
+				want = 0
+			case "non-ovn":
+				subnet.Spec.Provider = "net.ns"
+				want = 0
+			case "global-lb-disabled":
+				// An explicit subnet opt-in cannot override the global disable.
+				ctrl.config.EnableOvnLB = false
+				want = 0
+			case "subnet-lb-disabled":
+				subnet.Spec.EnableLb = new(false)
+				want = 0
 			}
-			require.NoError(t, ctrl.reconcileServiceProxyFallbackACL(subnet))
-			acls := serviceProxyFallbackACLs(t, ctrl, subnet)
-			require.Len(t, acls, 2)
+			require.NoError(t, ctrl.reconcileServiceProxyFallbackDropPolicy(subnet))
+			policies := serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackDropPolicy")
+			require.Len(t, policies, want)
 			var matches []string
-			for _, acl := range acls {
-				matches = append(matches, acl.Match)
-				require.Equal(t, ovnnb.ACLDirectionFromLport, acl.Direction)
-				require.Equal(t, ovnnb.ACLActionDrop, acl.Action)
-				require.Equal(t, "true", acl.Options["apply-after-lb"])
+			for _, policy := range policies {
+				matches = append(matches, policy.Match)
+				require.Equal(t, ovnnb.LogicalRouterPolicyActionDrop, policy.Action)
+				require.Empty(t, policy.Nexthops)
+				require.Greater(t, policy.Priority, util.GatewayRouterPolicyPriority)
+				require.Less(t, policy.Priority, util.NodeRouterPolicyPriority)
 			}
-			require.ElementsMatch(t, []string{"ip4.dst == 10.96.0.0/12", "ip6.dst == fd00:10:96::/108"}, matches)
-			// An explicit subnet opt-in cannot override the global disable.
-			ctrl.config.EnableOvnLB = false
-			require.NoError(t, ctrl.reconcileServiceProxyFallbackACL(subnet))
-			require.Empty(t, serviceProxyFallbackACLs(t, ctrl, subnet))
-			ctrl.config.EnableOvnLB = true
-			subnet.Spec.EnableLb = new(false)
-			require.NoError(t, ctrl.reconcileServiceProxyFallbackACL(subnet))
-			require.Empty(t, serviceProxyFallbackACLs(t, ctrl, subnet))
+			if want != 0 {
+				require.ElementsMatch(t, []string{
+					`inport == "ovn-cluster-ovn-default" && ip4.dst == 10.96.0.0/12`,
+					`inport == "ovn-cluster-ovn-default" && ip6.dst == fd00:10:96::/108`,
+				}, matches)
+			}
+			require.NoError(t, ctrl.reconcileServiceProxyFallbackDropPolicy(subnet))
+			require.ElementsMatch(t, policies, serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackDropPolicy"))
 		})
 	}
 }
 
-func TestServiceProxyFallbackACLServiceCIDRAndLocalDNS(t *testing.T) {
+func TestServiceProxyFallbackDropLifecycle(t *testing.T) {
+	for _, transition := range []string{"global-lb-disabled", "subnet-lb-disabled", "physical-underlay", "custom-vpc", "service-cidr", "ipv4-only", "dns", "delete"} {
+		t.Run(transition, func(t *testing.T) {
+			fc, subnet := newServiceProxyFallbackController(t)
+			ctrl := fc.fakeController
+			require.NoError(t, ctrl.reconcileServiceProxyFallbackDropPolicy(subnet))
+			require.Len(t, serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackDropPolicy"), 2)
+			other := subnet.DeepCopy()
+			other.Name = "other"
+			require.NoError(t, ctrl.reconcileServiceProxyFallbackDropPolicy(other))
+			foreignMatch := "ip4.dst == 203.0.113.0/24"
+			require.NoError(t, ctrl.OVNNbClient.AddLogicalRouterPolicy(ctrl.config.ClusterRouter, 1000,
+				foreignMatch, ovnnb.LogicalRouterPolicyActionDrop, nil, nil, buildPolicyRouteExternalIDs(subnet.Name, nil)))
+			want := 0
+			switch transition {
+			case "global-lb-disabled":
+				ctrl.config.EnableOvnLB = false
+			case "subnet-lb-disabled":
+				subnet.Spec.EnableLb = new(false)
+			case "physical-underlay":
+				subnet.Spec.Vlan = "vlan-1"
+			case "custom-vpc":
+				subnet.Spec.Vpc = "custom"
+			case "service-cidr":
+				ctrl.serviceCIDRStore = util.NewServiceCIDRStore("10.112.0.0/12")
+				want = 1
+			case "ipv4-only":
+				subnet.Spec.CIDRBlock = "10.16.0.0/16"
+				want = 1
+			case "dns":
+				ctrl.config.NodeLocalDNSIPs = []string{"10.96.0.10", "fd00:10:96::a", "169.254.20.10"}
+				want = 2
+			}
+			if transition == "delete" {
+				require.NoError(t, ctrl.deletePolicyRouteByGatewayType(subnet, subnet.Spec.GatewayType, true))
+			} else {
+				require.NoError(t, ctrl.reconcileServiceProxyFallbackDropPolicy(subnet))
+			}
+			policies := serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackDropPolicy")
+			require.Len(t, policies, want)
+			switch transition {
+			case "service-cidr":
+				require.Equal(t, `inport == "ovn-cluster-ovn-default" && ip4.dst == 10.112.0.0/12`, policies[0].Match)
+			case "ipv4-only":
+				require.Equal(t, `inport == "ovn-cluster-ovn-default" && ip4.dst == 10.96.0.0/12`, policies[0].Match)
+			case "dns":
+				var matches []string
+				for _, policy := range policies {
+					matches = append(matches, policy.Match)
+				}
+				require.ElementsMatch(t, []string{
+					`inport == "ovn-cluster-ovn-default" && ip4.dst == 10.96.0.0/12 && ip4.dst != 10.96.0.10`,
+					`inport == "ovn-cluster-ovn-default" && ip6.dst == fd00:10:96::/108 && ip6.dst != fd00:10:96::a`,
+				}, matches)
+			}
+			require.Len(t, serviceProxyFallbackPolicies(t, ctrl, other, "isServiceProxyFallbackDropPolicy"), 2)
+			foreign, err := ctrl.OVNNbClient.GetLogicalRouterPolicy(ctrl.config.ClusterRouter, 1000, foreignMatch, false)
+			require.NoError(t, err)
+			require.Len(t, foreign, 1)
+		})
+	}
+}
+
+func TestServiceProxyFallbackCentralizedLBTransition(t *testing.T) {
 	fc, subnet := newServiceProxyFallbackController(t)
 	ctrl := fc.fakeController
-	ctrl.config.NodeLocalDNSIPs = []string{"10.96.0.10", "fd00:10:96::a", "169.254.20.10"}
-	require.NoError(t, ctrl.reconcileServiceProxyFallbackACL(subnet))
-	var matches []string
-	for _, acl := range serviceProxyFallbackACLs(t, ctrl, subnet) {
-		matches = append(matches, acl.Match)
+	subnet.Spec.GatewayType = kubeovnv1.GWCentralizedType
+	subnet.Spec.GatewayNode = "worker-1"
+	subnet.Status.ActivateGateway = "worker-1"
+	for _, enabled := range []bool{false, true, false} {
+		ctrl.config.EnableOvnLB = enabled
+		require.NoError(t, ctrl.reconcileOvnDefaultVpcRoute(subnet))
+		drops := serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackDropPolicy")
+		reroutes := serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackReroutePolicy")
+		if enabled {
+			require.Len(t, drops, 2)
+			require.Empty(t, reroutes)
+		} else {
+			require.Empty(t, drops)
+			require.Len(t, reroutes, 2)
+		}
 	}
-	require.ElementsMatch(t, []string{
-		"ip4.dst == 10.96.0.0/12 && ip4.dst != 10.96.0.10",
-		"ip6.dst == fd00:10:96::/108 && ip6.dst != fd00:10:96::a",
-	}, matches)
-	ctrl.serviceCIDRStore = util.NewServiceCIDRStore("10.112.0.0/12")
-	require.NoError(t, ctrl.reconcileServiceProxyFallbackACL(subnet))
-	acls := serviceProxyFallbackACLs(t, ctrl, subnet)
-	require.Len(t, acls, 1)
-	require.Equal(t, "ip4.dst == 10.112.0.0/12", acls[0].Match)
 }
 
 func TestServiceProxyFallbackCentralizedUsesPodNode(t *testing.T) {
@@ -222,7 +297,13 @@ func TestServiceProxyFallbackRemovesLegacyRouterDrops(t *testing.T) {
 			buildPolicyRouteExternalIDs(subnet.Name, map[string]string{"isServiceProxyFallbackDropPolicy": "true", "node": "deleted-node"})))
 	}
 	require.NoError(t, ctrl.reconcileOvnDefaultVpcRoute(subnet))
-	require.Empty(t, serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackDropPolicy"))
+	policies := serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackDropPolicy")
+	require.Len(t, policies, 2)
+	for _, policy := range policies {
+		require.Equal(t, util.ServiceProxyFallbackDropPriority, policy.Priority)
+		require.NotContains(t, policy.Match, "ip4.src")
+		require.Contains(t, policy.Match, `inport == "ovn-cluster-ovn-default"`)
+	}
 }
 
 func TestServiceProxyFallbackNodeEvents(t *testing.T) {
