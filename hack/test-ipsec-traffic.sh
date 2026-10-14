@@ -6,12 +6,15 @@ set -euo pipefail
 # separate fixture, which alone receives NET_RAW.
 candidate_image=${1:?candidate image is required}
 runtime_binary=$(realpath "${2:?compiled pkg/ipsec test binary is required}")
+capture_image=${3:?capture image is required}
 traffic_id="ipsec-traffic-${GITHUB_RUN_ID:-$$}-${GITHUB_RUN_ATTEMPT:-1}"
 traffic_network="$traffic_id-net"
 traffic_fixtures="$traffic_id-fixtures"
+traffic_capture_volume="$traffic_id-capture"
 traffic_ovs=("$traffic_id-ovs-0" "$traffic_id-ovs-1")
 traffic_tests=("$traffic_id-test-0" "$traffic_id-test-1")
 traffic_sockets=("$traffic_id-socket-0" "$traffic_id-socket-1")
+traffic_capture="$traffic_id-capture"
 
 stop_case() {
   for i in 0 1; do
@@ -20,16 +23,20 @@ stop_case() {
     docker rm -f "${traffic_tests[$i]}" "${traffic_ovs[$i]}" >/dev/null 2>&1 || true
     docker volume rm "${traffic_sockets[$i]}" >/dev/null 2>&1 || true
   done
+  docker logs "$traffic_capture" 2>/dev/null || true
+  docker rm -f "$traffic_capture" >/dev/null 2>&1 || true
 }
 cleanup() {
   stop_case
   docker network rm "$traffic_network" >/dev/null 2>&1 || true
   docker volume rm "$traffic_fixtures" >/dev/null 2>&1 || true
+  docker volume rm "$traffic_capture_volume" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 docker network create --internal --ipv6 --subnet "fd00:7598:$(printf '%x:%x' "$(( $$ / 65536 ))" "$(( $$ % 65536 ))")::/64" "$traffic_network" >/dev/null
 docker volume create "$traffic_fixtures" >/dev/null
+docker volume create "$traffic_capture_volume" >/dev/null
 docker run --rm --network none --user 0:0 --cap-drop ALL --security-opt no-new-privileges \
   --mount "type=volume,src=$traffic_fixtures,dst=/fixtures" \
   --mount "type=bind,src=$runtime_binary,dst=/tmp/ipsec-tests,readonly" \
@@ -73,21 +80,20 @@ for family in 4 6; do
         traffic_addresses+=("$(docker inspect --format '{{range .NetworkSettings.Networks}}{{.GlobalIPv6Address}}{{end}}' "${traffic_ovs[$i]}")")
       fi
     done
-    docker exec --detach "${traffic_ovs[0]}" bash -c '
-      set -euo pipefail
-      tcpdump -Z root -i eth0 -p -n -U -w /tmp/traffic.pcap \
-        "host $1 and (udp port 6081 or udp port 4789 or udp port 4500 or ip proto 50 or ip6 proto 50)" >/tmp/capture.log 2>&1 &
-      traffic_capture_pid=$!
-      echo "$traffic_capture_pid" >/tmp/capture.pid
-      wait "$traffic_capture_pid"
-      touch /tmp/capture-complete
-    ' traffic-capture "${traffic_addresses[1]}"
+    docker run --rm --network none --user 0:0 --cap-drop ALL --security-opt no-new-privileges \
+      --mount "type=volume,src=$traffic_capture_volume,dst=/capture" \
+      "$capture_image" bash -c 'rm -f /capture/traffic.pcap'
+    docker run --detach --name "$traffic_capture" --network "container:${traffic_ovs[0]}" --user 0:0 \
+      --cap-drop ALL --cap-add NET_RAW --memory 128m --cpus 1 --security-opt no-new-privileges \
+      --mount "type=volume,src=$traffic_capture_volume,dst=/capture" \
+      "$capture_image" tcpdump -Z root -i eth0 -p -n -U -w /capture/traffic.pcap \
+      "host ${traffic_addresses[1]} and (udp port 6081 or udp port 4789 or udp port 4500 or ip proto 50 or ip6 proto 50)" >/dev/null
     for attempt in {1..20}; do
-      if docker exec "${traffic_ovs[0]}" bash -c 'grep -q "listening on eth0" /tmp/capture.log && kill -0 "$(cat /tmp/capture.pid)"'; then
+      if docker logs "$traffic_capture" 2>&1 | grep -q "listening on eth0" && [[ "$(docker inspect --format '{{.State.Running}}' "$traffic_capture")" == true ]]; then
         break
       fi
       if [[ "$attempt" == 20 ]]; then
-        docker exec "${traffic_ovs[0]}" cat /tmp/capture.log >&2
+        docker logs "$traffic_capture" >&2 || true
         echo 'Packet capture did not start' >&2
         exit 1
       fi
@@ -148,18 +154,13 @@ for family in 4 6; do
       fi
       sleep 1
     done
-    docker exec "${traffic_ovs[0]}" bash -c 'kill -INT "$(cat /tmp/capture.pid)"'
-    for attempt in {1..20}; do
-      if docker exec "${traffic_ovs[0]}" test -f /tmp/capture-complete; then
-        break
-      fi
-      if [[ "$attempt" == 20 ]]; then
-        docker exec "${traffic_ovs[0]}" cat /tmp/capture.log >&2
-        echo 'Packet capture did not finish' >&2
-        exit 1
-      fi
-      sleep 0.1
-    done
+    docker kill -s INT "$traffic_capture" >/dev/null
+    capture_exit_code=$(docker wait "$traffic_capture")
+    if [[ "$capture_exit_code" != 0 ]]; then
+      docker logs "$traffic_capture" >&2 || true
+      echo "Packet capture failed with status $capture_exit_code" >&2
+      exit 1
+    fi
     for i in 0 1; do
       docker exec "${traffic_ovs[$i]}" touch "/fixtures/node-$i/release"
       exit_code=$(docker wait "${traffic_tests[$i]}")
@@ -170,12 +171,18 @@ for family in 4 6; do
     done
     # tcpdump decodes both native ESP and ESP-in-UDP as ESP(spi=...). IKE on
     # UDP4500 carries a zero non-ESP marker and must not count as encrypted data.
-    esp_count=$(docker exec "${traffic_ovs[0]}" bash -o pipefail -c 'tcpdump -Z root -n -r /tmp/traffic.pcap | awk "/ESP\\(spi=/{count++} END{print count+0}"')
-    plaintext_count=$(docker exec "${traffic_ovs[0]}" bash -o pipefail -c 'tcpdump -Z root -n -r /tmp/traffic.pcap "udp port 6081 or udp port 4789" | wc -l')
+    esp_count=$(docker run --rm --network none --user 0:0 --cap-drop ALL --security-opt no-new-privileges \
+      --mount "type=volume,src=$traffic_capture_volume,dst=/capture,readonly" \
+      "$capture_image" bash -o pipefail -c 'tcpdump -Z root -n -r /capture/traffic.pcap | awk "/ESP\\(spi=/{count++} END{print count+0}"')
+    plaintext_count=$(docker run --rm --network none --user 0:0 --cap-drop ALL --security-opt no-new-privileges \
+      --mount "type=volume,src=$traffic_capture_volume,dst=/capture,readonly" \
+      "$capture_image" bash -o pipefail -c 'tcpdump -Z root -n -r /capture/traffic.pcap "udp port 6081 or udp port 4789" | wc -l')
     echo "IPv$family $tunnel: ESP packets=$esp_count plaintext transport packets=$plaintext_count"
     if [[ "$esp_count" == 0 || "$plaintext_count" != 0 ]]; then
-      docker exec "${traffic_ovs[0]}" cat /tmp/capture.log >&2
-      docker exec "${traffic_ovs[0]}" tcpdump -Z root -n -r /tmp/traffic.pcap -c 8 >&2
+      docker logs "$traffic_capture" >&2 || true
+      docker run --rm --network none --user 0:0 --cap-drop ALL --security-opt no-new-privileges \
+        --mount "type=volume,src=$traffic_capture_volume,dst=/capture,readonly" \
+        "$capture_image" tcpdump -Z root -n -r /capture/traffic.pcap -c 8 >&2 || true
       echo 'The capture did not prove encrypted transport without plaintext' >&2
       exit 1
     fi
