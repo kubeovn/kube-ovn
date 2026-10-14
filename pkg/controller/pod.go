@@ -2156,7 +2156,7 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 	}
 
 	subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]
-	if subnet, err := c.getVMPodDefaultSubnet(pod, subnetNames); err != nil {
+	if subnet, err := c.getRetainedPodDefaultSubnet(pod, subnetNames); err != nil {
 		klog.Error(err)
 		return nil, err
 	} else if subnet != nil {
@@ -2205,26 +2205,24 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 	return nil, ipam.ErrNoAvailable
 }
 
-// getVMPodDefaultSubnet keeps an existing VM allocation ahead of capacity-based
-// subnet selection. Reusing an address does not require a free address, and a
-// newly available subnet must not move a migrating VM away from its source.
-func (c *Controller) getVMPodDefaultSubnet(pod *v1.Pod, subnetNames string) (*kubeovnv1.Subnet, error) {
-	if !c.config.EnableKeepVMIP {
-		return nil, nil
+// getRetainedPodDefaultSubnet keeps an existing StatefulSet or VM allocation
+// ahead of capacity-based subnet selection. Reusing an address does not require
+// a free address, and newly available subnets must not move an existing workload.
+func (c *Controller) getRetainedPodDefaultSubnet(pod *v1.Pod, subnetNames string) (*kubeovnv1.Subnet, error) {
+	if isStatefulSet, _, _ := isStatefulSetPod(pod); !isStatefulSet {
+		if isVM, _ := isVMPod(pod); !isVM || !c.config.EnableKeepVMIP {
+			return nil, nil
+		}
 	}
-	isVM, vmName := isVMPod(pod)
-	if !isVM {
-		return nil, nil
-	}
-	ipName := ovs.PodNameToPortName(vmName, pod.Namespace, util.OvnProvider)
+	ipName := ovs.PodNameToPortName(c.getNameByPod(pod), pod.Namespace, util.OvnProvider)
 	ip, err := c.ipsLister.Get(ipName)
 	if k8serrors.IsNotFound(err) {
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get IP %s for VM subnet selection: %w", ipName, err)
+		return nil, fmt.Errorf("failed to get IP %s for retained pod subnet selection: %w", ipName, err)
 	}
-	// A namespace subnet change still allows the VM to move to its new network.
+	// A namespace subnet change still allows the pod to move to its new network.
 	if ip.Spec.Subnet == "" || !slices.Contains(strings.Split(subnetNames, ","), ip.Spec.Subnet) {
 		return nil, nil
 	}
@@ -2233,7 +2231,7 @@ func (c *Controller) getVMPodDefaultSubnet(pod *v1.Pod, subnetNames string) (*ku
 		return nil, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("failed to get subnet %s for VM IP %s: %w", ip.Spec.Subnet, ipName, err)
+		return nil, fmt.Errorf("failed to get subnet %s for retained IP %s: %w", ip.Spec.Subnet, ipName, err)
 	}
 	return subnet, nil
 }

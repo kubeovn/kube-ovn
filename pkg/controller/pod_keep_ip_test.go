@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kubevirtv1 "kubevirt.io/api/core/v1"
@@ -18,6 +19,33 @@ import (
 )
 
 func TestVMMigrationPreservesDefaultSubnet(t *testing.T) {
+	pod := &corev1.Pod{
+		Name: "virt-launcher-debian-test-6-target", Namespace: "sandbox1",
+		OwnerReferences: []metav1.OwnerReference{{
+			APIVersion: kubevirtv1.SchemeGroupVersion.String(), Kind: util.KindVirtualMachineInstance, Name: "debian-test-6",
+		}},
+		Labels:      map[string]string{kubevirtv1.MigrationJobLabel: "migration-uid"},
+		Annotations: map[string]string{kubevirtv1.MigrationJobNameAnnotation: "migration"},
+	}
+	testPodPreservesDefaultSubnet(t, pod, "debian-test-6", true)
+}
+
+func TestStatefulSetRecreationPreservesDefaultSubnet(t *testing.T) {
+	pod := &corev1.Pod{
+		Name: "web-0", Namespace: "sandbox1",
+		OwnerReferences: []metav1.OwnerReference{{
+			APIVersion: appsv1.SchemeGroupVersion.String(), Kind: util.KindStatefulSet, Name: "web",
+		}},
+	}
+	for _, keepVMIP := range []bool{false, true} {
+		t.Run(fmt.Sprintf("keep VM IP %t", keepVMIP), func(t *testing.T) {
+			testPodPreservesDefaultSubnet(t, pod, pod.Name, keepVMIP)
+		})
+	}
+}
+
+func testPodPreservesDefaultSubnet(t *testing.T, pod *corev1.Pod, allocationName string, keepVMIP bool) {
+	t.Helper()
 	for _, tt := range []struct {
 		name             string
 		originalSubnet   int
@@ -47,21 +75,18 @@ func TestVMMigrationPreservesDefaultSubnet(t *testing.T) {
 					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.NewBigInt(tt.availableInLast)},
 				},
 			}
-			pod := &corev1.Pod{
-				Name: "virt-launcher-debian-test-6-target", Namespace: "sandbox1",
-				OwnerReferences: []metav1.OwnerReference{{
-					APIVersion: kubevirtv1.SchemeGroupVersion.String(), Kind: util.KindVirtualMachineInstance, Name: "debian-test-6",
-				}},
-				Labels:      map[string]string{kubevirtv1.MigrationJobLabel: "migration-uid"},
-				Annotations: map[string]string{kubevirtv1.MigrationJobNameAnnotation: "migration"},
-			}
+
 			originalIP := []string{"29.29.0.3", "29.29.0.10"}[tt.originalSubnet]
 			originalSubnet := subnets[tt.originalSubnet].Name
-			portName := ovs.PodNameToPortName("debian-test-6", pod.Namespace, util.OvnProvider)
+			portName := ovs.PodNameToPortName(allocationName, pod.Namespace, util.OvnProvider)
+			podType := util.KindStatefulSet
+			if pod.OwnerReferences[0].Kind == util.KindVirtualMachineInstance {
+				podType = util.KindVirtualMachine
+			}
 			ip := &kubeovnv1.IP{
 				Name: portName,
 				Spec: kubeovnv1.IPSpec{
-					PodName: "debian-test-6", Namespace: pod.Namespace, PodType: util.KindVirtualMachine,
+					PodName: allocationName, Namespace: pod.Namespace, PodType: podType,
 					Subnet: originalSubnet, IPAddress: originalIP, V4IPAddress: originalIP, MacAddress: "02:00:00:00:00:01",
 				},
 			}
@@ -73,13 +98,13 @@ func TestVMMigrationPreservesDefaultSubnet(t *testing.T) {
 			})
 			require.NoError(t, err)
 			ctrl := fc.fakeController
-			ctrl.config.EnableKeepVMIP = true
+			ctrl.config.EnableKeepVMIP = keepVMIP
 			ctrl.ipam = newIPAMForTest(subnets)
-			_, _, _, err = ctrl.ipam.GetStaticAddress("sandbox1/debian-test-6", portName, originalIP, &ip.Spec.MacAddress, originalSubnet, true)
+			_, _, _, err = ctrl.ipam.GetStaticAddress(pod.Namespace+"/"+allocationName, portName, originalIP, &ip.Spec.MacAddress, originalSubnet, true)
 			require.NoError(t, err)
 			for _, subnet := range subnets {
 				if subnet.Status.V4AvailableIPs.EqualInt64(0) {
-					exhaustVMTestSubnet(t, ctrl, subnet.Name)
+					exhaustKeepIPTestSubnet(t, ctrl, subnet.Name)
 				}
 			}
 
@@ -88,16 +113,16 @@ func TestVMMigrationPreservesDefaultSubnet(t *testing.T) {
 			require.Len(t, nets, 1)
 			v4, v6, mac, subnet, err := ctrl.acquireAddress(pod, nets[0])
 			require.NoError(t, err)
-			require.Equal(t, originalSubnet, subnet.Name, "migration must retain the source subnet")
-			require.Equal(t, originalIP, v4, "migration must retain the source IP")
+			require.Equal(t, originalSubnet, subnet.Name, "a recreated pod must retain its subnet")
+			require.Equal(t, originalIP, v4, "a recreated pod must retain its IP")
 			require.Empty(t, v6)
 			require.Equal(t, ip.Spec.MacAddress, mac)
-			require.Len(t, ctrl.ipam.GetPodAddress("sandbox1/debian-test-6"), 1, "migration must not allocate in a second subnet")
+			require.Len(t, ctrl.ipam.GetPodAddress(pod.Namespace+"/"+allocationName), 1, "a recreated pod must not allocate in a second subnet")
 		})
 	}
 }
 
-func exhaustVMTestSubnet(t *testing.T, ctrl *Controller, subnetName string) {
+func exhaustKeepIPTestSubnet(t *testing.T, ctrl *Controller, subnetName string) {
 	t.Helper()
 	for i := range 8 {
 		name := fmt.Sprintf("filler-%s-%d", subnetName, i)
@@ -110,7 +135,16 @@ func exhaustVMTestSubnet(t *testing.T, ctrl *Controller, subnetName string) {
 	t.Fatal("expected the /29 subnet to be exhausted")
 }
 
-func TestGetPodDefaultSubnetVMSelection(t *testing.T) {
+func TestGetPodDefaultSubnetRetainedIPSelection(t *testing.T) {
+	for _, workload := range []string{util.KindVirtualMachine, util.KindStatefulSet} {
+		t.Run(workload, func(t *testing.T) {
+			testGetPodDefaultSubnetRetainedIPSelection(t, workload)
+		})
+	}
+}
+
+func testGetPodDefaultSubnetRetainedIPSelection(t *testing.T, workload string) {
+	t.Helper()
 	for _, tt := range []struct {
 		name          string
 		annotation    string
@@ -121,7 +155,7 @@ func TestGetPodDefaultSubnetVMSelection(t *testing.T) {
 		ordinaryPod   bool
 		expected      string
 	}{
-		{name: "reuse VM subnet", expected: "subnet2"},
+		{name: "reuse retained subnet", expected: "subnet2"},
 		{name: "explicit subnet", annotation: util.LogicalSwitchAnnotation, value: "subnet1", expected: "subnet1"},
 		{name: "explicit named pool", annotation: util.IPPoolAnnotation, value: "pool", expected: "subnet1"},
 		{name: "namespace subnet changed", namespaceNets: "subnet1", expected: "subnet1"},
@@ -137,13 +171,25 @@ func TestGetPodDefaultSubnetVMSelection(t *testing.T) {
 					APIVersion: kubevirtv1.SchemeGroupVersion.String(), Kind: util.KindVirtualMachineInstance, Name: "vm",
 				}},
 			}
+			allocationName := "vm"
+			expected := tt.expected
+			if workload == util.KindStatefulSet {
+				pod.Name = "web-0"
+				pod.OwnerReferences = []metav1.OwnerReference{{
+					APIVersion: appsv1.SchemeGroupVersion.String(), Kind: util.KindStatefulSet, Name: "web",
+				}}
+				allocationName = pod.Name
+				if tt.disableKeepIP {
+					expected = "subnet2"
+				}
+			}
 			if tt.ordinaryPod {
 				pod.OwnerReferences = nil
 			}
 			if tt.annotation != "" {
 				pod.Annotations[tt.annotation] = tt.value
 			}
-			ipName := cmp.Or(tt.ipName, "vm.default")
+			ipName := cmp.Or(tt.ipName, allocationName+".default")
 			namespaceNets := cmp.Or(tt.namespaceNets, "subnet1,subnet2")
 			fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 				Subnets: []*kubeovnv1.Subnet{
@@ -162,7 +208,7 @@ func TestGetPodDefaultSubnetVMSelection(t *testing.T) {
 
 			subnet, err := ctrl.getPodDefaultSubnet(pod)
 			require.NoError(t, err)
-			require.Equal(t, tt.expected, subnet.Name)
+			require.Equal(t, expected, subnet.Name)
 		})
 	}
 }
