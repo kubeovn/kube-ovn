@@ -39,6 +39,7 @@ func (c *Controller) enqueueAddNode(obj any) {
 	klog.V(3).Infof("enqueue add node %s", key)
 	c.addNodeQueue.Add(key)
 	c.enqueueVpcBFDPortByNodeChange(nil, node)
+	c.enqueueCentralizedServiceProxySubnets()
 	c.enqueueTrafficDistributionServices()
 }
 
@@ -166,6 +167,9 @@ func (c *Controller) enqueueVpcBFDPortByNodeChange(oldNode, newNode *v1.Node) {
 func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	oldNode := oldObj.(*v1.Node)
 	newNode := newObj.(*v1.Node)
+	if oldNode.Annotations[util.IPAddressAnnotation] != newNode.Annotations[util.IPAddressAnnotation] {
+		c.enqueueCentralizedServiceProxySubnets()
+	}
 	nodeReadyChanged := nodeReady(oldNode) != nodeReady(newNode)
 	nodeLabelsChanged := !maps.Equal(oldNode.Labels, newNode.Labels)
 
@@ -215,6 +219,7 @@ func (c *Controller) enqueueDeleteNode(obj any) {
 	c.deletingNodeObjMap.Store(key, node)
 	c.deleteNodeQueue.Add(key)
 	c.enqueueVpcBFDPortByNodeChange(node, nil)
+	c.enqueueCentralizedServiceProxySubnets()
 	c.enqueueTrafficDistributionServices()
 }
 
