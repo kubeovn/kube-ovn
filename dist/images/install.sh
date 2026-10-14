@@ -8426,10 +8426,6 @@ $(ovn_central_tls_env)
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
-            - name: POD_SERVICE_ACCOUNT
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.serviceAccountName
             - name: POD_IPS
               valueFrom:
                 fieldRef:
@@ -9293,6 +9289,10 @@ spec:
               value: "$ENABLE_SSL"
             - name: KUBE_OVN_TLS_ROTATION_INTERVAL
               value: "$KUBE_OVN_TLS_ROTATION_INTERVAL"
+            - name: POD_SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
             - name: POD_NAME
               valueFrom:
                 fieldRef:
