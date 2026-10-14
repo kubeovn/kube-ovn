@@ -21,7 +21,7 @@ spec:
     - vpc-nat-gw-ns
   staticRoutes:
     - cidr: 0.0.0.0/0
-      nextHopIP: 10.101.0.254
+      nextHopIP: 10.201.0.254
       policy: policyDst
 ---
 # Network attachment definition for VPC NAT GW
@@ -51,7 +51,8 @@ metadata:
 spec:
   vpc: vpc-nat-gw
   provider: vpc-nat-pod-nad.vpc-nat-gw-ns.ovn
-  cidrBlock: 10.101.0.0/24
+  # Keep Pod addresses outside the cluster ServiceCIDR (10.96.0.0/12).
+  cidrBlock: 10.201.0.0/24
   protocol: IPv4
   namespaces:
     - vpc-nat-gw-ns
@@ -127,7 +128,7 @@ metadata:
 spec:
   vpc: vpc-nat-gw
   subnet: vpc-nat-gw-subnet
-  lanIp: 10.101.0.254
+  lanIp: 10.201.0.254
   externalSubnets:
     - vpc-nat-gw-ext-subnet
 ---
@@ -163,7 +164,7 @@ metadata:
 spec:
   eip: vpc-nat-gw-eip1
   externalPort: '8888'
-  internalIp: 10.101.0.3
+  internalIp: 10.201.0.3
   internalPort: '80'
   protocol: tcp
 ---
@@ -177,7 +178,7 @@ metadata:
 spec:
   eip: vpc-nat-gw-eip2
   externalPort: '8888'
-  internalIp: 10.101.0.4
+  internalIp: 10.201.0.4
   internalPort: '80'
   protocol: tcp
 ---
@@ -190,7 +191,7 @@ metadata:
     config-stage: "3"
 spec:
   eip: vpc-nat-gw-eip1
-  internalCIDR: 10.101.0.3/32
+  internalCIDR: 10.201.0.3/32
 ---
 # Create SNAT for pod vpc-nat-gw-pod2
 apiVersion: kubeovn.io/v1
@@ -201,7 +202,7 @@ metadata:
     config-stage: "3"
 spec:
   eip: vpc-nat-gw-eip2
-  internalCIDR: 10.101.0.4/32
+  internalCIDR: 10.201.0.4/32
 ---
 # Create pod 1
 apiVersion: v1
@@ -214,7 +215,7 @@ metadata:
     config-stage: "1"
   annotations:
     # using static IP for the pod
-    vpc-nat-pod-nad.vpc-nat-gw-ns.ovn.kubernetes.io/ip_pool: "10.101.0.3"
+    vpc-nat-pod-nad.vpc-nat-gw-ns.ovn.kubernetes.io/ip_pool: "10.201.0.3"
     k8s.v1.cni.cncf.io/networks: vpc-nat-gw-ns/vpc-nat-pod-nad
 spec:
   containers:
@@ -232,7 +233,7 @@ metadata:
     config-stage: "1"
   annotations:
     # using static IP for the pod
-    vpc-nat-pod-nad.vpc-nat-gw-ns.ovn.kubernetes.io/ip_pool: "10.101.0.4"
+    vpc-nat-pod-nad.vpc-nat-gw-ns.ovn.kubernetes.io/ip_pool: "10.201.0.4"
     k8s.v1.cni.cncf.io/networks: vpc-nat-gw-ns/vpc-nat-pod-nad
 spec:
   containers:
