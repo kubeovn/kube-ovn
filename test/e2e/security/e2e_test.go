@@ -66,10 +66,7 @@ func checkPods(f *framework.Framework, pods []corev1.Pod, process string, ports 
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Parsing environment variable")
-	containerName := process
-	if process == "kube-ovn-daemon" {
-		containerName = "cni-server"
-	}
+	containerName := containerNameForProcess(process)
 	envValue := containerEnvValues(pods, containerName)["ENABLE_BIND_LOCAL_IP"]
 	if envValue == "" {
 		envValue = "false"
@@ -126,6 +123,17 @@ func checkPods(f *framework.Framework, pods []corev1.Pod, process string, ports 
 			return true, nil
 		})
 		framework.ExpectNoError(err, "failed to validate %s listen addresses in pod %s/%s on node %s: %s", process, pod.Namespace, pod.Name, pod.Spec.NodeName, lastReason)
+	}
+}
+
+func containerNameForProcess(process string) string {
+	switch process {
+	case "kube-ovn-daemon":
+		return "cni-server"
+	case "ovsdb-server":
+		return "ovn-central"
+	default:
+		return process
 	}
 }
 

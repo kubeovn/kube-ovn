@@ -4885,6 +4885,7 @@ jobs:
       - name: Validate IPsec runtime with the built image
         run: |
           ipsec_image="kubeovn/kube-ovn:$(cat VERSION)"
+          capture_image="kubeovn/kube-ovn:$(cat VERSION)-debug"
           CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/ipsec-tests" ./pkg/ipsec
           CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/ipsec-ovsdb-tests" ./pkg/ovs
           # A published base without the extension must fail before identity issuance.
@@ -4906,7 +4907,7 @@ jobs:
               exec /tmp/ipsec-ovsdb-tests -test.run "^TestIPsec" -test.v -test.timeout=120s
             '
           bash hack/test-ipsec-runtime.sh "$ipsec_image" "$RUNNER_TEMP/ipsec-tests"
-          bash hack/test-ipsec-traffic.sh "$ipsec_image" "$RUNNER_TEMP/ipsec-tests"
+          bash hack/test-ipsec-traffic.sh "$ipsec_image" "$RUNNER_TEMP/ipsec-tests" "$capture_image"
 
       - name: Validate IPsec installer, release and protected tunnel outputs
         run: |

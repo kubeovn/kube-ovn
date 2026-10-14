@@ -8130,7 +8130,7 @@ roleRef:
   name: kube-ovn-controller-secrets
 subjects:
   - kind: ServiceAccount
-    name: ovn
+    name: kube-ovn-controller
     namespace: kube-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -8932,7 +8932,7 @@ spec:
   validations:
     - expression: >-
         (request.operation == "UPDATE" && object.spec == oldObject.spec) ||
-        request.userInfo.username == "system:serviceaccount:kube-system:ovn" &&
+        request.userInfo.username == "system:serviceaccount:kube-system:kube-ovn-controller" &&
         object.metadata.namespace == "kube-system"
       message: The IPsec ClusterIssuer accepts only authorized kube-ovn-controller requests
 ---
