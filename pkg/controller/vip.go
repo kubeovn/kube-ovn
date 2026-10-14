@@ -118,20 +118,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		return err
 	}
 	if vip.Spec.Type == util.SwitchLBRuleVip {
-		// create a lsp use subnet gw mac, and set it option as arp_proxy
-		lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-		klog.Infof("get logical router port %s", lrpName)
-		lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, false)
-		if err != nil {
-			klog.Errorf("failed to get lrp %s: %v", lrpName, err)
-			return err
-		}
-		if lrp.MAC == "" {
-			err = fmt.Errorf("logical router port %s should have mac", lrpName)
-			klog.Error(err)
-			return err
-		}
-		mac = lrp.MAC
+		// create a lsp using the vip's own mac, and set it option as arp_proxy
 		ipStr := util.GetStringIP(v4ip, v6ip)
 		if err := c.OVNNbClient.CreateLogicalSwitchPort(subnet.Name, portName, ipStr, mac, vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc); err != nil {
 			err = fmt.Errorf("failed to create lsp %s: %w", portName, err)
