@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"maps"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,8 +34,10 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/gcexempt"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -912,4 +915,223 @@ func TestGcNodeKeepsPolicyAdoptedBySameNameReplacement(t *testing.T) {
 	remaining, err := nbClient.GetLogicalRouterPolicy(ctrl.config.ClusterRouter, util.NodeRouterPolicyPriority, match, true)
 	require.NoError(t, err)
 	require.Len(t, remaining, 1, "the policy of a same-name replacement node must survive gc")
+}
+
+func gcExemptionConfigMap(data map[string]string) *corev1.ConfigMap {
+	return &corev1.ConfigMap{
+		Name: util.GCExemptionConfig, Namespace: metav1.NamespaceSystem,
+		Data: data,
+	}
+}
+
+func TestMarkAndCleanLSPKeepsExemptedOrphanAcrossMultipleCycles(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(map[string]string{gcexempt.LSPKey: "orphan-exempt"})},
+	})
+	require.NoError(t, err)
+
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	ctrl.config.EnableKeepVMIP = false
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+	ctrl.virtualIpsLister = kubeovnlisters.NewVipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+
+	previousLastNoPodLSP := lastNoPodLSP
+	lastNoPodLSP = strset.New()
+	t.Cleanup(func() { lastNoPodLSP = previousLastNoPodLSP })
+
+	mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, nil).Return([]ovnnb.LogicalSwitchPort{
+		{Name: "orphan-exempt"},
+	}, nil).Times(2)
+
+	ctrl.resyncGCExemptions()
+	// No DeleteLogicalSwitchPort expectation is registered: gomock fails the
+	// test if the exempted lsp is ever deleted across either cycle.
+	require.NoError(t, ctrl.markAndCleanLSP())
+	require.NoError(t, ctrl.markAndCleanLSP())
+	require.False(t, lastNoPodLSP.Has("orphan-exempt"), "an exempted orphan must never enter the mark-and-sweep set")
+}
+
+func TestMarkAndCleanLSPDeletesLSPTwoCyclesAfterExemptionRemoved(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(map[string]string{gcexempt.LSPKey: "orphan-exempt"})},
+	})
+	require.NoError(t, err)
+
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	ctrl.config.EnableKeepVMIP = false
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+	ctrl.virtualIpsLister = kubeovnlisters.NewVipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+
+	previousLastNoPodLSP := lastNoPodLSP
+	lastNoPodLSP = strset.New()
+	t.Cleanup(func() { lastNoPodLSP = previousLastNoPodLSP })
+
+	mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, nil).Return([]ovnnb.LogicalSwitchPort{
+		{Name: "orphan-exempt"},
+	}, nil).Times(3)
+
+	ctrl.resyncGCExemptions()
+	require.NoError(t, ctrl.markAndCleanLSP())
+	require.False(t, lastNoPodLSP.Has("orphan-exempt"), "lsp must survive its first cycle while exempted")
+
+	// Simulate the exemption having been removed and already resynced,
+	// bypassing the ConfigMap/lister layer on purpose to isolate the
+	// mark-and-sweep timing assertion below; edge-case ConfigMap parsing is
+	// covered separately by TestResyncGCExemptionsParsesEdgeCases.
+	ctrl.gcExemptions.Store(emptyGCExemptionSnapshot())
+
+	require.NoError(t, ctrl.markAndCleanLSP())
+	require.True(t, lastNoPodLSP.Has("orphan-exempt"), "first post-removal cycle must only mark, not delete")
+
+	mockOvnClient.EXPECT().DeleteLogicalSwitchPort("orphan-exempt").Return(nil)
+	require.NoError(t, ctrl.markAndCleanLSP())
+}
+
+func TestGcChassisSkipsExemptedUnclaimedChassis(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(map[string]string{gcexempt.ChassisKey: "external-hv-1"})},
+	})
+	require.NoError(t, err)
+
+	ctrl := fakeController.fakeController
+	ctrl.resyncGCExemptions()
+
+	fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+		{Name: "external-hv-1", Hostname: "external-hv-1"},
+	}, nil)
+	// No DeleteChassis expectation: gomock fails if the exempted, unclaimed
+	// chassis is deleted.
+	require.NoError(t, ctrl.gcChassis())
+}
+
+func TestGcChassisSkipsExemptedChassisOnHostnameMismatch(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Nodes: []*corev1.Node{{
+			Name:        "node-1",
+			Annotations: map[string]string{util.ChassisAnnotation: "chassis-a"},
+		}},
+		ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(map[string]string{gcexempt.ChassisKey: "chassis-a"})},
+	})
+	require.NoError(t, err)
+
+	ctrl := fakeController.fakeController
+	ctrl.resyncGCExemptions()
+
+	fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+		{Name: "chassis-a", Hostname: "some-other-host"},
+	}, nil)
+	// No DeleteChassis expectation: gomock fails if the exempted chassis is
+	// deleted despite the hostname mismatch.
+	require.NoError(t, ctrl.gcChassis())
+}
+
+func TestGcChassisDeletesChassisAfterExemptionRemovedOnNextRun(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(map[string]string{gcexempt.ChassisKey: "external-hv-1"})},
+	})
+	require.NoError(t, err)
+
+	ctrl := fakeController.fakeController
+	ctrl.resyncGCExemptions()
+
+	fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+		{Name: "external-hv-1", Hostname: "external-hv-1"},
+	}, nil).Times(2)
+	require.NoError(t, ctrl.gcChassis(), "chassis must survive while exempted")
+
+	// Simulate the exemption having been removed and already resynced.
+	ctrl.gcExemptions.Store(emptyGCExemptionSnapshot())
+
+	fakeController.mockOvnSbClient.EXPECT().DeleteChassis("external-hv-1").Return(nil)
+	require.NoError(t, ctrl.gcChassis(), "chassis must be deleted on the very next run, not after a two-cycle debounce")
+}
+
+func TestResyncGCExemptionsParsesEdgeCases(t *testing.T) {
+	t.Run("missing configmap means no exemptions", func(t *testing.T) {
+		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{})
+		require.NoError(t, err)
+		ctrl := fakeController.fakeController
+
+		ctrl.resyncGCExemptions()
+		require.False(t, ctrl.isLSPExempt("anything"))
+		require.False(t, ctrl.isChassisExempt("anything"))
+	})
+
+	t.Run("nil data means no exemptions", func(t *testing.T) {
+		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(nil)},
+		})
+		require.NoError(t, err)
+		ctrl := fakeController.fakeController
+
+		ctrl.resyncGCExemptions()
+		require.False(t, ctrl.isLSPExempt("anything"))
+		require.False(t, ctrl.isChassisExempt("anything"))
+	})
+
+	t.Run("whitespace and duplicates are trimmed and deduped", func(t *testing.T) {
+		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(map[string]string{
+				gcexempt.LSPKey: " a, ,b ,a,b,,c ",
+			})},
+		})
+		require.NoError(t, err)
+		ctrl := fakeController.fakeController
+
+		ctrl.resyncGCExemptions()
+		snap := ctrl.gcExemptions.Load()
+		require.NotNil(t, snap)
+		require.ElementsMatch(t, []string{"a", "b", "c"}, snap.lsps.List())
+	})
+
+	t.Run("unchanged configmap data does not replace the cached snapshot", func(t *testing.T) {
+		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(map[string]string{gcexempt.LSPKey: "a"})},
+		})
+		require.NoError(t, err)
+		ctrl := fakeController.fakeController
+
+		ctrl.resyncGCExemptions()
+		first := ctrl.gcExemptions.Load()
+		require.NotNil(t, first)
+
+		ctrl.resyncGCExemptions()
+		second := ctrl.gcExemptions.Load()
+		require.Same(t, first, second, "resyncGCExemptions must not replace the snapshot when the configmap is unchanged")
+	})
+}
+
+// TestGcChassisConcurrentReactiveAndPeriodicRunsSerialize exercises the
+// concurrency risk introduced by adding gcChassis to the periodic GC ticker
+// (pkg/controller/controller.go) alongside its pre-existing reactive call
+// from UpdateChassisTag: both can now call gcChassis at the same time.
+// gcChassisMu must serialize them so ListChassis/DeleteChassis sequences
+// never interleave.
+func TestGcChassisConcurrentReactiveAndPeriodicRunsSerialize(t *testing.T) {
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+
+	var concurrent, maxConcurrent int32
+	fakeController.mockOvnSbClient.EXPECT().ListChassis().DoAndReturn(func() (*[]ovnsb.Chassis, error) {
+		n := atomic.AddInt32(&concurrent, 1)
+		for {
+			old := atomic.LoadInt32(&maxConcurrent)
+			if n <= old || atomic.CompareAndSwapInt32(&maxConcurrent, old, n) {
+				break
+			}
+		}
+		time.Sleep(20 * time.Millisecond)
+		atomic.AddInt32(&concurrent, -1)
+		return &[]ovnsb.Chassis{}, nil
+	}).Times(2)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() { defer wg.Done(); require.NoError(t, ctrl.gcChassis()) }()
+	go func() { defer wg.Done(); require.NoError(t, ctrl.gcChassis()) }()
+	wg.Wait()
+
+	require.Equal(t, int32(1), atomic.LoadInt32(&maxConcurrent), "gcChassisMu must serialize concurrent gcChassis calls")
 }

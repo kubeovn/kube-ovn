@@ -8,6 +8,7 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/gcexempt"
 )
 
 const (
@@ -246,6 +247,7 @@ const (
 
 	InterconnectionConfig  = "ovn-ic-config"
 	ExternalGatewayConfig  = "ovn-external-gw-config"
+	GCExemptionConfig      = gcexempt.ConfigMapName
 	InterconnectionSwitch  = "ts"
 	ExternalGatewaySwitch  = "ovn-external"
 	VpcNatGatewayConfig    = "ovn-vpc-nat-gw-config"
