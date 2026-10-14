@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -16,17 +17,46 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func renderIPsecInstallerPolicy(t *testing.T) []byte {
+	t.Helper()
+	source, err := os.ReadFile("../../dist/images/install.sh")
+	require.NoError(t, err)
+	_, policy, found := strings.Cut(string(source), "IPSEC_ISSUER_POLICY=\"\"\n")
+	require.True(t, found)
+	policy, _, found = strings.Cut(policy, "\nIPSEC_CONTAINER=\"\"")
+	require.True(t, found)
+	const controllerHeader = "kind: Deployment\napiVersion: apps/v1\nmetadata:\n  name: kube-ovn-controller\n"
+	_, deployment, found := strings.Cut(string(source), controllerHeader)
+	require.True(t, found)
+	deployment, _, found = strings.Cut(deployment, "\n---\n")
+	require.True(t, found)
+	// Render the real installer fragments without applying them to a cluster.
+	script := "kubectl() { echo validatingadmissionpolicies.admissionregistration.k8s.io; }\n" + policy + "\ncat <<EOF\n$IPSEC_ISSUER_POLICY\n---\n" + controllerHeader + deployment + "\nEOF\n"
+	command := exec.CommandContext(t.Context(), "bash", "-c", script)
+	command.Env = append(os.Environ(), "CERT_MANAGER_IPSEC_CERT=true", "CERT_MANAGER_ISSUER_NAME=test-issuer", "RUN_AS_USER=65534", "REGISTRY=registry.test/kubeovn", "VERSION=test")
+	output, err := command.Output()
+	require.NoError(t, err)
+	return output
+}
+
 func TestIPsecIssuerPoliciesMatchControllerContract(t *testing.T) {
 	if _, err := exec.LookPath("helm"); err != nil {
 		t.Skip("requires helm; the IPsec CI workflow installs it")
 	}
-	for _, chart := range []string{"kube-ovn", "kube-ovn-v2"} {
+	for _, chart := range []string{"kube-ovn", "kube-ovn-v2", "installer"} {
 		t.Run(chart, func(t *testing.T) {
-			output, err := exec.CommandContext(t.Context(), "helm", "template", "ipsec-test", "../../charts/"+chart, "--kube-version=1.37.0", "--set=namespace=ipsec-test", "--set=ipsec.certManager.enabled=true", "--set=ipsec.certManager.issuerName=test-issuer").Output()
-			require.NoError(t, err)
+			var output []byte
+			if chart == "installer" {
+				output = renderIPsecInstallerPolicy(t)
+			} else {
+				var err error
+				output, err = exec.CommandContext(t.Context(), "helm", "template", "ipsec-test", "../../charts/"+chart, "--kube-version=1.37.0", "--set=namespace=ipsec-test", "--set=ipsec.certManager.enabled=true", "--set=ipsec.certManager.issuerName=test-issuer").Output()
+				require.NoError(t, err)
+			}
 			var policy *admissionv1.ValidatingAdmissionPolicy
 			var binding *admissionv1.ValidatingAdmissionPolicyBinding
-			var serviceAccount string
+			var namespace, serviceAccount, serviceAccountField string
+			t.Setenv(util.EnvPodServiceAccount, "")
 			for document := range strings.SplitSeq(string(output), "\n---\n") {
 				var header struct {
 					Kind string `json:"kind"`
@@ -37,8 +67,8 @@ func TestIPsecIssuerPoliciesMatchControllerContract(t *testing.T) {
 					var deployment appsv1.Deployment
 					require.NoError(t, yaml.Unmarshal([]byte(document), &deployment))
 					if deployment.Name == "kube-ovn-controller" {
+						namespace = deployment.Namespace
 						serviceAccount = deployment.Spec.Template.Spec.ServiceAccountName
-						var serviceAccountField string
 						for _, container := range deployment.Spec.Template.Spec.Containers {
 							for _, env := range container.Env {
 								if env.Name == util.EnvPodServiceAccount && env.ValueFrom != nil && env.ValueFrom.FieldRef != nil {
@@ -46,7 +76,9 @@ func TestIPsecIssuerPoliciesMatchControllerContract(t *testing.T) {
 								}
 							}
 						}
-						require.Equal(t, "spec.serviceAccountName", serviceAccountField)
+						if serviceAccountField == "spec.serviceAccountName" {
+							t.Setenv(util.EnvPodServiceAccount, serviceAccount)
+						}
 					}
 				case "ValidatingAdmissionPolicy":
 					policy = new(admissionv1.ValidatingAdmissionPolicy)
@@ -59,10 +91,10 @@ func TestIPsecIssuerPoliciesMatchControllerContract(t *testing.T) {
 			require.NotNil(t, policy)
 			require.NotNil(t, binding)
 			require.NotEmpty(t, serviceAccount)
-			t.Setenv(util.EnvPodServiceAccount, serviceAccount)
-			require.Equal(t, serviceAccount, controllerServiceAccountName())
-			c := &Controller{config: &Configuration{PodNamespace: "ipsec-test", ControllerServiceAccountName: serviceAccount, CertManagerIssuerName: "test-issuer", KubeClient: fake.NewClientset(policy, binding)}}
+			c := &Controller{config: &Configuration{PodNamespace: namespace, ControllerServiceAccountName: controllerServiceAccountName(), CertManagerIssuerName: "test-issuer", KubeClient: fake.NewClientset(policy, binding)}}
 			require.NoError(t, c.verifyIPsecIssuerPolicy(t.Context()))
+			require.Equal(t, "spec.serviceAccountName", serviceAccountField)
+			require.Equal(t, serviceAccount, controllerServiceAccountName())
 		})
 	}
 }
