@@ -10,6 +10,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -124,7 +125,8 @@ func (c *Controller) reconcileForServiceCIDRChange() {
 		klog.Errorf("failed to list subnets: %v", err)
 	} else {
 		for _, s := range subnets {
-			if s.Spec.U2OInterconnection {
+			if s.Spec.U2OInterconnection ||
+				(s.Spec.Vpc == c.config.ClusterRouter && s.Spec.GatewayType == kubeovnv1.GWDistributedType) {
 				c.addOrUpdateSubnetQueue.Add(s.Name)
 			}
 		}
