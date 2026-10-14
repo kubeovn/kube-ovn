@@ -48,11 +48,12 @@ metadata:
     config-stage: "0"
 spec:
   vpc: vpc-simple
-  cidrBlock: 10.100.0.0/16
+  # Keep Pod addresses outside the cluster ServiceCIDR (10.96.0.0/12).
+  cidrBlock: 10.200.0.0/16
   default: false
   excludeIps:
-    - 10.100.0.1
-  gateway: 10.100.0.1
+    - 10.200.0.1
+  gateway: 10.200.0.1
   protocol: IPv4
   provider: vpc-simple-nad.vpc-simple-ns.ovn
   namespaces:
