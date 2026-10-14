@@ -35,5 +35,5 @@ func TestReconcileForServiceCIDRChangeEnqueuesDataPlaneSubnets(t *testing.T) {
 		got = append(got, key)
 		queue.Done(key)
 	}
-	require.ElementsMatch(t, []string{"distributed-default", "u2o-other-vpc"}, got)
+	require.ElementsMatch(t, []string{"distributed-default", "distributed-other-vpc", "u2o-other-vpc", "centralized-default"}, got)
 }

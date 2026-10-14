@@ -2,17 +2,20 @@ package controller
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-func newServiceProxyFallbackController(t *testing.T) (*Controller, *kubeovnv1.Subnet) {
+func newServiceProxyFallbackController(t *testing.T) (*fakeController, *kubeovnv1.Subnet) {
 	t.Helper()
 	subnet := &kubeovnv1.Subnet{Name: "ovn-default", Spec: kubeovnv1.SubnetSpec{
 		Vpc: util.DefaultVpc, CIDRBlock: "10.16.0.0/16,fd00:10:16::/64",
@@ -35,120 +38,225 @@ func newServiceProxyFallbackController(t *testing.T) (*Controller, *kubeovnv1.Su
 	ctrl.serviceCIDRStore = util.NewServiceCIDRStore("10.96.0.0/12,fd00:10:96::/108")
 	ctrl.OVNNbClient = newInMemoryOVNNbClient(t)
 	require.NoError(t, ctrl.OVNNbClient.CreateLogicalRouter(ctrl.config.ClusterRouter))
-	require.NoError(t, ctrl.addPolicyRouteForDistributedSubnet(subnet, node.Name, ip.Spec.V4IPAddress, ip.Spec.V6IPAddress))
-	return ctrl, subnet
+	require.NoError(t, ctrl.OVNNbClient.CreateBareLogicalSwitch(subnet.Name))
+	return fc, subnet
 }
 
-func serviceProxyFallbackPolicies(t *testing.T, ctrl *Controller, subnet *kubeovnv1.Subnet) []*ovnnb.LogicalRouterPolicy {
+func serviceProxyFallbackACLs(t *testing.T, ctrl *Controller, subnet *kubeovnv1.Subnet) []ovnnb.ACL {
+	t.Helper()
+	acls, err := ctrl.OVNNbClient.(*ovs.OVNNbClient).ListAcls("", map[string]string{
+		"parent": subnet.Name, "vendor": util.CniTypeName, "isServiceProxyFallbackACL": "true",
+	})
+	require.NoError(t, err)
+	return acls
+}
+
+func serviceProxyFallbackPolicies(t *testing.T, ctrl *Controller, subnet *kubeovnv1.Subnet, owner string) []*ovnnb.LogicalRouterPolicy {
 	t.Helper()
 	policies, err := ctrl.OVNNbClient.ListLogicalRouterPolicies(ctrl.config.ClusterRouter, -1,
-		buildPolicyRouteExternalIDs(subnet.Name, map[string]string{"isServiceProxyFallbackDropPolicy": "true"}), true)
+		buildPolicyRouteExternalIDs(subnet.Name, map[string]string{owner: "true"}), true)
 	require.NoError(t, err)
 	return policies
 }
 
-func TestServiceProxyFallbackDisablingLoadBalancer(t *testing.T) {
-	for _, global := range []bool{false, true} {
-		t.Run(fmt.Sprintf("global=%t", global), func(t *testing.T) {
-			ctrl, subnet := newServiceProxyFallbackController(t)
-			require.Len(t, serviceProxyFallbackPolicies(t, ctrl, subnet), 2)
-			if global {
-				ctrl.config.EnableOvnLB = false
-			} else {
-				subnet.Spec.EnableLb = new(false)
+func TestServiceProxyFallbackACLAllGatewayModes(t *testing.T) {
+	for _, mode := range []string{"distributed", "centralized", "underlay", "logical-gateway", "custom-vpc"} {
+		t.Run(mode, func(t *testing.T) {
+			fc, subnet := newServiceProxyFallbackController(t)
+			ctrl := fc.fakeController
+			switch mode {
+			case "centralized":
+				subnet.Spec.GatewayType = kubeovnv1.GWCentralizedType
+			case "underlay", "logical-gateway":
+				subnet.Spec.Vlan = "vlan-1"
+				subnet.Spec.LogicalGateway = mode == "logical-gateway"
+			case "custom-vpc":
+				subnet.Spec.Vpc = "custom"
 			}
-			require.NoError(t, ctrl.addPolicyRouteForDistributedSubnet(subnet, "worker-1", "100.64.0.2", "fd00:100:64::2"))
-			require.Empty(t, serviceProxyFallbackPolicies(t, ctrl, subnet))
-			routes, err := ctrl.OVNNbClient.ListLogicalRouterPolicies(ctrl.config.ClusterRouter,
-				util.GatewayRouterPolicyPriority, buildPolicyRouteExternalIDs(subnet.Name, nil), true)
-			require.NoError(t, err)
-			require.Len(t, routes, 2, "node proxy reroutes must remain usable when OVN LB is disabled")
+			require.NoError(t, ctrl.reconcileServiceProxyFallbackACL(subnet))
+			acls := serviceProxyFallbackACLs(t, ctrl, subnet)
+			require.Len(t, acls, 2)
+			var matches []string
+			for _, acl := range acls {
+				matches = append(matches, acl.Match)
+				require.Equal(t, ovnnb.ACLDirectionFromLport, acl.Direction)
+				require.Equal(t, ovnnb.ACLActionDrop, acl.Action)
+				require.Equal(t, "true", acl.Options["apply-after-lb"])
+			}
+			require.ElementsMatch(t, []string{"ip4.dst == 10.96.0.0/12", "ip6.dst == fd00:10:96::/108"}, matches)
+			// An explicit subnet opt-in cannot override the global disable.
+			ctrl.config.EnableOvnLB = false
+			require.NoError(t, ctrl.reconcileServiceProxyFallbackACL(subnet))
+			require.Empty(t, serviceProxyFallbackACLs(t, ctrl, subnet))
+			ctrl.config.EnableOvnLB = true
+			subnet.Spec.EnableLb = new(false)
+			require.NoError(t, ctrl.reconcileServiceProxyFallbackACL(subnet))
+			require.Empty(t, serviceProxyFallbackACLs(t, ctrl, subnet))
 		})
 	}
 }
 
-func TestServiceProxyFallbackPreservesLocalDNSPriority(t *testing.T) {
-	ctrl, subnet := newServiceProxyFallbackController(t)
-	for _, policy := range serviceProxyFallbackPolicies(t, ctrl, subnet) {
-		// Seed the priority used before the NodeLocalDNS ordering fix.
-		require.NoError(t, ctrl.OVNNbClient.AddLogicalRouterPolicy(ctrl.config.ClusterRouter, 30050,
-			policy.Match, ovnnb.LogicalRouterPolicyActionDrop, nil, nil, policy.ExternalIDs))
+func TestServiceProxyFallbackACLServiceCIDRAndLocalDNS(t *testing.T) {
+	fc, subnet := newServiceProxyFallbackController(t)
+	ctrl := fc.fakeController
+	ctrl.config.NodeLocalDNSIPs = []string{"10.96.0.10", "fd00:10:96::a", "169.254.20.10"}
+	require.NoError(t, ctrl.reconcileServiceProxyFallbackACL(subnet))
+	var matches []string
+	for _, acl := range serviceProxyFallbackACLs(t, ctrl, subnet) {
+		matches = append(matches, acl.Match)
 	}
-	for _, dns := range []struct {
-		af      int
-		ip      string
-		nextHop string
-	}{
-		{4, "10.96.0.10", "100.64.0.2"},
-		{6, "fd00:10:96::a", "fd00:100:64::2"},
-	} {
-		require.NoError(t, ctrl.addPolicyRouteForLocalDNSCacheOnNode([]string{dns.ip},
-			util.NodeLspName("worker-1"), dns.nextHop, "worker-1", dns.af))
-	}
-	require.NoError(t, ctrl.reconcileServiceProxyFallbackDropPolicies(subnet, "worker-1"))
-	policies := serviceProxyFallbackPolicies(t, ctrl, subnet)
-	require.Len(t, policies, 2, "reconciliation must replace the old priority without leaving duplicate matches")
-	dnsPolicies, err := ctrl.OVNNbClient.ListLogicalRouterPolicies(ctrl.config.ClusterRouter, -1,
-		map[string]string{"isLocalDnsCache": "true", "node": "worker-1"}, true)
-	require.NoError(t, err)
-	require.Len(t, dnsPolicies, 2)
-	for _, policy := range policies {
-		require.Equal(t, ovnnb.LogicalRouterPolicyActionDrop, policy.Action)
-		require.Greater(t, policy.Priority, util.GatewayRouterPolicyPriority)
-		for _, dnsPolicy := range dnsPolicies {
-			require.Less(t, policy.Priority, dnsPolicy.Priority, "NodeLocalDNS inside ServiceCIDR must bypass the drop")
-		}
-	}
+	require.ElementsMatch(t, []string{
+		"ip4.dst == 10.96.0.0/12 && ip4.dst != 10.96.0.10",
+		"ip6.dst == fd00:10:96::/108 && ip6.dst != fd00:10:96::a",
+	}, matches)
+	ctrl.serviceCIDRStore = util.NewServiceCIDRStore("10.112.0.0/12")
+	require.NoError(t, ctrl.reconcileServiceProxyFallbackACL(subnet))
+	acls := serviceProxyFallbackACLs(t, ctrl, subnet)
+	require.Len(t, acls, 1)
+	require.Equal(t, "ip4.dst == 10.112.0.0/12", acls[0].Match)
 }
 
-func TestServiceProxyFallbackOverlayToUnderlay(t *testing.T) {
-	ctrl, subnet := newServiceProxyFallbackController(t)
-	// Cleanup must cover all former nodes, including nodes no longer in the informer.
-	require.NoError(t, ctrl.addPolicyRouteForDistributedSubnet(subnet, "removed-node", "100.64.0.3", "fd00:100:64::3"))
-	otherSubnet := subnet.DeepCopy()
-	otherSubnet.Name = "other-subnet"
-	require.NoError(t, ctrl.addPolicyRouteForDistributedSubnet(otherSubnet, "worker-1", "100.64.0.2", "fd00:100:64::2"))
-	require.Len(t, serviceProxyFallbackPolicies(t, ctrl, subnet), 4)
-
-	subnet.Spec.Vlan = "vlan-1"
-	subnet.Spec.EnableLb = new(false)
-	subnet.Spec.U2OInterconnection = true
-	subnet.Status.U2OInterconnectionIP = "10.16.0.2,fd00:10:16::2"
-	require.NoError(t, ctrl.reconcileOvnDefaultVpcRoute(subnet))
-	require.Empty(t, serviceProxyFallbackPolicies(t, ctrl, subnet), "old overlay drops must not shadow U2O proxy routes")
-	require.Len(t, serviceProxyFallbackPolicies(t, ctrl, otherSubnet), 2, "cleanup must preserve other subnet policies")
-	routes, err := ctrl.OVNNbClient.ListLogicalRouterPolicies(ctrl.config.ClusterRouter, -1,
-		buildPolicyRouteExternalIDs(subnet.Name, map[string]string{"isU2ONoLBRoutePolicy": "true"}), true)
-	require.NoError(t, err)
-	require.Len(t, routes, 2)
-	for _, route := range routes {
-		require.Equal(t, ovnnb.LogicalRouterPolicyActionReroute, route.Action)
-		require.Equal(t, util.U2OSubnetPolicyPriority, route.Priority)
-	}
-}
-
-func TestServiceProxyFallbackCentralizedRetry(t *testing.T) {
-	ctrl, subnet := newServiceProxyFallbackController(t)
-	require.Len(t, serviceProxyFallbackPolicies(t, ctrl, subnet), 2)
+func TestServiceProxyFallbackCentralizedUsesPodNode(t *testing.T) {
+	fc, subnet := newServiceProxyFallbackController(t)
+	ctrl := fc.fakeController
 	subnet.Spec.GatewayType = kubeovnv1.GWCentralizedType
 	subnet.Spec.GatewayNode = "worker-1"
-	subnet.Spec.EnableLb = new(false)
-	// Simulate a restart after the active gateway was persisted but before the
-	// old distributed policies were removed.
 	subnet.Status.ActivateGateway = "worker-1"
+	subnet.Spec.EnableLb = new(false)
+	worker2 := &corev1.Node{Name: "worker-2", Annotations: map[string]string{util.IPAddressAnnotation: "100.64.0.3,fd00:100:64::3"}}
+	indexer := fc.fakeInformers.nodeInformer.Informer().GetIndexer()
+	require.NoError(t, indexer.Add(worker2))
 	require.NoError(t, ctrl.reconcileOvnDefaultVpcRoute(subnet))
-	require.Empty(t, serviceProxyFallbackPolicies(t, ctrl, subnet))
-	for _, cidr := range []struct {
-		family string
-		block  string
-	}{
-		{"ip4", "10.16.0.0/16"},
-		{"ip6", "fd00:10:16::/64"},
-	} {
-		routes, err := ctrl.OVNNbClient.GetLogicalRouterPolicy(ctrl.config.ClusterRouter,
-			util.GatewayRouterPolicyPriority, fmt.Sprintf("%s.src == %s", cidr.family, cidr.block), false)
-		require.NoError(t, err)
-		require.Len(t, routes, 1)
-		require.Equal(t, ovnnb.LogicalRouterPolicyActionReroute, routes[0].Action)
+	policies := serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackReroutePolicy")
+	require.Len(t, policies, 4)
+	for _, policy := range policies {
+		node := policy.ExternalIDs["node"]
+		v4, v6 := "100.64.0.2", "fd00:100:64::2"
+		if node == "worker-2" {
+			v4, v6 = "100.64.0.3", "fd00:100:64::3"
+		}
+		if policy.ExternalIDs["serviceCIDR"] == "10.96.0.0/12" {
+			require.Equal(t, fmt.Sprintf("ip4.src == $node.%s_ip4 && ip4.src == 10.16.0.0/16 && ip4.dst == 10.96.0.0/12", strings.ReplaceAll(node, "-", ".")), policy.Match)
+			require.Equal(t, []string{v4}, policy.Nexthops)
+		} else {
+			require.Equal(t, []string{v6}, policy.Nexthops)
+		}
+		require.Equal(t, ovnnb.LogicalRouterPolicyActionReroute, policy.Action)
+		require.Greater(t, policy.Priority, util.GatewayRouterPolicyPriority)
+		require.Less(t, policy.Priority, util.NodeRouterPolicyPriority)
+	}
+	gatewayRoutes, err := ctrl.OVNNbClient.GetLogicalRouterPolicy(ctrl.config.ClusterRouter,
+		util.GatewayRouterPolicyPriority, "ip4.src == 10.16.0.0/16", false)
+	require.NoError(t, err)
+	require.Equal(t, []string{"100.64.0.2"}, gatewayRoutes[0].Nexthops)
+
+	// A join address change and loss of one family must update/remove existing rows.
+	worker2 = worker2.DeepCopy()
+	worker2.Annotations[util.IPAddressAnnotation] = "100.64.0.4"
+	require.NoError(t, indexer.Update(worker2))
+	require.NoError(t, ctrl.reconcileServiceProxyFallbackReroutePolicy(subnet))
+	policies = serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackReroutePolicy")
+	require.Len(t, policies, 3)
+	for _, policy := range policies {
+		if policy.ExternalIDs["node"] == worker2.Name {
+			require.Equal(t, []string{"100.64.0.4"}, policy.Nexthops)
+		}
+	}
+	require.NoError(t, indexer.Delete(worker2))
+	require.NoError(t, ctrl.reconcileServiceProxyFallbackReroutePolicy(subnet))
+	require.Len(t, serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackReroutePolicy"), 2)
+}
+
+func TestServiceProxyFallbackRerouteLifecycle(t *testing.T) {
+	for _, transition := range []string{"lb-enabled", "distributed", "physical-underlay", "service-cidr", "subnet-cidr", "delete"} {
+		t.Run(transition, func(t *testing.T) {
+			fc, subnet := newServiceProxyFallbackController(t)
+			ctrl := fc.fakeController
+			subnet.Spec.GatewayType = kubeovnv1.GWCentralizedType
+			ctrl.config.EnableOvnLB = false
+			require.NoError(t, ctrl.reconcileServiceProxyFallbackReroutePolicy(subnet))
+			require.Len(t, serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackReroutePolicy"), 2)
+			other := subnet.DeepCopy()
+			other.Name = "other"
+			other.Spec.CIDRBlock = "10.17.0.0/16,fd00:10:17::/64"
+			require.NoError(t, ctrl.reconcileServiceProxyFallbackReroutePolicy(other))
+			want := 0
+			switch transition {
+			case "lb-enabled":
+				ctrl.config.EnableOvnLB = true
+			case "distributed":
+				subnet.Spec.GatewayType = kubeovnv1.GWDistributedType
+			case "physical-underlay":
+				subnet.Spec.Vlan = "vlan1"
+			case "service-cidr":
+				ctrl.serviceCIDRStore = util.NewServiceCIDRStore("10.112.0.0/12")
+				want = 1
+			case "subnet-cidr":
+				subnet.Spec.CIDRBlock = "10.18.0.0/16"
+				want = 1
+			}
+			if transition == "delete" {
+				require.NoError(t, ctrl.deletePolicyRouteByGatewayType(subnet, subnet.Spec.GatewayType, true))
+			} else {
+				require.NoError(t, ctrl.reconcileServiceProxyFallbackReroutePolicy(subnet))
+			}
+			policies := serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackReroutePolicy")
+			require.Len(t, policies, want)
+			if transition == "subnet-cidr" {
+				require.Contains(t, policies[0].Match, "ip4.src == 10.18.0.0/16")
+			} else if transition == "service-cidr" {
+				require.Contains(t, policies[0].Match, "ip4.dst == 10.112.0.0/12")
+			}
+			require.Len(t, serviceProxyFallbackPolicies(t, ctrl, other, "isServiceProxyFallbackReroutePolicy"), 2)
+		})
+	}
+}
+
+func TestServiceProxyFallbackRemovesLegacyRouterDrops(t *testing.T) {
+	fc, subnet := newServiceProxyFallbackController(t)
+	ctrl := fc.fakeController
+	for _, priority := range []int{29900, 30050} {
+		require.NoError(t, ctrl.OVNNbClient.AddLogicalRouterPolicy(ctrl.config.ClusterRouter, priority,
+			"ip4.src == $old.node_ip4 && ip4.dst == 10.96.0.0/12", ovnnb.LogicalRouterPolicyActionDrop, nil, nil,
+			buildPolicyRouteExternalIDs(subnet.Name, map[string]string{"isServiceProxyFallbackDropPolicy": "true", "node": "deleted-node"})))
+	}
+	require.NoError(t, ctrl.reconcileOvnDefaultVpcRoute(subnet))
+	require.Empty(t, serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackDropPolicy"))
+}
+
+func TestServiceProxyFallbackNodeEvents(t *testing.T) {
+	for _, event := range []string{"add", "update", "delete"} {
+		t.Run(event, func(t *testing.T) {
+			fc, subnet := newServiceProxyFallbackController(t)
+			subnet.Spec.GatewayType = kubeovnv1.GWCentralizedType
+			require.NoError(t, fc.fakeInformers.subnetInformer.Informer().GetIndexer().Update(subnet))
+			ctrl := fc.fakeController
+			ctrl.config.EnableOvnLB = false
+			queue := newTypedRateLimitingQueue[string]("service-proxy-node-test", nil)
+			t.Cleanup(queue.ShutDown)
+			ctrl.addOrUpdateSubnetQueue = queue
+			ctrl.deletingNodeObjMap = xsync.NewMap[string, *corev1.Node]()
+			ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("fallback-node-add", nil)
+			ctrl.updateNodeQueue = newTypedRateLimitingQueue[string]("fallback-node-update", nil)
+			ctrl.deleteNodeQueue = newTypedRateLimitingQueue[string]("fallback-node-delete", nil)
+			t.Cleanup(ctrl.addNodeQueue.ShutDown)
+			t.Cleanup(ctrl.updateNodeQueue.ShutDown)
+			t.Cleanup(ctrl.deleteNodeQueue.ShutDown)
+			node := &corev1.Node{Name: "worker-2", Annotations: map[string]string{util.IPAddressAnnotation: "100.64.0.3"}}
+			switch event {
+			case "add":
+				ctrl.enqueueAddNode(node)
+			case "update":
+				oldNode := node.DeepCopy()
+				oldNode.Annotations[util.IPAddressAnnotation] = "100.64.0.4"
+				ctrl.enqueueUpdateNode(oldNode, node)
+			case "delete":
+				ctrl.enqueueDeleteNode(node)
+			}
+			require.Equal(t, 1, queue.Len())
+			key, _ := queue.Get()
+			require.Equal(t, subnet.Name, key)
+			queue.Done(key)
+		})
 	}
 }

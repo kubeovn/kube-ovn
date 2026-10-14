@@ -2551,6 +2551,20 @@ func (mr *MockACLMockRecorder) DeleteAclsOps(parentName, parentType, direction, 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteAclsOps", reflect.TypeOf((*MockACL)(nil).DeleteAclsOps), parentName, parentType, direction, externalIDs)
 }
 
+// DeleteLogicalSwitchPolicyACLs mocks base method.
+func (m *MockACL) DeleteLogicalSwitchPolicyACLs(lsName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLogicalSwitchPolicyACLs", lsName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteLogicalSwitchPolicyACLs indicates an expected call of DeleteLogicalSwitchPolicyACLs.
+func (mr *MockACLMockRecorder) DeleteLogicalSwitchPolicyACLs(lsName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalSwitchPolicyACLs", reflect.TypeOf((*MockACL)(nil).DeleteLogicalSwitchPolicyACLs), lsName)
+}
+
 // MigrateACLTier mocks base method.
 func (m *MockACL) MigrateACLTier() error {
 	m.ctrl.T.Helper()
@@ -2563,6 +2577,20 @@ func (m *MockACL) MigrateACLTier() error {
 func (mr *MockACLMockRecorder) MigrateACLTier() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MigrateACLTier", reflect.TypeOf((*MockACL)(nil).MigrateACLTier))
+}
+
+// ReconcileServiceProxyFallbackACL mocks base method.
+func (m *MockACL) ReconcileServiceProxyFallbackACL(lsName string, matches []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileServiceProxyFallbackACL", lsName, matches)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileServiceProxyFallbackACL indicates an expected call of ReconcileServiceProxyFallbackACL.
+func (mr *MockACLMockRecorder) ReconcileServiceProxyFallbackACL(lsName, matches any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileServiceProxyFallbackACL", reflect.TypeOf((*MockACL)(nil).ReconcileServiceProxyFallbackACL), lsName, matches)
 }
 
 // SGLostACL mocks base method.
@@ -4757,6 +4785,20 @@ func (mr *MockNbClientMockRecorder) DeleteLogicalSwitch(lsName any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalSwitch", reflect.TypeOf((*MockNbClient)(nil).DeleteLogicalSwitch), lsName)
 }
 
+// DeleteLogicalSwitchPolicyACLs mocks base method.
+func (m *MockNbClient) DeleteLogicalSwitchPolicyACLs(lsName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteLogicalSwitchPolicyACLs", lsName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteLogicalSwitchPolicyACLs indicates an expected call of DeleteLogicalSwitchPolicyACLs.
+func (mr *MockNbClientMockRecorder) DeleteLogicalSwitchPolicyACLs(lsName any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteLogicalSwitchPolicyACLs", reflect.TypeOf((*MockNbClient)(nil).DeleteLogicalSwitchPolicyACLs), lsName)
+}
+
 // DeleteLogicalSwitchPort mocks base method.
 func (m *MockNbClient) DeleteLogicalSwitchPort(lspName string) error {
 	m.ctrl.T.Helper()
@@ -6004,6 +6046,20 @@ func (m *MockNbClient) ReconcilePortDHCPOptions(lsName, portName string, subnetD
 func (mr *MockNbClientMockRecorder) ReconcilePortDHCPOptions(lsName, portName, subnetDHCP, cidrBlock, gateway, v4Options, v6Options, mtu any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcilePortDHCPOptions", reflect.TypeOf((*MockNbClient)(nil).ReconcilePortDHCPOptions), lsName, portName, subnetDHCP, cidrBlock, gateway, v4Options, v6Options, mtu)
+}
+
+// ReconcileServiceProxyFallbackACL mocks base method.
+func (m *MockNbClient) ReconcileServiceProxyFallbackACL(lsName string, matches []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileServiceProxyFallbackACL", lsName, matches)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileServiceProxyFallbackACL indicates an expected call of ReconcileServiceProxyFallbackACL.
+func (mr *MockNbClientMockRecorder) ReconcileServiceProxyFallbackACL(lsName, matches any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileServiceProxyFallbackACL", reflect.TypeOf((*MockNbClient)(nil).ReconcileServiceProxyFallbackACL), lsName, matches)
 }
 
 // ReconcileTemplateVIPAndChassisVariables mocks base method.
