@@ -4912,12 +4912,13 @@ jobs:
       - name: Validate IPsec installer, release and protected tunnel outputs
         run: |
           ipsec_image="kubeovn/kube-ovn:$(cat VERSION)"
-          IPSEC_OVERLAY_INSTALLER=true bash hack/test-ipsec-overlay.sh "$ipsec_image"
-          IPSEC_CLEANUP_STARTUP=true bash hack/test-ipsec-overlay.sh "$ipsec_image"
+          capture_image="kubeovn/kube-ovn:$(cat VERSION)-debug"
+          IPSEC_OVERLAY_INSTALLER=true bash hack/test-ipsec-overlay.sh "$ipsec_image" "$capture_image"
+          IPSEC_CLEANUP_STARTUP=true bash hack/test-ipsec-overlay.sh "$ipsec_image" "$capture_image"
           for family in IPv4 IPv6; do
             for tunnel in geneve vxlan; do
               IPSEC_PROTECTION_FAILURES=true IPSEC_OVERLAY_FAMILY="$family" IPSEC_OVERLAY_TUNNEL="$tunnel" \
-                bash hack/test-ipsec-overlay.sh "$ipsec_image"
+                bash hack/test-ipsec-overlay.sh "$ipsec_image" "$capture_image"
             done
           done
 

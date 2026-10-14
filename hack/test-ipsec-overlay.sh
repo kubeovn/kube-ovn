@@ -6,6 +6,7 @@ set -euo pipefail
 # Run against a disposable, two-node Kind cluster on CI's Docker runner.
 # Capture the actual underlay interface, not the decrypted pod interface.
 overlay_image=${1:?candidate image is required}
+overlay_capture_image=${2:?capture image is required}
 overlay_protection=${IPSEC_PROTECTION_FAILURES:-false}
 overlay_cleanup=${IPSEC_CLEANUP_STARTUP:-false}
 overlay_installer=${IPSEC_OVERLAY_INSTALLER:-false}
@@ -21,12 +22,52 @@ case "$overlay_tunnel" in
   *) echo 'Unsupported overlay tunnel type' >&2; exit 1 ;;
 esac
 overlay_cluster="ipsec-overlay-${GITHUB_RUN_ID:?requires an isolated CI runner}-${GITHUB_RUN_ATTEMPT:-1}"
+overlay_capture_volume="$overlay_cluster-capture"
+overlay_captures=()
 overlay_kubeconfig=$(mktemp)
 overlay_config=$(mktemp)
 chmod 600 "$overlay_kubeconfig"
 export KUBECONFIG="$overlay_kubeconfig"
 overlay_created=false
 installer_dir=
+start_capture() {
+  local name="$overlay_cluster-$1" pcap=$1
+  shift
+  overlay_captures+=("$name")
+  # OVS uses the Kind node's network namespace. Capture from a separate debug
+  # container so the deployed candidate retains its production image and caps.
+  docker run --detach --name "$name" --network "container:$overlay_control_plane" --user 0:0 \
+    --cap-drop ALL --cap-add NET_RAW --memory 128m --cpus 1 --security-opt no-new-privileges \
+    --mount "type=volume,src=$overlay_capture_volume,dst=/capture" \
+    "$overlay_capture_image" tcpdump -Z root -i eth0 -p -n -U -w "/capture/$pcap.pcap" "$@" >/dev/null
+  for attempt in {1..30}; do
+    if docker logs "$name" 2>&1 | grep -q 'listening on eth0' && [[ "$(docker inspect --format '{{.State.Running}}' "$name")" == true ]]; then
+      return
+    fi
+    sleep 0.1
+  done
+  docker logs "$name" >&2 || true
+  echo "Packet capture $pcap did not start" >&2
+  return 1
+}
+stop_capture() {
+  local name="$overlay_cluster-$1" capture_status
+  docker kill -s INT "$name" >/dev/null
+  capture_status=$(docker wait "$name")
+  if [[ "$capture_status" != 0 ]]; then
+    docker logs "$name" >&2 || true
+    echo "Packet capture $1 failed with status $capture_status" >&2
+    return 1
+  fi
+}
+read_capture() {
+  local pcap=$1
+  shift
+  # The debug tcpdump's file capabilities require NET_RAW even for offline reads.
+  docker run --rm --network none --user 0:0 --cap-drop ALL --cap-add NET_RAW --security-opt no-new-privileges \
+    --mount "type=volume,src=$overlay_capture_volume,dst=/capture,readonly" \
+    "$overlay_capture_image" tcpdump -Z root -n -r "/capture/$pcap.pcap" "$@"
+}
 diagnose() {
   kubectl get pods -A -o wide || true
   kubectl get events -A --sort-by=.lastTimestamp | tail -60 || true
@@ -68,6 +109,13 @@ for node in json.load(sys.stdin)["items"]:
 }
 cleanup() {
   overlay_status=$?
+  for capture in "${overlay_captures[@]}"; do
+    if [[ "$overlay_status" != 0 ]]; then
+      docker logs "$capture" >&2 || true
+    fi
+    docker rm -f "$capture" >/dev/null 2>&1 || true
+  done
+  docker volume rm "$overlay_capture_volume" >/dev/null 2>&1 || true
   if [[ "$overlay_created" == true ]]; then
     if [[ "$overlay_status" != 0 ]]; then
       diagnose
@@ -197,32 +245,9 @@ family=4 if sys.argv[1]=="IPv4" else 6
 addresses=[a["address"] for a in json.load(sys.stdin)["status"]["addresses"] if a["type"]=="InternalIP" and ipaddress.ip_address(a["address"]).version==family]
 assert len(addresses)==1, "expected one peer InternalIP for the requested address family"
 print(addresses[0])' "$overlay_family")
-overlay_ovs=$(kubectl -n kube-system get pod -l app=ovs --field-selector "spec.nodeName=$overlay_control_plane" -o name)
-kubectl -n kube-system exec "$overlay_ovs" -- bash -c '
-  set -euo pipefail
-  tcpdump -Z root -i eth0 -p -n -U -w /tmp/ipsec-overlay.pcap \
-    "host $1 and (udp port 6081 or udp port 4789 or udp port 4500 or ip proto 50 or ip6 proto 50)" >/tmp/ipsec-overlay-capture.log 2>&1 &
-  overlay_capture_pid=$!
-  echo "$overlay_capture_pid" >/tmp/ipsec-overlay-capture.pid
-  tcpdump -Z root -i eth0 -Q out -p -n -U -w /tmp/ipsec-overlay-egress.pcap \
-    "host $1 and (udp port 6081 or udp port 4789 or udp port 4500 or ip proto 50 or ip6 proto 50)" >/tmp/ipsec-overlay-egress.log 2>&1 &
-  overlay_egress_pid=$!
-  echo "$overlay_egress_pid" >/tmp/ipsec-overlay-egress.pid
-  wait "$overlay_capture_pid"
-  wait "$overlay_egress_pid"
-  touch /tmp/ipsec-overlay-capture-complete
-' overlay-capture "$overlay_peer" &
-overlay_capture_client=$!
-for attempt in {1..30}; do
-  if kubectl -n kube-system exec "$overlay_ovs" -- bash -c 'grep -q "listening on eth0" /tmp/ipsec-overlay-capture.log && grep -q "listening on eth0" /tmp/ipsec-overlay-egress.log && kill -0 "$(cat /tmp/ipsec-overlay-capture.pid)" && kill -0 "$(cat /tmp/ipsec-overlay-egress.pid)"'; then
-    break
-  fi
-  if [[ "$attempt" == 30 ]]; then
-    echo 'Underlay packet capture did not start' >&2
-    exit 1
-  fi
-  sleep 0.1
-done
+docker volume create "$overlay_capture_volume" >/dev/null
+start_capture ipsec-overlay "host $overlay_peer and (udp port 6081 or udp port 4789 or udp port 4500 or ip proto 50 or ip6 proto 50)"
+start_capture ipsec-overlay-egress -Q out "host $overlay_peer and (udp port 6081 or udp port 4789 or udp port 4500 or ip proto 50 or ip6 proto 50)"
 for direction in control-plane worker; do
   destination=control-plane
   if [[ "$direction" == control-plane ]]; then
@@ -233,26 +258,16 @@ for direction in control-plane worker; do
   # Bound the whole invocation with the same coreutils timeout for both tools.
   kubectl -n ipsec-overlay exec "$direction" -- timeout 45 "$overlay_ping" -c 20 "$overlay_pod_ip"
 done
-kubectl -n kube-system exec "$overlay_ovs" -- bash -c '
-  kill -INT "$(cat /tmp/ipsec-overlay-capture.pid)"
-  kill -INT "$(cat /tmp/ipsec-overlay-egress.pid)"
-  for attempt in {1..30}; do
-    if test -f /tmp/ipsec-overlay-capture-complete; then
-      exit 0
-    fi
-    sleep 0.1
-  done
-  exit 1
-'
-wait "$overlay_capture_client"
-overlay_esp=$(kubectl -n kube-system exec "$overlay_ovs" -- bash -o pipefail -c 'tcpdump -Z root -n -r /tmp/ipsec-overlay.pcap | awk "/ESP\\(spi=/{count++} END{print count+0}"')
-overlay_plaintext=$(kubectl -n kube-system exec "$overlay_ovs" -- bash -o pipefail -c 'tcpdump -Z root -n -r /tmp/ipsec-overlay.pcap "udp port 6081 or udp port 4789" | wc -l')
+stop_capture ipsec-overlay
+stop_capture ipsec-overlay-egress
+overlay_esp=$(read_capture ipsec-overlay | awk '/ESP\(spi=/{count++} END{print count+0}')
+overlay_plaintext=$(read_capture ipsec-overlay 'udp port 6081 or udp port 4789' | wc -l)
 echo "Actual cross-node OVN $overlay_family $overlay_tunnel pods: ESP packets=$overlay_esp plaintext transport packets=$overlay_plaintext"
 if [[ "$overlay_esp" == 0 || "$overlay_plaintext" != 0 ]]; then
   # Preserve the rejection and distinguish physical egress from ingress
   # observations before investigating a possible unencrypted packet.
-  kubectl -n kube-system exec "$overlay_ovs" -- tcpdump -Z root -n -vv -r /tmp/ipsec-overlay.pcap 'udp port 6081 or udp port 4789'
-  kubectl -n kube-system exec "$overlay_ovs" -- tcpdump -Z root -n -vv -r /tmp/ipsec-overlay-egress.pcap 'udp port 6081 or udp port 4789'
+  read_capture ipsec-overlay -vv 'udp port 6081 or udp port 4789'
+  read_capture ipsec-overlay-egress -vv 'udp port 6081 or udp port 4789'
   echo 'The actual OVN overlay did not prove encryption without plaintext' >&2
   exit 1
 fi
@@ -306,24 +321,7 @@ if [[ "$overlay_protection" == true ]]; then
     fi
     sleep 1
   done
-  docker exec "$overlay_control_plane" crictl exec "$ovs_id" bash -c '
-    set -euo pipefail
-    tcpdump -Z root -i eth0 -p -n -U -w /tmp/ipsec-protected.pcap \
-      "host $1 and (udp port 6081 or udp port 4789)" >/tmp/ipsec-protected.log 2>&1 &
-    echo "$!" >/tmp/ipsec-protected.pid
-    wait "$!"
-  ' protected-capture "$overlay_peer" &
-  protected_capture_client=$!
-  for attempt in {1..30}; do
-    if docker exec "$overlay_control_plane" crictl exec "$ovs_id" bash -c 'grep -q "listening on eth0" /tmp/ipsec-protected.log'; then
-      break
-    fi
-    if [[ "$attempt" == 30 ]]; then
-      echo 'Protected-output capture did not start' >&2
-      exit 1
-    fi
-    sleep 0.1
-  done
+  start_capture ipsec-protected "host $overlay_peer and (udp port 6081 or udp port 4789)"
   pod_id=$(docker exec "$overlay_control_plane" crictl ps --name '^control-plane$' -q)
   [[ -n "$pod_id" && "$pod_id" != *$'\n'* ]]
   overlay_pod_ip=$(kubectl -n ipsec-overlay get pod worker -o jsonpath='{.status.podIP}')
@@ -364,9 +362,8 @@ if [[ "$overlay_protection" == true ]]; then
     echo 'Unsupported flow-based output bypassed the armed protection' >&2
     exit 1
   fi
-  docker exec "$overlay_control_plane" crictl exec "$ovs_id" bash -c 'kill -INT "$(cat /tmp/ipsec-protected.pid)"'
-  wait "$protected_capture_client"
-  protected_plaintext=$(docker exec "$overlay_control_plane" crictl exec "$ovs_id" bash -o pipefail -c 'tcpdump -Z root -n -r /tmp/ipsec-protected.pcap | wc -l')
+  stop_capture ipsec-protected
+  protected_plaintext=$(read_capture ipsec-protected | wc -l)
   echo "OVN $overlay_family $overlay_tunnel retained-mark protection after IKE stop/SB disable: plaintext transport packets=$protected_plaintext"
   [[ "$protected_plaintext" == 0 ]]
 fi
