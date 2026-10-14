@@ -116,7 +116,7 @@ func TestCandidateEncryptedTraffic(t *testing.T) {
 	trust, err := os.ReadFile("/fixtures/trust")
 	require.NoError(t, err)
 	coordination, err := json.Marshal(Coordination{
-		Version: 1, Generation: "traffic-generation", Epoch: "traffic-epoch", Phase: PreparePhase,
+		Version: 1, Generation: "traffic-generation", Epoch: "traffic-epoch", Phase: EnabledPhase,
 		DaemonSetUID: "traffic-daemonset", TemplateHash: digest([]byte("traffic-template")), TrustHash: digest(trust),
 		Targets: map[string]string{node: "traffic-node-" + node},
 	})
