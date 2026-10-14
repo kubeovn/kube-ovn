@@ -73,6 +73,7 @@ func isTerminalMigrationPhase(phase v1.VirtualMachineInstanceMigrationPhase) boo
 func isStartedMigrationPhase(phase v1.VirtualMachineInstanceMigrationPhase) bool {
 	switch phase {
 	case v1.MigrationScheduling,
+		v1.MigrationScheduled,
 		v1.MigrationPreparingTarget,
 		v1.MigrationTargetReady,
 		v1.MigrationRunning,
