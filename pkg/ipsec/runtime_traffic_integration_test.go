@@ -24,9 +24,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
+	certv1 "k8s.io/api/certificates/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -123,6 +126,18 @@ func TestCandidateEncryptedTraffic(t *testing.T) {
 		&corev1.Node{Name: node, UID: types.UID("traffic-node-" + node)},
 		&corev1.Secret{Name: util.DefaultOVNIPSecCA, Namespace: "kube-system", Data: map[string][]byte{"cacert": trust}},
 	)
+	client.PrependReactor("create", "certificatesigningrequests", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		req := action.(k8stesting.CreateAction).GetObject().(*certv1.CertificateSigningRequest).DeepCopy()
+		req.UID = types.UID("traffic-csr-" + node)
+		req.Spec.Username = "system:serviceaccount:kube-system:kube-ovn-cni"
+		req.Spec.Extra = map[string]certv1.ExtraValue{
+			"authentication.kubernetes.io/pod-name": {"traffic-cni"},
+			"authentication.kubernetes.io/pod-uid":  {"traffic-pod-" + node},
+		}
+		req.Status.Certificate = cert
+		err := client.Tracker().Create(certv1.SchemeGroupVersion.WithResource("certificatesigningrequests"), req, "")
+		return true, req, err
+	})
 	a, err := New(Configuration{NodeName: node, PodUID: "traffic-pod-" + node, Namespace: "kube-system", Kube: client, KeyDir: t.TempDir(), RuntimeDir: t.TempDir(), OVSSocket: "/run/openvswitch/db.sock", Duration: time.Hour, RequestTimeout: 30 * time.Second, Priority: -5})
 	require.NoError(t, err)
 	g := &generation{ID: digest(key), NodeUID: "traffic-node-" + node, Chassis: "traffic-chassis-" + node}
