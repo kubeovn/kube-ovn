@@ -554,9 +554,12 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	var subnetClient *framework.SubnetClient
 	var migrationSubnets []string
 	var migrationFillerPods []string
+	var vmCreated bool
 
 	ginkgo.BeforeEach(func() {
-		f.SkipVersionPriorTo(1, 16, "Live migration e2e tests require v1.16 or later.")
+		migrationSubnets = nil
+		migrationFillerPods = nil
+		vmCreated = false
 
 		nodes, err := e2enode.GetReadySchedulableNodes(context.TODO(), f.ClientSet)
 		framework.ExpectNoError(err)
@@ -571,11 +574,16 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		ipClient = f.IPClient()
 		migrationClient = f.VMIMigrationClientNS(namespaceName)
 		subnetClient = f.SubnetClient()
-		migrationSubnets = nil
-		migrationFillerPods = nil
 	})
 
 	ginkgo.AfterEach(func() {
+		if !vmCreated {
+			for _, subnetName := range migrationSubnets {
+				subnetClient.DeleteSync(subnetName)
+			}
+			return
+		}
+
 		ginkgo.By("Deleting vm " + vmName)
 		vmClient.DeleteSync(vmName)
 
@@ -593,8 +601,11 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 	ginkgo.Context("with bridge interface", func() {
 		ginkgo.BeforeEach(func() {
+			f.SkipVersionPriorTo(1, 16, "Live migration e2e tests require v1.16 or later.")
+
 			ginkgo.By("Creating live-migratable bridge vm " + vmName)
 			vm := framework.MakeVMLiveMigratableBridge(vmName, image, "small")
+			vmCreated = true
 			_ = vmClient.CreateSync(vm)
 		})
 
@@ -841,6 +852,7 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 	ginkgo.Context("with multiple namespace subnets", func() {
 		ginkgo.BeforeEach(func() {
+			f.SkipVersionPriorTo(1, 15, "VM subnet preservation during migration requires Kube-OVN v1.15 or later")
 			if !f.IsIPv4() {
 				ginkgo.Skip("the multiple-subnet keep-vm-ip regression uses IPv4 /29 subnets")
 			}
@@ -862,11 +874,13 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 					return
 				}
 				g.Expect(strings.Split(ns.Annotations[util.LogicalSwitchAnnotation], ",")).To(
-					gomega.ContainElements(subnetAName, subnetBName))
+					gomega.ContainElements(subnetAName, subnetBName),
+				)
 			}).WithTimeout(60 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
 
 			ginkgo.By("Creating live-migratable VM " + vmName)
 			vm := framework.MakeVMLiveMigratableBridge(vmName, image, "small")
+			vmCreated = true
 			_ = vmClient.CreateSync(vm)
 		})
 
@@ -927,8 +941,11 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 
 	ginkgo.Context("with masquerade interface", func() {
 		ginkgo.BeforeEach(func() {
+			f.SkipVersionPriorTo(1, 16, "Live migration e2e tests require v1.16 or later.")
+
 			ginkgo.By("Creating live-migratable masquerade vm " + vmName)
 			vm := framework.MakeVMLiveMigratable(vmName, image, "small")
+			vmCreated = true
 			_ = vmClient.CreateSync(vm)
 		})
 
