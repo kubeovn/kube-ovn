@@ -1659,12 +1659,15 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 		return nil
 	}
 
-	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
-		// physical switch provide gw for this underlay subnet
+	if subnet.Spec.GatewayType != kubeovnv1.GWDistributedType || (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) {
 		if err := c.deleteServiceProxyFallbackDropPolicies(subnet, ""); err != nil {
 			klog.Error(err)
 			return err
 		}
+	}
+
+	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
+		// physical switch provide gw for this underlay subnet
 		pods, err := c.podsLister.Pods(metav1.NamespaceAll).List(labels.Everything())
 		if err != nil {
 			klog.Errorf("failed to list pods %v", err)
