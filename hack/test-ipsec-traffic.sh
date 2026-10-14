@@ -171,16 +171,18 @@ for family in 4 6; do
     done
     # tcpdump decodes both native ESP and ESP-in-UDP as ESP(spi=...). IKE on
     # UDP4500 carries a zero non-ESP marker and must not count as encrypted data.
-    esp_count=$(docker run --rm --network none --user 0:0 --cap-drop ALL --security-opt no-new-privileges \
+    # The debug image's tcpdump has CAP_NET_RAW file capabilities, so even
+    # offline readers must keep NET_RAW in their bounding set to execute it.
+    esp_count=$(docker run --rm --network none --user 0:0 --cap-drop ALL --cap-add NET_RAW --security-opt no-new-privileges \
       --mount "type=volume,src=$traffic_capture_volume,dst=/capture,readonly" \
       "$capture_image" bash -o pipefail -c 'tcpdump -Z root -n -r /capture/traffic.pcap | awk "/ESP\\(spi=/{count++} END{print count+0}"')
-    plaintext_count=$(docker run --rm --network none --user 0:0 --cap-drop ALL --security-opt no-new-privileges \
+    plaintext_count=$(docker run --rm --network none --user 0:0 --cap-drop ALL --cap-add NET_RAW --security-opt no-new-privileges \
       --mount "type=volume,src=$traffic_capture_volume,dst=/capture,readonly" \
       "$capture_image" bash -o pipefail -c 'tcpdump -Z root -n -r /capture/traffic.pcap "udp port 6081 or udp port 4789" | wc -l')
     echo "IPv$family $tunnel: ESP packets=$esp_count plaintext transport packets=$plaintext_count"
     if [[ "$esp_count" == 0 || "$plaintext_count" != 0 ]]; then
       docker logs "$traffic_capture" >&2 || true
-      docker run --rm --network none --user 0:0 --cap-drop ALL --security-opt no-new-privileges \
+      docker run --rm --network none --user 0:0 --cap-drop ALL --cap-add NET_RAW --security-opt no-new-privileges \
         --mount "type=volume,src=$traffic_capture_volume,dst=/capture,readonly" \
         "$capture_image" tcpdump -Z root -n -r /capture/traffic.pcap -c 8 >&2 || true
       echo 'The capture did not prove encrypted transport without plaintext' >&2
