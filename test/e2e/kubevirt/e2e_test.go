@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"strings"
@@ -31,6 +32,14 @@ import (
 )
 
 var image = "quay.io/kubevirt/cirros-container-disk-demo:v1.8.1"
+
+func smallMigrationSubnetCIDR() string {
+	cidr := framework.RandomCIDR(framework.IPv4)
+	_, network, err := net.ParseCIDR(cidr)
+	framework.ExpectNoError(err)
+	network.Mask = net.CIDRMask(29, 32)
+	return network.String()
+}
 
 func getVMPod(podClient *framework.PodClient, vmName string) *corev1.Pod {
 	ginkgo.GinkgoHelper()
@@ -542,9 +551,15 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 	var vmClient *framework.VMClient
 	var ipClient *framework.IPClient
 	var migrationClient *framework.VMIMigrationClient
+	var subnetClient *framework.SubnetClient
+	var migrationSubnets []string
+	var migrationFillerPods []string
+	var vmCreated bool
 
 	ginkgo.BeforeEach(func() {
-		f.SkipVersionPriorTo(1, 16, "Live migration e2e tests require v1.16 or later.")
+		migrationSubnets = nil
+		migrationFillerPods = nil
+		vmCreated = false
 
 		nodes, err := e2enode.GetReadySchedulableNodes(context.TODO(), f.ClientSet)
 		framework.ExpectNoError(err)
@@ -558,9 +573,17 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		vmClient = f.VMClientNS(namespaceName)
 		ipClient = f.IPClient()
 		migrationClient = f.VMIMigrationClientNS(namespaceName)
+		subnetClient = f.SubnetClient()
 	})
 
 	ginkgo.AfterEach(func() {
+		if !vmCreated {
+			for _, subnetName := range migrationSubnets {
+				subnetClient.DeleteSync(subnetName)
+			}
+			return
+		}
+
 		ginkgo.By("Deleting vm " + vmName)
 		vmClient.DeleteSync(vmName)
 
@@ -568,12 +591,21 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		ginkgo.By("Waiting for IP " + portName + " to be cleaned up")
 		err := ipClient.WaitToDisappear(portName, time.Second, 2*time.Minute)
 		framework.ExpectNoError(err)
+		for _, podName := range migrationFillerPods {
+			podClient.DeleteSync(podName)
+		}
+		for _, subnetName := range migrationSubnets {
+			subnetClient.DeleteSync(subnetName)
+		}
 	})
 
 	ginkgo.Context("with bridge interface", func() {
 		ginkgo.BeforeEach(func() {
+			f.SkipVersionPriorTo(1, 16, "Live migration e2e tests require v1.16 or later.")
+
 			ginkgo.By("Creating live-migratable bridge vm " + vmName)
 			vm := framework.MakeVMLiveMigratableBridge(vmName, image, "small")
+			vmCreated = true
 			_ = vmClient.CreateSync(vm)
 		})
 
@@ -818,10 +850,102 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 		})
 	})
 
+	ginkgo.Context("with multiple namespace subnets", func() {
+		ginkgo.BeforeEach(func() {
+			f.SkipVersionPriorTo(1, 15, "VM subnet preservation during migration requires Kube-OVN v1.15 or later")
+			if !f.IsIPv4() {
+				ginkgo.Skip("the multiple-subnet keep-vm-ip regression uses IPv4 /29 subnets")
+			}
+
+			subnetAName := "migration-subnet-a-" + framework.RandomSuffix()
+			subnetBName := "migration-subnet-b-" + framework.RandomSuffix()
+			cidrA := smallMigrationSubnetCIDR()
+			cidrB := smallMigrationSubnetCIDR()
+			migrationSubnets = []string{subnetAName, subnetBName}
+
+			ginkgo.By("Creating namespace subnet " + subnetAName)
+			subnetClient.CreateSync(framework.MakeSubnet(subnetAName, "", cidrA, "", "", "", nil, nil, []string{namespaceName}))
+			ginkgo.By("Creating namespace subnet " + subnetBName)
+			subnetClient.CreateSync(framework.MakeSubnet(subnetBName, "", cidrB, "", "", "", nil, nil, []string{namespaceName}))
+			gomega.Eventually(func(g gomega.Gomega) {
+				ns, err := f.ClientSet.CoreV1().Namespaces().Get(context.TODO(), namespaceName, metav1.GetOptions{})
+				if err != nil {
+					g.Expect(err).NotTo(gomega.HaveOccurred())
+					return
+				}
+				g.Expect(strings.Split(ns.Annotations[util.LogicalSwitchAnnotation], ",")).To(
+					gomega.ContainElements(subnetAName, subnetBName),
+				)
+			}).WithTimeout(60 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
+
+			ginkgo.By("Creating live-migratable VM " + vmName)
+			vm := framework.MakeVMLiveMigratableBridge(vmName, image, "small")
+			vmCreated = true
+			_ = vmClient.CreateSync(vm)
+		})
+
+		framework.ConformanceIt("should keep the IP when the VM source subnet is exhausted", func() {
+			portName := ovs.PodNameToPortName(vmName, namespaceName, util.OvnProvider)
+			pod := getVMPod(podClient, vmName)
+			originalIP := ipClient.Get(portName)
+			framework.ExpectNotEmpty(originalIP.Spec.IPAddress)
+			sourceSubnetName := originalIP.Spec.Subnet
+			framework.ExpectContainElement(migrationSubnets, sourceSubnetName)
+
+			ginkgo.By("Exhausting source subnet " + sourceSubnetName)
+			for i := range 8 {
+				availableIPs := subnetClient.Get(sourceSubnetName).Status.V4AvailableIPs.Int64()
+				if availableIPs == 0 {
+					break
+				}
+				name := fmt.Sprintf("migration-filler-%d-%s", i, framework.RandomSuffix())
+				filler := framework.MakePod(namespaceName, name, nil, map[string]string{
+					util.LogicalSwitchAnnotation: sourceSubnetName,
+				}, framework.AgnhostImage, nil, []string{"pause"})
+				migrationFillerPods = append(migrationFillerPods, name)
+				podClient.CreateSync(filler)
+				gomega.Eventually(func() int64 {
+					return subnetClient.Get(sourceSubnetName).Status.V4AvailableIPs.Int64()
+				}).WithTimeout(60 * time.Second).WithPolling(2 * time.Second).Should(gomega.BeNumerically("<", availableIPs))
+			}
+			gomega.Eventually(func() bool {
+				return subnetClient.Get(sourceSubnetName).Status.V4AvailableIPs.EqualInt64(0)
+			}).WithTimeout(60 * time.Second).WithPolling(2 * time.Second).Should(gomega.BeTrue())
+
+			originalNode := pod.Spec.NodeName
+			originalIPs := pod.Status.PodIPs
+			originalMAC := pod.Annotations[util.MacAddressAnnotation]
+			framework.ExpectMAC(originalMAC)
+			migrationName := "mig-" + framework.RandomSuffix()
+			ginkgo.By("Migrating VM " + vmName + " with source subnet exhausted")
+			migration := migrationClient.Create(framework.MakeVMIMigration(migrationName, vmName))
+			framework.ExpectNoError(migrationClient.WaitForPhase(migration.Name, v1.MigrationSucceeded, 5*time.Minute))
+			framework.ExpectNoError(vmClient.WaitToBeReady(vmName, 2*time.Minute))
+
+			pod = getVMPod(podClient, vmName)
+			framework.ExpectNotEqual(pod.Spec.NodeName, originalNode)
+			framework.ExpectEqual(pod.Status.PodIPs, originalIPs)
+			framework.ExpectEqual(pod.Annotations[util.MacAddressAnnotation], originalMAC)
+
+			gomega.Eventually(func(g gomega.Gomega) {
+				migratedIP := ipClient.Get(portName)
+				g.Expect(migratedIP.UID).To(gomega.Equal(originalIP.UID))
+				g.Expect(migratedIP.Spec.IPAddress).To(gomega.Equal(originalIP.Spec.IPAddress))
+				g.Expect(migratedIP.Spec.MacAddress).To(gomega.Equal(originalIP.Spec.MacAddress))
+				g.Expect(migratedIP.Spec.Subnet).To(gomega.Equal(originalIP.Spec.Subnet))
+				g.Expect(migratedIP.Spec.PodName).To(gomega.Equal(originalIP.Spec.PodName))
+				g.Expect(migratedIP.Spec.NodeName).To(gomega.Equal(pod.Spec.NodeName))
+			}).WithTimeout(60 * time.Second).WithPolling(2 * time.Second).Should(gomega.Succeed())
+		})
+	})
+
 	ginkgo.Context("with masquerade interface", func() {
 		ginkgo.BeforeEach(func() {
+			f.SkipVersionPriorTo(1, 16, "Live migration e2e tests require v1.16 or later.")
+
 			ginkgo.By("Creating live-migratable masquerade vm " + vmName)
 			vm := framework.MakeVMLiveMigratable(vmName, image, "small")
+			vmCreated = true
 			_ = vmClient.CreateSync(vm)
 		})
 

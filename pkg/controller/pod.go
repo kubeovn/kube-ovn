@@ -2156,6 +2156,12 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 	}
 
 	subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]
+	if subnet, err := c.getRetainedPodDefaultSubnet(pod, subnetNames); err != nil {
+		klog.Error(err)
+		return nil, err
+	} else if subnet != nil {
+		return subnet, nil
+	}
 	for subnetName := range strings.SplitSeq(subnetNames, ",") {
 		if subnetName == "" {
 			err = fmt.Errorf("namespace %s default logical switch is not found", ns.Name)
@@ -2197,6 +2203,37 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 		return subnet, nil
 	}
 	return nil, ipam.ErrNoAvailable
+}
+
+// getRetainedPodDefaultSubnet keeps an existing StatefulSet or VM allocation
+// ahead of capacity-based subnet selection. Reusing an address does not require
+// a free address, and newly available subnets must not move an existing workload.
+func (c *Controller) getRetainedPodDefaultSubnet(pod *v1.Pod, subnetNames string) (*kubeovnv1.Subnet, error) {
+	if isStatefulSet, _, _ := isStatefulSetPod(pod); !isStatefulSet {
+		if isVM, _ := isVMPod(pod); !isVM || !c.config.EnableKeepVMIP {
+			return nil, nil
+		}
+	}
+	ipName := ovs.PodNameToPortName(c.getNameByPod(pod), pod.Namespace, util.OvnProvider)
+	ip, err := c.ipsLister.Get(ipName)
+	if k8serrors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get IP %s for retained pod subnet selection: %w", ipName, err)
+	}
+	// A namespace subnet change still allows the pod to move to its new network.
+	if ip.Spec.Subnet == "" || !slices.Contains(strings.Split(subnetNames, ","), ip.Spec.Subnet) {
+		return nil, nil
+	}
+	subnet, err := c.subnetsLister.Get(ip.Spec.Subnet)
+	if k8serrors.IsNotFound(err) && !pod.DeletionTimestamp.IsZero() {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subnet %s for retained IP %s: %w", ip.Spec.Subnet, ipName, err)
+	}
+	return subnet, nil
 }
 
 func (c *Controller) podCanUseExcludeIPs(pod *v1.Pod, subnet *kubeovnv1.Subnet) bool {
