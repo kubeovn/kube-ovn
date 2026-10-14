@@ -134,6 +134,54 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 	}
 }
 
+func TestReconcileServiceProxyFallbackDropPolicies(t *testing.T) {
+	t.Parallel()
+
+	fc, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	ctrl.config.EnableOvnLB = true
+	ctrl.serviceCIDRStore = util.NewServiceCIDRStore("10.96.0.0/12,fd00:10:96::/108")
+	subnet := &kubeovnv1.Subnet{
+		Name: "ovn-default",
+		Spec: kubeovnv1.SubnetSpec{
+			Vpc:       util.DefaultVpc,
+			CIDRBlock: "10.16.0.0/16,fd00:10:16::/64",
+			EnableLb:  new(true),
+		},
+	}
+	nodeName := "worker-1"
+	pgName := getOverlaySubnetsPortGroupName(subnet.Name, nodeName)
+	filter := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{
+		"isServiceProxyFallbackDropPolicy": "true",
+		"node":                             nodeName,
+	})
+	staleMatch := "ip4.src == $ovn.default.worker.1_ip4 && ip4.dst == 10.97.0.0/16"
+	fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies(util.DefaultVpc, -1, filter, true).Return([]*ovnnb.LogicalRouterPolicy{{
+		UUID:  "stale",
+		Match: staleMatch,
+	}}, nil)
+	for _, tc := range []struct {
+		protocol    string
+		serviceCIDR string
+	}{
+		{protocol: kubeovnv1.ProtocolIPv4, serviceCIDR: "10.96.0.0/12"},
+		{protocol: kubeovnv1.ProtocolIPv6, serviceCIDR: "fd00:10:96::/108"},
+	} {
+		ipSuffix := getIPSuffix(tc.protocol)
+		match := fmt.Sprintf("%s.src == $%s_%s && %s.dst == %s", ipSuffix, pgName, ipSuffix, ipSuffix, tc.serviceCIDR)
+		externalIDs := buildPolicyRouteExternalIDs(subnet.Name, map[string]string{
+			"isServiceProxyFallbackDropPolicy": "true",
+			"node":                             nodeName,
+			"serviceCIDR":                      tc.serviceCIDR,
+		})
+		fc.mockOvnClient.EXPECT().AddLogicalRouterPolicy(util.DefaultVpc, util.ServiceProxyFallbackDropPriority, match, string(kubeovnv1.PolicyRouteActionDrop), []string(nil), []string(nil), externalIDs).Return(nil)
+	}
+	fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyByUUID(util.DefaultVpc, "stale").Return(nil)
+
+	require.NoError(t, ctrl.reconcileServiceProxyFallbackDropPolicies(subnet, nodeName))
+}
+
 func TestEnqueueUpdateSubnetOnDeletionTimestamp(t *testing.T) {
 	deletionTimestamp := metav1.Now()
 	tests := []struct {
