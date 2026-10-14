@@ -53,7 +53,7 @@ func TestIPsecAPIServerSigningContract(t *testing.T) {
 	ctx := t.Context()
 	_, err = admin.CoreV1().Namespaces().Create(ctx, &corev1.Namespace{Name: namespace}, metav1.CreateOptions{})
 	require.NoError(t, err)
-	for _, name := range []string{"ovn", "kube-ovn-cni"} {
+	for _, name := range []string{"ovn", util.KubeOvnControllerServiceAccountName, "kube-ovn-cni"} {
 		_, err = admin.CoreV1().ServiceAccounts(namespace).Create(ctx, &corev1.ServiceAccount{Name: name}, metav1.CreateOptions{})
 		require.NoError(t, err)
 	}
@@ -65,7 +65,7 @@ func TestIPsecAPIServerSigningContract(t *testing.T) {
 	// Deliberately grant both test identities CertificateRequest creation so
 	// admission rejection proves more than the production CNI's narrower RBAC.
 	_, err = admin.RbacV1().ClusterRoleBindings().Create(ctx, &rbacv1.ClusterRoleBinding{Name: "ipsec-api-test", RoleRef: rbacv1.RoleRef{APIGroup: "rbac.authorization.k8s.io", Kind: "ClusterRole", Name: "ipsec-api-test"}, Subjects: []rbacv1.Subject{
-		{Kind: "ServiceAccount", Namespace: namespace, Name: "ovn"}, {Kind: "ServiceAccount", Namespace: namespace, Name: "kube-ovn-cni"},
+		{Kind: "ServiceAccount", Namespace: namespace, Name: "ovn"}, {Kind: "ServiceAccount", Namespace: namespace, Name: util.KubeOvnControllerServiceAccountName}, {Kind: "ServiceAccount", Namespace: namespace, Name: "kube-ovn-cni"},
 	}}, metav1.CreateOptions{})
 	require.NoError(t, err)
 	labels := map[string]string{"app": "ipsec-api-test"}
@@ -122,7 +122,7 @@ func TestIPsecAPIServerSigningContract(t *testing.T) {
 	}
 	parsed, err := decodeCertificateRequest(request)
 	require.NoError(t, err)
-	c := &Controller{config: &Configuration{KubeClient: admin, PodNamespace: namespace}, addOrUpdateCsrQueue: workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())}
+	c := &Controller{config: &Configuration{KubeClient: admin, PodNamespace: namespace, ControllerServiceAccountName: util.KubeOvnControllerServiceAccountName}, addOrUpdateCsrQueue: workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())}
 	t.Cleanup(c.addOrUpdateCsrQueue.ShutDown)
 	csr := createCSR(cni, "bound")
 	require.Equal(t, "system:serviceaccount:"+namespace+":kube-ovn-cni", csr.Spec.Username)
@@ -195,7 +195,7 @@ func TestIPsecAPIServerSigningContract(t *testing.T) {
 		t.Logf("policy generation=%d observed=%d type-check=%v", policy.Generation, policy.Status.ObservedGeneration, policy.Status.TypeChecking)
 	}
 	require.NoError(t, policyError)
-	controllerConfig := boundConfig("ovn", false)
+	controllerConfig := boundConfig(util.KubeOvnControllerServiceAccountName, false)
 	cmController, err := cmclient.NewForConfig(controllerConfig)
 	require.NoError(t, err)
 	cmCNI, err := cmclient.NewForConfig(boundConfig("kube-ovn-cni", true))
@@ -250,7 +250,7 @@ func TestIPsecAPIServerSigningContract(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, requests.Items, 1)
 	issued := requests.Items[0].DeepCopy()
-	require.Equal(t, "system:serviceaccount:"+namespace+":ovn", issued.Spec.Username)
+	require.Equal(t, "system:serviceaccount:"+namespace+":"+util.KubeOvnControllerServiceAccountName, issued.Spec.Username)
 	issued.Labels["metadata-update"] = "allowed"
 	issued, err = cmCNI.CertmanagerV1().CertificateRequests(namespace).Update(ctx, issued, metav1.UpdateOptions{})
 	require.NoError(t, err, "a metadata-only update must remain possible")
