@@ -1,17 +1,23 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 
 	admissionv1 "k8s.io/api/admissionregistration/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 const ipsecIssuerPolicyName = "kube-ovn-ipsec-issuer"
+
+const defaultControllerServiceAccountName = "ovn"
 
 func unconditionalIPsecSelector(selector *metav1.LabelSelector) bool {
 	// The API Server defaults omitted selectors to {}, which matches all
@@ -20,9 +26,17 @@ func unconditionalIPsecSelector(selector *metav1.LabelSelector) bool {
 }
 
 func ipsecIssuerPolicyExpressions(namespace, issuer string) (match, authorized string) {
+	return ipsecIssuerPolicyExpressionsForServiceAccount(namespace, issuer, defaultControllerServiceAccountName)
+}
+
+func ipsecIssuerPolicyExpressionsForServiceAccount(namespace, issuer, serviceAccount string) (match, authorized string) {
 	match = fmt.Sprintf(`object.spec.issuerRef.name == %q && has(object.spec.issuerRef.kind) && object.spec.issuerRef.kind == "ClusterIssuer" && (!has(object.spec.issuerRef.group) || object.spec.issuerRef.group == "cert-manager.io")`, issuer)
-	authorized = fmt.Sprintf(`(request.operation == "UPDATE" && object.spec == oldObject.spec) || request.userInfo.username == %q && object.metadata.namespace == %q`, "system:serviceaccount:"+namespace+":ovn", namespace)
+	authorized = fmt.Sprintf(`(request.operation == "UPDATE" && object.spec == oldObject.spec) || request.userInfo.username == %q && object.metadata.namespace == %q`, "system:serviceaccount:"+namespace+":"+serviceAccount, namespace)
 	return match, authorized
+}
+
+func controllerServiceAccountName() string {
+	return cmp.Or(os.Getenv(util.EnvPodServiceAccount), defaultControllerServiceAccountName)
 }
 
 // Refuse external issuance unless admission protects this specific issuer.
@@ -34,7 +48,8 @@ func (c *Controller) verifyIPsecIssuerPolicy(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	match, authorized := ipsecIssuerPolicyExpressions(c.config.PodNamespace, c.config.CertManagerIssuerName)
+	serviceAccount := cmp.Or(c.config.ControllerServiceAccountName, defaultControllerServiceAccountName)
+	match, authorized := ipsecIssuerPolicyExpressionsForServiceAccount(c.config.PodNamespace, c.config.CertManagerIssuerName, serviceAccount)
 	normalize := func(expression string) string { return strings.Join(strings.Fields(expression), " ") }
 	constraints := policy.Spec.MatchConstraints
 	if policy.Spec.FailurePolicy == nil || *policy.Spec.FailurePolicy != admissionv1.Fail || policy.Spec.ParamKind != nil || constraints == nil || !unconditionalIPsecSelector(constraints.NamespaceSelector) || !unconditionalIPsecSelector(constraints.ObjectSelector) || len(constraints.ExcludeResourceRules) != 0 || len(constraints.ResourceRules) != 1 || len(policy.Spec.MatchConditions) != 1 || normalize(policy.Spec.MatchConditions[0].Expression) != match || len(policy.Spec.Validations) != 1 || normalize(policy.Spec.Validations[0].Expression) != authorized {
