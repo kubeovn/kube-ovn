@@ -8425,6 +8425,10 @@ $(ovn_central_tls_env)
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: POD_SERVICE_ACCOUNT
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.serviceAccountName
             - name: POD_IPS
               valueFrom:
                 fieldRef:
