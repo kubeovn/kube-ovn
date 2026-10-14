@@ -71,7 +71,7 @@ func TestIPsecCertManagerSharesCSRIdentityAuthorization(t *testing.T) {
 	leaf, err := signCSR(template, request.PublicKey, ca, caKey)
 	require.NoError(t, err)
 	certificate := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leaf.Raw})
-	for _, scenario := range []string{"authorized", "forged-node", "unbound-token", "pending", "denied", "collision", "wrong-creator"} {
+	for _, scenario := range []string{"authorized", "authorized-v2", "forged-node", "unbound-token", "pending", "denied", "collision", "wrong-creator", "wrong-creator-v2"} {
 		t.Run(scenario, func(t *testing.T) {
 			csr := base.DeepCopy()
 			if scenario == "forged-node" {
@@ -81,6 +81,11 @@ func TestIPsecCertManagerSharesCSRIdentityAuthorization(t *testing.T) {
 				csr.Spec.Extra = nil
 			}
 			policy, binding := testIPsecIssuerPolicy("kube-system", "kube-ovn")
+			serviceAccount := ""
+			if scenario == "authorized-v2" || scenario == "wrong-creator-v2" {
+				serviceAccount = util.KubeOvnControllerServiceAccountName
+				_, policy.Spec.Validations[0].Expression = ipsecIssuerPolicyExpressionsForServiceAccount("kube-system", "kube-ovn", serviceAccount)
+			}
 			client := fake.NewClientset(csr,
 				policy, binding,
 				&appsv1.DaemonSet{Name: "kube-ovn-cni", Namespace: "kube-system", UID: "ds-uid"},
@@ -93,6 +98,9 @@ func TestIPsecCertManagerSharesCSRIdentityAuthorization(t *testing.T) {
 				req := action.(k8stesting.CreateAction).GetObject().(*cmv1.CertificateRequest).DeepCopy()
 				req.UID = "cm-request-uid"
 				req.Spec.Username = "system:serviceaccount:kube-system:ovn"
+				if serviceAccount != "" {
+					req.Spec.Username = "system:serviceaccount:kube-system:" + serviceAccount
+				}
 				req.Status.Certificate = certificate
 				req.Status.Conditions = []cmv1.CertificateRequestCondition{
 					{Type: cmv1.CertificateRequestConditionApproved, Status: cmmeta.ConditionTrue},
@@ -107,6 +115,8 @@ func TestIPsecCertManagerSharesCSRIdentityAuthorization(t *testing.T) {
 					req.Spec.Request = []byte("other-csr")
 				case "wrong-creator":
 					req.Spec.Username = "system:serviceaccount:kube-system:kube-ovn-cni"
+				case "wrong-creator-v2":
+					req.Spec.Username = "system:serviceaccount:kube-system:ovn"
 				}
 				return true, req, nil
 			})
@@ -114,16 +124,16 @@ func TestIPsecCertManagerSharesCSRIdentityAuthorization(t *testing.T) {
 			require.NoError(t, indexer.Add(csr))
 			queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
 			t.Cleanup(queue.ShutDown)
-			c := &Controller{config: &Configuration{KubeClient: client, PodNamespace: "kube-system", CertManagerIPSecCert: true, CertManagerIssuerName: "kube-ovn", CertManagerClient: cm}, csrLister: certlisters.NewCertificateSigningRequestLister(indexer), addOrUpdateCsrQueue: queue}
+			c := &Controller{config: &Configuration{KubeClient: client, PodNamespace: "kube-system", ControllerServiceAccountName: serviceAccount, CertManagerIPSecCert: true, CertManagerIssuerName: "kube-ovn", CertManagerClient: cm}, csrLister: certlisters.NewCertificateSigningRequestLister(indexer), addOrUpdateCsrQueue: queue}
 			err := c.handleAddOrUpdateCsr(csr.Name)
-			if scenario == "collision" || scenario == "wrong-creator" {
+			if scenario == "collision" || scenario == "wrong-creator" || scenario == "wrong-creator-v2" {
 				require.ErrorContains(t, err, "conflicts")
 			} else {
 				require.NoError(t, err)
 			}
 			after, err := client.CertificatesV1().CertificateSigningRequests().Get(t.Context(), csr.Name, metav1.GetOptions{})
 			require.NoError(t, err)
-			if scenario == "authorized" {
+			if scenario == "authorized" || scenario == "authorized-v2" {
 				require.Equal(t, certificate, after.Status.Certificate)
 			} else {
 				require.Empty(t, after.Status.Certificate)

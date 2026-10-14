@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -88,7 +89,8 @@ func (c *Controller) signIPsecWithCertManager(csr *certv1.CertificateSigningRequ
 	if err != nil {
 		return err
 	}
-	if !bytes.Equal(created.Spec.Request, req.Spec.Request) || created.Spec.IsCA || created.Spec.IssuerRef != req.Spec.IssuerRef || !slices.Equal(created.Spec.Usages, req.Spec.Usages) || created.Spec.Duration == nil || *created.Spec.Duration != *req.Spec.Duration || !slices.Equal(created.OwnerReferences, req.OwnerReferences) || created.Spec.Username != "system:serviceaccount:"+c.config.PodNamespace+":ovn" {
+	serviceAccount := cmp.Or(c.config.ControllerServiceAccountName, defaultControllerServiceAccountName)
+	if !bytes.Equal(created.Spec.Request, req.Spec.Request) || created.Spec.IsCA || created.Spec.IssuerRef != req.Spec.IssuerRef || !slices.Equal(created.Spec.Usages, req.Spec.Usages) || created.Spec.Duration == nil || *created.Spec.Duration != *req.Spec.Duration || !slices.Equal(created.OwnerReferences, req.OwnerReferences) || created.Spec.Username != "system:serviceaccount:"+c.config.PodNamespace+":"+serviceAccount {
 		return errors.New("IPsec CertificateRequest conflicts with the authorized controller request")
 	}
 	approved, ready := false, false

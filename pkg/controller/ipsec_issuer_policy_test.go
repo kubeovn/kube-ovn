@@ -8,9 +8,12 @@ import (
 	"github.com/google/cel-go/cel"
 	"github.com/stretchr/testify/require"
 	admissionv1 "k8s.io/api/admissionregistration/v1"
+	appsv1 "k8s.io/api/apps/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	"sigs.k8s.io/yaml"
+
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestIPsecIssuerPoliciesMatchControllerContract(t *testing.T) {
@@ -23,12 +26,28 @@ func TestIPsecIssuerPoliciesMatchControllerContract(t *testing.T) {
 			require.NoError(t, err)
 			var policy *admissionv1.ValidatingAdmissionPolicy
 			var binding *admissionv1.ValidatingAdmissionPolicyBinding
+			var serviceAccount string
 			for document := range strings.SplitSeq(string(output), "\n---\n") {
 				var header struct {
 					Kind string `json:"kind"`
 				}
 				require.NoError(t, yaml.Unmarshal([]byte(document), &header))
 				switch header.Kind {
+				case "Deployment":
+					var deployment appsv1.Deployment
+					require.NoError(t, yaml.Unmarshal([]byte(document), &deployment))
+					if deployment.Name == "kube-ovn-controller" {
+						serviceAccount = deployment.Spec.Template.Spec.ServiceAccountName
+						var serviceAccountField string
+						for _, container := range deployment.Spec.Template.Spec.Containers {
+							for _, env := range container.Env {
+								if env.Name == util.EnvPodServiceAccount && env.ValueFrom != nil && env.ValueFrom.FieldRef != nil {
+									serviceAccountField = env.ValueFrom.FieldRef.FieldPath
+								}
+							}
+						}
+						require.Equal(t, "spec.serviceAccountName", serviceAccountField)
+					}
 				case "ValidatingAdmissionPolicy":
 					policy = new(admissionv1.ValidatingAdmissionPolicy)
 					require.NoError(t, yaml.UnmarshalStrict([]byte(document), policy))
@@ -39,7 +58,10 @@ func TestIPsecIssuerPoliciesMatchControllerContract(t *testing.T) {
 			}
 			require.NotNil(t, policy)
 			require.NotNil(t, binding)
-			c := &Controller{config: &Configuration{PodNamespace: "ipsec-test", CertManagerIssuerName: "test-issuer", KubeClient: fake.NewClientset(policy, binding)}}
+			require.NotEmpty(t, serviceAccount)
+			t.Setenv(util.EnvPodServiceAccount, serviceAccount)
+			require.Equal(t, serviceAccount, controllerServiceAccountName())
+			c := &Controller{config: &Configuration{PodNamespace: "ipsec-test", ControllerServiceAccountName: serviceAccount, CertManagerIssuerName: "test-issuer", KubeClient: fake.NewClientset(policy, binding)}}
 			require.NoError(t, c.verifyIPsecIssuerPolicy(t.Context()))
 		})
 	}
