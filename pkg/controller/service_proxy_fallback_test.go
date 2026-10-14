@@ -202,9 +202,10 @@ func TestServiceProxyFallbackRerouteLifecycle(t *testing.T) {
 			}
 			policies := serviceProxyFallbackPolicies(t, ctrl, subnet, "isServiceProxyFallbackReroutePolicy")
 			require.Len(t, policies, want)
-			if transition == "subnet-cidr" {
+			switch transition {
+			case "subnet-cidr":
 				require.Contains(t, policies[0].Match, "ip4.src == 10.18.0.0/16")
-			} else if transition == "service-cidr" {
+			case "service-cidr":
 				require.Contains(t, policies[0].Match, "ip4.dst == 10.112.0.0/12")
 			}
 			require.Len(t, serviceProxyFallbackPolicies(t, ctrl, other, "isServiceProxyFallbackReroutePolicy"), 2)
