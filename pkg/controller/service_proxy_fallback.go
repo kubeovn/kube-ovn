@@ -77,9 +77,9 @@ func (c *Controller) reconcileServiceProxyFallbackDropPolicy(subnet *kubeovnv1.S
 	return nil
 }
 
-// The node port group identifies the Pod's current node, independently of the
-// centralized gateway. Limit its scope to this subnet's addresses because the
-// same node can host Pods from subnets with different LB settings.
+// The subnet-node port group identifies the Pod's node, independently of the
+// centralized gateway. Scope the policy to the subnet's ingress port and
+// addresses so overlapping VLAN subnets cannot share or steal policies.
 func (c *Controller) reconcileServiceProxyFallbackReroutePolicy(subnet *kubeovnv1.Subnet) error {
 	owned := map[string]string{"isServiceProxyFallbackReroutePolicy": "true"}
 	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, buildPolicyRouteExternalIDs(subnet.Name, owned), true)
@@ -87,19 +87,23 @@ func (c *Controller) reconcileServiceProxyFallbackReroutePolicy(subnet *kubeovnv
 		return fmt.Errorf("list service proxy fallback reroute policies for subnet %s: %w", subnet.Name, err)
 	}
 	desired := make(map[string]struct{})
-	serviceLBEnabled := c.config.EnableOvnLB && subnetEnablesServiceLB(subnet, c.config.EnableOvnLB)
-	eligible := c.subnetUsesNodeServiceProxy(subnet) && subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType && !serviceLBEnabled
-	if eligible {
+	desiredGroups := make(map[string]struct{})
+	if c.needsServiceProxyFallbackReroute(subnet) {
 		nodes, listErr := c.nodesLister.List(labels.Everything())
 		if listErr != nil {
 			return fmt.Errorf("list nodes for centralized service proxy fallback on subnet %s: %w", subnet.Name, listErr)
 		}
+		portName := ovs.LogicalRouterPortName(c.config.ClusterRouter, subnet.Name)
 		for _, node := range nodes {
 			joinIP := strings.TrimSpace(node.Annotations[util.IPAddressAnnotation])
 			if joinIP == "" {
 				continue
 			}
-			nodePortName := strings.ReplaceAll(util.NodeLspName(node.Name), "-", ".")
+			nodePortName := serviceProxyFallbackPortGroupName(subnet.Name, node.Name)
+			if err := c.syncServiceProxyFallbackPortGroup(subnet, node.Name); err != nil {
+				return err
+			}
+			desiredGroups[nodePortName] = struct{}{}
 			for subnetCIDR := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
 				if subnetCIDR == "" {
 					continue
@@ -107,7 +111,7 @@ func (c *Controller) reconcileServiceProxyFallbackReroutePolicy(subnet *kubeovnv
 				protocol := util.CheckProtocol(subnetCIDR)
 				ipSuffix := getIPSuffix(protocol)
 				for _, serviceCIDR := range c.serviceCIDRsByProtocol(protocol) {
-					match := fmt.Sprintf("%s.src == $%s_%s && %s.src == %s && %s.dst == %s", ipSuffix, nodePortName, ipSuffix, ipSuffix, subnetCIDR, ipSuffix, serviceCIDR)
+					match := fmt.Sprintf("inport == %q && %s.src == $%s_%s && %s.src == %s && %s.dst == %s", portName, ipSuffix, nodePortName, ipSuffix, ipSuffix, subnetCIDR, ipSuffix, serviceCIDR)
 					var nextHop string
 					v4, v6 := util.SplitStringIP(joinIP)
 					if protocol == kubeovnv1.ProtocolIPv4 {
@@ -145,7 +149,7 @@ func (c *Controller) reconcileServiceProxyFallbackReroutePolicy(subnet *kubeovnv
 			return fmt.Errorf("delete stale centralized service proxy fallback policy %s: %w", policy.UUID, err)
 		}
 	}
-	return nil
+	return c.deleteStaleServiceProxyFallbackPortGroups(subnet, desiredGroups)
 }
 
 func (c *Controller) deleteServiceProxyFallbackPolicies(subnet *kubeovnv1.Subnet, owner string) error {
@@ -158,6 +162,9 @@ func (c *Controller) deleteServiceProxyFallbackPolicies(subnet *kubeovnv1.Subnet
 		if err := c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
 			return fmt.Errorf("delete %s policy %s: %w", owner, policy.UUID, err)
 		}
+	}
+	if owner == "isServiceProxyFallbackReroutePolicy" {
+		return c.deleteStaleServiceProxyFallbackPortGroups(subnet, nil)
 	}
 	return nil
 }

@@ -1062,6 +1062,10 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 				klog.Errorf("failed to add port %s to port group %s: %v", portName, nodePortGroup, err)
 				return err
 			}
+			if err := c.syncServiceProxyFallbackPodPort(subnet, node.Name, portName); err != nil {
+				klog.Errorf("failed to update service proxy fallback port groups for port %s: %v", portName, err)
+				return err
+			}
 
 			if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
 				cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)

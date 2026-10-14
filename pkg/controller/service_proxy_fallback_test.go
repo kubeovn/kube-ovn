@@ -2,14 +2,15 @@ package controller
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -211,7 +212,7 @@ func TestServiceProxyFallbackCentralizedUsesPodNode(t *testing.T) {
 			v4, v6 = "100.64.0.3", "fd00:100:64::3"
 		}
 		if policy.ExternalIDs["serviceCIDR"] == "10.96.0.0/12" {
-			require.Equal(t, fmt.Sprintf("ip4.src == $node.%s_ip4 && ip4.src == 10.16.0.0/16 && ip4.dst == 10.96.0.0/12", strings.ReplaceAll(node, "-", ".")), policy.Match)
+			require.Equal(t, fmt.Sprintf(`inport == "ovn-cluster-ovn-default" && ip4.src == $%s_ip4 && ip4.src == 10.16.0.0/16 && ip4.dst == 10.96.0.0/12`, serviceProxyFallbackPortGroupName(subnet.Name, node)), policy.Match)
 			require.Equal(t, []string{v4}, policy.Nexthops)
 		} else {
 			require.Equal(t, []string{v6}, policy.Nexthops)
@@ -341,4 +342,77 @@ func TestServiceProxyFallbackNodeEvents(t *testing.T) {
 			queue.Done(key)
 		})
 	}
+}
+
+func TestServiceProxyFallbackSecondaryNetworkSurvivesNodePGRefresh(t *testing.T) {
+	const provider = "secondary.default.ovn"
+	primary := &kubeovnv1.Subnet{Name: "custom-primary", Spec: kubeovnv1.SubnetSpec{Vpc: "custom", CIDRBlock: "192.168.0.0/24"}}
+	secondary := &kubeovnv1.Subnet{Name: "secondary", Spec: kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc, Provider: provider, CIDRBlock: "10.16.0.0/16", GatewayType: kubeovnv1.GWCentralizedType, EnableLb: new(false)}}
+	node := &corev1.Node{Name: "worker-1", Annotations: map[string]string{util.IPAddressAnnotation: "100.64.0.2", util.PortNameAnnotation: "node-worker-1"}}
+	pod := &corev1.Pod{Name: "client", Namespace: "default", Spec: corev1.PodSpec{NodeName: node.Name}, Status: corev1.PodStatus{Phase: corev1.PodRunning}, Annotations: map[string]string{
+		nadv1.NetworkAttachmentAnnot: `[{"name":"secondary"}]`,
+		util.LogicalRouterAnnotation: "custom", util.LogicalSwitchAnnotation: primary.Name,
+		util.AllocatedAnnotation: "true", util.IPAddressAnnotation: "192.168.0.2",
+		fmt.Sprintf(util.AllocatedAnnotationTemplate, provider):     "true",
+		fmt.Sprintf(util.IPAddressAnnotationTemplate, provider):     "10.16.0.2",
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): secondary.Name,
+	}}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{primary, secondary}, Pods: []*corev1.Pod{pod}, Nodes: []*corev1.Node{node},
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{{Name: "secondary", Namespace: "default", Spec: nadv1.NetworkAttachmentDefinitionSpec{Config: `{"cniVersion":"0.3.1","name":"secondary","type":"kube-ovn"}`}}},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	ctrl.config.EnableOvnLB = false
+	ctrl.config.EnableNP = false
+	nets, err := ctrl.getPodKubeovnNets(pod)
+	require.NoError(t, err)
+	require.Len(t, nets, 2)
+	require.True(t, ctrl.subnetUsesNodeServiceProxy(secondary))
+	ctrl.serviceCIDRStore = util.NewServiceCIDRStore("10.96.0.0/12")
+	ctrl.OVNNbClient = newInMemoryOVNNbClient(t)
+	require.NoError(t, ctrl.OVNNbClient.CreateLogicalRouter(ctrl.config.ClusterRouter))
+	require.NoError(t, ctrl.OVNNbClient.CreateBareLogicalSwitch(secondary.Name))
+	require.NoError(t, ctrl.OVNNbClient.CreateBareLogicalSwitch(primary.Name))
+	require.NoError(t, ctrl.OVNNbClient.CreateBareLogicalSwitchPort(primary.Name, ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider), "192.168.0.2", "00:00:00:00:00:02"))
+	port := ovs.PodNameToPortName(pod.Name, pod.Namespace, provider)
+	require.NoError(t, ctrl.OVNNbClient.CreateBareLogicalSwitchPort(secondary.Name, port, "10.16.0.2", "00:00:00:00:16:02"))
+	require.NoError(t, ctrl.OVNNbClient.CreatePortGroup("node.worker.1", map[string]string{"node": node.Name, networkPolicyKey: "node/worker-1"}))
+	require.NoError(t, ctrl.OVNNbClient.PortGroupAddPorts("node.worker.1", port))
+	require.NoError(t, ctrl.reconcileServiceProxyFallbackReroutePolicy(secondary))
+	require.Len(t, serviceProxyFallbackPolicies(t, ctrl, secondary, "isServiceProxyFallbackReroutePolicy"), 1)
+	before, err := ctrl.OVNNbClient.GetPortGroup("node.worker.1", false)
+	require.NoError(t, err)
+	require.Len(t, before.Ports, 1)
+	require.NoError(t, ctrl.checkAndUpdateNodePortGroup())
+	after, err := ctrl.OVNNbClient.GetPortGroup("node.worker.1", false)
+	require.NoError(t, err)
+	require.Equal(t, before.Ports, after.Ports, "retain the eligible secondary port without adding the custom VPC primary port")
+}
+
+func TestServiceProxyFallbackOverlappingVLANOwnership(t *testing.T) {
+	fc, a := newServiceProxyFallbackController(t)
+	ctrl := fc.fakeController
+	ctrl.config.EnableOvnLB = false
+	a.Spec.GatewayType = kubeovnv1.GWCentralizedType
+	a.Spec.Vlan = "vlan-a"
+	a.Spec.LogicalGateway = true
+	b := a.DeepCopy()
+	b.Name = "other-vlan"
+	b.Spec.Vlan = "vlan-b"
+	require.NoError(t, util.ValidateCidrConflict(*b, []kubeovnv1.Subnet{*a}))
+	require.NoError(t, ctrl.reconcileServiceProxyFallbackReroutePolicy(a))
+	require.Len(t, serviceProxyFallbackPolicies(t, ctrl, a, "isServiceProxyFallbackReroutePolicy"), 2)
+	require.NoError(t, ctrl.reconcileServiceProxyFallbackReroutePolicy(b))
+	require.Len(t, serviceProxyFallbackPolicies(t, ctrl, a, "isServiceProxyFallbackReroutePolicy"), 2, "reconciling another valid subnet must not steal this subnet's fallback rows")
+	bPolicies := serviceProxyFallbackPolicies(t, ctrl, b, "isServiceProxyFallbackReroutePolicy")
+	require.Len(t, bPolicies, 2)
+	for _, policy := range bPolicies {
+		require.Contains(t, policy.Match, `inport == "ovn-cluster-other-vlan"`)
+	}
+	require.NoError(t, ctrl.reconcileServiceProxyFallbackReroutePolicy(a))
+	require.ElementsMatch(t, bPolicies, serviceProxyFallbackPolicies(t, ctrl, b, "isServiceProxyFallbackReroutePolicy"))
+	require.NoError(t, ctrl.deleteServiceProxyFallbackPolicies(a, "isServiceProxyFallbackReroutePolicy"))
+	require.Empty(t, serviceProxyFallbackPolicies(t, ctrl, a, "isServiceProxyFallbackReroutePolicy"))
+	require.ElementsMatch(t, bPolicies, serviceProxyFallbackPolicies(t, ctrl, b, "isServiceProxyFallbackReroutePolicy"))
 }
