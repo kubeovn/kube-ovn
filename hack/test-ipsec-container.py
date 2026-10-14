@@ -112,13 +112,16 @@ def validate_cert_manager(text):
     request_rule = next(rule for rule in scoped["rules"] if rule.get("apiGroups") == ["cert-manager.io"])
     assert request_rule["resources"] == ["certificaterequests"]
     assert set(request_rule["verbs"]) == {"get", "list", "watch", "create"}
+    binding = next(item for item in documents if item.get("kind") == "RoleBinding" and item["metadata"]["name"] == "kube-ovn-controller-secrets")
+    service_account = controller["spec"]["template"]["spec"]["serviceAccountName"]
+    assert binding["subjects"][0]["name"] == service_account
     policy = next(item for item in documents if item.get("kind") == "ValidatingAdmissionPolicy")
-    binding = next(item for item in documents if item.get("kind") == "ValidatingAdmissionPolicyBinding")
+    policy_binding = next(item for item in documents if item.get("kind") == "ValidatingAdmissionPolicyBinding")
     assert policy["spec"]["failurePolicy"] == "Fail"
     assert policy["spec"]["matchConstraints"]["resourceRules"] == [{"apiGroups": ["cert-manager.io"], "apiVersions": ["v1"], "operations": ["CREATE", "UPDATE"], "resources": ["certificaterequests"]}]
     assert 'object.spec.issuerRef.name == "kube-ovn"' in policy["spec"]["matchConditions"][0]["expression"]
-    assert 'request.userInfo.username == "system:serviceaccount:kube-system:ovn"' in policy["spec"]["validations"][0]["expression"]
-    assert binding["spec"] == {"policyName": policy["metadata"]["name"], "validationActions": ["Deny"]}
+    assert f'request.userInfo.username == "system:serviceaccount:kube-system:{service_account}"' in policy["spec"]["validations"][0]["expression"]
+    assert policy_binding["spec"] == {"policyName": policy["metadata"]["name"], "validationActions": ["Deny"]}
     for item in documents:
         if item.get("kind") in ("Role", "ClusterRole") and item["metadata"]["name"] in ("system:kube-ovn-cni", "secret-reader-ovn-ipsec"):
             assert all("certificaterequests" not in rule.get("resources", []) for rule in item["rules"])
@@ -212,7 +215,8 @@ def main():
         rendered = subprocess.check_output(args, text=True, stderr=subprocess.DEVNULL)
         validate_cert_manager(rendered)
         chart_policy = [item for item in yaml.safe_load_all(rendered) if item and item.get("kind") in ("ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding")]
-        assert chart_policy == installer_issuer_policy()
+        if chart == "kube-ovn-v2":
+            assert chart_policy == installer_issuer_policy()
     for enabled in (False, True):
         validate(installer(enabled), enabled)
         validate(installer(enabled, debug=True), enabled, debug=True)

@@ -23,7 +23,7 @@ spec:
   validations:
     - expression: >-
         (request.operation == "UPDATE" && object.spec == oldObject.spec) ||
-        request.userInfo.username == "system:serviceaccount:{{ .Values.namespace }}:ovn" &&
+        request.userInfo.username == "system:serviceaccount:{{ .Values.namespace }}:kube-ovn-controller" &&
         object.metadata.namespace == {{ .Values.namespace | toJson }}
       message: The IPsec ClusterIssuer accepts only authorized kube-ovn-controller requests
 ---
