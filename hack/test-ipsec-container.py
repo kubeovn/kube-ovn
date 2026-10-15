@@ -146,13 +146,27 @@ def installer(enabled, debug=False):
     return subprocess.check_output(["bash", "-c", script], env=env, text=True)
 
 
-def installer_issuer_policy():
+def installer_issuer_policy(resources=("validatingadmissionpolicies", "validatingadmissionpolicybindings"), discovery_status=0):
     source = (ROOT / "dist/images/install.sh").read_text()
     start = source.index('IPSEC_ISSUER_POLICY=""')
     end = source.index('IPSEC_CONTAINER=""', start)
-    script = 'kubectl() { echo validatingadmissionpolicies.admissionregistration.k8s.io; }\n' + source[start:end] + 'printf "%s\\n" "$IPSEC_ISSUER_POLICY"\n'
-    text = subprocess.check_output(["bash", "-c", script], env=dict(os.environ, CERT_MANAGER_IPSEC_CERT="true", CERT_MANAGER_ISSUER_NAME="kube-ovn"), text=True)
+    # Stream discovery output so a consumer that exits early closes the pipe
+    # before kubectl writes the next resource, as can happen with grep -q.
+    output = "".join(f"printf '%s\\n' {shlex.quote(resource + '.admissionregistration.k8s.io')}\nsleep 0.02\n" for resource in resources)
+    script = f"set -euo pipefail\nkubectl() {{\n{output}return {discovery_status}\n}}\n" + source[start:end] + 'printf "%s\\n" "$IPSEC_ISSUER_POLICY"\n'
+    text = subprocess.check_output(["bash", "-c", script], env=dict(os.environ, CERT_MANAGER_IPSEC_CERT="true", CERT_MANAGER_ISSUER_NAME="kube-ovn"), text=True, stderr=subprocess.PIPE)
     return [item for item in yaml.safe_load_all(text) if item]
+
+
+def validate_installer_discovery_failures():
+    for resources, status in ((("validatingadmissionpolicybindings",), 0), (("validatingadmissionpolicies",), 1)):
+        try:
+            installer_issuer_policy(resources, status)
+        except subprocess.CalledProcessError as error:
+            assert error.returncode == 1
+            assert "requires ValidatingAdmissionPolicy" in error.stderr
+        else:
+            raise AssertionError("IPsec installation must reject missing policies or failed API discovery")
 
 
 def validate_talos_installation():
@@ -184,6 +198,7 @@ def validate_talos_installation():
 
 def main():
     validate_talos_installation()
+    validate_installer_discovery_failures()
     source = (ROOT / "dist/images/install.sh").read_text()
     applied = source.index("kubectl apply -f kube-ovn.yaml")
     for component in ("daemonset/ovs-ovn", "daemonset/kube-ovn-cni"):

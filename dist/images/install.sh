@@ -8903,7 +8903,8 @@ if [[ "$CERT_MANAGER_IPSEC_CERT" == "true" ]]; then
     echo 'IPsec ClusterIssuer name is invalid' >&2
     exit 1
   fi
-  if ! kubectl api-resources --api-group=admissionregistration.k8s.io -o name | grep -qx 'validatingadmissionpolicies.admissionregistration.k8s.io'; then
+  # Consume all discovery output so kubectl cannot fail with SIGPIPE under pipefail.
+  if ! kubectl api-resources --api-group=admissionregistration.k8s.io -o name | grep -Fx 'validatingadmissionpolicies.admissionregistration.k8s.io' >/dev/null; then
     echo 'IPsec cert-manager authorization requires ValidatingAdmissionPolicy (Kubernetes >= 1.30)' >&2
     exit 1
   fi
