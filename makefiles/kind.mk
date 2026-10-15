@@ -873,7 +873,8 @@ kind-install-ovn-ipsec-cert-manager:
 	echo '{"apiVersion": "cert-manager.io/v1", "kind": "ClusterIssuer", "metadata": {"name": "kube-ovn"}, "spec": {"ca": {"secretName": "kube-ovn-ca"}}}' | \
 		kubectl apply -f -
 	kubectl wait clusterissuer/kube-ovn --for=condition=Ready --timeout=120s
-	@$(MAKE) CERT_MANAGER_IPSEC_CERT=true kind-install-ovn-ipsec
+	# Exercise automatic renewal without removing active node credentials.
+	@$(MAKE) IPSEC_CERT_DURATION=1200 CERT_MANAGER_IPSEC_CERT=true kind-install-ovn-ipsec
 
 .PHONY: kind-install-anp
 kind-install-anp: kind-load-image
