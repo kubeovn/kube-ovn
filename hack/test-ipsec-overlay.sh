@@ -180,6 +180,28 @@ kubectl -n kube-system rollout status daemonset/kube-ovn-cni --timeout=300s
 # beyond rendered manifests and the isolated runtime fixture.
 for node in "$overlay_control_plane" "$overlay_worker"; do
   cni_pod=$(kubectl -n kube-system get pod -l app=kube-ovn-cni --field-selector "spec.nodeName=$node" -o name)
+  # Prepared is ready for bootstrap before the controller activates IPsec.
+  # Wait for the owned runtime before inspecting IKE processes or leases.
+  for attempt in {1..120}; do
+    if kubectl -n kube-system exec "$cni_pod" -c ipsec -- python3 -c '
+import http.client,json,socket,sys
+with socket.socket(socket.AF_UNIX) as connection:
+    connection.settimeout(5)
+    connection.connect("/run/kube-ovn-ipsec/status.sock")
+    connection.sendall(b"GET /status HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+    response=http.client.HTTPResponse(connection)
+    response.begin()
+    status=json.load(response)
+sys.exit(response.status!=200 or status.get("phase")!="Running" or
+         not all(status.get(key) for key in ("runtimeHealthy","configurationApplied","protectionArmed")))' >/dev/null 2>&1; then
+      break
+    fi
+    if [[ "$attempt" == 120 ]]; then
+      echo "IPsec runtime on $node did not become active" >&2
+      exit 1
+    fi
+    sleep 1
+  done
   kubectl -n kube-system exec "$cni_pod" -c cni-server -- python3 -c '
 import os,subprocess
 pids=subprocess.check_output(["pidof","kube-ovn-daemon"],text=True).split()
