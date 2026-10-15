@@ -398,7 +398,9 @@ assert "SYS_NICE" not in init["securityContext"]["capabilities"]["add"]
 status=next(c for c in pod["status"]["initContainerStatuses"] if c["name"]=="ipsec-cleanup")
 assert status["state"]["terminated"]["exitCode"]==0, "cleanup init did not finish successfully"
 '
-    docker exec "$node" cat /etc/ovs_ipsec_keys/protection.json | python3 -c '
+    cleanup_key_dir=$(kubectl -n kube-system get "$cni_pod" -o jsonpath='{.spec.volumes[?(@.name=="ovs-ipsec-keys")].hostPath.path}')
+    [[ -n "$cleanup_key_dir" ]]
+    docker exec "$node" cat "$cleanup_key_dir/protection.json" | python3 -c '
 import json,sys
 reservation=json.load(sys.stdin)
 assert not reservation.get("required", False) and not any(reservation["indexes"]), "cleanup retained active protection intent"
