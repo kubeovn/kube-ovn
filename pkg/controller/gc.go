@@ -38,7 +38,7 @@ func (c *Controller) gc() error {
 		c.gcCustomLogicalRouter,
 		// The lsp gc is processed periodically by markAndCleanLSP, will not gc lsp when init
 		// The chassis gc is processed periodically (with the same run-once-at-startup
-		// guarantee from wait.Until) alongside markAndCleanLSP, will not gc chassis here.
+		// guarantee from wait.Until), will not gc chassis here.
 		c.gcLoadBalancer,
 		c.gcNetworkPolicy,
 		c.gcAdminNetworkPolicy,
@@ -558,13 +558,6 @@ func (c *Controller) markAndCleanLSP() error {
 		}
 		if vipsMap.Has(lsp.Name) {
 			// skip gc lsp for k8s host network vm pod or switch lb rule
-			continue
-		}
-		if c.isLSPExempt(lsp.Name) {
-			// skip gc for lsp in the GC exemption list; if the exemption is
-			// later removed, this lsp re-enters the mark-and-sweep below
-			// like any other newly-orphaned lsp, so it still gets a full
-			// GCInterval TOCTOU-safety window before being deleted
 			continue
 		}
 		if !lastNoPodLSP.Has(lsp.Name) {
@@ -1155,6 +1148,11 @@ func (c *Controller) gcChassis() error {
 	// ListChassis/DeleteChassis.
 	c.gcChassisMu.Lock()
 	defer c.gcChassisMu.Unlock()
+
+	// The isChassisExempt checks below are the only GC exemption in this
+	// file; it exists so an externally-managed (non-k8s) gateway chassis
+	// survives both this periodic GC and a controller restart. There is
+	// no equivalent exemption for LSP GC above.
 
 	klog.Infof("start to gc chassis")
 	chassises, err := c.OVNSbClient.ListChassis()

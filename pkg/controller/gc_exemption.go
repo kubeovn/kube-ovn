@@ -12,20 +12,28 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// gcExemptionSnapshot is an immutable, fully-parsed view of the GC exemption
-// ConfigMap. It is swapped atomically so that markAndCleanLSP (on the GC
-// ticker goroutine) and gcChassis (on both the GC ticker and the reactive
-// UpdateChassisTag path) always observe one consistent pair of exempt sets.
-type gcExemptionSnapshot struct {
+// chassisGCExemptionSnapshot is an immutable, parsed view of the chassis GC
+// exemption ConfigMap. It is swapped atomically so that gcChassis (reachable
+// from both the periodic GC ticker and the reactive UpdateChassisTag call)
+// always observes a consistent exempt set.
+//
+// This exemption is scoped to chassis only: it exists to stop GC from
+// deleting an externally-managed (non-k8s) gateway chassis, e.g. a hybrid
+// cluster where a non-k8s node's chassis would otherwise be removed every
+// time the controller restarts. LSP GC does not need an equivalent
+// exemption list: the vendor filter already applied to LSP/LS/LR GC (see
+// gcLogicalSwitch and friends, gated by --enable-external-vpc) keeps that
+// GC off non-Kube-OVN-owned objects, so a second, independent exemption
+// mechanism for LSPs would just be unused complexity.
+type chassisGCExemptionSnapshot struct {
 	// raw is the last-seen ConfigMap data, used only to detect changes
 	// between ticks without reparsing. nil means the ConfigMap was absent.
 	raw     map[string]string
-	lsps    *strset.Set
 	chassis *strset.Set
 }
 
-func emptyGCExemptionSnapshot() *gcExemptionSnapshot {
-	return &gcExemptionSnapshot{lsps: strset.New(), chassis: strset.New()}
+func emptyChassisGCExemptionSnapshot() *chassisGCExemptionSnapshot {
+	return &chassisGCExemptionSnapshot{chassis: strset.New()}
 }
 
 // parseGCExemptionNames splits a comma-separated list of names, trimming
@@ -41,49 +49,43 @@ func parseGCExemptionNames(value string) *strset.Set {
 	return set
 }
 
-// resyncGCExemptions refreshes the controller's cached GC exemption lists
-// from the ovn-gc-exemption-config ConfigMap in the controller's own
-// namespace. It is called once per GC tick so markAndCleanLSP and gcChassis
-// share a consistent snapshot for that tick.
+// resyncChassisGCExemptions refreshes the controller's cached chassis GC
+// exemption list from the ovn-gc-exemption-config ConfigMap in the
+// controller's own namespace. It is called once per GC tick, right before
+// gcChassis, so a chassis removed from the exemption list via `kubectl-ko
+// gc-exemption --remove-chassis-exemption` is picked up on the very next
+// tick without requiring a controller restart.
 //
 // It fails open: a missing ConfigMap means no exemptions, and any other
 // read error leaves the previously cached snapshot untouched rather than
 // aborting the GC cycle or wiping out exemptions due to a transient error.
-func (c *Controller) resyncGCExemptions() {
+func (c *Controller) resyncChassisGCExemptions() {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.GCExemptionConfig)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			klog.Errorf("failed to get %s, %v", util.GCExemptionConfig, err)
 			return
 		}
-		if prev := c.gcExemptions.Load(); prev == nil || prev.raw != nil {
-			c.gcExemptions.Store(emptyGCExemptionSnapshot())
+		if prev := c.chassisGCExemptions.Load(); prev == nil || prev.raw != nil {
+			c.chassisGCExemptions.Store(emptyChassisGCExemptionSnapshot())
 		}
 		return
 	}
 
-	if prev := c.gcExemptions.Load(); prev != nil && maps.Equal(cm.Data, prev.raw) {
+	if prev := c.chassisGCExemptions.Load(); prev != nil && maps.Equal(cm.Data, prev.raw) {
 		return
 	}
 
-	c.gcExemptions.Store(&gcExemptionSnapshot{
+	c.chassisGCExemptions.Store(&chassisGCExemptionSnapshot{
 		raw:     maps.Clone(cm.Data),
-		lsps:    parseGCExemptionNames(cm.Data[gcexempt.LSPKey]),
 		chassis: parseGCExemptionNames(cm.Data[gcexempt.ChassisKey]),
 	})
 }
 
-// isLSPExempt reports whether the named logical switch port is currently
-// exempt from GC. A nil snapshot (before the first tick has run) means no
-// exemptions, never "everything exempt".
-func (c *Controller) isLSPExempt(name string) bool {
-	snap := c.gcExemptions.Load()
-	return snap != nil && snap.lsps.Has(name)
-}
-
 // isChassisExempt reports whether the named chassis is currently exempt
-// from GC.
+// from GC. A nil snapshot (before the first tick has run) means no
+// exemptions, never "everything exempt".
 func (c *Controller) isChassisExempt(name string) bool {
-	snap := c.gcExemptions.Load()
+	snap := c.chassisGCExemptions.Load()
 	return snap != nil && snap.chassis.Has(name)
 }
