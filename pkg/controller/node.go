@@ -39,6 +39,7 @@ func (c *Controller) enqueueAddNode(obj any) {
 	klog.V(3).Infof("enqueue add node %s", key)
 	c.addNodeQueue.Add(key)
 	c.enqueueVpcBFDPortByNodeChange(nil, node)
+	c.enqueueCentralizedServiceProxySubnets()
 	c.enqueueTrafficDistributionServices()
 }
 
@@ -166,6 +167,9 @@ func (c *Controller) enqueueVpcBFDPortByNodeChange(oldNode, newNode *v1.Node) {
 func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	oldNode := oldObj.(*v1.Node)
 	newNode := newObj.(*v1.Node)
+	if oldNode.Annotations[util.IPAddressAnnotation] != newNode.Annotations[util.IPAddressAnnotation] {
+		c.enqueueCentralizedServiceProxySubnets()
+	}
 	nodeReadyChanged := nodeReady(oldNode) != nodeReady(newNode)
 	nodeLabelsChanged := !maps.Equal(oldNode.Labels, newNode.Labels)
 
@@ -215,6 +219,7 @@ func (c *Controller) enqueueDeleteNode(obj any) {
 	c.deletingNodeObjMap.Store(key, node)
 	c.deleteNodeQueue.Add(key)
 	c.enqueueVpcBFDPortByNodeChange(node, nil)
+	c.enqueueCentralizedServiceProxySubnets()
 	c.enqueueTrafficDistributionServices()
 }
 
@@ -956,24 +961,6 @@ func (c *Controller) fetchPodsOnNode(nodeName string) ([]string, error) {
 			continue
 		}
 
-		if pod.Annotations[util.LogicalRouterAnnotation] != c.config.ClusterRouter {
-			subnetName := pod.Annotations[util.LogicalSwitchAnnotation]
-			if subnetName == "" {
-				klog.V(4).Infof("Pod %s/%s is not on cluster router and has no logical switch annotation, skipping for VLAN check.", pod.Namespace, pod.Name)
-				continue
-			}
-
-			subnet, err := c.subnetsLister.Get(subnetName)
-			if err != nil {
-				klog.Errorf("failed to get subnet %s: %v", subnetName, err)
-				return nil, err
-			}
-
-			if subnet.Spec.Vlan == "" {
-				continue
-			}
-		}
-
 		podName := c.getNameByPod(pod)
 
 		podNets, err := c.getPodKubeovnNets(pod)
@@ -984,6 +971,12 @@ func (c *Controller) fetchPodsOnNode(nodeName string) ([]string, error) {
 
 		for _, podNet := range podNets {
 			if !isOvnSubnet(podNet.Subnet) {
+				continue
+			}
+			// Select each NIC independently: a custom-VPC primary network can
+			// coexist with a default-VPC secondary network that needs node routing.
+			// Keep VLAN ports for the existing node network-policy rules.
+			if podNet.Subnet.Spec.Vpc != c.config.ClusterRouter && podNet.Subnet.Spec.Vlan == "" {
 				continue
 			}
 
@@ -1057,7 +1050,7 @@ func (c *Controller) checkAndUpdateNodePortGroup() error {
 		}
 	}
 
-	return nil
+	return c.syncServiceProxyFallbackPortGroups()
 }
 
 func (c *Controller) UpdateChassisTag(node *v1.Node) error {
