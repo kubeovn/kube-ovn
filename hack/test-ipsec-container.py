@@ -169,6 +169,30 @@ def validate_installer_discovery_failures():
             raise AssertionError("IPsec installation must reject missing policies or failed API discovery")
 
 
+def validate_cleanup_ovs_assertions():
+    source = (ROOT / "hack/test-ipsec-overlay.sh").read_text()
+    start = source.index("      for key in certificate private_key ca_cert; do")
+    end = source.index("      /usr/share/openvswitch/scripts/ovs-ctl status", start)
+    script = '''set -euo pipefail
+ovs-vsctl() {
+  if [[ "${!#}" == "$IPSEC_TEST_OVS_FIELD" ]]; then
+    printf '%s\\n' "$IPSEC_TEST_OVS_VALUE"
+  else
+    printf '\\n'
+  fi
+  return "$IPSEC_TEST_OVS_STATUS"
+}
+''' + source[start:end]
+    cases = [("", "", 0, True), ("", "", 1, False)]
+    for field in ("other_config:certificate", "external_ids:ovn-ipsec-protection-lease"):
+        cases.extend((field, value, 0, False) for value in ("retained", '""'))
+    for field, value, status, expected_success in cases:
+        env = dict(os.environ, IPSEC_TEST_OVS_FIELD=field, IPSEC_TEST_OVS_VALUE=value, IPSEC_TEST_OVS_STATUS=str(status))
+        result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+        assert (result.returncode == 0) == expected_success, \
+            f"incorrect cleanup result for field={field!r}, value={value!r}, status={status}: {result.stderr}"
+
+
 def validate_talos_installation():
     # Follow the recursive Make target through install-chart, rather than
     # rendering Helm with values that the real installer never forwards.
@@ -199,6 +223,7 @@ def validate_talos_installation():
 def main():
     validate_talos_installation()
     validate_installer_discovery_failures()
+    validate_cleanup_ovs_assertions()
     source = (ROOT / "dist/images/install.sh").read_text()
     applied = source.index("kubectl apply -f kube-ovn.yaml")
     for component in ("daemonset/ovs-ovn", "daemonset/kube-ovn-cni"):
