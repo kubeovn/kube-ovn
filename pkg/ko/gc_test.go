@@ -133,6 +133,62 @@ func TestGCExemptionValidation(t *testing.T) {
 	}
 }
 
+func TestGCExemptionAddNormalizesExistingList(t *testing.T) {
+	app, _, _, _ := testApplication(t, gcExemptionTestConfigMap(map[string]string{gcexempt.ChassisKey: " b, ,a,b,, "}))
+
+	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "-a", "-c", "c"}))
+
+	client, err := app.newClient()
+	require.NoError(t, err)
+	cm, err := client.Kubernetes.CoreV1().ConfigMaps("ovn-system").Get(t.Context(), gcexempt.ConfigMapName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "a,b,c", cm.Data[gcexempt.ChassisKey])
+}
+
+func TestGCExemptionAddToConfigMapWithNilData(t *testing.T) {
+	app, _, _, _ := testApplication(t, gcExemptionTestConfigMap(nil))
+
+	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "-a", "-c", "foo"}))
+
+	client, err := app.newClient()
+	require.NoError(t, err)
+	cm, err := client.Kubernetes.CoreV1().ConfigMaps("ovn-system").Get(t.Context(), gcexempt.ConfigMapName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "foo", cm.Data[gcexempt.ChassisKey])
+}
+
+func TestGCExemptionAPIErrors(t *testing.T) {
+	errBoom := errors.New("boom")
+	tests := []struct {
+		name         string
+		verb         string
+		args         []string
+		existingData map[string]string
+	}{
+		{"add fails on get error", "get", []string{"gc-exemption", "-a", "-c", "foo"}, nil},
+		{"add fails on non-conflict update error", "update", []string{"gc-exemption", "-a", "-c", "foo"}, map[string]string{gcexempt.ChassisKey: "a"}},
+		{"list fails on get error", "get", []string{"gc-exemption", "-l"}, nil},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var objects []runtime.Object
+			if tt.existingData != nil {
+				objects = append(objects, gcExemptionTestConfigMap(tt.existingData))
+			}
+			app, _, _, _ := testApplication(t, objects...)
+			client, err := app.newClient()
+			require.NoError(t, err)
+			fakeClient, ok := client.Kubernetes.(*fake.Clientset)
+			require.True(t, ok)
+			fakeClient.PrependReactor(tt.verb, "configmaps", func(ktesting.Action) (bool, runtime.Object, error) {
+				return true, nil, errBoom
+			})
+
+			require.ErrorIs(t, app.Execute(t.Context(), tt.args), errBoom)
+		})
+	}
+}
+
 func TestGCExemptionAddRetriesOnConflict(t *testing.T) {
 	app, _, _, _ := testApplication(t, gcExemptionTestConfigMap(map[string]string{gcexempt.ChassisKey: "a"}))
 
