@@ -433,11 +433,15 @@ assert " ".join(str(reservation[key]) for key in ("lease","mark","reqid"))==sys.
       set -euo pipefail
       test ! -e /run/kube-ovn-ipsec-protection/required
       test -z "$(pidof charon || true)"
+      # Missing map keys produce empty output. Read separately so query errors
+      # cannot be mistaken for successfully removed keys.
       for key in certificate private_key ca_cert; do
-        test "$(ovs-vsctl --if-exists get Open_vSwitch . other_config:$key)" = "[]"
+        ovs_value=$(ovs-vsctl --if-exists get Open_vSwitch . other_config:$key)
+        test -z "$ovs_value" || { echo "cleanup retained OVS other_config:$key" >&2; exit 1; }
       done
       for key in ovn-ipsec-protection-node-uid ovn-ipsec-protection-lease ovn-ipsec-protection-mark ovn-ipsec-protection-reqid; do
-        test "$(ovs-vsctl --if-exists get Open_vSwitch . external_ids:$key)" = "[]"
+        ovs_value=$(ovs-vsctl --if-exists get Open_vSwitch . external_ids:$key)
+        test -z "$ovs_value" || { echo "cleanup retained OVS external_ids:$key" >&2; exit 1; }
       done
       /usr/share/openvswitch/scripts/ovs-ctl status
       /usr/share/ovn/scripts/ovn-ctl status_controller
