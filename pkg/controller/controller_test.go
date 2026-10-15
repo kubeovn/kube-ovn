@@ -76,6 +76,7 @@ func alwaysReady() bool { return true }
 
 // FakeControllerOptions holds optional parameters for creating a fake controller
 type FakeControllerOptions struct {
+	Vips               []*kubeovnv1.Vip
 	Subnets            []*kubeovnv1.Subnet
 	IPs                []*kubeovnv1.IP
 	Vlans              []*kubeovnv1.Vlan
@@ -144,6 +145,14 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 			return nil, err
 		}
 	}
+	for _, vip := range opts.Vips {
+		_, err := kubeovnClient.KubeovnV1().Vips().Create(
+			context.Background(), vip, metav1.CreateOptions{},
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for _, ip := range opts.IPs {
 		_, err := kubeovnClient.KubeovnV1().IPs().Create(
 			context.Background(), ip, metav1.CreateOptions{},
@@ -178,6 +187,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
 	vpcNatGwInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
+	virtualIPInformer := kubeovnInformerFactory.Kubeovn().V1().Vips()
 
 	fakeInformers := &fakeControllerInformers{
 		vpcInformer:       vpcInformer,
@@ -209,6 +219,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		subnetSynced:            alwaysReady,
 		ipsLister:               ipInformer.Lister(),
 		ipSynced:                alwaysReady,
+		virtualIpsLister:        virtualIPInformer.Lister(),
+		virtualIpsSynced:        alwaysReady,
 		vlansLister:             vlanInformer.Lister(),
 		netAttachLister:         nadInformer.Lister(),
 		netAttachSynced:         alwaysReady,
