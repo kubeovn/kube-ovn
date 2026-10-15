@@ -1659,6 +1659,15 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 		return nil
 	}
 
+	if err := c.reconcileServiceProxyFallbackDropPolicy(subnet); err != nil {
+		klog.Error(err)
+		return err
+	}
+	if err := c.reconcileServiceProxyFallbackReroutePolicy(subnet); err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
 		// physical switch provide gw for this underlay subnet
 		pods, err := c.podsLister.Pods(metav1.NamespaceAll).List(labels.Everything())
@@ -2420,6 +2429,13 @@ func (c *Controller) deletePolicyRouteForDistributedSubnet(subnet *kubeovnv1.Sub
 }
 
 func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, gatewayType string, isDelete bool) error {
+	if isDelete && subnet.Spec.Vpc == c.config.ClusterRouter {
+		for _, owner := range []string{"isServiceProxyFallbackDropPolicy", "isServiceProxyFallbackReroutePolicy"} {
+			if err := c.deleteServiceProxyFallbackPolicies(subnet, owner); err != nil {
+				return err
+			}
+		}
+	}
 	if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter {
 		return nil
 	}
