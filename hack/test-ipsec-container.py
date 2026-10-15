@@ -193,6 +193,42 @@ ovs-vsctl() {
             f"incorrect cleanup result for field={field!r}, value={value!r}, status={status}: {result.stderr}"
 
 
+def validate_cleanup_xfrm_assertions():
+    source = (ROOT / "hack/test-ipsec-overlay.sh").read_text()
+    marker = "      /usr/share/ovn/scripts/ovn-ctl status_controller\n    '\n"
+    start = source.index(marker) + len(marker)
+    end = source.index("\n  done\n  for attempt in {1..60}; do", start)
+    script = '''set -euo pipefail
+node=kind-node
+ovs_pod=ovs-pod
+declare -A cleanup_lease=([kind-node]="lease 123 456")
+kubectl() {
+  echo 'RTNETLINK answers: Operation not permitted' >&2
+  return 1
+}
+docker() {
+  [[ "$*" == 'exec kind-node ip xfrm policy' ]] || return 95
+  printf '%s\\n' "$IPSEC_TEST_XFRM_POLICIES"
+  return "$IPSEC_TEST_XFRM_STATUS"
+}
+''' + source[start:end]
+    cases = [
+        ("", 0, True),
+        ("mark 0x7c/0xffffffff", 0, True),
+        ("mark 0x7b/0xffffffff", 0, False),
+        ("mark 123/0xffffffff", 0, False),
+        ("", 1, False),
+        ("mark 0x7c/0xffffffff", 1, False),
+    ]
+    for policies, status, expected_success in cases:
+        env = dict(os.environ, IPSEC_TEST_XFRM_POLICIES=policies, IPSEC_TEST_XFRM_STATUS=str(status))
+        result = subprocess.run(["bash", "-c", script], env=env, capture_output=True, text=True)
+        assert (result.returncode == 0) == expected_success, \
+            f"incorrect XFRM cleanup result for policies={policies!r}, status={status}: {result.stderr}"
+        assert ("Cleanup init exited:" in result.stdout) == expected_success, \
+            "cleanup must report success only after a successful policy query without owned guards"
+
+
 def validate_talos_installation():
     # Follow the recursive Make target through install-chart, rather than
     # rendering Helm with values that the real installer never forwards.
@@ -224,6 +260,7 @@ def main():
     validate_talos_installation()
     validate_installer_discovery_failures()
     validate_cleanup_ovs_assertions()
+    validate_cleanup_xfrm_assertions()
     source = (ROOT / "dist/images/install.sh").read_text()
     applied = source.index("kubectl apply -f kube-ovn.yaml")
     for component in ("daemonset/ovs-ovn", "daemonset/kube-ovn-cni"):
