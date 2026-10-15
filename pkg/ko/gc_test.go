@@ -23,20 +23,46 @@ func gcExemptionTestConfigMap(data map[string]string) *corev1.ConfigMap {
 func TestGCExemptionAddCreatesConfigMapWhenAbsent(t *testing.T) {
 	app, _, _, _ := testApplication(t)
 
-	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--add-exemption", "--type=lsp", "--name=foo"}))
+	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--add-chassis-exemption", "--chassis-name=foo"}))
 
 	client, err := app.newClient()
 	require.NoError(t, err)
 	cm, err := client.Kubernetes.CoreV1().ConfigMaps("ovn-system").Get(t.Context(), gcexempt.ConfigMapName, metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Equal(t, "foo", cm.Data[gcexempt.LSPKey])
+	require.Equal(t, "foo", cm.Data[gcexempt.ChassisKey])
+}
+
+func TestGCExemptionShorthandFlags(t *testing.T) {
+	// Each action gets its own Application: flag values on a *cobra.Command
+	// are not reset between repeated Execute calls on the same instance, so
+	// reusing one app across -a/-l/-r here would leak the previous action's
+	// flag into the next parse.
+	addApp, _, _, _ := testApplication(t)
+	require.NoError(t, addApp.Execute(t.Context(), []string{"gc-exemption", "-a", "-c", "foo"}))
+	client, err := addApp.newClient()
+	require.NoError(t, err)
+	cm, err := client.Kubernetes.CoreV1().ConfigMaps("ovn-system").Get(t.Context(), gcexempt.ConfigMapName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "foo", cm.Data[gcexempt.ChassisKey])
+
+	listApp, _, out, _ := testApplication(t, gcExemptionTestConfigMap(map[string]string{gcexempt.ChassisKey: "foo"}))
+	require.NoError(t, listApp.Execute(t.Context(), []string{"gc-exemption", "-l"}))
+	require.Contains(t, out.String(), "foo")
+
+	removeApp, _, _, _ := testApplication(t, gcExemptionTestConfigMap(map[string]string{gcexempt.ChassisKey: "foo"}))
+	require.NoError(t, removeApp.Execute(t.Context(), []string{"gc-exemption", "-r", "-c", "foo"}))
+	client, err = removeApp.newClient()
+	require.NoError(t, err)
+	cm, err = client.Kubernetes.CoreV1().ConfigMaps("ovn-system").Get(t.Context(), gcexempt.ConfigMapName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Empty(t, cm.Data[gcexempt.ChassisKey])
 }
 
 func TestGCExemptionAddDedupesAndSorts(t *testing.T) {
 	app, _, _, _ := testApplication(t, gcExemptionTestConfigMap(map[string]string{gcexempt.ChassisKey: "b,a"}))
 
-	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--add-exemption", "--type=chassis", "--name=a"}))
-	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--add-exemption", "--type=chassis", "--name=c"}))
+	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--add-chassis-exemption", "--chassis-name=a"}))
+	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--add-chassis-exemption", "--chassis-name=c"}))
 
 	client, err := app.newClient()
 	require.NoError(t, err)
@@ -48,7 +74,7 @@ func TestGCExemptionAddDedupesAndSorts(t *testing.T) {
 func TestGCExemptionRemoveIsNoOpWhenConfigMapMissing(t *testing.T) {
 	app, _, _, _ := testApplication(t)
 
-	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--remove-exemption", "--type=lsp", "--name=foo"}))
+	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--remove-chassis-exemption", "--chassis-name=foo"}))
 
 	client, err := app.newClient()
 	require.NoError(t, err)
@@ -60,33 +86,31 @@ func TestGCExemptionRemoveIsNoOpWhenConfigMapMissing(t *testing.T) {
 }
 
 func TestGCExemptionRemoveDeletesNameButKeepsOthers(t *testing.T) {
-	app, _, _, _ := testApplication(t, gcExemptionTestConfigMap(map[string]string{gcexempt.LSPKey: "a,b"}))
+	app, _, _, _ := testApplication(t, gcExemptionTestConfigMap(map[string]string{gcexempt.ChassisKey: "a,b"}))
 
-	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--remove-exemption", "--type=lsp", "--name=a"}))
+	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--remove-chassis-exemption", "--chassis-name=a"}))
 
 	client, err := app.newClient()
 	require.NoError(t, err)
 	cm, err := client.Kubernetes.CoreV1().ConfigMaps("ovn-system").Get(t.Context(), gcexempt.ConfigMapName, metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Equal(t, "b", cm.Data[gcexempt.LSPKey])
+	require.Equal(t, "b", cm.Data[gcexempt.ChassisKey])
 }
 
 func TestGCExemptionListPrintsCurrentState(t *testing.T) {
 	app, _, out, _ := testApplication(t, gcExemptionTestConfigMap(map[string]string{
-		gcexempt.LSPKey:     "a,b",
 		gcexempt.ChassisKey: "c",
 	}))
 
-	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--list"}))
-	require.Contains(t, out.String(), "a,b")
+	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--list-chassis-exemptions"}))
 	require.Contains(t, out.String(), "c")
 }
 
 func TestGCExemptionListReportsNoExemptionsWhenMissing(t *testing.T) {
 	app, _, out, _ := testApplication(t)
 
-	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--list"}))
-	require.Contains(t, out.String(), "no GC exemptions configured")
+	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--list-chassis-exemptions"}))
+	require.Contains(t, out.String(), "no chassis GC exemptions configured")
 }
 
 func TestGCExemptionValidation(t *testing.T) {
@@ -94,12 +118,10 @@ func TestGCExemptionValidation(t *testing.T) {
 		name string
 		args []string
 	}{
-		{"both add and remove", []string{"gc-exemption", "--add-exemption", "--remove-exemption", "--type=lsp", "--name=foo"}},
-		{"neither action", []string{"gc-exemption", "--type=lsp", "--name=foo"}},
-		{"missing type", []string{"gc-exemption", "--add-exemption", "--name=foo"}},
-		{"invalid type", []string{"gc-exemption", "--add-exemption", "--type=bogus", "--name=foo"}},
-		{"empty name", []string{"gc-exemption", "--add-exemption", "--type=lsp", "--name= "}},
-		{"name with comma", []string{"gc-exemption", "--add-exemption", "--type=lsp", "--name=a,b"}},
+		{"both add and remove", []string{"gc-exemption", "--add-chassis-exemption", "--remove-chassis-exemption", "--chassis-name=foo"}},
+		{"neither action", []string{"gc-exemption", "--chassis-name=foo"}},
+		{"empty name", []string{"gc-exemption", "--add-chassis-exemption", "--chassis-name= "}},
+		{"name with comma", []string{"gc-exemption", "--add-chassis-exemption", "--chassis-name=a,b"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -112,7 +134,7 @@ func TestGCExemptionValidation(t *testing.T) {
 }
 
 func TestGCExemptionAddRetriesOnConflict(t *testing.T) {
-	app, _, _, _ := testApplication(t, gcExemptionTestConfigMap(map[string]string{gcexempt.LSPKey: "a"}))
+	app, _, _, _ := testApplication(t, gcExemptionTestConfigMap(map[string]string{gcexempt.ChassisKey: "a"}))
 
 	client, err := app.newClient()
 	require.NoError(t, err)
@@ -128,9 +150,9 @@ func TestGCExemptionAddRetriesOnConflict(t *testing.T) {
 		return false, nil, nil
 	})
 
-	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--add-exemption", "--type=lsp", "--name=b"}))
+	require.NoError(t, app.Execute(t.Context(), []string{"gc-exemption", "--add-chassis-exemption", "--chassis-name=b"}))
 
 	cm, err := fakeClient.CoreV1().ConfigMaps("ovn-system").Get(t.Context(), gcexempt.ConfigMapName, metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Equal(t, "a,b", cm.Data[gcexempt.LSPKey])
+	require.Equal(t, "a,b", cm.Data[gcexempt.ChassisKey])
 }

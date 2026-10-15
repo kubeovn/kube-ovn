@@ -135,13 +135,14 @@ type Controller struct {
 	evpnConfLister atomic.Pointer[kubeovnlister.EvpnConfLister]
 	evpnConfSynced cache.InformerSynced
 
-	// gcExemptions is refreshed once per GC tick (resyncGCExemptions) and
-	// read by markAndCleanLSP and gcChassis, which (after adding gcChassis
-	// to the periodic GC ticker) may run concurrently with the reactive
-	// gcChassis call from UpdateChassisTag. An atomic pointer to an
-	// immutable snapshot keeps those reads race-free without locking the
-	// hot GC path, matching bgpConfLister/evpnConfLister above.
-	gcExemptions atomic.Pointer[gcExemptionSnapshot]
+	// chassisGCExemptions is refreshed once per GC tick
+	// (resyncChassisGCExemptions) and read by gcChassis, which (after
+	// adding gcChassis to the periodic GC ticker) may run concurrently
+	// with the reactive gcChassis call from UpdateChassisTag. An atomic
+	// pointer to an immutable snapshot keeps those reads race-free without
+	// locking the hot GC path, matching bgpConfLister/evpnConfLister
+	// above. This exemption list is chassis-only; see gc_exemption.go.
+	chassisGCExemptions atomic.Pointer[chassisGCExemptionSnapshot]
 	// gcChassisMu serializes gcChassis against its two call sites: the
 	// periodic GC ticker and the reactive call from UpdateChassisTag.
 	gcChassisMu sync.Mutex
@@ -1628,15 +1629,15 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 	if c.config.GCInterval != 0 {
 		go wait.Until(func() {
-			c.resyncGCExemptions()
 			if err := c.markAndCleanLSP(); err != nil {
 				klog.Errorf("gc lsp error: %v", err)
 			}
 			// gcChassis runs here instead of in c.gc()'s gcFunctions so that
-			// removing a chassis from the GC exemption list takes effect on
-			// the next tick without a controller restart; wait.Until runs
-			// this func immediately on the first iteration, preserving the
-			// previous run-once-at-startup behavior.
+			// removing a chassis from the chassis GC exemption list takes
+			// effect on the next tick without a controller restart;
+			// wait.Until runs this func immediately on the first iteration,
+			// preserving the previous run-once-at-startup behavior.
+			c.resyncChassisGCExemptions()
 			if err := c.gcChassis(); err != nil {
 				klog.Errorf("gc chassis error: %v", err)
 			}
