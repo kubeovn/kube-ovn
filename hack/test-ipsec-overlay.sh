@@ -446,7 +446,9 @@ assert " ".join(str(reservation[key]) for key in ("lease","mark","reqid"))==sys.
       /usr/share/openvswitch/scripts/ovs-ctl status
       /usr/share/ovn/scripts/ovn-ctl status_controller
     '
-    kubectl -n kube-system exec "$ovs_pod" -- ip xfrm policy | python3 -c '
+    # Inspect the shared node network namespace with the Kind node's privileges.
+    cleanup_policies=$(docker exec "$node" ip xfrm policy)
+    printf '%s\n' "$cleanup_policies" | python3 -c '
 import re,sys
 mark=int(sys.argv[1].split()[1])
 marks=re.findall(r"\bmark\s+(0x[0-9a-fA-F]+|[0-9]+)/", sys.stdin.read())
