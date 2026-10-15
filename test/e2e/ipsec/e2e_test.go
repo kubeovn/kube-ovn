@@ -23,7 +23,6 @@ import (
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
-	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 
 	"github.com/onsi/ginkgo/v2"
@@ -48,34 +47,33 @@ func TestE2E(t *testing.T) {
 
 // Old supported branches keep IPsec in cni-server. New installations must
 // execute certificate and runtime checks in the dedicated container.
-func runIPsecCommand(pod corev1.Pod, command string) (string, error) {
-	container := "cni-server"
-	for _, candidate := range pod.Spec.Containers {
-		if candidate.Name == "ipsec" {
-			container = "ipsec"
-			break
-		}
-	}
-	return e2ekubectl.RunKubectl(pod.Namespace, "exec", pod.Name, "-c", container, "--", "/bin/sh", "-c", command)
-}
-
-func currentCertificateCommand(pod corev1.Pod, remove bool) string {
+func ipsecContainerName(pod corev1.Pod) string {
 	for _, container := range pod.Spec.Containers {
 		if container.Name == "ipsec" {
-			operation := "cat"
-			if remove {
-				operation = "rm"
-			}
-			return `path=$(ovs-vsctl --if-exists get Open_vSwitch . other_config:certificate | tr -d '\"'); test -n "$path" && ` + operation + ` -- "$path"`
+			return container.Name
 		}
 	}
-	if remove {
-		return "rm /etc/ovs_ipsec_keys/ipsec-cert-*.pem"
+	return "cni-server"
+}
+
+func runIPsecCommand(f *framework.Framework, pod corev1.Pod, command string) (string, error) {
+	// The kubectl wrapper logs stdout, including certificate contents. Keep
+	// certificate material in memory and report only assertions or metadata.
+	stdout, stderr, err := framework.ExecShellInContainer(f, pod.Namespace, pod.Name, ipsecContainerName(pod), command)
+	if err != nil {
+		return "", fmt.Errorf("IPsec command in pod %s: %w: %s", pod.Name, err, stderr)
+	}
+	return stdout, nil
+}
+
+func currentCertificateCommand(pod corev1.Pod) string {
+	if ipsecContainerName(pod) == "ipsec" {
+		return `path=$(ovs-vsctl --if-exists get Open_vSwitch . other_config:certificate | tr -d '\"'); test -n "$path" && cat -- "$path"`
 	}
 	return "cat /etc/ovs_ipsec_keys/ipsec-cert-*.pem"
 }
 
-func checkPodXfrmState(pod corev1.Pod, node1IP, node2IP string) {
+func checkPodXfrmState(f *framework.Framework, pod corev1.Pod, node1IP, node2IP string) {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Checking ip xfrm state for pod " + pod.Name + " on node " + pod.Spec.NodeName + " from " + node1IP + " to " + node2IP)
@@ -83,7 +81,7 @@ func checkPodXfrmState(pod corev1.Pod, node1IP, node2IP string) {
 		// Return only SA selector headers, so kubectl diagnostics cannot expose
 		// the authentication/encryption keys in a full XFRM state dump.
 		cmd := fmt.Sprintf("ip xfrm state list src %s dst %s | sed -n '/^src /p'", node1IP, node2IP)
-		output, err := runIPsecCommand(pod, cmd)
+		output, err := runIPsecCommand(f, pod, cmd)
 		if err != nil {
 			return false, err
 		}
@@ -91,22 +89,22 @@ func checkPodXfrmState(pod corev1.Pod, node1IP, node2IP string) {
 	}, "xfrm state check passed")
 }
 
-func checkXfrmState(pods []corev1.Pod, node1IP, node2IP string) {
+func checkXfrmState(f *framework.Framework, pods []corev1.Pod, node1IP, node2IP string) {
 	ginkgo.GinkgoHelper()
 
 	for _, pod := range pods {
 		if ips := util.PodIPs(pod); !slices.Contains(ips, node1IP) && !slices.Contains(ips, node2IP) {
 			continue
 		}
-		checkPodXfrmState(pod, node1IP, node2IP)
-		checkPodXfrmState(pod, node2IP, node1IP)
+		checkPodXfrmState(f, pod, node1IP, node2IP)
+		checkPodXfrmState(f, pod, node2IP, node1IP)
 	}
 }
 
-func checkPodCACert(pod corev1.Pod, expectedCACerts []string) (bool, error) {
+func checkPodCACert(f *framework.Framework, pod corev1.Pod, expectedCACerts []string) (bool, error) {
 	ginkgo.GinkgoHelper()
 
-	actualCACert, err := runIPsecCommand(pod, "cat /etc/ipsec.d/cacerts/*")
+	actualCACert, err := runIPsecCommand(f, pod, "cat /etc/ipsec.d/cacerts/*")
 	if err != nil {
 		if strings.Contains(err.Error(), "No such file or directory") {
 			return false, nil
@@ -119,7 +117,7 @@ func checkPodCACert(pod corev1.Pod, expectedCACerts []string) (bool, error) {
 		return false, nil
 	}
 
-	output, err := runIPsecCommand(pod, "ipsec listcacerts")
+	output, err := runIPsecCommand(f, pod, "ipsec listcacerts")
 	if err != nil {
 		return false, fmt.Errorf("running ipsec listcacerts: %w", err)
 	}
@@ -127,17 +125,18 @@ func checkPodCACert(pod corev1.Pod, expectedCACerts []string) (bool, error) {
 	return true, nil
 }
 
-func getPodCert(pod corev1.Pod) (string, error) {
+func getPodCert(f *framework.Framework, pod corev1.Pod) (*x509.Certificate, error) {
 	ginkgo.GinkgoHelper()
 
-	output, err := runIPsecCommand(pod, currentCertificateCommand(pod, false))
+	output, err := runIPsecCommand(f, pod, currentCertificateCommand(pod))
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	if strings.TrimSpace(output) == "" {
-		return "", fmt.Errorf("pod %s has an empty IPsec certificate", pod.Name)
+	block, _ := pem.Decode([]byte(output))
+	if block == nil || block.Type != "CERTIFICATE" {
+		return nil, fmt.Errorf("pod %s has no valid IPsec certificate", pod.Name)
 	}
-	return fmt.Sprintf("%x", sha256.Sum256([]byte(output))), nil
+	return x509.ParseCertificate(block.Bytes)
 }
 
 func getValueFromSecret(cs clientset.Interface, namespace, secretName, fieldName string) (string, error) {
@@ -239,7 +238,7 @@ var _ = framework.OrderedDescribe("[group:ipsec]", func() {
 		framework.ExpectHaveLen(nodeIPs, len(nodeList.Items))
 
 		ginkgo.By("Checking ip xfrm state")
-		checkXfrmState(podList.Items, nodeIPs[0], nodeIPs[1])
+		checkXfrmState(f, podList.Items, nodeIPs[0], nodeIPs[1])
 
 		ginkgo.By("Restarting ds kube-ovn-cni")
 		daemonSetClient.RestartSync(ds)
@@ -250,14 +249,14 @@ var _ = framework.OrderedDescribe("[group:ipsec]", func() {
 		framework.ExpectHaveLen(podList.Items, len(nodeList.Items))
 
 		ginkgo.By("Checking ip xfrm state")
-		checkXfrmState(podList.Items, nodeIPs[0], nodeIPs[1])
+		checkXfrmState(f, podList.Items, nodeIPs[0], nodeIPs[1])
 
 		ginkgo.By("Restarting ds ovs-ovn")
 		ds = daemonSetClient.Get("ovs-ovn")
 		daemonSetClient.RestartSync(ds)
 
 		ginkgo.By("Checking ip xfrm state")
-		checkXfrmState(podList.Items, nodeIPs[0], nodeIPs[1])
+		checkXfrmState(f, podList.Items, nodeIPs[0], nodeIPs[1])
 	})
 
 	framework.ConformanceIt("Should keep working when rotating CA", ginkgo.Label("cert-manager"), func() {
@@ -294,9 +293,9 @@ var _ = framework.OrderedDescribe("[group:ipsec]", func() {
 		framework.ExpectHaveLen(podList.Items, len(nodeList.Items))
 
 		ginkgo.By("Getting kube-ovn-cni pod client certificates")
-		initialPodCerts := make(map[string]string)
+		initialPodCerts := make(map[string]*x509.Certificate)
 		for _, pod := range podList.Items {
-			cert, err := getPodCert(pod)
+			cert, err := getPodCert(f, pod)
 			framework.ExpectNoError(err)
 			initialPodCerts[pod.Spec.NodeName] = cert
 		}
@@ -320,20 +319,20 @@ var _ = framework.OrderedDescribe("[group:ipsec]", func() {
 			framework.Logf("Checking CA cert for pod %s", pod.Name)
 			expectedCerts := splitCerts(updatedCA)
 			framework.WaitUntil(0, time.Second*30, func(_ context.Context) (bool, error) {
-				return checkPodCACert(pod, expectedCerts)
+				return checkPodCACert(f, pod, expectedCerts)
 			}, "Verifying new trust bundle distributed")
 		}
 
 		// changing the CA cert will cause ovs-ipsec-monitor to spin up new
 		// tunnels and spin down the old ones so wait for that processing to
 		// complete before checking xfrm state.
-		checkXfrmState(podList.Items, nodeIPs[0], nodeIPs[1])
+		checkXfrmState(f, podList.Items, nodeIPs[0], nodeIPs[1])
 
 		ginkgo.By("Verifying client certificates not changed")
 		for _, pod := range podList.Items {
-			cert, err := getPodCert(pod)
+			cert, err := getPodCert(f, pod)
 			framework.ExpectNoError(err)
-			framework.ExpectEqual(initialPodCerts[pod.Spec.NodeName], cert)
+			framework.ExpectTrue(initialPodCerts[pod.Spec.NodeName].Equal(cert))
 		}
 
 		ginkgo.By("Setting new CA on issuer")
@@ -347,36 +346,47 @@ var _ = framework.OrderedDescribe("[group:ipsec]", func() {
 		_, err = cs.CoreV1().Secrets("cert-manager").Update(context.Background(), issuerSecret, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
 
-		ginkgo.By("Triggering client cert reissue on worker")
-		for _, pod := range podList.Items {
-			// clearing the certificate on disk and restarting the pod should
-			// trigger a new certificate request
-			_, err := runIPsecCommand(pod, currentCertificateCommand(pod, true))
+		// The dedicated agent renews while retaining its active generation. Deleting
+		// that certificate and restarting every node interrupts the encrypted
+		// network that the cert-manager webhook needs to issue replacements.
+		// The Kind fixture requests 20-minute certificates so renewal occurs
+		// within 12 minutes; leave room for reconciliation and signing.
+		renewalTimeout := 15 * time.Minute
+		if ipsecContainerName(podList.Items[0]) != "ipsec" {
+			ginkgo.By("Triggering legacy client cert reissue on worker")
+			for _, pod := range podList.Items {
+				_, err := runIPsecCommand(f, pod, "rm /etc/ovs_ipsec_keys/ipsec-cert-*.pem")
+				framework.ExpectNoError(err)
+			}
+			daemonSetClient.RestartSync(ds)
+			podList, err = daemonSetClient.GetPods(ds)
 			framework.ExpectNoError(err)
+			renewalTimeout = 30 * time.Second
 		}
-		daemonSetClient.RestartSync(ds)
 
-		podList, err = daemonSetClient.GetPods(ds)
+		ginkgo.By("Waiting for client certificates signed by the new CA")
+		caBlock, _ := pem.Decode([]byte(secondaryCA))
+		framework.ExpectNotNil(caBlock)
+		ca, err := x509.ParseCertificate(caBlock.Bytes)
 		framework.ExpectNoError(err)
-
-		ginkgo.By("Verifying new client cert issued on kube-ovn-cni pods")
-
-		for _, pod := range podList.Items {
-			framework.WaitUntil(0, time.Second*30, func(_ context.Context) (bool, error) {
-				cert, err := getPodCert(pod)
+		framework.WaitUntil(5*time.Second, renewalTimeout, func(_ context.Context) (bool, error) {
+			for _, pod := range podList.Items {
+				cert, err := getPodCert(f, pod)
 				if err != nil {
-					if strings.Contains(err.Error(), "No such file or directory") {
+					if ipsecContainerName(pod) != "ipsec" && strings.Contains(err.Error(), "No such file or directory") {
 						return false, nil
 					}
-					framework.ExpectNoError(err)
+					return false, err
 				}
-				framework.ExpectNotEqual(initialPodCerts[pod.Spec.NodeName], cert)
-				return true, nil
-			}, "Verifying new trust bundle distributed")
-		}
+				if initialPodCerts[pod.Spec.NodeName].Equal(cert) || cert.CheckSignatureFrom(ca) != nil {
+					return false, nil
+				}
+			}
+			return true, nil
+		}, "all IPsec certificates renewed by the new CA")
 
 		ginkgo.By("Verifying IPsec state is functional")
-		checkXfrmState(podList.Items, nodeIPs[0], nodeIPs[1])
+		checkXfrmState(f, podList.Items, nodeIPs[0], nodeIPs[1])
 
 		ginkgo.By("Removing initial CA from bundle")
 
@@ -390,13 +400,13 @@ var _ = framework.OrderedDescribe("[group:ipsec]", func() {
 
 		for _, pod := range podList.Items {
 			framework.WaitUntil(0, time.Second*30, func(_ context.Context) (bool, error) {
-				return checkPodCACert(pod, splitCerts(secondaryCA))
+				return checkPodCACert(f, pod, splitCerts(secondaryCA))
 			}, "Verifying new trust bundle distributed")
 		}
 
 		ginkgo.By("Verifying IPsec state is functional")
 
-		checkXfrmState(podList.Items, nodeIPs[0], nodeIPs[1])
+		checkXfrmState(f, podList.Items, nodeIPs[0], nodeIPs[1])
 	})
 })
 
