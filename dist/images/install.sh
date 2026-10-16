@@ -36,6 +36,8 @@ LS_DNAT_MOD_DL_DST=${LS_DNAT_MOD_DL_DST:-true}
 LS_CT_SKIP_DST_LPORT_IPS=${LS_CT_SKIP_DST_LPORT_IPS:-true}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-false}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
+# Set to false to preserve CNI plugins already installed on the host.
+INSTALL_CNI_PLUGINS=${INSTALL_CNI_PLUGINS:-true}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 ENABLE_NFTABLE_LB_SVC=${ENABLE_NFTABLE_LB_SVC:-true}
 ENABLE_NAT_GW=${ENABLE_NAT_GW:-true}
@@ -9227,6 +9229,7 @@ ${TPROXY_SECURITY_CONTEXT}
         imagePullPolicy: $IMAGE_PULL_POLICY
         command:
           - /kube-ovn/install-cni.sh
+          - --install-cni-plugins=$INSTALL_CNI_PLUGINS
           - --cni-conf-name=${CNI_CONFIG_PRIORITY}-kube-ovn.conflist
         env:
           - name: POD_IPS

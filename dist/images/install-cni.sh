@@ -21,6 +21,27 @@ install_binary(){
   fi
 }
 
+install_cni_plugins=true
+daemon_args=()
+for arg in "$@"; do
+  case "$arg" in
+    --install-cni-plugins=*)
+      install_cni_plugins="${arg#*=}"
+      ;;
+    *)
+      daemon_args+=("$arg")
+      ;;
+  esac
+done
+
+case "$install_cni_plugins" in
+  true|false)
+    ;;
+  *)
+    exit_with_error "--install-cni-plugins must be true or false"
+    ;;
+esac
+
 mkdir -p /usr/local/bin
 install_binary /kube-ovn/kubectl-ko /usr/local/bin/kubectl-ko
 chmod +x /usr/local/bin/kubectl-ko
@@ -39,22 +60,25 @@ done
 CNI_BIN_SRC=/kube-ovn/kube-ovn
 CNI_BIN_DST=/opt/cni/bin/kube-ovn
 
-LOOPBACK_BIN_SRC=/loopback
-LOOPBACK_BIN_DST=/opt/cni/bin/loopback
-
-PORTMAP_BIN_SRC=/portmap
-PORTMAP_BIN_DST=/opt/cni/bin/portmap
-
-MACVLAN_BIN_SRC=/macvlan
-MACVLAN_BIN_DST=/opt/cni/bin/macvlan
-
-IPVLAN_BIN_SRC=/ipvlan
-IPVLAN_BIN_DST=/opt/cni/bin/ipvlan
-
-install_binary "$LOOPBACK_BIN_SRC" "$LOOPBACK_BIN_DST"
-install_binary "$PORTMAP_BIN_SRC" "$PORTMAP_BIN_DST"
 bash /kube-ovn/install-cni-bundle.sh "$CNI_BIN_SRC" "$CNI_BIN_DST"
-install_binary "$MACVLAN_BIN_SRC" "$MACVLAN_BIN_DST"
-install_binary "$IPVLAN_BIN_SRC" "$IPVLAN_BIN_DST"
 
-./kube-ovn-daemon --install-cni-config $@ || exit_with_error "Failed to install cni config"
+if [[ "$install_cni_plugins" == true ]]; then
+  LOOPBACK_BIN_SRC=/loopback
+  LOOPBACK_BIN_DST=/opt/cni/bin/loopback
+
+  PORTMAP_BIN_SRC=/portmap
+  PORTMAP_BIN_DST=/opt/cni/bin/portmap
+
+  MACVLAN_BIN_SRC=/macvlan
+  MACVLAN_BIN_DST=/opt/cni/bin/macvlan
+
+  IPVLAN_BIN_SRC=/ipvlan
+  IPVLAN_BIN_DST=/opt/cni/bin/ipvlan
+
+  install_binary "$LOOPBACK_BIN_SRC" "$LOOPBACK_BIN_DST"
+  install_binary "$PORTMAP_BIN_SRC" "$PORTMAP_BIN_DST"
+  install_binary "$MACVLAN_BIN_SRC" "$MACVLAN_BIN_DST"
+  install_binary "$IPVLAN_BIN_SRC" "$IPVLAN_BIN_DST"
+fi
+
+./kube-ovn-daemon --install-cni-config "${daemon_args[@]}" || exit_with_error "Failed to install cni config"
