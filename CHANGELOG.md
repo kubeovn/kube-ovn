@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.16.14 (2026-10-14)
+
+ * [1f127ff43](https://github.com/kubeovn/kube-ovn/commit/1f127ff4331f876b076fb201cbd09a9547f8fbed) release v1.16.14
+ * [b7a82a1f8](https://github.com/kubeovn/kube-ovn/commit/b7a82a1f8040445cd027e127cf3d9847713137fe) fix: preserve VM and StatefulSet subnets when reusing IPs (#7680)
+ * [7e6765e0e](https://github.com/kubeovn/kube-ovn/commit/7e6765e0e2a392be477e31bf95b2da5eb08c8997) fix: delete chassis_private together with chassis (#7668)
+ * [e70fceb4e](https://github.com/kubeovn/kube-ovn/commit/e70fceb4e528795dd526f58fe4ee7cea8340b7aa) fix: preserve SecurityGroup rule hashes during forced sync (#7667)
+ * [a421536b2](https://github.com/kubeovn/kube-ovn/commit/a421536b25cbb1b9c4b7dade875fa876389f5b4b) prepare for next release
+
+### Contributors
+
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.13 (2026-10-12)
 
  * [26567bb74](https://github.com/kubeovn/kube-ovn/commit/26567bb748ea9eb195eec0fc5761be5ec11db52b) release v1.16.13
@@ -709,6 +722,26 @@
  * jskrill
  * renovate[bot]
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.15.31 (2026-10-15)
+
+ * [93894c018](https://github.com/kubeovn/kube-ovn/commit/93894c018ceaef78b0862e89ba8e4ee59245f629) release v1.15.31
+ * [35915f848](https://github.com/kubeovn/kube-ovn/commit/35915f8481e86ac54d8ad6b09b5d312b81aeaf49) fix(controller): use unique MAC for SwitchLB VIPs (#7686)
+ * [dee1a3713](https://github.com/kubeovn/kube-ovn/commit/dee1a3713b0fb49c97d6f409f09f31640b889edc) fix: preserve VM and StatefulSet subnets when reusing IPs (#7681)
+ * [85d6b4b11](https://github.com/kubeovn/kube-ovn/commit/85d6b4b116b265814a779aa204b045b589f017a2) fix: restore default NORMAL flow on provider bridges after ovs restart (#7546) (#7673)
+ * [ca1793340](https://github.com/kubeovn/kube-ovn/commit/ca17933401b2629f9e25b578a8ebcbb52d09b850) fix(deps): update Go 1.26 patch and x/Kubernetes dependencies (#7591)
+ * [678dcafd9](https://github.com/kubeovn/kube-ovn/commit/678dcafd9a17dd0cdb9485b01176c0c06293d695) fix: preserve security groups when routing pods (#7568)
+ * [bf8f01c62](https://github.com/kubeovn/kube-ovn/commit/bf8f01c62cc2a17f9d2fecb0e4e7f79ab07ca518) [release-1.15] test: make SLR deletion test deterministic (#7569)
+ * [dbb669b55](https://github.com/kubeovn/kube-ovn/commit/dbb669b555c20a9870b376cb641539bf76d26a50) fix(ovn): preserve router-owned ARP and ND with flood suppression (#7566)
+ * [559e61788](https://github.com/kubeovn/kube-ovn/commit/559e617883382b5cb909b414e3f9f9171047f222) fix: clear stale SLR load balancer VIP mappings (#7563)
+ * [1c83b88ef](https://github.com/kubeovn/kube-ovn/commit/1c83b88efb1f46c61407efad5c402c7979f0c1cf) prepare for next release
+
+### Contributors
+
+ * Bjoern Teipel
+ * renovate[bot]
  * zhangzujian
  * 张祖建
 
