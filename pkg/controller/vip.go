@@ -128,7 +128,12 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	}
 	needsMacRepair, done, err := c.needsSwitchLBRuleMacRepair(key, cachedVip)
 	if done {
-		return err
+		if err != nil {
+			return err
+		}
+		// already allocated: a kube_host_vm_vip is still reconciled so its IP CR
+		// mirror exists, e.g. after the mirror was deleted by hand (see handleUpdateIP).
+		return c.reconcileVMVipMirror(cachedVip)
 	}
 	klog.V(3).Infof("handle add vip %s", key)
 
@@ -160,6 +165,9 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	}
 	if vip.Spec.Type == util.KubeHostVMVip {
 		// vm use the vip as its real ip
+		if err := c.ensureVMVipIPCR(vip, subnet, portName, util.GetStringIP(v4ip, v6ip), mac); err != nil {
+			return err
+		}
 		klog.Infof("created host network pod vm ip %s", key)
 		return nil
 	}
@@ -249,6 +257,53 @@ func (c *Controller) ensureVipLogicalSwitchPort(vip *kubeovnv1.Vip, subnet *kube
 	return nil
 }
 
+// ensureVMVipIPCR mirrors a kube_host_vm_vip into an IP CR named after its lsp, so the
+// vm nic shows up in `kubectl get ips` and is attributed like a pod nic. The IP CR is a
+// mirror only: the vip stays the ipam owner (see handleUpdateIP for the delete guard).
+func (c *Controller) ensureVMVipIPCR(vip *kubeovnv1.Vip, subnet *kubeovnv1.Subnet, portName, ipStr, mac string) error {
+	if vip.Spec.Type != util.KubeHostVMVip {
+		return nil
+	}
+	if ip, err := c.ipsLister.Get(portName); err == nil && !ip.DeletionTimestamp.IsZero() {
+		// createOrUpdateIPCR would silently skip a terminating ip; retry so the mirror
+		// is recreated once the old one is gone
+		return fmt.Errorf("ip %s is still being deleted, retry mirroring vip %s", portName, vip.Name)
+	}
+	if err := c.createOrUpdateIPCR(portName, vip.Name, ipStr, mac, subnet.Name, vip.Spec.Namespace, "", util.KindVip); err != nil {
+		klog.Errorf("failed to mirror vip %s into ip cr %s: %v", vip.Name, portName, err)
+		return err
+	}
+	return nil
+}
+
+// reconcileVMVipMirror re-creates the IP CR mirror of an already allocated
+// kube_host_vm_vip, e.g. after the mirror was deleted by hand. Other vip types have
+// nothing to re-sync here.
+func (c *Controller) reconcileVMVipMirror(vip *kubeovnv1.Vip) error {
+	if vip.Spec.Type != util.KubeHostVMVip || !vip.DeletionTimestamp.IsZero() {
+		return nil
+	}
+	subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
+	if err != nil {
+		klog.Errorf("failed to get subnet %s: %v", vip.Spec.Subnet, err)
+		return err
+	}
+	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+	return c.ensureVMVipIPCR(vip, subnet, portName, util.GetStringIP(vip.Status.V4ip, vip.Status.V6ip), vip.Status.Mac)
+}
+
+// deleteVMVipIPCR removes the IP CR mirror of a kube_host_vm_vip being deleted.
+func (c *Controller) deleteVMVipIPCR(vip *kubeovnv1.Vip, portName string) error {
+	if vip.Spec.Type != util.KubeHostVMVip {
+		return nil
+	}
+	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to delete ip cr %s for vip %s: %v", portName, vip.Name, err)
+		return err
+	}
+	return nil
+}
+
 func (c *Controller) handleUpdateVirtualIP(key string) error {
 	cachedVip, err := c.virtualIpsLister.Get(key)
 	if err != nil {
@@ -274,6 +329,9 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 			if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
 				err = fmt.Errorf("failed to delete lsp %s: %w", vip.Name, err)
 				klog.Error(err)
+				return err
+			}
+			if err := c.deleteVMVipIPCR(vip, portName); err != nil {
 				return err
 			}
 		}
