@@ -106,11 +106,11 @@ func IsVlanInternalPort(portName string) (bool, int) {
 		return true, vlanID
 	}
 
-	separatorIndex := strings.LastIndex(portName, "-vlan")
-	if separatorIndex == -1 || !strings.HasPrefix(portName[:separatorIndex], "br-") {
+	bridgeName, vlanSuffix, found := strings.CutLast(portName, "-vlan")
+	if !found || !strings.HasPrefix(bridgeName, "br-") {
 		return false, 0
 	}
-	return parseVlanID(portName[separatorIndex+len("-vlan"):])
+	return parseVlanID(vlanSuffix)
 }
 
 // IsVlanInternalPortForBridge reports whether portName is a compact or legacy

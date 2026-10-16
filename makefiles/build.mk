@@ -169,11 +169,11 @@ lint: verify-crd
 ifeq ($(CI),true)
 	@echo "Running in GitHub Actions"
 	golangci-lint run -v
-	go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test
+	go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go tool modernize -test
 else
 	@echo "Running in local environment"
 	golangci-lint run -v --fix
-	go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test -fix
+	go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go tool modernize -test -fix
 endif
 
 .PHONY: scan
