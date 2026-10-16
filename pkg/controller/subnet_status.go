@@ -195,8 +195,18 @@ func (c *Controller) calculateUsingIPs(subnet *kubeovnv1.Subnet, podUsedIPs []*k
 	}
 	mirrored := make(map[string]struct{})
 	for _, ip := range podUsedIPs {
-		if ip.Spec.PodType == util.KindVip {
-			mirrored[ip.Spec.PodName] = struct{}{}
+		if ip.Spec.PodType != util.KindVip {
+			continue
+		}
+		// a bare podType/podName match is not enough: only count an ip as a vip's mirror
+		// when it is actually that vip's kube_host_vm_vip mirror, so a fabricated or
+		// mismatched ip CR cannot suppress the count of a real vip's usage.
+		vip, err := c.virtualIpsLister.Get(ip.Spec.PodName)
+		if err != nil {
+			continue
+		}
+		if c.isVMVipMirror(ip, vip) {
+			mirrored[vip.Name] = struct{}{}
 		}
 	}
 	for _, vip := range vips {
