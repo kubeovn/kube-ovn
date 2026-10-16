@@ -3,11 +3,30 @@ templates:
   - central/central-deployment.yaml
   - controller/controller-deployment.yaml
   - controller/controller-service.yaml
+  - diagnostics/kubectl-ko-node-agent.yaml
   - hooks/post-delete-hook.yaml
   - hooks/upgrade-ovs-ovn.yaml
   - ovs-ovn/ovs-ovn-daemonset.yaml
   - ovs-ovn/ovs-ovn-dpdk-daemonset.yaml
 tests:
+  - it: does not render the kubectl-ko node agent in controlPlaneOnly
+    template: diagnostics/kubectl-ko-node-agent.yaml
+    set:
+      installMode: controlPlaneOnly
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders the kubectl-ko node agent in dataPlaneOnly
+    template: diagnostics/kubectl-ko-node-agent.yaml
+    set:
+      installMode: dataPlaneOnly
+      externalOvnCentral.nbEndpoint: ovn-nb.example.com
+      externalOvnCentral.sbEndpoint: ovn-sb.example.com
+    asserts:
+      - isKind:
+          of: DaemonSet
+
   - it: renders a single controller replica without master node lookup in dataPlaneOnly
     template: controller/controller-deployment.yaml
     set:
@@ -28,6 +47,26 @@ tests:
           content:
             name: OVN_SB_ADDR
             value: tcp:ovn-sb.example.com:6642
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_SERVICE_HOST
+            value: ovn-nb.example.com
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_SERVICE_PORT
+            value: "6641"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_SERVICE_HOST
+            value: ovn-sb.example.com
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_SERVICE_PORT
+            value: "6642"
 
   - it: does not render the central deployment in dataPlaneOnly
     template: central/central-deployment.yaml
@@ -150,6 +189,16 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
+            name: OVN_SB_SERVICE_HOST
+            value: ovn-sb.example.com
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_SERVICE_PORT
+            value: "6642"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
             name: OVN_DB_IPS
             value: ovn-nb.example.com
 
@@ -168,5 +217,31 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].env
           content:
+            name: OVN_SB_SERVICE_HOST
+            value: ovn-sb.example.com
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_SERVICE_PORT
+            value: "6642"
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
             name: OVN_DB_IPS
             value: ovn-nb.example.com
+
+  - it: does not render OVN service env in full mode
+    templates:
+      - ovs-ovn/ovs-ovn-daemonset.yaml
+      - controller/controller-deployment.yaml
+    asserts:
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_SERVICE_HOST
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_SERVICE_HOST
+          any: true

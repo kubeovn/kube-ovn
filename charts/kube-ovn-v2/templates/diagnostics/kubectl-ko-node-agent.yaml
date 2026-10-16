@@ -1,3 +1,10 @@
+{{/*
+The kubectl-ko node agent inspects the OVS/OVN data plane on the nodes
+(hostPath mounts on /run/ovn, /run/openvswitch, CNI dir, host netns). It is
+meaningless on management-cluster nodes in controlPlaneOnly installs, so it
+follows the data-plane render gate.
+*/}}
+{{- if include "kubeovn.renderDataPlane" . }}
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -101,3 +108,4 @@ spec:
           hostPath:
             path: /proc
             type: Directory
+{{- end }}
