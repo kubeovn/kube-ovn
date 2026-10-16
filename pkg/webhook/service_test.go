@@ -152,4 +152,17 @@ func TestServiceUpdateHook(t *testing.T) {
 		resp := hook.ServiceUpdateHook(context.Background(), updateRequest(t, terminating, updated))
 		require.True(t, resp.Allowed, "expected allowed, got: %+v", resp.Result)
 	})
+
+	t.Run("allows finalizer bookkeeping on a live service despite a conflicting peer", func(t *testing.T) {
+		// The disabled-mode drain also releases live leftovers; its finalizer update must not be
+		// rejected by the duplicate-identity check, which only guards intent changes.
+		target := nftableLbService("other", 80, v1.ProtocolTCP, func(s *v1.Service) {
+			s.Finalizers = []string{util.KubeOVNControllerFinalizer}
+		})
+		hook := newServiceHook(t, nftableLbService("web", 80, v1.ProtocolTCP, nil), target)
+		updated := target.DeepCopy()
+		updated.Finalizers = nil
+		resp := hook.ServiceUpdateHook(context.Background(), updateRequest(t, target, updated))
+		require.True(t, resp.Allowed, "expected allowed, got: %+v", resp.Result)
+	})
 }

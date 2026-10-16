@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
 
 	v1 "k8s.io/api/core/v1"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
@@ -44,10 +45,23 @@ func (v *ValidatingHook) ServiceUpdateHook(ctx context.Context, req admission.Re
 				fmt.Errorf("service %s/%s eip cannot change; delete and recreate the service", newSvc.Namespace, newSvc.Name))
 		}
 	}
-	if err := v.validateNftableLbServiceEipPort(ctx, &newSvc); err != nil {
-		return ctrlwebhook.Errored(http.StatusForbidden, err)
+	if nftableLbServiceIntentChanged(&oldSvc, &newSvc) {
+		if err := v.validateNftableLbServiceEipPort(ctx, &newSvc); err != nil {
+			return ctrlwebhook.Errored(http.StatusForbidden, err)
+		}
 	}
 	return ctrlwebhook.Allowed("bypass")
+}
+
+// nftableLbServiceIntentChanged reports whether the update changes the Service's share-DNAT
+// identity intent (binding, type or ports). Only those updates need the duplicate-identity check:
+// the controller's own finalizer bookkeeping must not be rejected as a duplicate, otherwise a
+// terminating or disabled-mode Service could never release its finalizer.
+func nftableLbServiceIntentChanged(oldSvc, newSvc *v1.Service) bool {
+	return oldSvc.Spec.Type != newSvc.Spec.Type ||
+		oldSvc.Annotations[util.VpcNatGatewayAnnotation] != newSvc.Annotations[util.VpcNatGatewayAnnotation] ||
+		oldSvc.Annotations[util.EipAnnotation] != newSvc.Annotations[util.EipAnnotation] ||
+		!reflect.DeepEqual(oldSvc.Spec.Ports, newSvc.Spec.Ports)
 }
 
 // validateNftableLbServiceEipPort rejects a Service that would program the same share-DNAT
