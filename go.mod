@@ -336,6 +336,7 @@ tool (
 	github.com/onsi/ginkgo/v2/ginkgo
 	github.com/ovn-kubernetes/libovsdb/cmd/modelgen
 	go.uber.org/mock/mockgen
+	golang.org/x/tools/go/analysis/passes/modernize/cmd/modernize
 	k8s.io/code-generator/cmd/applyconfiguration-gen
 	k8s.io/code-generator/cmd/client-gen
 	k8s.io/code-generator/cmd/conversion-gen
