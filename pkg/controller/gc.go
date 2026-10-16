@@ -359,6 +359,15 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 		return true, err
 	}
 
+	// Check if the vip mirrored by this ip still exists
+	if ip.Spec.PodType == util.KindVip {
+		_, err := c.virtualIpsLister.Get(ip.Spec.PodName)
+		if err != nil && k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return true, err
+	}
+
 	// Check if StatefulSet exists
 	if ip.Spec.PodType == util.KindStatefulSet {
 		// Extract StatefulSet name from pod name by removing the last part after '-'
