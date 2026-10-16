@@ -180,6 +180,8 @@ debug:
 
 cni_conf:
   CNI_CONFIG_PRIORITY: "01"
+  # Whether to install the bundled CNI plugins besides kube-ovn.
+  INSTALL_CNI_PLUGINS: true
   CNI_CONF_DIR: "/etc/cni/net.d"
   MOUNT_CNI_CONF_DIR: "/etc/cni/net.d"
   CNI_BIN_DIR: "/opt/cni/bin"
