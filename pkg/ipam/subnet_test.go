@@ -1713,3 +1713,40 @@ func TestGetDualRandomAddressV6FailureRollsBackV4(t *testing.T) {
 	require.Equal(t, poolV4UsingAfterPod1, pool.V4Using.Len(), "pool V4Using leaked across dual-stack failure")
 	require.Equal(t, poolV4AvailAfterPod1, pool.V4Available.Len(), "pool V4Available leaked across dual-stack failure")
 }
+
+func TestSubnetFreeIPs(t *testing.T) {
+	subnet, err := NewSubnet("dualSubnet", "10.0.0.0/24,2001:db8::/120", []string{"10.0.0.1", "10.0.0.2", "2001:db8::1"})
+	require.NoError(t, err)
+
+	v4, v6 := subnet.FreeIPs(3, 2)
+	require.Equal(t, []string{"10.0.0.3", "10.0.0.4", "10.0.0.5"}, v4)
+	require.Equal(t, []string{"2001:db8::2", "2001:db8::3"}, v6)
+
+	// addresses already owned by another pool are not free anymore
+	require.NoError(t, subnet.AddOrUpdateIPPool("pool1", []string{"10.0.0.3..10.0.0.4"}))
+	v4, v6 = subnet.FreeIPs(2, 0)
+	require.Equal(t, []string{"10.0.0.5", "10.0.0.6"}, v4)
+	require.Empty(t, v6)
+
+	// zero or negative counts return nothing, requesting more than available returns all
+	v4, v6 = subnet.FreeIPs(0, -1)
+	require.Empty(t, v4)
+	require.Empty(t, v6)
+
+	small, err := NewSubnet("smallSubnet", "10.1.0.0/30", []string{"10.1.0.1"})
+	require.NoError(t, err)
+	v4, _ = small.FreeIPs(10, 0)
+	require.Equal(t, []string{"10.1.0.2"}, v4)
+}
+
+func TestSubnetWithoutCIDRFreeIPs(t *testing.T) {
+	// a subnet without CIDR has an empty default pool and must not panic
+	v4, v6 := NewMacOnlySubnet("macOnlySubnet").FreeIPs(2, 2)
+	require.Empty(t, v4)
+	require.Empty(t, v6)
+
+	// a subnet without any pool at all must not panic either
+	v4, v6 = (&Subnet{}).FreeIPs(2, 2)
+	require.Empty(t, v4)
+	require.Empty(t, v6)
+}

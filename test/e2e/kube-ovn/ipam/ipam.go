@@ -1115,6 +1115,55 @@ var _ = framework.Describe("[group:ipam]", func() {
 		_ = podClient.CreateSync(pod)
 	})
 
+	framework.ConformanceIt("should pick IPs from the subnet when spec.ipCount is set", func() {
+		f.SkipVersionPriorTo(1, 17, "This feature was introduced in v1.17")
+
+		ginkgo.By("Creating ippool " + ippoolName + " with ipCount 3")
+		ippool := framework.MakeIPPool(ippoolName, subnetName, nil, nil)
+		ippool.Spec.IPCount = 3
+		ippool = ippoolClient.CreateSync(ippool)
+		families := len(strings.Split(cidr, ","))
+		framework.ExpectHaveLen(ippool.Status.IPs, families*3)
+
+		ginkgo.By("Growing the ippool to 4 IPs")
+		updated := ippoolClient.Get(ippoolName)
+		updated.Spec.IPCount = 4
+		_ = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
+		grown := ippoolClient.WaitUntil(ippoolName, func(p *apiv1.IPPool) (bool, error) {
+			return len(p.Status.IPs) == families*4, nil
+		}, "status.ips grown", 2*time.Second, 30*time.Second)
+		framework.ExpectContainElement(grown.Status.IPs, ippool.Status.IPs[0])
+
+		ginkgo.By("Shrinking the ippool back to 2 IPs releasing the most recently added ones")
+		updated = ippoolClient.Get(ippoolName)
+		updated.Spec.IPCount = 2
+		_ = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
+		shrunk := ippoolClient.WaitUntil(ippoolName, func(p *apiv1.IPPool) (bool, error) {
+			return len(p.Status.IPs) == families*2, nil
+		}, "status.ips shrunk", 2*time.Second, 30*time.Second)
+		// the most recently added addresses are released first, so what is left is a prefix
+		framework.ExpectEqual(shrunk.Status.IPs, grown.Status.IPs[:families*2])
+
+		ginkgo.By("Rejecting an ippool with both ips and ipCount")
+		invalid := framework.MakeIPPool(ippoolName2, subnetName, []string{shrunk.Status.IPs[0]}, nil)
+		invalid.Spec.IPCount = 1
+		_, err := ippoolClient.IPPoolInterface.Create(context.Background(), invalid, metav1.CreateOptions{})
+		framework.ExpectError(err, "ippool with both ips and ipCount should be rejected")
+
+		ginkgo.By("Rejecting an ippool with neither ips nor ipCount")
+		invalid = framework.MakeIPPool(ippoolName2, subnetName, nil, nil)
+		_, err = ippoolClient.IPPoolInterface.Create(context.Background(), invalid, metav1.CreateOptions{})
+		framework.ExpectError(err, "ippool with neither ips nor ipCount should be rejected")
+
+		ginkgo.By("Creating pod " + podName + " which should get an IP from the ippool")
+		annotations := map[string]string{util.IPPoolAnnotation: ippoolName}
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
+		pod = podClient.CreateSync(pod)
+		for _, ip := range strings.Split(pod.Annotations[util.IPAddressAnnotation], ",") {
+			framework.ExpectContainElement(shrunk.Status.IPs, ip)
+		}
+	})
+
 	framework.ConformanceIt("should manage address set when EnableAddressSet is true", func() {
 		f.SkipVersionPriorTo(1, 15, "This feature was introduced in v1.15")
 
