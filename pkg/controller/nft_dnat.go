@@ -337,6 +337,9 @@ func natGwVipRouteNextHops(gw *kubeovnv1.VpcNatGateway, pods []*corev1.Pod) ([]s
 // deleted rule stops contributing its VIP, and the route is removed once no rule references it.
 // Reconciling by set (rather than by reference counting each teardown) is what makes the state
 // converge: a route that was missed once is removed by the next sync of its gateway.
+//
+// This runs even while the feature gates are off: the disabled-mode drain calls the cleanup paths
+// to drop the routes of leftovers, so the feature's own gate must not short-circuit route cleanup.
 func (c *Controller) syncNatGwVipState(gwName string, applying *kubeovnv1.IptablesDnatRule) error {
 	return c.syncNatGwVipStateForService(gwName, applying, "", nil, "")
 }
@@ -344,11 +347,6 @@ func (c *Controller) syncNatGwVipState(gwName string, applying *kubeovnv1.Iptabl
 func (c *Controller) syncNatGwVipStateForService(gwName string, applying *kubeovnv1.IptablesDnatRule,
 	owner string, records map[string]*kubeovnv1.IptablesDnatRule, eipIP string,
 ) error {
-	if !c.gwNftableLbSvcEnabled() {
-		// The feature owns the VIP state exclusively, and with it disabled it programs nothing: the
-		// rules it generated are not reconciled either.
-		return nil
-	}
 	gw, err := c.vpcNatGatewayLister.Get(gwName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {

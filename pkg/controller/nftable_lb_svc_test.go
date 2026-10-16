@@ -1146,18 +1146,30 @@ func Test_syncNatGwVipState(t *testing.T) {
 
 // Test_syncNatGwVipStateDisabled pins the feature gate: with --enable-gw-nftable-lb-svc off the
 // feature owns no VIP, so the sync must not touch OVN at all (the mock client fails any call).
+// Test_syncNatGwVipStateDisabled pins that the VIP routes are still reconciled with the feature
+// disabled: the disabled-mode drain calls this path to remove the routes of leftovers, so the
+// routes must converge instead of being skipped.
 func Test_syncNatGwVipStateDisabled(t *testing.T) {
 	t.Parallel()
 
+	gw := &kubeovnv1.VpcNatGateway{Name: "gw0", Spec: kubeovnv1.VpcNatGatewaySpec{Vpc: "vpc0", Subnet: "subnet0"}}
+	eip := &kubeovnv1.IptablesEIP{Name: "eip0", Status: kubeovnv1.IptablesEIPStatus{IP: "172.20.0.5"}}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		VpcNatGateways:    []*kubeovnv1.VpcNatGateway{{Name: "gw0", Spec: kubeovnv1.VpcNatGatewaySpec{Vpc: "vpc0", Subnet: "subnet0"}}},
+		VpcNatGateways:    []*kubeovnv1.VpcNatGateway{gw},
 		Pods:              gatewayPods("gw0", "10.0.7.254"),
+		IptablesEips:      []*kubeovnv1.IptablesEIP{eip},
 		IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{ownedShareRule("rule-a", "eip0", "10.96.1.5")},
 	})
 	require.NoError(t, err)
-	fc.fakeController.config.EnableGwNftableLbSvc = false
+	c := fc.fakeController
+	c.config.EnableGwNftableLbSvc = false
 
-	require.NoError(t, fc.fakeController.syncNatGwVipState("gw0", nil))
+	externalIDs := natGwVipRouteExternalIDs("gw0")
+	fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).Return(nil, nil)
+	fc.mockOvnClient.EXPECT().AddLogicalRouterPolicy("vpc0", util.NatGatewayVipPolicyPriority, gomock.Any(),
+		string(kubeovnv1.PolicyRouteActionReroute), gomock.Any(), nil, externalIDs).Return(nil).Times(2)
+
+	require.NoError(t, c.syncNatGwVipState("gw0", nil))
 }
 
 // TestHandleAddOrUpdateVpcNatGwSyncsVipRoutes pins the gateway side convergence of the share DNAT
@@ -1654,6 +1666,89 @@ func TestCleanupNftableLbServiceIgnoresPredecessorRules(t *testing.T) {
 
 	_, err = c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Get(context.Background(), staleRule.Name, metav1.GetOptions{})
 	require.True(t, k8serrors.IsNotFound(err), "the predecessor's rule must still be deleted")
+}
+
+// Test_handleAddOrUpdateGwNftableLbService_disabledDrainsFinalizers pins the disabled-mode drain:
+// with both gateway gates off, a Service that still carries the controller finalizer and its
+// accounting records must still be released, otherwise deleting it leaves it terminating forever.
+func Test_handleAddOrUpdateGwNftableLbService_disabledDrainsFinalizers(t *testing.T) {
+	f := newNftableLbSvcOwnershipFixture()
+	f.svc.Finalizers = []string{util.KubeOVNControllerFinalizer}
+	f.svc.Status.LoadBalancer.Ingress = []v1.LoadBalancerIngress{{IP: f.eip.Status.IP}}
+
+	desired := buildDesiredNftableLbDnatRules(f.svc, f.eip.Name, f.gw.Name, []*discoveryv1.EndpointSlice{f.slice}, testNftableLbBackendIP)
+	require.Len(t, desired, 1)
+	rule := slices.Collect(maps.Values(desired))[0]
+	rule.Finalizers = []string{util.NftableLbSvcRecordFinalizer}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs:              []*kubeovnv1.Vpc{f.vpc},
+		VpcNatGateways:    []*kubeovnv1.VpcNatGateway{f.gw},
+		Subnets:           []*kubeovnv1.Subnet{f.subnet},
+		Services:          []*v1.Service{f.svc},
+		IptablesEips:      []*kubeovnv1.IptablesEIP{f.eip},
+		IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{rule},
+	})
+	require.NoError(t, err)
+	c := fc.fakeController
+	// Both gateway gates stay off, which is what makes this the drain path.
+
+	require.NoError(t, c.handleAddOrUpdateGwNftableLbService(f.namespace+"/"+f.svc.Name))
+
+	updated, err := c.config.KubeClient.CoreV1().Services(f.namespace).Get(context.Background(), f.svc.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.NotContains(t, updated.Finalizers, util.KubeOVNControllerFinalizer,
+		"the disabled drain must remove the controller finalizer")
+	require.Empty(t, updated.Status.LoadBalancer.Ingress, "the disabled drain must clear the published ingress IP")
+
+	_, err = c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Get(context.Background(), rule.Name, metav1.GetOptions{})
+	require.True(t, k8serrors.IsNotFound(err), "the disabled drain must delete the accounting record")
+}
+
+// Test_handleAddOrUpdateGwNftableLbService_disabledIgnoresUnmanaged pins that the drain never
+// derives identities from a Service the feature did not program: without the finalizer and without
+// records there is nothing to release, and the Service must be left untouched.
+func Test_handleAddOrUpdateGwNftableLbService_disabledIgnoresUnmanaged(t *testing.T) {
+	f := newNftableLbSvcOwnershipFixture()
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs:           []*kubeovnv1.Vpc{f.vpc},
+		VpcNatGateways: []*kubeovnv1.VpcNatGateway{f.gw},
+		Subnets:        []*kubeovnv1.Subnet{f.subnet},
+		Services:       []*v1.Service{f.svc},
+		IptablesEips:   []*kubeovnv1.IptablesEIP{f.eip},
+	})
+	require.NoError(t, err)
+	c := fc.fakeController
+
+	require.NoError(t, c.handleAddOrUpdateGwNftableLbService(f.namespace+"/"+f.svc.Name))
+
+	updated, err := c.config.KubeClient.CoreV1().Services(f.namespace).Get(context.Background(), f.svc.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Empty(t, updated.Finalizers, "a Service the feature never managed must not gain a finalizer")
+}
+
+// Test_enqueueGwNftableLbSvcRecordOwners pins the startup replay that covers an orphaned record
+// whose Service is already gone, which no share-record event would ever trigger.
+func Test_enqueueGwNftableLbSvcRecordOwners(t *testing.T) {
+	f := newNftableLbSvcOwnershipFixture()
+	desired := buildDesiredNftableLbDnatRules(f.svc, f.eip.Name, f.gw.Name, []*discoveryv1.EndpointSlice{f.slice}, testNftableLbBackendIP)
+	require.Len(t, desired, 1)
+	rule := slices.Collect(maps.Values(desired))[0]
+	rule.Finalizers = []string{util.NftableLbSvcRecordFinalizer}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{rule},
+	})
+	require.NoError(t, err)
+	c := fc.fakeController
+	c.addOrUpdateGwNftableLbSvcQueue = newTypedRateLimitingQueue[string]("test", nil)
+
+	require.NoError(t, c.enqueueGwNftableLbSvcRecordOwners())
+	require.Equal(t, 1, c.addOrUpdateGwNftableLbSvcQueue.Len())
+	item, shutdown := c.addOrUpdateGwNftableLbSvcQueue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, f.namespace+"/"+f.svc.Name, item)
 }
 
 func TestBuildNftableLbIdentities(t *testing.T) {

@@ -82,11 +82,45 @@ func nftableLbSvcGateway(svc *v1.Service) string {
 // enqueueGwNftableLbService enqueues a Service only while gateway mode is selected. Qualification
 // and cleanup decisions stay in the handler so a Service that stops qualifying releases its rules.
 func (c *Controller) enqueueGwNftableLbService(key string) {
-	if c.config == nil || (!c.config.EnableGwNftableLbSvc && !c.config.EnableGwNftableSvcClusterIP) || c.addOrUpdateGwNftableLbSvcQueue == nil || key == "" {
+	if !c.gwNftableLbSvcEnabled() || c.addOrUpdateGwNftableLbSvcQueue == nil || key == "" {
 		return
 	}
 	klog.V(3).Infof("enqueue add/update gateway nftable lb service %s", key)
 	c.addOrUpdateGwNftableLbSvcQueue.Add(key)
+}
+
+// enqueueGwNftableLbServiceForService enqueues a Service that must be reconciled: while the gates
+// are on, or while it still carries the finalizer the feature added. The latter is a Service left
+// over from before the gates were turned off, which the disabled-mode drain has to release.
+func (c *Controller) enqueueGwNftableLbServiceForService(svc *v1.Service) {
+	if c.addOrUpdateGwNftableLbSvcQueue == nil || svc == nil {
+		return
+	}
+	if !c.gwNftableLbSvcEnabled() && !hasServiceControllerFinalizer(svc) {
+		return
+	}
+	c.addOrUpdateGwNftableLbSvcQueue.Add(cache.MetaObjectToName(svc).String())
+}
+
+// enqueueGwNftableLbSvcRecordOwners replays the accounting records at startup so an orphaned record
+// (its Service already gone) is drained even though share-record events are ignored.
+func (c *Controller) enqueueGwNftableLbSvcRecordOwners() error {
+	if c.iptablesDnatRulesLister == nil || c.addOrUpdateGwNftableLbSvcQueue == nil {
+		return nil
+	}
+	records, err := c.iptablesDnatRulesLister.List(labels.SelectorFromSet(labels.Set{util.NftableLbSvcRecordLabel: "true"}))
+	if err != nil {
+		return err
+	}
+	for _, record := range records {
+		if !slices.Contains(record.Finalizers, util.NftableLbSvcRecordFinalizer) {
+			continue
+		}
+		if key := util.NftableLbSvcOwnerKey(record.Labels); key != "" {
+			c.addOrUpdateGwNftableLbSvcQueue.Add(key)
+		}
+	}
+	return nil
 }
 
 func gwNftableLbSvcChanged(oldSvc, newSvc *v1.Service) bool {
@@ -120,27 +154,28 @@ func (c *Controller) enqueueGwNftableLbServicesForNatGw(natGwName string) {
 }
 
 func (c *Controller) handleAddOrUpdateGwNftableLbService(key string) error {
-	if !c.config.EnableGwNftableLbSvc && !c.config.EnableGwNftableSvcClusterIP {
-		return nil
-	}
-
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("invalid resource key: %s", key))
 		return nil
 	}
 
-	klog.Infof("handle add/update gateway nftable lb service %s", key)
-
 	cachedSvc, err := c.servicesLister.Services(namespace).Get(name)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			// service deleted: remove all rules owned by it
+			// service deleted: remove all rules owned by it, even while the gates are off
 			return c.cleanupNftableLbService(nil, namespace, name)
 		}
 		klog.Error(err)
 		return err
 	}
+
+	// The gates are off: only release state this feature programmed before they were turned off.
+	if !c.gwNftableLbSvcEnabled() {
+		return c.drainDisabledGwNftableLbService(cachedSvc, namespace, name)
+	}
+
+	klog.Infof("handle add/update gateway nftable lb service %s", key)
 
 	serveEIP, serveClusterIP := c.nftableLbSvcQualifies(cachedSvc)
 	// service being deleted or no longer qualifying: clean up owned rules (and clear the
@@ -586,13 +621,36 @@ func (c *Controller) setNftableLbRecordStatus(record *kubeovnv1.IptablesDnatRule
 }
 
 func (c *Controller) ensureServiceControllerFinalizer(svc *v1.Service) (bool, error) {
-	if slices.Contains(svc.Finalizers, util.KubeOVNControllerFinalizer) {
+	if hasServiceControllerFinalizer(svc) {
 		return false, nil
 	}
 	updated := svc.DeepCopy()
 	updated.Finalizers = append(updated.Finalizers, util.KubeOVNControllerFinalizer)
 	_, err := c.config.KubeClient.CoreV1().Services(svc.Namespace).Update(context.Background(), updated, metav1.UpdateOptions{})
 	return err == nil, err
+}
+
+// hasServiceControllerFinalizer reports whether the Service still carries the finalizer this feature
+// added. It is the evidence that the feature programmed the Service before its gates were disabled.
+func hasServiceControllerFinalizer(svc *v1.Service) bool {
+	return svc != nil && slices.Contains(svc.Finalizers, util.KubeOVNControllerFinalizer)
+}
+
+// drainDisabledGwNftableLbService releases the state this feature programmed before its gates were
+// turned off. It acts only on evidence of prior management, the controller finalizer or existing
+// records: deriving identities from the spec of a Service the feature never managed would tear down
+// another Service's data plane.
+func (c *Controller) drainDisabledGwNftableLbService(svc *v1.Service, namespace, name string) error {
+	if !hasServiceControllerFinalizer(svc) {
+		records, err := c.existingNftableLbSvcRules(namespace, name)
+		if err != nil {
+			return err
+		}
+		if len(records) == 0 {
+			return nil
+		}
+	}
+	return c.cleanupNftableLbService(svc, namespace, name)
 }
 
 // nftableLbSvcClusterIP returns the IPv4 ClusterIP that the gateway programs as a second share

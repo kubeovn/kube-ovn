@@ -57,9 +57,9 @@ func (c *Controller) enqueueAddService(obj any) {
 	svc := obj.(*v1.Service)
 	key := cache.MetaObjectToName(svc).String()
 
-	if c.config.EnableGwNftableLbSvc || c.config.EnableGwNftableSvcClusterIP {
-		c.enqueueGwNftableLbService(key)
-	}
+	// Enqueues while the gates are on, and also when the Service still carries the finalizer the
+	// feature added: such a leftover has to be drained after the gates were turned off.
+	c.enqueueGwNftableLbServiceForService(svc)
 
 	// the queue consumers only run when EnableOvnLB is set, so skip
 	// enqueueing to avoid unbounded accumulation when it is not
@@ -91,10 +91,7 @@ func (c *Controller) enqueueDeleteService(obj any) {
 		return
 	}
 
-	key := cache.MetaObjectToName(svc).String()
-	if c.config.EnableGwNftableLbSvc || c.config.EnableGwNftableSvcClusterIP {
-		c.enqueueGwNftableLbService(key)
-	}
+	c.enqueueGwNftableLbServiceForService(svc)
 	if c.usesGwNftableLbService(svc) {
 		return
 	}
@@ -133,10 +130,8 @@ func (c *Controller) enqueueDeleteService(obj any) {
 func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 	oldSvc := oldObj.(*v1.Service)
 	newSvc := newObj.(*v1.Service)
-	if c.config.EnableGwNftableLbSvc || c.config.EnableGwNftableSvcClusterIP {
-		if newSvc.ResourceVersion != oldSvc.ResourceVersion && gwNftableLbSvcChanged(oldSvc, newSvc) {
-			c.enqueueGwNftableLbService(cache.MetaObjectToName(newSvc).String())
-		}
+	if newSvc.ResourceVersion != oldSvc.ResourceVersion && gwNftableLbSvcChanged(oldSvc, newSvc) {
+		c.enqueueGwNftableLbServiceForService(newSvc)
 	}
 	if !c.config.EnableOvnLB {
 		// The Pod LB lifecycle still reuses this handler, but it only consumes the Service ports;

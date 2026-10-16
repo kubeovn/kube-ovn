@@ -1542,11 +1542,13 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}
 	}
 
-	if c.config.EnableGwNftableLbSvc || c.config.EnableGwNftableSvcClusterIP {
-		// Gateway mode consumes Service and EndpointSlice informer events through its own queue.
-		// Service informer startup Adds replay every live or finalizing Service, so accounting
-		// records never need to trigger or recover the Service reconcile.
-		go wait.Until(runWorker("add/update gateway nftable lb service", c.addOrUpdateGwNftableLbSvcQueue, c.handleAddOrUpdateGwNftableLbService), time.Second, ctx.Done())
+	// The worker is always started: with the gateway nftable gates off it must still drain Services
+	// and records this feature programmed before the gates were turned off. The handler only acts on
+	// leftovers in that mode. Service informer startup Adds replay every live or finalizing Service,
+	// and the record replay below covers an orphaned record whose Service is already gone.
+	go wait.Until(runWorker("add/update gateway nftable lb service", c.addOrUpdateGwNftableLbSvcQueue, c.handleAddOrUpdateGwNftableLbService), time.Second, ctx.Done())
+	if err := c.enqueueGwNftableLbSvcRecordOwners(); err != nil {
+		klog.Errorf("failed to replay nftable lb accounting records at startup: %v", err)
 	}
 
 	// TODO: Consolidate the OVN LB workers below, including the WorkerNum-scaled workers,
