@@ -1020,6 +1020,15 @@ false
 			<td>Priority of Kube-OVN within the CNI configuration directory on the node. Should be a string representing a double-digit integer.</td>
 		</tr>
 		<tr>
+			<td>cni.installCNIPlugins</td>
+			<td>bool</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+			<td>Whether to install the bundled CNI plugins besides kube-ovn.</td>
+		</tr>
+		<tr>
 			<td>cni.localConfigFile</td>
 			<td>string</td>
 			<td><pre lang="json">

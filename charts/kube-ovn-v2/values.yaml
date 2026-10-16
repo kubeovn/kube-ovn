@@ -294,6 +294,9 @@ cni:
   # Should be a string representing a double-digit integer.
   # @section -- CNI configuration
   configPriority: "01"
+  # -- Whether to install the bundled CNI plugins besides kube-ovn.
+  # @section -- CNI configuration
+  installCNIPlugins: true
   # -- Whether to use Kube-OVN as non-primary CNI. When set to true, Kube-OVN will not allocate/handle primary network interfaces.
   # Interfaces are created using Network Attachment Definitions (NADs)
   # @section -- CNI configuration
