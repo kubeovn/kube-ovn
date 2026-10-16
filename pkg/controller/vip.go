@@ -30,7 +30,14 @@ import (
 )
 
 func (c *Controller) enqueueAddVirtualIP(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.Vip)).String()
+	vip := obj.(*kubeovnv1.Vip)
+	key := cache.MetaObjectToName(vip).String()
+	// On controller restart the informer re-lists a terminating vip only through AddFunc;
+	// handleAddVirtualIP never releases the finalizer, so route it to the update queue whose
+	// deletion branch (handleUpdateVirtualIP) does.
+	if enqueueUpdateIfTerminating(c.updateVirtualIPQueue, key, "vip", vip.DeletionTimestamp) {
+		return
+	}
 	klog.Infof("enqueue add vip %s", key)
 	c.addVirtualIPQueue.Add(key)
 }

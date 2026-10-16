@@ -46,6 +46,13 @@ func (c *Controller) enqueueAddIP(obj any) {
 		strings.HasPrefix(ipObj.Name, util.McastQuerierName[0:14]) {
 		return
 	}
+	key := cache.MetaObjectToName(ipObj).String()
+	// On controller restart the informer re-lists a terminating ip only through AddFunc;
+	// handleAddReservedIP skips it without releasing the finalizer, so route it to the
+	// update queue whose deletion branch removes it.
+	if enqueueUpdateIfTerminating(c.updateIPQueue, key, "ip", ipObj.DeletionTimestamp) {
+		return
+	}
 	klog.V(3).Infof("enqueue update status subnet %s", ipObj.Spec.Subnet)
 	c.updateSubnetStatusQueue.Add(ipObj.Spec.Subnet)
 	for _, as := range ipObj.Spec.AttachSubnets {
@@ -53,7 +60,6 @@ func (c *Controller) enqueueAddIP(obj any) {
 		c.updateSubnetStatusQueue.Add(as)
 	}
 
-	key := cache.MetaObjectToName(ipObj).String()
 	klog.V(3).Infof("enqueue add ip %s", key)
 	c.addIPQueue.Add(key)
 }
