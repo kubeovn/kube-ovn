@@ -462,11 +462,9 @@ func TestEnqueueAddIPPoolRoutesTerminatingToDeleteQueue(t *testing.T) {
 	// finalizer is never removed.
 	now := metav1.Now()
 	terminating := &kubeovnv1.IPPool{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:              "stuck",
-			DeletionTimestamp: &now,
-			Finalizers:        []string{util.KubeOVNControllerFinalizer},
-		},
+		Name:              "stuck",
+		DeletionTimestamp: &now,
+		Finalizers:        []string{util.KubeOVNControllerFinalizer},
 	}
 	c.enqueueAddIPPool(terminating)
 	require.Equal(t, 0, c.addOrUpdateIPPoolQueue.Len())
@@ -476,7 +474,7 @@ func TestEnqueueAddIPPoolRoutesTerminatingToDeleteQueue(t *testing.T) {
 	c.deleteIPPoolQueue.Done(item)
 
 	// A live ippool keeps going to the add/update queue.
-	live := &kubeovnv1.IPPool{ObjectMeta: metav1.ObjectMeta{Name: "live"}}
+	live := &kubeovnv1.IPPool{Name: "live"}
 	c.enqueueAddIPPool(live)
 	require.Equal(t, 1, c.addOrUpdateIPPoolQueue.Len())
 	require.Equal(t, 0, c.deleteIPPoolQueue.Len())
