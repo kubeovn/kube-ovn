@@ -49,7 +49,8 @@ func macOnlyDualStackSubnet() *kubeovnv1.Subnet {
 
 func macOnlyVip(subnetName, mac string) *kubeovnv1.Vip {
 	return &kubeovnv1.Vip{
-		ObjectMeta: metav1.ObjectMeta{Name: "dn5-net2", Labels: map[string]string{util.SubnetNameLabel: subnetName}},
+		Name:   "dn5-net2",
+		Labels: map[string]string{util.SubnetNameLabel: subnetName},
 		Spec: kubeovnv1.VipSpec{
 			Namespace:  "tenant",
 			Subnet:     subnetName,
@@ -157,7 +158,7 @@ func TestAcquireIPAddressWithMACRetriesPastNodeIPCollision(t *testing.T) {
 		},
 	}
 	node := &corev1.Node{
-		ObjectMeta: metav1.ObjectMeta{Name: "node-a"},
+		Name: "node-a",
 		Status: corev1.NodeStatus{
 			Addresses: []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "10.0.2.2"}},
 		},
