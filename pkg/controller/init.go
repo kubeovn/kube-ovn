@@ -545,17 +545,7 @@ func (c *Controller) InitIPAM() error {
 		klog.Errorf("failed to list vips: %v", err)
 		return err
 	}
-	for _, vip := range vips {
-		provider, ok := subnetProviderMaps[vip.Spec.Subnet]
-		if !ok {
-			klog.Errorf("failed to find subnet %s for vip %s", vip.Spec.Subnet, vip.Name)
-			continue
-		}
-		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, provider)
-		if _, _, _, err = c.ipam.GetStaticAddress(vip.Name, portName, vip.Status.V4ip, &vip.Status.Mac, vip.Spec.Subnet, true); err != nil {
-			klog.Errorf("failed to init ipam from vip cr %s: %v", vip.Name, err)
-		}
-	}
+	c.restoreVipsToIPAM(vips, subnetProviderMaps)
 
 	klog.Infof("Init IPAM from iptables EIP CR")
 	eips, err := c.iptablesEipsLister.List(labels.Everything())
@@ -612,6 +602,25 @@ func (c *Controller) InitIPAM() error {
 
 	klog.Infof("take %.2f seconds to initialize IPAM", time.Since(start).Seconds())
 	return nil
+}
+
+// restoreVipsToIPAM re-registers each vip's allocated address(es) and mac in ipam on
+// startup. The full v4/v6 address set must be passed to GetStaticAddress together: a vip
+// with only a v6ip would otherwise look unset and fail, and a dual-stack vip would have its
+// v6ip silently dropped and re-randomized by GetStaticAddress's own dual-stack completion.
+func (c *Controller) restoreVipsToIPAM(vips []*kubeovnv1.Vip, subnetProviderMaps map[string]string) {
+	for _, vip := range vips {
+		provider, ok := subnetProviderMaps[vip.Spec.Subnet]
+		if !ok {
+			klog.Errorf("failed to find subnet %s for vip %s", vip.Spec.Subnet, vip.Name)
+			continue
+		}
+		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, provider)
+		ipStr := util.GetStringIP(vip.Status.V4ip, vip.Status.V6ip)
+		if _, _, _, err := c.ipam.GetStaticAddress(vip.Name, portName, ipStr, &vip.Status.Mac, vip.Spec.Subnet, true); err != nil {
+			klog.Errorf("failed to init ipam from vip cr %s: %v", vip.Name, err)
+		}
+	}
 }
 
 func (c *Controller) initDefaultProviderNetwork() error {
