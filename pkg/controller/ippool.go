@@ -21,7 +21,16 @@ import (
 )
 
 func (c *Controller) enqueueAddIPPool(obj any) {
-	key := cache.MetaObjectToName(obj.(*kubeovnv1.IPPool)).String()
+	ippool := obj.(*kubeovnv1.IPPool)
+	// An informer (re)list delivers an ippool that is already terminating only via the
+	// add handler, so route it to the delete queue like the update handler does;
+	// otherwise the finalizer is never removed after a controller restart.
+	if !ippool.DeletionTimestamp.IsZero() {
+		klog.V(3).Infof("enqueue delete ippool %s due to deletion timestamp", cache.MetaObjectToName(ippool).String())
+		c.deleteIPPoolQueue.Add(ippool)
+		return
+	}
+	key := cache.MetaObjectToName(ippool).String()
 	klog.V(3).Infof("enqueue add ippool %s", key)
 	c.addOrUpdateIPPoolQueue.Add(key)
 }
