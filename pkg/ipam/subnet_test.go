@@ -1713,3 +1713,71 @@ func TestGetDualRandomAddressV6FailureRollsBackV4(t *testing.T) {
 	require.Equal(t, poolV4UsingAfterPod1, pool.V4Using.Len(), "pool V4Using leaked across dual-stack failure")
 	require.Equal(t, poolV4AvailAfterPod1, pool.V4Available.Len(), "pool V4Available leaked across dual-stack failure")
 }
+
+func TestSubnetSelectIPPoolIPs(t *testing.T) {
+	subnet, err := NewSubnet("dualSubnet", "10.0.0.0/24,2001:db8::/120", []string{"10.0.0.1", "10.0.0.2", "2001:db8::1"})
+	require.NoError(t, err)
+
+	// selection and reservation happen in one call
+	v4, v6, err := subnet.SelectIPPoolIPs("pool1", nil, 3, 2)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.3", "10.0.0.4", "10.0.0.5"}, v4)
+	require.Equal(t, []string{"2001:db8::2", "2001:db8::3"}, v6)
+
+	// the reservation holds: another pool cannot pick the same addresses
+	v4, v6, err = subnet.SelectIPPoolIPs("pool2", nil, 2, 1)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.6", "10.0.0.7"}, v4)
+	require.Equal(t, []string{"2001:db8::4"}, v6)
+
+	// re-selecting recovers the held selection, e.g. after a failed status update
+	v4, v6, err = subnet.SelectIPPoolIPs("pool1", nil, 2, 1)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.3", "10.0.0.4"}, v4)
+	require.Equal(t, []string{"2001:db8::2"}, v6)
+
+	// recorded addresses are retained in their order, then addresses the pool already
+	// holds, growing appends new picks last
+	v4, v6, err = subnet.SelectIPPoolIPs("pool1", []string{"10.0.0.3", "10.0.0.4", "2001:db8::2"}, 3, 2)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.3", "10.0.0.4", "10.0.0.5"}, v4)
+	require.Equal(t, []string{"2001:db8::2", "2001:db8::3"}, v6)
+
+	// recorded entries claimed by another pool in the meantime are dropped and
+	// replaced, retained entries not selected anymore are released to the default pool
+	v4, v6, err = subnet.SelectIPPoolIPs("pool1", []string{"10.0.0.6", "10.0.0.3"}, 2, 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.3", "10.0.0.4"}, v4)
+	require.Empty(t, v6)
+
+	// requesting more than available fails without committing anything
+	_, _, err = subnet.SelectIPPoolIPs("pool4", nil, 250, 0)
+	require.ErrorContains(t, err, "does not have enough free addresses")
+	require.Nil(t, subnet.IPPools["pool4"])
+
+	// recorded entries that fell out of the usable range are dropped: on this /30 the
+	// only usable addresses are 10.1.0.1 (excluded) and 10.1.0.2, 10.1.0.3 is the
+	// broadcast address
+	small, err := NewSubnet("smallSubnet", "10.1.0.0/30", []string{"10.1.0.1"})
+	require.NoError(t, err)
+	_, _, err = small.SelectIPPoolIPs("pool3", []string{"10.1.0.2", "10.1.0.3"}, 2, 0)
+	require.ErrorContains(t, err, "does not have enough free addresses")
+	v4, v6, err = small.SelectIPPoolIPs("pool3", []string{"10.1.0.2", "10.1.0.3"}, 1, 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.1.0.2"}, v4)
+	require.Empty(t, v6)
+}
+
+func TestSubnetWithoutCIDRSelectIPPoolIPs(t *testing.T) {
+	// a subnet without CIDR has an empty default pool and must not panic
+	v4, v6, err := NewMacOnlySubnet("macOnlySubnet").SelectIPPoolIPs("pool1", nil, 2, 2)
+	require.ErrorContains(t, err, "does not have enough free addresses")
+	require.Empty(t, v4)
+	require.Empty(t, v6)
+
+	// a subnet without any pool at all must not panic either
+	v4, v6, err = (&Subnet{}).SelectIPPoolIPs("pool1", nil, 2, 2)
+	require.ErrorContains(t, err, "does not have enough free addresses")
+	require.Empty(t, v4)
+	require.Empty(t, v6)
+}
