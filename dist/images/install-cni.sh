@@ -7,26 +7,27 @@ exit_with_error(){
   exit 1
 }
 
-install_cni_plugins=true
-daemon_args=()
+installCniPlugins=true
+daemonArgs=()
 for arg in "$@"; do
   case "$arg" in
     --install-cni-plugins=*)
-      install_cni_plugins="${arg#*=}"
+      installCniPlugins="${arg#*=}"
       ;;
     *)
-      daemon_args+=("$arg")
+      daemonArgs+=("$arg")
       ;;
   esac
 done
 
-case "$install_cni_plugins" in
+case "$installCniPlugins" in
   true|false)
     ;;
   *)
     exit_with_error "--install-cni-plugins must be true or false"
     ;;
 esac
+
 mkdir -p /usr/local/bin
 cp -f /kube-ovn/kubectl-ko /usr/local/bin/
 chmod +x /usr/local/bin/kubectl-ko
@@ -54,7 +55,7 @@ PORTMAP_BIN_DST=/opt/cni/bin/portmap
 MACVLAN_BIN_SRC=/macvlan
 MACVLAN_BIN_DST=/opt/cni/bin/macvlan
 
-if [[ "$install_cni_plugins" == true ]]; then
+if [[ "$installCniPlugins" == true ]]; then
   yes | cp -f $LOOPBACK_BIN_SRC $LOOPBACK_BIN_DST || exit_with_error "Failed to copy $LOOPBACK_BIN_SRC to $LOOPBACK_BIN_DST"
   yes | cp -f $PORTMAP_BIN_SRC $PORTMAP_BIN_DST || exit_with_error "Failed to copy $PORTMAP_BIN_SRC to $PORTMAP_BIN_DST"
   yes | cp -f $MACVLAN_BIN_SRC $MACVLAN_BIN_DST || exit_with_error "Failed to copy $MACVLAN_BIN_SRC to $MACVLAN_BIN_DST"
@@ -62,4 +63,4 @@ fi
 
 yes | cp -f $CNI_BIN_SRC $CNI_BIN_DST || exit_with_error "Failed to copy $CNI_BIN_SRC to $CNI_BIN_DST"
 
-./kube-ovn-daemon --install-cni-config "${daemon_args[@]}" || exit_with_error "Failed to install cni config"
+./kube-ovn-daemon --install-cni-config "${daemonArgs[@]}" || exit_with_error "Failed to install cni config"
