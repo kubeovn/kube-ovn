@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -67,6 +68,7 @@ func (c *Controller) enqueueUpdateIPPool(oldObj, newObj any) {
 	}
 	if !slices.Equal(oldIPPool.Spec.Namespaces, newIPPool.Spec.Namespaces) ||
 		!slices.Equal(oldIPPool.Spec.IPs, newIPPool.Spec.IPs) ||
+		oldIPPool.Spec.IPCount != newIPPool.Spec.IPCount ||
 		oldIPPool.Spec.EnableAddressSet != newIPPool.Spec.EnableAddressSet {
 		key := cache.MetaObjectToName(newIPPool).String()
 		klog.V(3).Infof("enqueue update ippool %s", key)
@@ -98,7 +100,16 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		return nil
 	}
 	ippool.Status.EnsureStandardConditions()
-	if err = c.reconcileIPPoolAddressSet(ippool); err != nil {
+	ips, err := c.resolveIPPoolIPs(ippool)
+	if err != nil {
+		klog.Errorf("failed to resolve IPs for ippool %s: %v", ippool.Name, err)
+		if patchErr := c.patchIPPoolStatusCondition(ippool, "ResolveIPsFailed", err.Error()); patchErr != nil {
+			klog.Error(patchErr)
+			return errors.Join(err, c.recordResourceError(ippool, "UpdateStatusFailed", patchErr))
+		}
+		return err
+	}
+	if err = c.reconcileIPPoolAddressSet(ippool, ips); err != nil {
 		klog.Errorf("failed to reconcile address set for ippool %s: %v", ippool.Name, err)
 		if patchErr := c.patchIPPoolStatusCondition(ippool, "ReconcileAddressSetFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
@@ -106,8 +117,8 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		}
 		return err
 	}
-	if err = c.ipam.AddOrUpdateIPPool(ippool.Spec.Subnet, ippool.Name, ippool.Spec.IPs); err != nil {
-		klog.Errorf("failed to add/update ippool %s with IPs %v in subnet %s: %v", ippool.Name, ippool.Spec.IPs, ippool.Spec.Subnet, err)
+	if err = c.ipam.AddOrUpdateIPPool(ippool.Spec.Subnet, ippool.Name, ips); err != nil {
+		klog.Errorf("failed to add/update ippool %s with IPs %v in subnet %s: %v", ippool.Name, ips, ippool.Spec.Subnet, err)
 		if patchErr := c.patchIPPoolStatusCondition(ippool, "UpdateIPAMFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
 			return errors.Join(err, c.recordResourceError(ippool, "UpdateStatusFailed", patchErr))
@@ -116,6 +127,16 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 	}
 
 	c.updateIPPoolStatistics(ippool)
+	if ippool.Spec.IPCount > 0 {
+		// record the picked addresses only after IPAM accepted them, so that a rejected
+		// selection (e.g. conflicting with another pool) is recomputed on the next retry.
+		// a failure here leaves the pool usable - IPAM already holds the addresses - so it
+		// is reported as an error to requeue instead of marking the pool not ready
+		if err = c.patchIPPoolIPs(ippool, ips); err != nil {
+			klog.Error(err)
+			return c.recordResourceError(ippool, "UpdateStatusFailed", err)
+		}
+	}
 
 	if err = c.patchIPPoolStatusCondition(ippool, "UpdateIPAMSucceeded", ""); err != nil {
 		klog.Error(err)
@@ -127,6 +148,82 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 	}
 
 	return nil
+}
+
+// ippoolIPs returns the addresses the pool currently consists of: the ones picked from
+// the subnet and recorded in status.ips when spec.ipCount is used, spec.ips otherwise.
+func ippoolIPs(ippool *kubeovnv1.IPPool) []string {
+	if ippool.Spec.IPCount > 0 {
+		return ippool.Status.IPs
+	}
+	return ippool.Spec.IPs
+}
+
+// maxIPPoolIPCount bounds spec.ipCount: an ippool is meant to carve a small set of
+// addresses out of a subnet, larger needs are served by a dedicated subnet or by listing
+// ranges in spec.ips. The CRD rejects larger values; this check also covers pools created
+// before that validation existed.
+const maxIPPoolIPCount = 32
+
+// resolveIPPoolIPs returns the addresses the pool should consist of. With spec.ipCount
+// set, addresses are picked from the subnet's free addresses and recorded in status.ips
+// by the caller, once IPAM accepted them, so that they stay stable across reconciles and
+// restarts: growing appends newly picked addresses, shrinking drops the most recently
+// added ones first.
+func (c *Controller) resolveIPPoolIPs(ippool *kubeovnv1.IPPool) ([]string, error) {
+	if ippool.Spec.IPCount <= 0 {
+		return ippool.Spec.IPs, nil
+	}
+	if ippool.Spec.IPCount > maxIPPoolIPCount {
+		return nil, fmt.Errorf("ippool %s requests %d addresses per IP family, more than the maximum of %d",
+			ippool.Name, ippool.Spec.IPCount, maxIPPoolIPCount)
+	}
+
+	subnet, err := c.subnetsLister.Get(ippool.Spec.Subnet)
+	if err != nil {
+		klog.Errorf("failed to get subnet %s: %v", ippool.Spec.Subnet, err)
+		return nil, err
+	}
+
+	wantV4, wantV6 := int(ippool.Spec.IPCount), int(ippool.Spec.IPCount)
+	// subnet.Spec.Protocol may still be empty right after the subnet is created
+	switch util.CheckProtocol(subnet.Spec.CIDRBlock) {
+	case kubeovnv1.ProtocolIPv4:
+		wantV6 = 0
+	case kubeovnv1.ProtocolIPv6:
+		wantV4 = 0
+	}
+
+	// drop addresses that no longer belong to the subnet, e.g. after a CIDR change
+	kept := make([]string, 0, len(ippool.Status.IPs))
+	for _, ip := range ippool.Status.IPs {
+		if util.CIDRContainIP(subnet.Spec.CIDRBlock, ip) {
+			kept = append(kept, ip)
+		}
+	}
+	v4, v6 := util.SplitIpsByProtocol(kept)
+	v4, v6 = trimIPs(v4, wantV4), trimIPs(v6, wantV6)
+
+	newV4, newV6, err := c.ipam.GetFreeIPs(ippool.Spec.Subnet, wantV4-len(v4), wantV6-len(v6))
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+	v4, v6 = append(v4, newV4...), append(v6, newV6...)
+	if len(v4) < wantV4 || len(v6) < wantV6 {
+		return nil, fmt.Errorf("subnet %s does not have enough free addresses for ippool %s: got %d/%d IPv4 and %d/%d IPv6 addresses",
+			subnet.Name, ippool.Name, len(v4), wantV4, len(v6), wantV6)
+	}
+
+	ips := append(v4, v6...)
+	return ips, nil
+}
+
+func trimIPs(ips []string, count int) []string {
+	if len(ips) > count {
+		return ips[:count]
+	}
+	return ips
 }
 
 func (c *Controller) handleDeleteIPPool(ippool *kubeovnv1.IPPool) (err error) {
@@ -213,8 +310,30 @@ func (c *Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason
 	return nil
 }
 
+// patchIPPoolIPs records the addresses picked for a pool using spec.ipCount. It is the
+// only writer of status.ips: patchIPPoolStatus deliberately leaves the field out, so that
+// a statistics update built from a stale informer cache cannot roll the addresses back.
+func (c *Controller) patchIPPoolIPs(ippool *kubeovnv1.IPPool, ips []string) error {
+	if slices.Equal(ippool.Status.IPs, ips) {
+		return nil
+	}
+	bytes, err := json.Marshal(map[string]any{"status": map[string]any{"ips": ips}})
+	if err != nil {
+		klog.Errorf("failed to generate json representation for IPs of ippool %s: %v", ippool.Name, err)
+		return err
+	}
+	if _, err = c.config.KubeOvnClient.KubeovnV1().IPPools().Patch(context.Background(), ippool.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		klog.Errorf("failed to patch IPs of ippool %s: %v", ippool.Name, err)
+		return err
+	}
+	ippool.Status.IPs = ips
+	return nil
+}
+
 func (c *Controller) patchIPPoolStatus(ippool *kubeovnv1.IPPool) error {
-	bytes, err := ippool.Status.Bytes()
+	status := ippool.Status
+	status.IPs = nil // owned by patchIPPoolIPs, see the comment there
+	bytes, err := status.Bytes()
 	if err != nil {
 		klog.Errorf("failed to generate json representation for status of ippool %s: %v", ippool.Name, err)
 		return err
@@ -299,7 +418,7 @@ func (c *Controller) updateIPPoolStatistics(ippool *kubeovnv1.IPPool) {
 	ippool.Status.V6UsingIPRange = v6us
 }
 
-func (c *Controller) reconcileIPPoolAddressSet(ippool *kubeovnv1.IPPool) error {
+func (c *Controller) reconcileIPPoolAddressSet(ippool *kubeovnv1.IPPool, ips []string) error {
 	asName := util.IPPoolAddressSetName(ippool.Name)
 
 	if !ippool.Spec.EnableAddressSet {
@@ -311,7 +430,7 @@ func (c *Controller) reconcileIPPoolAddressSet(ippool *kubeovnv1.IPPool) error {
 		return nil
 	}
 
-	addresses, err := util.ExpandIPPoolAddressesForOVN(ippool.Spec.IPs)
+	addresses, err := util.ExpandIPPoolAddressesForOVN(ips)
 	if err != nil {
 		err = fmt.Errorf("failed to build address set entries for ippool %s: %w", ippool.Name, err)
 		klog.Error(err)

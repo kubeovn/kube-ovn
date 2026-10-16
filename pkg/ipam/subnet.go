@@ -765,6 +765,36 @@ func (s *Subnet) isIPAssignedToOtherPod(ip, podName string) (string, bool) {
 	return "", false
 }
 
+// FreeIPs returns up to v4Count IPv4 and v6Count IPv6 addresses that can currently be
+// allocated from the subnet's default pool, in ascending address order.
+func (s *Subnet) FreeIPs(v4Count, v6Count int) ([]string, []string) {
+	s.Mutex.RLock()
+	defer s.Mutex.RUnlock()
+
+	pool := s.IPPools[""]
+	if pool == nil {
+		return nil, nil
+	}
+	return takeIPs(pool.V4Available, v4Count), takeIPs(pool.V6Available, v6Count)
+}
+
+func takeIPs(list *IPRangeList, count int) []string {
+	if list == nil || count <= 0 {
+		return nil
+	}
+	ips := make([]string, 0, count)
+	for i := 0; i < list.Len() && len(ips) < count; i++ {
+		r := list.At(i)
+		for ip := r.Start(); len(ips) < count; ip = ip.Add(1) {
+			ips = append(ips, ip.String())
+			if ip.Equal(r.End()) {
+				break
+			}
+		}
+	}
+	return ips
+}
+
 func (s *Subnet) AddOrUpdateIPPool(name string, ips []string) error {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
