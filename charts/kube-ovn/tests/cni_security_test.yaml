@@ -1,0 +1,12 @@
+suite: CNI plugin installation (v1)
+templates:
+  - ovncni-ds.yaml
+tests:
+  - it: can skip installing bundled CNI plugins
+    template: ovncni-ds.yaml
+    set:
+      cni_conf.INSTALL_CNI_PLUGINS: false
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[1].command
+          content: --install-cni-plugins=false
