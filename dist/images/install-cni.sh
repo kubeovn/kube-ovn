@@ -21,20 +21,20 @@ install_binary(){
   fi
 }
 
-install_cni_plugins=true
-daemon_args=()
+installCniPlugins=true
+daemonArgs=()
 for arg in "$@"; do
   case "$arg" in
     --install-cni-plugins=*)
-      install_cni_plugins="${arg#*=}"
+      installCniPlugins="${arg#*=}"
       ;;
     *)
-      daemon_args+=("$arg")
+      daemonArgs+=("$arg")
       ;;
   esac
 done
 
-case "$install_cni_plugins" in
+case "$installCniPlugins" in
   true|false)
     ;;
   *)
@@ -62,7 +62,7 @@ CNI_BIN_DST=/opt/cni/bin/kube-ovn
 
 bash /kube-ovn/install-cni-bundle.sh "$CNI_BIN_SRC" "$CNI_BIN_DST"
 
-if [[ "$install_cni_plugins" == true ]]; then
+if [[ "$installCniPlugins" == true ]]; then
   LOOPBACK_BIN_SRC=/loopback
   LOOPBACK_BIN_DST=/opt/cni/bin/loopback
 
@@ -81,4 +81,4 @@ if [[ "$install_cni_plugins" == true ]]; then
   install_binary "$IPVLAN_BIN_SRC" "$IPVLAN_BIN_DST"
 fi
 
-./kube-ovn-daemon --install-cni-config "${daemon_args[@]}" || exit_with_error "Failed to install cni config"
+./kube-ovn-daemon --install-cni-config "${daemonArgs[@]}" || exit_with_error "Failed to install cni config"
