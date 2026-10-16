@@ -1115,6 +1115,204 @@ var _ = framework.Describe("[group:ipam]", func() {
 		_ = podClient.CreateSync(pod)
 	})
 
+	framework.ConformanceIt("should pick IPs from the subnet when spec.ipCount is set", func() {
+		f.SkipVersionPriorTo(1, 17, "This feature was introduced in v1.17")
+
+		ginkgo.By("Creating ippool " + ippoolName + " with ipCount 3")
+		ippool := framework.MakeIPPool(ippoolName, subnetName, nil, nil)
+		ippool.Spec.IPCount = 3
+		ippool = ippoolClient.CreateSync(ippool)
+		families := len(strings.Split(cidr, ","))
+		framework.ExpectHaveLen(ippool.Status.IPs, families*3)
+		framework.ExpectTrue(ippool.Status.IsReady(), "ippool should be ready")
+		unique := make(map[string]struct{}, len(ippool.Status.IPs))
+		for _, ip := range ippool.Status.IPs {
+			_, duplicated := unique[ip]
+			framework.ExpectFalse(duplicated, "ippool recorded %s twice", ip)
+			unique[ip] = struct{}{}
+			framework.ExpectTrue(util.CIDRContainIP(cidr, ip), "recorded address %s is outside the subnet", ip)
+		}
+
+		ginkgo.By("Growing the ippool to 4 IPs")
+		updated := ippoolClient.Get(ippoolName)
+		updated.Spec.IPCount = 4
+		_ = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
+		grown := ippoolClient.WaitUntil(ippoolName, func(p *apiv1.IPPool) (bool, error) {
+			return len(p.Status.IPs) == families*4, nil
+		}, "status.ips grown", 2*time.Second, 30*time.Second)
+		framework.ExpectContainElement(grown.Status.IPs, ippool.Status.IPs[0])
+
+		ginkgo.By("Shrinking the ippool back to 2 IPs releasing the most recently added ones")
+		updated = ippoolClient.Get(ippoolName)
+		updated.Spec.IPCount = 2
+		_ = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
+		shrunk := ippoolClient.WaitUntil(ippoolName, func(p *apiv1.IPPool) (bool, error) {
+			return len(p.Status.IPs) == families*2, nil
+		}, "status.ips shrunk", 2*time.Second, 30*time.Second)
+		// the most recently added addresses of each IP family are released first, so
+		// what is left per family is a prefix of the grown selection; the controller
+		// lists IPv4 addresses before IPv6 ones
+		grownV4, grownV6 := util.SplitIpsByProtocol(grown.Status.IPs)
+		shrunkV4, shrunkV6 := util.SplitIpsByProtocol(shrunk.Status.IPs)
+		if len(grownV4) > 0 {
+			framework.ExpectEqual(shrunkV4, grownV4[:2])
+		}
+		if len(grownV6) > 0 {
+			framework.ExpectEqual(shrunkV6, grownV6[:2])
+		}
+
+		ginkgo.By("Rejecting an ippool with both ips and ipCount")
+		invalid := framework.MakeIPPool(ippoolName2, subnetName, []string{shrunk.Status.IPs[0]}, nil)
+		invalid.Spec.IPCount = 1
+		_, err := ippoolClient.IPPoolInterface.Create(context.Background(), invalid, metav1.CreateOptions{})
+		framework.ExpectError(err, "ippool with both ips and ipCount should be rejected")
+
+		ginkgo.By("Rejecting an ippool with neither ips nor ipCount")
+		invalid = framework.MakeIPPool(ippoolName2, subnetName, nil, nil)
+		_, err = ippoolClient.IPPoolInterface.Create(context.Background(), invalid, metav1.CreateOptions{})
+		framework.ExpectError(err, "ippool with neither ips nor ipCount should be rejected")
+
+		ginkgo.By("Rejecting an ippool asking for too many addresses")
+		invalid = framework.MakeIPPool(ippoolName2, subnetName, nil, nil)
+		invalid.Spec.IPCount = 33
+		_, err = ippoolClient.IPPoolInterface.Create(context.Background(), invalid, metav1.CreateOptions{})
+		framework.ExpectError(err, "ippool asking for more than 32 addresses per IP family should be rejected")
+
+		ginkgo.By("Growing the ippool back to 3 IPs appending to the kept prefix")
+		updated = ippoolClient.Get(ippoolName)
+		updated.Spec.IPCount = 3
+		_ = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
+		regrown := ippoolClient.WaitUntil(ippoolName, func(p *apiv1.IPPool) (bool, error) {
+			return len(p.Status.IPs) == families*3, nil
+		}, "status.ips regrown", 2*time.Second, 30*time.Second)
+		// the addresses kept during shrinking stay untouched, new picks are appended
+		regrownV4, regrownV6 := util.SplitIpsByProtocol(regrown.Status.IPs)
+		if len(shrunkV4) > 0 {
+			framework.ExpectEqual(regrownV4[:2], shrunkV4)
+		}
+		if len(shrunkV6) > 0 {
+			framework.ExpectEqual(regrownV6[:2], shrunkV6)
+		}
+
+		ginkgo.By("Creating pod " + podName + " which should get an IP from the ippool")
+		annotations := map[string]string{util.IPPoolAnnotation: ippoolName}
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
+		pod = podClient.CreateSync(pod)
+		for ip := range strings.SplitSeq(pod.Annotations[util.IPAddressAnnotation], ",") {
+			framework.ExpectContainElement(shrunk.Status.IPs, ip)
+		}
+	})
+
+	framework.ConformanceIt("should transition between spec.ips and spec.ipCount cleanly", func() {
+		f.SkipVersionPriorTo(1, 17, "This feature was introduced in v1.17")
+		families := len(strings.Split(cidr, ","))
+
+		ginkgo.By("Creating ippool " + ippoolName + " with ipCount 2")
+		ippool := framework.MakeIPPool(ippoolName, subnetName, nil, nil)
+		ippool.Spec.IPCount = 2
+		ippool = ippoolClient.CreateSync(ippool)
+		framework.ExpectHaveLen(ippool.Status.IPs, families*2)
+		v4, v6 := util.SplitIpsByProtocol(ippool.Status.IPs)
+		keep := slices.Clone(v4[:1])
+		if len(v6) > 0 {
+			keep = append(keep, v6[:1]...)
+		}
+		former := slices.Clone(v4[1:2])
+		if len(v6) > 0 {
+			former = append(former, v6[1:2]...)
+		}
+
+		ginkgo.By("Switching to spec.ips, keeping the first address of each family")
+		updated := ippoolClient.Get(ippoolName)
+		updated.Spec.IPCount = 0
+		updated.Spec.IPs = keep
+		_ = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
+
+		ginkgo.By("Checking the recorded addresses are cleared once the pool left count mode")
+		_ = ippoolClient.WaitUntil(ippoolName, func(p *apiv1.IPPool) (bool, error) {
+			return len(p.Status.IPs) == 0, nil
+		}, "status.ips cleared", 2*time.Second, 30*time.Second)
+
+		ginkgo.By("Claiming one former address of each family with another ippool")
+		other := framework.MakeIPPool(ippoolName2, subnetName, former, nil)
+		_ = ippoolClient.CreateSync(other)
+
+		ginkgo.By("Switching back to spec.ipCount")
+		updated = ippoolClient.Get(ippoolName)
+		updated.Spec.IPCount = 1
+		updated.Spec.IPs = nil
+		_ = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
+		stable := ippoolClient.WaitUntil(ippoolName, func(p *apiv1.IPPool) (bool, error) {
+			return len(p.Status.IPs) == families, nil
+		}, "status.ips restored", 2*time.Second, 30*time.Second)
+		// the pool keeps its own current addresses and must not resurrect the address
+		// claimed by the other pool
+		for _, ip := range keep {
+			framework.ExpectContainElement(stable.Status.IPs, ip)
+		}
+		for _, ip := range former {
+			framework.ExpectNotContainElement(stable.Status.IPs, ip)
+		}
+		framework.ExpectTrue(stable.Status.IsReady(), "ippool should be ready")
+	})
+
+	framework.ConformanceIt("should keep ipCount addresses stable across controller restarts", func() {
+		f.SkipVersionPriorTo(1, 17, "This feature was introduced in v1.17")
+		families := len(strings.Split(cidr, ","))
+
+		ginkgo.By("Creating ippool " + ippoolName + " with ipCount 2")
+		ippool := framework.MakeIPPool(ippoolName, subnetName, nil, nil)
+		ippool.Spec.IPCount = 2
+		ippool = ippoolClient.CreateSync(ippool)
+		framework.ExpectHaveLen(ippool.Status.IPs, families*2)
+		recorded := slices.Clone(ippool.Status.IPs)
+
+		ginkgo.By("Restarting the kube-ovn-controller deployment")
+		deployClient := f.DeploymentClientNS("kube-system")
+		_ = deployClient.RestartSync(deployClient.Get("kube-ovn-controller"))
+
+		ginkgo.By("Checking the pool keeps its recorded addresses and stays ready")
+		stable := ippoolClient.WaitUntil(ippoolName, func(p *apiv1.IPPool) (bool, error) {
+			return p.Status.IsReady(), nil
+		}, "ippool ready", 2*time.Second, 30*time.Second)
+		framework.ExpectEqual(stable.Status.IPs, recorded)
+
+		ginkgo.By("Creating pod " + podName + " which gets an address recorded for the ippool")
+		annotations := map[string]string{util.IPPoolAnnotation: ippoolName}
+		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
+		pod = podClient.CreateSync(pod)
+		for ip := range strings.SplitSeq(pod.Annotations[util.IPAddressAnnotation], ",") {
+			framework.ExpectContainElement(recorded, ip)
+		}
+	})
+
+	framework.ConformanceIt("should sync the address set of an ipCount ippool", func() {
+		f.SkipVersionPriorTo(1, 17, "This feature was introduced in v1.17")
+		if f.IsDual() {
+			ginkgo.Skip("the address set backing an ippool does not support mixed IP families")
+		}
+		families := len(strings.Split(cidr, ","))
+
+		ginkgo.By("Creating ippool " + ippoolName + " with ipCount 2 and EnableAddressSet")
+		ippool := framework.MakeIPPool(ippoolName, subnetName, nil, nil)
+		ippool.Spec.IPCount = 2
+		ippool.Spec.EnableAddressSet = true
+		ippool = ippoolClient.CreateSync(ippool)
+		framework.ExpectHaveLen(ippool.Status.IPs, families*2)
+
+		ginkgo.By("Checking the address set holds the picked addresses")
+		framework.WaitForAddressSetIPs(ippoolName, ippool.Status.IPs)
+
+		ginkgo.By("Growing the ippool to 3 IPs syncs the new addresses into the address set")
+		updated := ippoolClient.Get(ippoolName)
+		updated.Spec.IPCount = 3
+		_ = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
+		grown := ippoolClient.WaitUntil(ippoolName, func(p *apiv1.IPPool) (bool, error) {
+			return len(p.Status.IPs) == families*3, nil
+		}, "status.ips grown", 2*time.Second, 30*time.Second)
+		framework.WaitForAddressSetIPs(ippoolName, grown.Status.IPs)
+	})
+
 	framework.ConformanceIt("should manage address set when EnableAddressSet is true", func() {
 		f.SkipVersionPriorTo(1, 15, "This feature was introduced in v1.15")
 
