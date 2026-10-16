@@ -40,21 +40,39 @@ type IPPool struct {
 	Status IPPoolStatus `json:"status"`
 }
 
+// +kubebuilder:validation:XValidation:rule="has(self.ips) != has(self.ipCount)",message="exactly one of spec.ips and spec.ipCount must be set"
 type IPPoolSpec struct {
 	// Subnet name for the IP pool. This field is immutable.
 	// +kubebuilder:validation:Required
 	Subnet string `json:"subnet,omitempty"`
 	// Namespaces that can use this IP pool
 	Namespaces []string `json:"namespaces,omitempty"`
-	// IP addresses or ranges in the pool (IPv4/IPv6 addresses or CIDR ranges)
-	// +kubebuilder:validation:Required
+	// IP addresses or ranges in the pool (IPv4/IPv6 addresses or CIDR ranges).
+	// Mutually exclusive with ipCount.
 	IPs []string `json:"ips,omitempty"`
+	// Number of addresses to pick automatically from the subnet's free addresses,
+	// per IP family (a dual-stack subnet yields ipCount IPv4 plus ipCount IPv6 addresses).
+	// The picked addresses are recorded in status.ips and stay stable; increasing the
+	// value appends addresses, decreasing it releases the most recently added ones first.
+	// Mutually exclusive with ips.
+	// An ippool carves a small set of addresses out of a subnet; needing more than a few
+	// dozen is better served by a dedicated subnet, or by spelling out ranges in ips.
+	// This bound must stay in sync with maxIPPoolIPCount in the controller, which still
+	// guards pools created before the limit was introduced.
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=32
+	IPCount int32 `json:"ipCount,omitempty"`
 	// EnableAddressSet to work with policy-based routing and ACL
 	// +kubebuilder:default=false
 	EnableAddressSet bool `json:"enableAddressSet,omitempty"`
 }
 
 type IPPoolStatus struct {
+	// IP addresses the pool currently consists of, in allocation order.
+	// Maintained by the controller for pools using spec.ipCount; switching such a pool
+	// back to spec.ips keeps the last recorded addresses here, but they are no longer used.
+	// +optional
+	IPs []string `json:"ips,omitempty"`
 	// Number of available IPv4 addresses
 	V4AvailableIPs internal.BigInt `json:"v4AvailableIPs"`
 	// Available IPv4 address range

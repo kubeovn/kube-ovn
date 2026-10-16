@@ -25,6 +25,9 @@ import (
 // IPPoolStatusApplyConfiguration represents a declarative configuration of the IPPoolStatus type for use
 // with apply.
 type IPPoolStatusApplyConfiguration struct {
+	// IP addresses the pool currently consists of, in allocation order.
+	// Only set when spec.ipCount is used.
+	IPs []string `json:"ips,omitempty"`
 	// Number of available IPv4 addresses
 	V4AvailableIPs *internal.BigInt `json:"v4AvailableIPs,omitempty"`
 	// Available IPv4 address range
@@ -49,6 +52,16 @@ type IPPoolStatusApplyConfiguration struct {
 // apply.
 func IPPoolStatus() *IPPoolStatusApplyConfiguration {
 	return &IPPoolStatusApplyConfiguration{}
+}
+
+// WithIPs adds the given value to the IPs field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the IPs field.
+func (b *IPPoolStatusApplyConfiguration) WithIPs(values ...string) *IPPoolStatusApplyConfiguration {
+	for i := range values {
+		b.IPs = append(b.IPs, values[i])
+	}
+	return b
 }
 
 // WithV4AvailableIPs sets the V4AvailableIPs field in the declarative configuration to the given value

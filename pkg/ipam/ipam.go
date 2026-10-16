@@ -533,6 +533,20 @@ func (ipam *IPAM) AddOrUpdateIPPool(subnet, ippool string, ips []string) error {
 	return s.AddOrUpdateIPPool(ippool, ips)
 }
 
+// GetFreeIPs returns up to v4Count IPv4 and v6Count IPv6 addresses that are currently
+// allocatable in the subnet's default pool, in ascending address order.
+func (ipam *IPAM) GetFreeIPs(subnet string, v4Count, v6Count int) ([]string, []string, error) {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+
+	s := ipam.Subnets[subnet]
+	if s == nil {
+		return nil, nil, fmt.Errorf("subnet %s does not exist in IPAM", subnet)
+	}
+	v4, v6 := s.FreeIPs(v4Count, v6Count)
+	return v4, v6, nil
+}
+
 func (ipam *IPAM) RemoveIPPool(subnet, ippool string) {
 	ipam.mutex.Lock()
 	if s := ipam.Subnets[subnet]; s != nil {

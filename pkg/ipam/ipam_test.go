@@ -1589,3 +1589,16 @@ func TestIPAMDualRandomAddressHandlesV4OnV6Exhaustion(t *testing.T) {
 		})
 	}
 }
+
+func TestIPAMGetFreeIPs(t *testing.T) {
+	ipam := NewIPAM()
+	require.NoError(t, ipam.AddOrUpdateSubnet("subnetFree", "10.0.0.0/24", "10.0.0.1", []string{"10.0.0.1"}))
+
+	v4, v6, err := ipam.GetFreeIPs("subnetFree", 2, 2)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.2", "10.0.0.3"}, v4)
+	require.Empty(t, v6, "an IPv4 subnet has no free IPv6 address")
+
+	_, _, err = ipam.GetFreeIPs("unknownSubnet", 1, 0)
+	require.ErrorContains(t, err, "does not exist in IPAM")
+}
