@@ -411,12 +411,22 @@ func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP) error {
 }
 
 func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string, string, string, error) {
+	return c.acquireIPAddressWithMAC(subnetName, name, nicName, nil)
+}
+
+// acquireIPAddressWithMAC allocates a random v4/v6 address, pinning mac when non-nil
+// (random mac otherwise), retrying with the colliding address skipped when it turns out to
+// equal a node's own internal IP (validatePodIP), exactly as the fully-random path already
+// does. mac is never mutated by the retry: GetRandomAddress returns the same nic's already-
+// allocated mac unchanged on a retry for the same name/nicName (ipam.go, getV4RandomAddress
+// / getV6RandomAddress fast path), so only the IP half is ever re-rolled.
+func (c *Controller) acquireIPAddressWithMAC(subnetName, name, nicName string, mac *string) (string, string, string, error) {
 	var skippedAddrs []string
-	var v4ip, v6ip, mac string
+	var v4ip, v6ip, retMac string
 	checkConflict := true
 	var err error
 	for {
-		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, nil, subnetName, "", skippedAddrs, checkConflict)
+		v4ip, v6ip, retMac, err = c.ipam.GetRandomAddress(name, nicName, mac, subnetName, "", skippedAddrs, checkConflict)
 		if err != nil {
 			klog.Error(err)
 			return "", "", "", err
@@ -429,7 +439,7 @@ func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string,
 		}
 
 		if ipv4OK && ipv6OK {
-			return v4ip, v6ip, mac, nil
+			return v4ip, v6ip, retMac, nil
 		}
 
 		if !ipv4OK {

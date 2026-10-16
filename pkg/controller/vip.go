@@ -219,13 +219,20 @@ func (c *Controller) acquireVipAddress(vip *kubeovnv1.Vip, subnet *kubeovnv1.Sub
 		return "", "", "", err
 	}
 	ipStr := util.GetStringIP(vip.Spec.V4ip, vip.Spec.V6ip)
-	if ipStr != "" || macAddress != "" {
+	switch {
+	case ipStr != "":
 		var macPointer *string
 		if macAddress != "" {
 			macPointer = &macAddress
 		}
 		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr, macPointer)
-	} else {
+	case macAddress != "":
+		// mac pinned, ip random: acquireStaticIPAddress requires an ip and loops forever
+		// on "failed to parse vip ip" otherwise (#7703). Goes through the same node-IP
+		// collision retry (validatePodIP) as a fully random vip, not a bare ipam call, so
+		// a vip here is exactly as safe as an ordinary random one, just with a fixed mac.
+		v4ip, v6ip, mac, err = c.acquireIPAddressWithMAC(subnet.Name, vip.Name, portName, &macAddress)
+	default:
 		// Random allocate
 		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, vip.Name, portName)
 	}
