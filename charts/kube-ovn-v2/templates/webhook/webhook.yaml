@@ -43,6 +43,7 @@ webhooks:
         resources:
           - pods
       - operations:
+          - CREATE
           - UPDATE
         apiGroups:
           - ""

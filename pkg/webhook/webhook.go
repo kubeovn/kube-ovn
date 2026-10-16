@@ -46,6 +46,7 @@ func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache
 	createHooks[cronJobGVK] = v.CronJobCreateHook
 	createHooks[jobGVK] = v.JobCreateHook
 	createHooks[podGVK] = v.PodCreateHook
+	createHooks[serviceGVK] = v.ServiceCreateHook
 	updateHooks[serviceGVK] = v.ServiceUpdateHook
 
 	createHooks[subnetGVK] = v.SubnetCreateHook

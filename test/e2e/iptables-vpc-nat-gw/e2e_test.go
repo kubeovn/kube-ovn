@@ -2648,15 +2648,13 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			"share DNAT must not target the default-VPC endpoint IP the gateway cannot reach")
 	})
 
-	framework.ConformanceIt("[nftable-lb-svc-conflict] two services sharing one EIP:port: only the deterministic winner is programmed", func() {
+	framework.ConformanceIt("[nftable-lb-svc-conflict] a second service on the same EIP:port is rejected", func() {
 		f.SkipVersionPriorTo(1, 17, "nftable LoadBalancer service on vpc nat gateway (--enable-gw-nftable-lb-svc) was introduced in v1.17")
 
 		randomSuffix := framework.RandomSuffix()
 		lbEipName := "nftlbc-eip-" + randomSuffix
-		// Same namespace, so the owner key is namespace/name; the lexicographically
-		// smaller service name wins the contested EIP:port identity.
 		winnerSvcName := "nftlbc-a-" + randomSuffix
-		loserSvcName := "nftlbc-z-" + randomSuffix
+		rejectedSvcName := "nftlbc-z-" + randomSuffix
 		srvName := "nftlbc-srv-" + randomSuffix
 		appLabel := "nftlbc-app-" + randomSuffix
 
@@ -2717,8 +2715,6 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			serviceClient.DeleteSync(winnerSvcName)
 		})
 
-		// A Service that yields a contested EIP:port still keeps its own ClusterIP identity, so the
-		// contested identity has to be counted on `spec.eip`, not on the record count.
 		ownedEipRuleCount := func(svcName string) func() int {
 			selector := fmt.Sprintf("%s=%s,%s=%s", util.NftableLbSvcNsLabel, f.Namespace.Name, util.NftableLbSvcNameLabel, svcName)
 			return func() int {
@@ -2747,55 +2743,26 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
 			"the winner should program the contested identity before any competitor reconciles")
 
-		ginkgo.By("Creating a losing service that also references the same eip and port")
-		loserSvc := framework.MakeService(loserSvcName, corev1.ServiceTypeLoadBalancer,
+		// A second Service declaring the same EIP and external port would program the same share
+		// DNAT identity, which maps to one backend set, so admission rejects it outright.
+		ginkgo.By("Creating a second service on the same eip and port is rejected")
+		rejectedSvc := framework.MakeService(rejectedSvcName, corev1.ServiceTypeLoadBalancer,
 			map[string]string{util.EipAnnotation: lbEipName, util.VpcNatGatewayAnnotation: vpcNatGwName}, podLabels, ports, corev1.ServiceAffinityNone)
-		_ = serviceClient.Create(loserSvc)
 		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Cleaning up loser service " + loserSvcName)
-			serviceClient.DeleteSync(loserSvcName)
+			ginkgo.By("Cleaning up rejected service " + rejectedSvcName)
+			serviceClient.Delete(rejectedSvcName)
 		})
+		_, err := f.ClientSet.CoreV1().Services(f.Namespace.Name).Create(context.Background(), rejectedSvc, metav1.CreateOptions{})
+		framework.ExpectError(err, "a second service must not be admitted on the same eip:port")
+		gomega.Expect(err.Error()).To(gomega.ContainSubstring("already used by service " + f.Namespace.Name + "/" + winnerSvcName))
 
-		ginkgo.By("Verifying the loser does not program the contested EIP identity")
-		gomega.Consistently(ownedEipRuleCount(loserSvcName), 15*time.Second, 3*time.Second).Should(gomega.Equal(0),
-			"the losing service must not create rules for an identity owned by another service")
-		ginkgo.By("Verifying the losing service does not publish the contested EIP")
-		gomega.Eventually(func() []corev1.LoadBalancerIngress {
-			service := serviceClient.Get(loserSvcName)
-			if service == nil {
-				return nil
-			}
-			return service.Status.LoadBalancer.Ingress
-		}, 60*time.Second, 2*time.Second).Should(gomega.BeEmpty(),
-			"the losing service must not advertise an EIP owned by another service")
-
-		ginkgo.By("Verifying a conflict warning event is recorded on the loser service")
-		gomega.Eventually(func() bool {
-			events, err := f.ClientSet.CoreV1().Events(f.Namespace.Name).List(context.Background(), metav1.ListOptions{
-				FieldSelector: fmt.Sprintf("involvedObject.name=%s,reason=NftableLbSvcConflict", loserSvcName),
-			})
-			if err != nil {
-				framework.Logf("failed to list events: %v", err)
-				return false
-			}
-			return len(events.Items) > 0
-		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
-			"the losing service should receive an NftableLbSvcConflict warning event")
-
-		ginkgo.By("Verifying the loser did not tear down the winner's nft map")
+		ginkgo.By("Verifying the rejected service programs nothing and the winner keeps the identity")
+		gomega.Consistently(ownedEipRuleCount(rejectedSvcName), 15*time.Second, 3*time.Second).Should(gomega.Equal(0),
+			"a rejected service must not create rules")
 		gomega.Consistently(func() bool {
 			return nftDnatMapRuleExists(vpcNatGwPodName, lbEip.Status.IP, "80", "tcp", []string{srvIP + " . 8080"})
 		}, 15*time.Second, 3*time.Second).Should(gomega.BeTrue(),
-			"a losing service must not delete the identity the winner already programmed")
-
-		ginkgo.By("Deleting the winner service and verifying the loser takes over the identity")
-		serviceClient.DeleteSync(winnerSvcName)
-		gomega.Eventually(ownedEipRuleCount(loserSvcName), 90*time.Second, 3*time.Second).Should(gomega.Equal(1),
-			"the remaining service should take over the identity once the winner is deleted")
-		gomega.Eventually(func() bool {
-			return nftDnatMapRuleExists(vpcNatGwPodName, lbEip.Status.IP, "80", "tcp", []string{srvIP + " . 8080"})
-		}, 90*time.Second, 2*time.Second).Should(gomega.BeTrue(),
-			"the surviving service should program the identity after the takeover")
+			"the winner must keep the identity it already programmed")
 	})
 
 	framework.ConformanceIt("[nftable-lb-svc-ledger] a record deletion request cannot empty the accounting ledger", func() {
