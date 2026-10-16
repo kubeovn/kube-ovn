@@ -142,11 +142,10 @@ func detectKindBridgeNetwork() *KindBridgeNetwork {
 
 // generateExcludeIPs creates a YAML list of IPs to exclude based on the gateway
 func generateExcludeIPs(_, gateway string) string {
-	lastDot := strings.LastIndex(gateway, ".")
-	if lastDot == -1 {
+	baseIP, _, found := strings.CutLast(gateway, ".")
+	if !found {
 		return "- " + gateway
 	}
-	baseIP := gateway[:lastDot]
 	var ips []string
 	for i := 1; i <= 5; i++ {
 		ips = append(ips, fmt.Sprintf("- %s.%d", baseIP, i))
