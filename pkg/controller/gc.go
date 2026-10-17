@@ -359,6 +359,20 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 		return true, err
 	}
 
+	// Check if the vip mirrored by this ip still exists. A live read (not the cached
+	// lister) guards this destructive decision against a stale informer cache, same as
+	// the VM and StatefulSet checks above.
+	if ip.Spec.PodType == util.KindVip {
+		vip, err := c.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), ip.Spec.PodName, metav1.GetOptions{})
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return false, nil
+			}
+			return true, err
+		}
+		return c.isVMVipMirror(ip, vip), nil
+	}
+
 	// Check if StatefulSet exists
 	if ip.Spec.PodType == util.KindStatefulSet {
 		// Extract StatefulSet name from pod name by removing the last part after '-'
