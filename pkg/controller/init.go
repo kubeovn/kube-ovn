@@ -450,7 +450,9 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, ippool := range ippools {
-		if err = c.ipam.AddOrUpdateIPPool(ippool.Spec.Subnet, ippool.Name, ippool.Spec.IPs); err != nil {
+		// use the already recorded addresses so that pools using spec.ipCount keep their
+		// addresses until the pool is reconciled again
+		if err = c.ipam.AddOrUpdateIPPool(ippool.Spec.Subnet, ippool.Name, ippoolIPs(ippool)); err != nil {
 			klog.Errorf("failed to init ippool %s: %v", ippool.Name, err)
 		}
 	}

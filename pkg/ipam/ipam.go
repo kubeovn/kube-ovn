@@ -533,6 +533,20 @@ func (ipam *IPAM) AddOrUpdateIPPool(subnet, ippool string, ips []string) error {
 	return s.AddOrUpdateIPPool(ippool, ips)
 }
 
+// SelectIPPoolIPs selects and reserves the addresses of a named pool by per-family
+// counts, see Subnet.SelectIPPoolIPs. Selection and reservation happen atomically, so
+// no address can be handed out to someone else in between.
+func (ipam *IPAM) SelectIPPoolIPs(subnet, name string, keep []string, v4Count, v6Count int) ([]string, []string, error) {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+
+	s := ipam.Subnets[subnet]
+	if s == nil {
+		return nil, nil, fmt.Errorf("subnet %s does not exist in IPAM", subnet)
+	}
+	return s.SelectIPPoolIPs(name, keep, v4Count, v6Count)
+}
+
 func (ipam *IPAM) RemoveIPPool(subnet, ippool string) {
 	ipam.mutex.Lock()
 	if s := ipam.Subnets[subnet]; s != nil {

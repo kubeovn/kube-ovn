@@ -102,6 +102,8 @@ func TestHandleAddOrUpdateIPPoolRecordsStatusPatchFailure(t *testing.T) {
 	require.NoError(t, err)
 	controller := fc.fakeController
 	controller.ippoolKeyMutex = keymutex.NewHashed(0)
+	// the pool's addresses are reserved before the address set is reconciled
+	require.NoError(t, controller.ipam.AddOrUpdateSubnet("subnet-a", "10.0.0.0/24", "10.0.0.1", nil))
 	reconcileErr := errors.New("delete address set failed")
 	statusErr := errors.New("status patch failed")
 	fc.mockOvnClient.EXPECT().DeleteAddressSet("pool.a").Return(reconcileErr)
