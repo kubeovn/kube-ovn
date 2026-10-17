@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	cmclient "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	attachnetclientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/spf13/pflag"
 	extClientSet "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -84,13 +85,14 @@ type Configuration struct {
 	KubeConfigFile         string
 	KubeRestConfig         *rest.Config
 
-	KubeClient      kubernetes.Interface
-	KubeOvnClient   clientset.Interface
-	AnpClient       anpclientset.Interface
-	AttachNetClient attachnetclientset.Interface
-	KubevirtClient  kubecli.KubevirtClient
-	ExtClient       extClientSet.Interface
-	DynamicClient   dynamic.Interface
+	KubeClient        kubernetes.Interface
+	KubeOvnClient     clientset.Interface
+	AnpClient         anpclientset.Interface
+	AttachNetClient   attachnetclientset.Interface
+	KubevirtClient    kubecli.KubevirtClient
+	ExtClient         extClientSet.Interface
+	DynamicClient     dynamic.Interface
+	CertManagerClient cmclient.Interface
 
 	KubeFactoryClient    kubernetes.Interface
 	KubeOvnFactoryClient clientset.Interface
@@ -117,10 +119,11 @@ type Configuration struct {
 	ClusterUDPSessionLoadBalancer  string
 	ClusterSctpSessionLoadBalancer string
 
-	PodName        string
-	PodNamespace   string
-	PodNicType     string
-	LeaderElection LeaderElectionConfiguration
+	PodName                      string
+	PodNamespace                 string
+	ControllerServiceAccountName string
+	PodNicType                   string
+	LeaderElection               LeaderElectionConfiguration
 
 	WorkerNum       int
 	PprofPort       int32
@@ -155,6 +158,7 @@ type Configuration struct {
 	EnableDNSNameResolver       bool
 	EnableOVNIPSec              bool
 	CertManagerIPSecCert        bool
+	CertManagerIssuerName       string
 	EnableLiveMigrationOptimize bool
 
 	ExternalGatewaySwitch   string
@@ -274,6 +278,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableDNSNameResolver       = pflag.Bool("enable-dns-name-resolver", false, "Enable support for DNS name resolver")
 		argEnableOVNIPSec              = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argCertManagerIPSecCert        = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
+		argCertManagerIssuerName       = pflag.String("cert-manager-issuer-name", "kube-ovn", "cert-manager ClusterIssuer for authorized IPsec requests")
 		argEnableLiveMigrationOptimize = pflag.Bool("enable-live-migration-optimize", true, "Whether to enable kubevirt live migration optimize")
 
 		argExternalGatewayConfigNS = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config")
@@ -364,6 +369,7 @@ func ParseFlags() (*Configuration, error) {
 		DefaultVlanName:                *argDefaultVlanName,
 		PodName:                        os.Getenv(util.EnvPodName),
 		PodNamespace:                   os.Getenv(util.EnvPodNamespace),
+		ControllerServiceAccountName:   controllerServiceAccountName(),
 		PodNicType:                     *argPodNicType,
 		LeaderElection:                 leaderElectionConfig,
 		EnableOvnLB:                    *argEnableOvnLB,
@@ -395,6 +401,7 @@ func ParseFlags() (*Configuration, error) {
 		EnableMetrics:               *argEnableMetrics,
 		EnableOVNIPSec:              *argEnableOVNIPSec,
 		CertManagerIPSecCert:        *argCertManagerIPSecCert,
+		CertManagerIssuerName:       *argCertManagerIssuerName,
 		EnableLiveMigrationOptimize: *argEnableLiveMigrationOptimize,
 		BfdMinTx:                    *argBfdMinTx,
 		BfdMinRx:                    *argBfdMinRx,
@@ -506,6 +513,11 @@ func (config *Configuration) initKubeClient() error {
 	cfg.Burst = 2000
 	// use cmd arg to modify timeout later
 	cfg.Timeout = 30 * time.Second
+	if config.EnableOVNIPSec && config.CertManagerIPSecCert {
+		if config.CertManagerClient, err = cmclient.NewForConfig(cfg); err != nil {
+			return err
+		}
+	}
 
 	AttachNetClient, err := attachnetclientset.NewForConfig(cfg)
 	if err != nil {

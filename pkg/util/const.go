@@ -378,6 +378,7 @@ const (
 	VhostUserSocketVolumeName = "vhostuser-sockets"
 
 	DefaultOVNIPSecCA       = "ovn-ipsec-ca"
+	DefaultOVNIPSecSigner   = "ovn-ipsec-signer"
 	DefaultOVSCACertPath    = "/var/lib/openvswitch/pki/switchca/cacert.pem"
 	DefaultOVSCACertKeyPath = "/var/lib/openvswitch/pki/switchca/private/cakey.pem"
 
@@ -397,13 +398,14 @@ const (
 	EnvKubernetesServiceHost = "KUBERNETES_SERVICE_HOST"
 	EnvKubernetesServicePort = "KUBERNETES_SERVICE_PORT"
 
-	EnvPodName      = "POD_NAME"
-	EnvPodNamespace = "POD_NAMESPACE"
-	EnvPodIP        = "POD_IP"
-	EnvPodIPs       = "POD_IPS"
-	EnvNodeName     = "NODE_NAME"
-	EnvHostIP       = "HOST_IP"
-	EnvHostIPs      = "HOST_IPS"
+	EnvPodName           = "POD_NAME"
+	EnvPodNamespace      = "POD_NAMESPACE"
+	EnvPodServiceAccount = "POD_SERVICE_ACCOUNT"
+	EnvPodIP             = "POD_IP"
+	EnvPodIPs            = "POD_IPS"
+	EnvNodeName          = "NODE_NAME"
+	EnvHostIP            = "HOST_IP"
+	EnvHostIPs           = "HOST_IPS"
 
 	// KubeOvnControllerServiceAccountName is the service account only kube-ovn-controller
 	// runs as (see charts/kube-ovn-v2/templates/rbac/ovn-sa.yaml and
