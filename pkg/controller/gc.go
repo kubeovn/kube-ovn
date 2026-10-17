@@ -34,10 +34,11 @@ func (c *Controller) gc() error {
 	}
 	gcFunctions := []func() error{
 		c.gcNode,
-		c.gcChassis,
 		c.gcLogicalSwitch,
 		c.gcCustomLogicalRouter,
 		// The lsp gc is processed periodically by markAndCleanLSP, will not gc lsp when init
+		// The chassis gc is processed periodically (with the same run-once-at-startup
+		// guarantee from wait.Until), will not gc chassis here.
 		c.gcLoadBalancer,
 		c.gcNetworkPolicy,
 		c.gcAdminNetworkPolicy,
@@ -1142,6 +1143,17 @@ func (c *Controller) gcStaticRoute() error {
 }
 
 func (c *Controller) gcChassis() error {
+	// gcChassis now runs from both the periodic GC ticker and the reactive
+	// UpdateChassisTag path; serialize them so they don't race on
+	// ListChassis/DeleteChassis.
+	c.gcChassisMu.Lock()
+	defer c.gcChassisMu.Unlock()
+
+	// The isChassisExempt checks below are the only GC exemption in this
+	// file; it exists so an externally-managed (non-k8s) gateway chassis
+	// survives both this periodic GC and a controller restart. There is
+	// no equivalent exemption for LSP GC above.
+
 	klog.Infof("start to gc chassis")
 	chassises, err := c.OVNSbClient.ListChassis()
 	if err != nil {
@@ -1169,6 +1181,11 @@ func (c *Controller) gcChassis() error {
 				delete(chassisNodes, chassisName)
 				continue
 			}
+			if c.isChassisExempt(chassisName) {
+				klog.Infof("skip gc of exempted chassis %s (hostname mismatch for node %s)", chassisName, node.Name)
+				delete(chassisNodes, chassisName)
+				continue
+			}
 			// maybe node name changed, delete chassis
 			klog.Infof("gc node %s chassis %s", node.Name, chassisName)
 			if err := c.OVNSbClient.DeleteChassis(chassisName); err != nil {
@@ -1179,6 +1196,10 @@ func (c *Controller) gcChassis() error {
 	}
 
 	for chassisName, hostname := range chassisNodes {
+		if c.isChassisExempt(chassisName) {
+			klog.Infof("skip gc of exempted chassis %s (host %s)", chassisName, hostname)
+			continue
+		}
 		klog.Infof("gc node %s chassis %s", hostname, chassisName)
 		if err := c.OVNSbClient.DeleteChassis(chassisName); err != nil {
 			klog.Errorf("failed to delete node %s chassis %s %v", hostname, chassisName, err)
