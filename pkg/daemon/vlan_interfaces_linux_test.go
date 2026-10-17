@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/vishvananda/netlink"
-	"kernel.org/pub/linux/libs/security/libcap/cap"
+	libcap "kernel.org/pub/linux/libs/security/libcap/cap"
 )
 
 func TestNonRootVlanLifecycle(t *testing.T) {
@@ -32,11 +32,11 @@ func TestNonRootVlanLifecycle(t *testing.T) {
 	require.Equal(t, 65534, os.Getuid())
 	// Match the daemon: effective/permitted capabilities, no inheritable or
 	// ambient capabilities that could accidentally make an ip subprocess work.
-	require.NoError(t, cap.ResetAmbient())
-	caps, err := cap.FromText("cap_net_bind_service,cap_net_admin,cap_net_raw=ep")
+	require.NoError(t, libcap.ResetAmbient())
+	caps, err := libcap.FromText("cap_net_bind_service,cap_net_admin,cap_net_raw=ep")
 	require.NoError(t, err)
 	require.NoError(t, caps.SetProc())
-	require.Equal(t, caps.String(), cap.GetProc().String())
+	require.Equal(t, caps.String(), libcap.GetProc().String())
 
 	parent := &netlink.Dummy{Name: "vlan-test"}
 	require.NoError(t, netlink.LinkAdd(parent))
