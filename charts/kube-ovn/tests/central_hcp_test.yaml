@@ -268,3 +268,27 @@ tests:
           content:
             name: OVN_SB_ADDR
             value: tcp:ovn-sb.example.com:6642
+
+  - it: grants volume-init the capabilities needed to chown HCP volumes
+    template: central-deploy.yaml
+    set:
+      ovn-central.hcp.enabled: true
+      ovn-central.hcp.namespace: hcp
+      ovn-central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      ovn-central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+    asserts:
+      - equal:
+          path: spec.template.spec.initContainers[0].name
+          value: volume-init
+      - contains:
+          path: spec.template.spec.initContainers[0].securityContext.capabilities.add
+          content: CHOWN
+      - contains:
+          path: spec.template.spec.initContainers[0].securityContext.capabilities.add
+          content: DAC_OVERRIDE
+      - contains:
+          path: spec.template.spec.initContainers[0].securityContext.capabilities.add
+          content: DAC_READ_SEARCH
+      - contains:
+          path: spec.template.spec.initContainers[0].securityContext.capabilities.drop
+          content: ALL
