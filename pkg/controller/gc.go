@@ -370,7 +370,13 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 			}
 			return true, err
 		}
-		return c.isVMVipMirror(ip, vip), nil
+		isMirror, err := c.isVMVipMirror(ip, vip)
+		if err != nil {
+			// fail closed, same as the lookups above: keep the ip rather than gc it
+			// blind on a transient subnet lookup failure
+			return true, err
+		}
+		return isMirror, nil
 	}
 
 	// Check if StatefulSet exists

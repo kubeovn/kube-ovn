@@ -291,8 +291,18 @@ func (c *Controller) handleUpdateIP(key string) (err error) {
 			// guards this destructive decision against a stale informer cache, and a
 			// non-NotFound read error must not be treated as "vip is gone".
 			vip, vipErr := c.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), cachedIP.Spec.PodName, metav1.GetOptions{})
+			var isMirror bool
+			if vipErr == nil && vip.DeletionTimestamp.IsZero() {
+				var mirrorErr error
+				if isMirror, mirrorErr = c.isVMVipMirror(cachedIP, vip); mirrorErr != nil {
+					// fail closed: propagate rather than fall through to releasing the
+					// lsp/ipam on an inconclusive mirror check
+					klog.Errorf("failed to check whether ip %s mirrors vip %s: %v", cachedIP.Name, vip.Name, mirrorErr)
+					return mirrorErr
+				}
+			}
 			switch {
-			case vipErr == nil && vip.DeletionTimestamp.IsZero() && c.isVMVipMirror(cachedIP, vip):
+			case vipErr == nil && vip.DeletionTimestamp.IsZero() && isMirror:
 				klog.Warningf("ip %s mirrors live vip %s, keeping lsp and ipam, re-mirroring", cachedIP.Name, vip.Name)
 				if err = c.handleDelIPFinalizer(cachedIP); err != nil {
 					klog.Errorf("failed to handle del ip finalizer %v", err)
