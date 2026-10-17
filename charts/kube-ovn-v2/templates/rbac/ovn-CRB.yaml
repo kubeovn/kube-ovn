@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -64,7 +65,7 @@ subjects:
   - kind: ServiceAccount
     name: ovn-ovs
     namespace: {{ .Values.namespace }}
-
+{{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -77,13 +78,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: kube-ovn-app
-    namespace: {{ .Values.namespace }}
+    namespace: {{ include "kubeovn.centralNamespace" . }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: kube-ovn-app
-  namespace: {{ .Values.namespace }}
+  namespace: {{ include "kubeovn.centralNamespace" . }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
@@ -91,4 +92,4 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: kube-ovn-app
-    namespace: {{ .Values.namespace }}
+    namespace: {{ include "kubeovn.centralNamespace" . }}

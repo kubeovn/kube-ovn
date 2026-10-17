@@ -1,3 +1,4 @@
+{{- if include "kubeovn.renderDataPlane" . }}
 {{- $ovsOvnImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.ovsOvn.image) | fromYaml -}}
 kind: DaemonSet
 apiVersion: apps/v1
@@ -141,13 +142,12 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: spec.nodeName
-            {{- if .Values.central.hcp.enabled }}
+            {{- if or .Values.central.hcp.enabled (eq .Values.installMode "dataPlaneOnly") }}
             - name: OVN_SB_ADDR
               value: "{{ include "kubeovn.ovnSbAddress" . }}"
-            {{- else }}
+            {{- end }}
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.ovnDbAddresses" . }}"
-            {{- end }}
             - name: OVN_REMOTE_PROBE_INTERVAL
               value: "{{ .Values.ovsOvn.ovnRemoteProbeInterval }}"
             - name: OVN_REMOTE_OPENFLOW_INTERVAL
@@ -235,3 +235,4 @@ spec:
         - hostPath:
             path: /var/run/containerd
           name: cruntime
+{{- end }}

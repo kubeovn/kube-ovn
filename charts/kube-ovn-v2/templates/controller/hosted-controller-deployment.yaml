@@ -1,0 +1,317 @@
+{{- if and (eq .Values.installMode "controlPlaneOnly") .Values.controller.hostedTenants }}
+{{- include "kubeovn.controllerPlacementValidation" . }}
+{{- $controllerImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.controller.image) | fromYaml -}}
+{{- range $tenant := .Values.controller.hostedTenants }}
+{{- /*
+    Kamaji topology: the tenant apiserver runs as a pod in this management
+    cluster, so the controller reconciles it via --kubeconfig and writes to the
+    local ovn-central Services. Per-tenant networking/features values are
+    deep-merged over the release values because every tenant owns its own
+    pod/join/service CIDRs.
+*/}}
+{{- $networking := mergeOverwrite (deepCopy $.Values.networking) (get $tenant "networking" | default dict) -}}
+{{- $features := mergeOverwrite (deepCopy $.Values.features) (get $tenant "features" | default dict) -}}
+{{- $tenantNamespace := $tenant.namespace | default $.Values.namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kube-ovn-controller-{{ $tenant.name }}
+  namespace: {{ $.Values.namespace }}
+  {{- with $.Values.controller.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with $.Values.controller.labels }}
+  labels:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: {{ include "kubeovn.hostedControllerReplicas" $tenant }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: kube-ovn-controller-{{ $tenant.name }}
+      app.kubernetes.io/part-of: kube-ovn
+  strategy:
+    rollingUpdate:
+      maxSurge: 0%
+      maxUnavailable: 100%
+    type: RollingUpdate
+  template:
+    metadata:
+      {{- with $.Values.controller.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        app.kubernetes.io/name: kube-ovn-controller-{{ $tenant.name }}
+        app.kubernetes.io/part-of: kube-ovn
+        kube-ovn.io/hosted-tenant: {{ $tenant.name }}
+        {{- with $.Values.controller.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+        # Legacy labels
+        app: kube-ovn-controller-{{ $tenant.name }}
+        component: network
+        type: infra
+    spec:
+      tolerations:
+        - effect: NoSchedule
+          operator: Exists
+        - key: CriticalAddonsOnly
+          operator: Exists
+      affinity:
+        {{- $hardcodedPreferred := list (dict "matchExpressions" (list (dict "key" "ovn.kubernetes.io/ic-gw" "operator" "NotIn" "values" (list "true"))) "weight" 100) -}}
+        {{- include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedPreferred" $hardcodedPreferred "userPreferred" $.Values.controller.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" $.Values.controller.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) | nindent 8 }}
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: kube-ovn-controller-{{ $tenant.name }}
+              topologyKey: kubernetes.io/hostname
+      priorityClassName: system-cluster-critical
+      # The controller authenticates to the tenant apiserver with the mounted
+      # kubeconfig, not with a local ServiceAccount.
+      automountServiceAccountToken: false
+      hostNetwork: true
+      # hostNetwork pods use the node's resolv.conf by default, which cannot
+      # resolve the ovn-central StatefulSet DNS names; force cluster DNS.
+      dnsPolicy: ClusterFirstWithHostNet
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: hostpath-init
+          image: {{ $controllerImage.prefix }}{{ $controllerImage.repository }}:{{ $controllerImage.tag }}
+          imagePullPolicy: {{ $controllerImage.pullPolicy }}
+          command:
+            - sh
+            - -c
+            - "chown -R nobody: /var/log/kube-ovn"
+          securityContext:
+            allowPrivilegeEscalation: true
+            capabilities:
+              drop:
+                - ALL
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - name: kube-ovn-log
+              mountPath: /var/log/kube-ovn
+      containers:
+        - name: kube-ovn-controller
+          image: {{ $controllerImage.prefix }}{{ $controllerImage.repository }}:{{ $controllerImage.tag }}
+          imagePullPolicy: {{ $controllerImage.pullPolicy }}
+          args:
+          - /kube-ovn/start-controller.sh
+          # Reconcile the tenant apiserver (in-cluster Kamaji pod) instead of
+          # this cluster's API server.
+          - --kubeconfig=/etc/kube-ovn/tenant/kubeconfig
+          {{- if $.Values.controller.leaderElection.leaseDuration }}
+          - --leader-elect-lease-duration={{ $.Values.controller.leaderElection.leaseDuration }}
+          {{- end }}
+          {{- if $.Values.controller.leaderElection.renewDeadline }}
+          - --leader-elect-renew-deadline={{ $.Values.controller.leaderElection.renewDeadline }}
+          {{- end }}
+          {{- if $.Values.controller.leaderElection.retryPeriod }}
+          - --leader-elect-retry-period={{ $.Values.controller.leaderElection.retryPeriod }}
+          {{- end }}
+          - --default-ls={{ $networking.pods.subnetName }}
+          - --default-cidr=
+          {{- if eq $networking.stack "Dual" -}}
+          {{ $networking.pods.cidr.v4 }},{{ $networking.pods.cidr.v6 }}
+          {{- else if eq $networking.stack "IPv4" -}}
+          {{ $networking.pods.cidr.v4 }}
+          {{- else if eq $networking.stack "IPv6" -}}
+          {{ $networking.pods.cidr.v6 }}
+          {{- end }}
+          - --default-gateway=
+          {{- if eq $networking.stack "Dual" -}}
+          {{ $networking.pods.gateways.v4 }},{{ $networking.pods.gateways.v6 }}
+          {{- else if eq $networking.stack "IPv4" -}}
+          {{ $networking.pods.gateways.v4 }}
+          {{- else if eq $networking.stack "IPv6" -}}
+          {{ $networking.pods.gateways.v6 }}
+          {{- end }}
+          - --default-gateway-check={{- $networking.pods.enableGatewayChecks }}
+          - --default-logical-gateway={{- $networking.pods.enableLogicalGateways }}
+          - --default-u2o-interconnection={{- $features.enableU2OInterconnections }}
+          - --default-exclude-ips={{- $networking.excludeIps }}
+          - --cluster-router={{ $networking.defaultVpcName }}
+          - --node-switch={{ $networking.join.subnetName }}
+          - --node-switch-cidr=
+          {{- if eq $networking.stack "Dual" -}}
+          {{ $networking.join.cidr.v4 }},{{ $networking.join.cidr.v6 }}
+          {{- else if eq $networking.stack "IPv4" -}}
+          {{ $networking.join.cidr.v4 }}
+          {{- else if eq $networking.stack "IPv6" -}}
+          {{ $networking.join.cidr.v6 }}
+          {{- end }}
+          - --service-cluster-ip-range=
+          {{- if eq $networking.stack "Dual" -}}
+          {{ $networking.services.cidr.v4 }},{{ $networking.services.cidr.v6 }}
+          {{- else if eq $networking.stack "IPv4" -}}
+          {{ $networking.services.cidr.v4 }}
+          {{- else if eq $networking.stack "IPv6" -}}
+          {{ $networking.services.cidr.v6 }}
+          {{- end }}
+          - --network-type={{- $networking.networkType }}
+          - --default-provider-name={{ $networking.vlan.providerName }}
+          - --default-interface-name={{- $networking.vlan.interfaceName }}
+          - --default-exchange-link-name={{- $networking.exchangeLinkName }}
+          - --default-vlan-name={{- $networking.vlan.name }}
+          - --default-vlan-id={{- $networking.vlan.id }}
+          - --ls-dnat-mod-dl-dst={{- $features.LS_DNAT_MOD_DL_DST }}
+          - --ls-ct-skip-dst-lport-ips={{- $features.LS_CT_SKIP_DST_LPORT_IPS }}
+          - --pod-nic-type={{- $networking.podNicType }}
+          - --enable-lb={{- $features.enableLoadbalancer }}
+          - --enable-np={{- $features.enableNetworkPolicies }}
+          {{- if $.Values.aclSampling.enabled }}
+          - --enable-acl-sampling=true
+          - --acl-sampling-set-id={{- $.Values.aclSampling.setID }}
+          - --acl-sampling-app-id-new={{- $.Values.aclSampling.appIDNew }}
+          - --acl-sampling-app-id-established={{- $.Values.aclSampling.appIDEstablished }}
+          - --acl-sampling-collector-id-allow={{- $.Values.aclSampling.collectorIDAllow }}
+          - --acl-sampling-collector-id-default-deny={{- $.Values.aclSampling.collectorIDDefaultDeny }}
+          - --acl-sampling-allow-probability-percent={{- $.Values.aclSampling.allowProbabilityPercent }}
+          - --acl-sampling-default-deny-probability-percent={{- $.Values.aclSampling.defaultDenyProbabilityPercent }}
+          {{- end }}
+          - --enable-eip-snat={{- $networking.enableEipSnat }}
+          {{- if $networking.externalGatewayConfigNs }}
+          - --external-gateway-config-ns={{- $networking.externalGatewayConfigNs }}
+          {{- end }}
+          {{- if $networking.externalGatewaySwitch }}
+          - --external-gateway-switch={{- $networking.externalGatewaySwitch }}
+          {{- end }}
+          - --enable-external-vpc={{- $features.enableExternalVpcs }}
+          - --enable-ecmp={{- $networking.enableEcmp }}
+          - --logtostderr=false
+          - --alsologtostderr=true
+          - --gc-interval={{- $.Values.performance.gcInterval }}
+          - --inspect-interval={{- $.Values.performance.inspectInterval }}
+          - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
+          - --log_file_max_size=200
+          - --enable-lb-svc={{- $features.enableLoadbalancerService }}
+          - --keep-vm-ip={{- $features.enableKeepVmIps }}
+          - --enable-metrics={{- $networking.enableMetrics }}
+          - --node-local-dns-ip={{- $networking.nodeLocalDnsIp }}
+          - --skip-conntrack-dst-cidrs={{- $networking.skipConntrackDstCidrs }}
+          - --secure-serving={{- $features.enableSecureServing }}
+          {{- if or $networking.tlsMinVersion $networking.tlsMaxVersion $networking.tlsCipherSuites }}
+          {{- include "kubeovn.componentTLSArgs" (dict "Values" (dict "networking" $networking)) | nindent 10 }}
+          {{- end }}
+          - --enable-ovn-ipsec={{- $features.enableOvnIpsec }}
+          - --enable-anp={{- $features.ENABLE_ANP }}
+          - --enable-dns-name-resolver={{- $features.ENABLE_DNS_NAME_RESOLVER }}
+          - --ovsdb-con-timeout={{- $features.OVSDB_CON_TIMEOUT }}
+          - --ovsdb-inactivity-timeout={{- $features.OVSDB_INACTIVITY_TIMEOUT }}
+          - --enable-live-migration-optimize={{- $features.enableLiveMigrationOptimization }}
+          - --enable-ovn-lb-prefer-local={{- $features.ENABLE_OVN_LB_PREFER_LOCAL }}
+          - --image={{ $controllerImage.prefix }}{{ $controllerImage.repository }}:{{ $controllerImage.tag }}
+          - --non-primary-cni-mode={{- $.Values.cni.nonPrimaryCNI }}
+          - --np-enforcement={{- $.Values.networkPolicies.enforcement | quote }}
+          securityContext:
+            runAsUser: {{ include "kubeovn.runAsUser" $ }}
+            privileged: false
+            capabilities:
+              add:
+                - NET_BIND_SERVICE
+                - NET_RAW
+          env:
+            # controller-runtime (syncFinalizers, pkg/controller/init.go) builds
+            # its client via GetConfigOrDie; with the SA token disabled it must
+            # fall back to KUBECONFIG, which must target the tenant apiserver.
+            - name: KUBECONFIG
+              value: /etc/kube-ovn/tenant/kubeconfig
+            - name: ENABLE_SSL
+              value: "{{ $.Values.networking.enableSsl }}"
+            # TLS keying material is owned by this management release; hosted
+            # controllers must not rotate the shared kube-ovn-tls Secret.
+            - name: KUBE_OVN_TLS_ROTATION_INTERVAL
+              value: "0"
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            # Explicit tenant namespace: the controller uses POD_NAMESPACE for
+            # namespaced informers, the kube-ovn-tls Secret and the workloads
+            # it manages (vpc-nat-gw, vpc-lb, vpc-dns) — all against the
+            # tenant apiserver.
+            - name: POD_NAMESPACE
+              value: {{ $tenantNamespace | quote }}
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: OVN_DB_IPS
+              value: "{{ include "kubeovn.ovnDbAddresses" $ }}"
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: POD_IPS
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIPs
+            - name: ENABLE_BIND_LOCAL_IP
+              value: "{{- $features.ENABLE_BIND_LOCAL_IP }}"
+            {{- with $.Values.controller.extraEnv }}
+              {{- toYaml . | nindent 12 }}
+            {{- end }}
+          volumeMounts:
+            - mountPath: /etc/kube-ovn/tenant
+              name: tenant-kubeconfig
+              readOnly: true
+            - mountPath: /etc/localtime
+              name: localtime
+              readOnly: true
+            - mountPath: /var/log/kube-ovn
+              name: kube-ovn-log
+            - mountPath: /var/log/ovn
+              name: ovn-log
+            - mountPath: /var/run/tls
+              name: kube-ovn-tls
+          readinessProbe:
+            httpGet:
+              port: 10660
+              path: /readyz
+              scheme: '{{ ternary "HTTPS" "HTTP" $features.enableSecureServing }}'
+            periodSeconds: 3
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              port: 10660
+              path: /readyz
+              scheme: '{{ ternary "HTTPS" "HTTP" $features.enableSecureServing }}'
+            initialDelaySeconds: 300
+            periodSeconds: 7
+            failureThreshold: 5
+            timeoutSeconds: 5
+          {{- with $.Values.controller.resources }}
+          resources:
+            {{- toYaml . | trim | nindent 12 }}
+          {{- end }}
+      nodeSelector:
+        kubernetes.io/os: "linux"
+      volumes:
+        - name: tenant-kubeconfig
+          secret:
+            secretName: {{ $tenant.kubeconfigSecret }}
+            items:
+              - key: {{ $tenant.kubeconfigKey | default "kubeconfig" }}
+                path: kubeconfig
+        - name: localtime
+          hostPath:
+            path: /etc/localtime
+        - name: kube-ovn-log
+          hostPath:
+            path: {{ $.Values.logging.directory }}/kube-ovn
+        - name: ovn-log
+          hostPath:
+            path: {{ $.Values.logging.directory }}/ovn
+        - name: kube-ovn-tls
+          secret:
+            optional: true
+            secretName: kube-ovn-tls
+{{- end }}
+{{- end }}
