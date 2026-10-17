@@ -31,7 +31,7 @@ spec:
       hostNetwork: true
       hostPID: true
       securityContext:
-        {{- if .Values.func.ENABLE_TPROXY }}
+        {{- if or .Values.func.ENABLE_TPROXY .Values.func.ENABLE_NODE_GATEWAY_HELPER }}
         fsGroup: 65534
         {{- end }}
         seccompProfile:
@@ -46,7 +46,19 @@ spec:
           - |
             chmod +t /usr/local/sbin
             chown -R nobody: /var/log/kube-ovn
+            if [ "$ENABLE_NODE_GATEWAY_HELPER" = "true" ]; then
+              if [ ! -e /var/run/netns/ovnext ]; then
+                touch /var/run/netns/ovnext
+              fi
+              if [ -f /var/run/netns/ovnext ]; then
+                chown 65534:65534 /var/run/netns/ovnext || true
+                chmod 0660 /var/run/netns/ovnext || true
+              fi
+            fi
             iptables -V
+        env:
+          - name: ENABLE_NODE_GATEWAY_HELPER
+            value: "{{ .Values.func.ENABLE_NODE_GATEWAY_HELPER }}"
         securityContext:
           allowPrivilegeEscalation: true
           capabilities:
@@ -139,6 +151,7 @@ spec:
           {{- end }}
           - --kubelet-dir={{ .Values.kubelet_conf.KUBELET_DIR }}
           - --enable-tproxy={{ .Values.func.ENABLE_TPROXY }}
+          - --enable-node-gateway-helper={{ .Values.func.ENABLE_NODE_GATEWAY_HELPER }}
           - --ovs-vsctl-concurrency={{ .Values.performance.OVS_VSCTL_CONCURRENCY }}
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
           {{- if or .Values.networking.TLS_MIN_VERSION .Values.networking.TLS_MAX_VERSION .Values.networking.TLS_CIPHER_SUITES }}
@@ -192,6 +205,10 @@ spec:
           {{- if .Values.func.ENABLE_TPROXY }}
           - name: tproxy-socket
             mountPath: /run/kube-ovn-tproxy
+          {{- end }}
+          {{- if .Values.func.ENABLE_NODE_GATEWAY_HELPER }}
+          - name: node-gateway-socket
+            mountPath: /run/kube-ovn-node-gw
           {{- end }}
           - name: usr-local-sbin
             mountPath: /usr/local/sbin
@@ -292,12 +309,55 @@ spec:
             cpu: 100m
             memory: 128Mi
       {{- end }}
+      {{- if .Values.func.ENABLE_NODE_GATEWAY_HELPER }}
+      - name: node-gateway-helper
+        image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+          - /kube-ovn/kube-ovn-node-gw
+        securityContext:
+          runAsUser: 65534
+          runAsGroup: 65534
+          runAsNonRoot: true
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+            add: [SYS_ADMIN, SYS_CHROOT, NET_ADMIN, NET_RAW, NET_BIND_SERVICE]
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+        volumeMounts:
+          - name: node-gateway-socket
+            mountPath: /run/kube-ovn-node-gw
+          - name: node-gateway-host-mnt
+            mountPath: /run/kube-ovn-node-gw-host-mnt
+            readOnly: true
+          - name: host-run-ovs
+            mountPath: /run/openvswitch
+            readOnly: true
+          - name: host-ns
+            mountPath: /var/run/netns
+            mountPropagation: HostToContainer
+          - name: usr-local-sbin
+            mountPath: /usr/local/sbin
+      {{- end }}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
         {{- if .Values.func.ENABLE_TPROXY }}
         - name: tproxy-socket
           emptyDir: {}
+        {{- end }}
+        {{- if .Values.func.ENABLE_NODE_GATEWAY_HELPER }}
+        - name: node-gateway-socket
+          emptyDir: {}
+        - name: node-gateway-host-mnt
+          hostPath:
+            path: /proc/1/ns/mnt
+            type: File
         {{- end }}
         - name: usr-local-sbin
           emptyDir: {}

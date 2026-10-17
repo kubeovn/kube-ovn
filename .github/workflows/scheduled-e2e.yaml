@@ -1358,6 +1358,8 @@ jobs:
 
       - name: Install Kube-OVN with VPC NAT gateway enabled
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        env:
+          ENABLE_NODE_GATEWAY_HELPER: "true"
         run: |
           version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
           docker pull kubeovn/kube-ovn:$version
@@ -1436,6 +1438,8 @@ jobs:
 
       - name: Install Kube-OVN
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
+        env:
+          ENABLE_NODE_GATEWAY_HELPER: "true"
         run: |
           version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
           docker pull kubeovn/kube-ovn:$version

@@ -63,6 +63,7 @@ IFACE=${IFACE:-}
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_TPROXY=${ENABLE_TPROXY:-false}
+ENABLE_NODE_GATEWAY_HELPER=${ENABLE_NODE_GATEWAY_HELPER:-false}
 OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
@@ -8872,8 +8873,10 @@ TPROXY_CONTAINER=""
 TPROXY_SECURITY_CONTEXT=""
 TPROXY_SOCKET_MOUNT=""
 TPROXY_SOCKET_VOLUME=""
-if [[ "$ENABLE_TPROXY" == "true" ]]; then
+if [[ "$ENABLE_TPROXY" == "true" || "$ENABLE_NODE_GATEWAY_HELPER" == "true" ]]; then
   TPROXY_SECURITY_CONTEXT="        fsGroup: 65534"
+fi
+if [[ "$ENABLE_TPROXY" == "true" ]]; then
   TPROXY_CONTAINER=$(cat <<EOF
       - name: tproxy
         image: "$REGISTRY/kube-ovn:$VERSION"
@@ -8918,6 +8921,68 @@ EOF
   TPROXY_SOCKET_VOLUME=$(cat <<EOF
         - name: tproxy-socket
           emptyDir: {}
+EOF
+  )
+fi
+
+NODE_GATEWAY_CONTAINER=""
+NODE_GATEWAY_SOCKET_MOUNT=""
+NODE_GATEWAY_SOCKET_VOLUME=""
+if [[ "$ENABLE_NODE_GATEWAY_HELPER" == "true" ]]; then
+  NODE_GATEWAY_CONTAINER=$(cat <<EOF
+      - name: node-gateway-helper
+        image: "$REGISTRY/kube-ovn:$VERSION"
+        imagePullPolicy: $IMAGE_PULL_POLICY
+        command:
+          - /kube-ovn/kube-ovn-node-gw
+        securityContext:
+          runAsUser: 65534
+          runAsGroup: 65534
+          runAsNonRoot: true
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - SYS_ADMIN
+              - SYS_CHROOT
+              - NET_ADMIN
+              - NET_RAW
+              - NET_BIND_SERVICE
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+        volumeMounts:
+          - name: node-gateway-socket
+            mountPath: /run/kube-ovn-node-gw
+          - name: node-gateway-host-mnt
+            mountPath: /run/kube-ovn-node-gw-host-mnt
+            readOnly: true
+          - name: host-run-ovs
+            mountPath: /run/openvswitch
+            readOnly: true
+          - name: host-ns
+            mountPath: /var/run/netns
+            mountPropagation: HostToContainer
+          - name: usr-local-sbin
+            mountPath: /usr/local/sbin
+EOF
+  )
+  NODE_GATEWAY_SOCKET_MOUNT=$(cat <<EOF
+          - name: node-gateway-socket
+            mountPath: /run/kube-ovn-node-gw
+EOF
+  )
+  NODE_GATEWAY_SOCKET_VOLUME=$(cat <<EOF
+        - name: node-gateway-socket
+          emptyDir: {}
+        - name: node-gateway-host-mnt
+          hostPath:
+            path: /proc/1/ns/mnt
+            type: File
 EOF
   )
 fi
@@ -9205,6 +9270,15 @@ ${TPROXY_SECURITY_CONTEXT}
           - |
             chmod +t /usr/local/sbin
             chown -R nobody: /var/log/kube-ovn
+            if [ "$ENABLE_NODE_GATEWAY_HELPER" = "true" ]; then
+              if [ ! -e /var/run/netns/ovnext ]; then
+                touch /var/run/netns/ovnext
+              fi
+              if [ -f /var/run/netns/ovnext ]; then
+                chown 65534:65534 /var/run/netns/ovnext || true
+                chmod 0660 /var/run/netns/ovnext || true
+              fi
+            fi
             iptables -V
         securityContext:
           allowPrivilegeEscalation: true
@@ -9272,6 +9346,7 @@ ${TPROXY_SECURITY_CONTEXT}
           - --gateway-netfilter-detect-timeout=$GATEWAY_NETFILTER_DETECT_TIMEOUT
           - --kubelet-dir=$KUBELET_DIR
           - --enable-tproxy=$ENABLE_TPROXY
+          - --enable-node-gateway-helper=$ENABLE_NODE_GATEWAY_HELPER
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
           - --secure-serving=${SECURE_SERVING}
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
@@ -9320,6 +9395,7 @@ ${CNI_SERVER_CAPABILITIES}
             value: "unix:path=/host/var/run/dbus/system_bus_socket"
         volumeMounts:
 ${TPROXY_SOCKET_MOUNT}
+${NODE_GATEWAY_SOCKET_MOUNT}
           - name: usr-local-sbin
             mountPath: /usr/local/sbin
           - name: host-modules
@@ -9383,10 +9459,12 @@ ${TPROXY_SOCKET_MOUNT}
             memory: 1Gi
             ephemeral-storage: 1Gi
 ${TPROXY_CONTAINER}
+${NODE_GATEWAY_CONTAINER}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
 ${TPROXY_SOCKET_VOLUME}
+${NODE_GATEWAY_SOCKET_VOLUME}
         - name: usr-local-sbin
           emptyDir: {}
         - name: host-modules

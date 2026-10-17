@@ -3,8 +3,6 @@ package daemon
 import (
 	"fmt"
 	"os"
-	"runtime"
-	"sync"
 
 	"github.com/containernetworking/plugins/pkg/ns"
 	"golang.org/x/sys/unix"
@@ -20,60 +18,61 @@ func getCurrentThreadNetNSPath() string {
 	return fmt.Sprintf("/proc/%d/task/%d/ns/net", os.Getpid(), unix.Gettid())
 }
 
-func newNetNS(path string) error {
-	mountPointFd, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o666)
+// newNetNSInCurrentMountNamespace must be called from a locked OS thread. It
+// is used by the node gateway helper after entering the host mount namespace;
+// moving the operation to another goroutine could inherit the wrong mount
+// namespace.
+func newNetNSInCurrentMountNamespace(path string) (err error) {
+	// A previous process may have left the mount point as an ordinary file.
+	// Reuse that fixed, trusted path instead of requiring the parent directory
+	// to be writable by the helper or failing forever on O_EXCL.
+	mountPointFd, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0o660)
+	created := err == nil
 	if err != nil {
+		if !os.IsExist(err) {
+			return err
+		}
+		info, statErr := os.Lstat(path)
+		if statErr != nil {
+			return statErr
+		}
+		if !info.Mode().IsRegular() {
+			return fmt.Errorf("network namespace mount point %s is not a regular file", path)
+		}
+		mountPointFd, err = os.OpenFile(path, os.O_RDWR, 0)
+		if err != nil {
+			return fmt.Errorf("open existing network namespace mount point %s: %w", path, err)
+		}
+	}
+	if err := mountPointFd.Close(); err != nil {
+		if created {
+			_ = os.Remove(path)
+		}
 		return err
 	}
-	mountPointFd.Close()
 
 	defer func() {
 		// Ensure the mount point is cleaned up on errors
-		if err != nil {
+		if err != nil && created {
 			os.RemoveAll(path)
 		}
 	}()
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	// do namespace work in a dedicated goroutine, so that we can safely
-	// Lock/Unlock OSThread without upsetting the lock/unlock state of
-	// the caller of this function
-	go (func() {
-		defer wg.Done()
-		runtime.LockOSThread()
-		// Don't unlock. By not unlocking, golang will kill the OS thread when the
-		// goroutine is done (for go1.10+)
-
-		var origNS ns.NetNS
-		if origNS, err = ns.GetNS(getCurrentThreadNetNSPath()); err != nil {
-			return
-		}
-		defer origNS.Close()
-
-		// create a new netns on the current thread
-		err = unix.Unshare(unix.CLONE_NEWNET)
-		if err != nil {
-			return
-		}
-
-		// Put this thread back to the orig ns, since it might get reused (pre go1.10)
-		defer func() { _ = origNS.Set() }()
-
-		// bind mount the netns from the current thread (from /proc) onto the
-		// mount point. This causes the namespace to persist, even when there
-		// are no threads in the ns.
-		err = unix.Mount(getCurrentThreadNetNSPath(), path, "none", unix.MS_BIND, "")
-		if err != nil {
-			err = fmt.Errorf("failed to bind mount ns at %s: %w", path, err)
-		}
-	})()
-	wg.Wait()
-
-	if err != nil {
-		return fmt.Errorf("failed to create namespace: %w", err)
+	var origNS ns.NetNS
+	if origNS, err = ns.GetNS(getCurrentThreadNetNSPath()); err != nil {
+		return err
 	}
+	defer origNS.Close()
 
+	if err = unix.Unshare(unix.CLONE_NEWNET); err != nil {
+		return err
+	}
+	// Put this thread back to the original namespace before it can be reused.
+	defer func() { _ = origNS.Set() }()
+
+	// Bind mounting the namespace keeps it alive after this thread exits.
+	if err = unix.Mount(getCurrentThreadNetNSPath(), path, "none", unix.MS_BIND, ""); err != nil {
+		return fmt.Errorf("failed to bind mount ns at %s: %w", path, err)
+	}
 	return nil
 }

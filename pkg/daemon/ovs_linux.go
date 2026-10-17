@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -18,7 +17,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/containerd/containerd/v2/pkg/netns"
 	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/k8snetworkplumbingwg/sriovnet"
 	sriovutilfs "github.com/k8snetworkplumbingwg/sriovnet/pkg/utils/filesystem"
@@ -968,67 +966,6 @@ func (c *Controller) loopTunnelCheck() {
 	}
 }
 
-func (c *Controller) checkNodeGwNicInNs(nodeExtIP, ip, gw string, gwNS ns.NetNS) error {
-	exists, err := ovs.PortExists(util.NodeGwNic)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	filters := labels.Set{util.OvnEipTypeLabel: util.OvnEipTypeLRP}
-	ovnEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(filters))
-	if err != nil {
-		klog.Errorf("failed to list ovn eip, %v", err)
-		return err
-	}
-	if len(ovnEips) == 0 {
-		klog.Errorf("failed to get type %s ovn eip, %v", util.OvnEipTypeLRP, err)
-		// node ext gw eip need lrp eip to establish bfd session
-		return nil
-	}
-	if exists {
-		return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
-			err = waitNetworkReady(util.NodeGwNic, ip, gw, true, true, 3, nil)
-			if err == nil {
-				if output, err := exec.Command("bfdd-control", "status").CombinedOutput(); err != nil {
-					err := fmt.Errorf("failed to get bfdd status, %w, %s", err, output)
-					klog.Error(err)
-					return err
-				}
-				for _, eip := range ovnEips {
-					if eip.Status.Ready {
-						// #nosec G204
-						cmd := exec.Command("bfdd-control", "status", "remote", eip.Spec.V4Ip, "local", nodeExtIP)
-						var outb bytes.Buffer
-						cmd.Stdout = &outb
-						if err := cmd.Run(); err == nil {
-							out := outb.String()
-							klog.V(3).Info(out)
-							if strings.Contains(out, "No session") {
-								// not exist
-								cmd = exec.Command("bfdd-control", "allow", eip.Spec.V4Ip) // #nosec G204
-								if err := cmd.Run(); err != nil {
-									err := fmt.Errorf("failed to add lrp %s ip %s into bfd listening list, %w", eip.Name, eip.Status.V4Ip, err)
-									klog.Error(err)
-									return err
-								}
-							}
-						} else {
-							err := fmt.Errorf("failed to check bfd status remote %s local %s", eip.Spec.V4Ip, nodeExtIP)
-							klog.Error(err)
-							return err
-						}
-					}
-				}
-			}
-			return err
-		})
-	}
-
-	err = errors.New("node external gw not ready")
-	klog.Error(err)
-	return err
-}
-
 func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu int, gwNS ns.NetNS) error {
 	ipStr := util.GetIPWithoutMask(ip)
 	output, err := ovs.Exec(ovs.MayExist, "add-port", "br-int", util.NodeGwNic, "--",
@@ -1050,7 +987,7 @@ func configureNodeGwNic(portName, ip, gw string, macAddr net.HardwareAddr, mtu i
 	} else {
 		klog.V(3).Infof("node external nic %q already in ns %s", util.NodeGwNic, util.NodeGwNsPath)
 	}
-	return ns.WithNetNSPath(gwNS.Path(), func(_ ns.NetNS) error {
+	return gwNS.Do(func(_ ns.NetNS) error {
 		if err = configureNic(util.NodeGwNic, ip, macAddr, mtu, true, true, false, false); err != nil {
 			klog.Errorf("failed to configure node gw nic %s, %v", util.NodeGwNic, err)
 			return err
@@ -1125,21 +1062,33 @@ func removeNodeGwNic() error {
 }
 
 func removeNodeGwNs() error {
-	ns := netns.LoadNetNS(util.NodeGwNsPath)
-	ok, err := ns.Closed()
+	// Keep the fixed regular-file mount point after unmounting. The host
+	// /var/run/netns directory is normally root:root 0755, so the non-root
+	// helper cannot unlink it; retaining the placeholder also makes the next
+	// helper start able to recover without a writable host directory.
+	mountedNS, err := ns.GetNS(util.NodeGwNsPath)
 	if err != nil {
-		return fmt.Errorf("failed to remove node external gw ns %s: %w", util.NodeGwNs, err)
-	}
-	if !ok {
-		if err = ns.Remove(); err != nil {
-			return fmt.Errorf("failed to remove node external gw ns %s: %w", util.NodeGwNs, err)
+		var notNS ns.NSPathNotNSErr
+		var notExist ns.NSPathNotExistErr
+		if errors.As(err, &notNS) || errors.As(err, &notExist) {
+			return nil
 		}
+		return fmt.Errorf("failed to open node external gw ns %s: %w", util.NodeGwNs, err)
+	}
+	if err := mountedNS.Close(); err != nil {
+		return fmt.Errorf("failed to close node external gw ns %s: %w", util.NodeGwNs, err)
+	}
+	if err := unix.Unmount(util.NodeGwNsPath, unix.MNT_DETACH); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("failed to unmount node external gw ns %s: %w", util.NodeGwNs, err)
 	}
 	klog.Infof("node external gw ns %s removed", util.NodeGwNs)
 	return nil
 }
 
 func (c *Controller) loopOvnExt0Check() {
+	if !c.config.EnableNodeGatewayHelper || c.nodeGatewayRPC == nil {
+		return
+	}
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node %s: %v", c.config.NodeName, err)
@@ -1170,11 +1119,10 @@ func (c *Controller) loopOvnExt0Check() {
 	}
 
 	if needClean {
-		if err := removeNodeGwNic(); err != nil {
-			klog.Error(err)
-			return
-		}
-		if err := removeNodeGwNs(); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := c.nodeGatewayRPC.Delete(ctx, c.config.NodeName)
+		cancel()
+		if err != nil {
 			klog.Error(err)
 			return
 		}
@@ -1189,6 +1137,12 @@ func (c *Controller) loopOvnExt0Check() {
 		klog.Errorf("ecmp gateway ovn eip still has no ip")
 		return
 	}
+	filters := labels.Set{util.OvnEipTypeLabel: util.OvnEipTypeLRP}
+	cachedEips, err := c.ovnEipsLister.List(labels.SelectorFromSet(filters))
+	if err != nil {
+		klog.Errorf("failed to list LRP ovn eips: %v", err)
+		return
+	}
 	ips := util.GetStringIP(cachedEip.Status.V4Ip, cachedEip.Status.V6Ip)
 	cachedSubnet, err := c.subnetsLister.Get(cachedEip.Spec.ExternalSubnet)
 	if err != nil {
@@ -1201,34 +1155,34 @@ func (c *Controller) loopOvnExt0Check() {
 		klog.Errorf("failed to parse mac %s, %v", cachedEip.Status.MacAddress, err)
 		return
 	}
-	gwNS, err := ns.GetNS(util.NodeGwNsPath)
-	if err != nil {
-		if _, ok := err.(ns.NSPathNotExistErr); !ok {
-			klog.Errorf("failed to get netns from path %s: %v", util.NodeGwNsPath, err)
-			return
-		}
-		if err = newNetNS(util.NodeGwNsPath); err != nil {
-			klog.Error(fmt.Errorf("failed to create gw ns %s: %w", util.NodeGwNs, err))
-			return
-		}
-		if gwNS, err = ns.GetNS(util.NodeGwNsPath); err != nil {
-			klog.Errorf("failed to get netns from path %s: %v", util.NodeGwNsPath, err)
-			return
-		}
-	}
-	defer gwNS.Close()
 	nodeExtIP := cachedEip.Spec.V4Ip
 	ipAddr, err := util.GetIPAddrWithMask(ips, cachedSubnet.Spec.CIDRBlock)
 	if err != nil {
 		klog.Errorf("failed to get ip addr with mask %s, %v", ips, err)
 		return
 	}
-	if err := c.checkNodeGwNicInNs(nodeExtIP, ipAddr, gw, gwNS); err == nil {
-		// add all lrp ip in bfd listening list
+	klog.Infof("setup nic ovnext0 ip %s, mac %v, mtu %d", ipAddr, mac, c.config.MTU)
+	peers := readyNodeGatewayPeers(cachedEips)
+	if len(peers) == 0 {
+		// The node gateway BFD session is anchored to a ready LRP peer. Keep
+		// the EIP and node label pending until the peer is available.
+		klog.Infof("waiting for a ready LRP OVN EIP before setting up node gateway")
 		return
 	}
-	klog.Infof("setup nic ovnext0 ip %s, mac %v, mtu %d", ipAddr, mac, c.config.MTU)
-	if err := configureNodeGwNic(portName, ipAddr, gw, mac, c.config.MTU, gwNS); err != nil {
+	request := NodeGatewayRequest{
+		Operation:  nodeGatewayEnsure,
+		NodeName:   c.config.NodeName,
+		IP:         ipAddr,
+		Gateway:    gw,
+		MAC:        mac.String(),
+		MTU:        c.config.MTU,
+		BFDLocalIP: nodeExtIP,
+		BFDPeers:   peers,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	err = c.nodeGatewayRPC.Ensure(ctx, request)
+	cancel()
+	if err != nil {
 		klog.Errorf("failed to setup ovnext0, %v", err)
 		return
 	}
@@ -1240,6 +1194,16 @@ func (c *Controller) loopOvnExt0Check() {
 		klog.Errorf("failed to patch status for eip %s, %v", portName, err)
 		return
 	}
+}
+
+func readyNodeGatewayPeers(eips []*kubeovnv1.OvnEip) []string {
+	peers := make([]string, 0, len(eips))
+	for _, eip := range eips {
+		if eip.Status.Ready && eip.Spec.V4Ip != "" {
+			peers = append(peers, eip.Spec.V4Ip)
+		}
+	}
+	return peers
 }
 
 func (c *Controller) patchOvnEipStatus(key string, ready bool) error {
