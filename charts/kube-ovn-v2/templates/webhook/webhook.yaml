@@ -45,6 +45,15 @@ webhooks:
       - operations:
           - CREATE
           - UPDATE
+        apiGroups:
+          - ""
+        apiVersions:
+          - v1
+        resources:
+          - services
+      - operations:
+          - CREATE
+          - UPDATE
           - DELETE
         apiGroups:
           - "kubeovn.io"
