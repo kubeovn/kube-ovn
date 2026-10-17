@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -192,7 +193,8 @@ func (c *Controller) handleAddReservedIP(key string) (err error) {
 
 	if ip.Spec.PodType != "" &&
 		ip.Spec.PodType != util.KindVirtualMachine &&
-		ip.Spec.PodType != util.KindStatefulSet {
+		ip.Spec.PodType != util.KindStatefulSet &&
+		ip.Spec.PodType != util.KindVip {
 		err := fmt.Errorf("podType %s is not supported", ip.Spec.PodType)
 		klog.Error(err)
 		return err
@@ -282,6 +284,37 @@ func (c *Controller) handleUpdateIP(key string) (err error) {
 	}()
 	if !cachedIP.DeletionTimestamp.IsZero() {
 		klog.Infof("handle deleting ip %s", cachedIP.Name)
+		if cachedIP.Spec.PodType == util.KindVip {
+			// The ip is only a mirror of a kube_host_vm_vip. While the vip lives, its lsp
+			// and ipam address belong to the vip: never tear them down from here, just let
+			// the ip go and re-mirror it from the vip. A live read (not the cached lister)
+			// guards this destructive decision against a stale informer cache, and a
+			// non-NotFound read error must not be treated as "vip is gone".
+			vip, vipErr := c.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), cachedIP.Spec.PodName, metav1.GetOptions{})
+			var isMirror bool
+			if vipErr == nil && vip.DeletionTimestamp.IsZero() {
+				var mirrorErr error
+				if isMirror, mirrorErr = c.isVMVipMirror(cachedIP, vip); mirrorErr != nil {
+					// fail closed: propagate rather than fall through to releasing the
+					// lsp/ipam on an inconclusive mirror check
+					klog.Errorf("failed to check whether ip %s mirrors vip %s: %v", cachedIP.Name, vip.Name, mirrorErr)
+					return mirrorErr
+				}
+			}
+			switch {
+			case vipErr == nil && vip.DeletionTimestamp.IsZero() && isMirror:
+				klog.Warningf("ip %s mirrors live vip %s, keeping lsp and ipam, re-mirroring", cachedIP.Name, vip.Name)
+				if err = c.handleDelIPFinalizer(cachedIP); err != nil {
+					klog.Errorf("failed to handle del ip finalizer %v", err)
+					return err
+				}
+				c.addVirtualIPQueue.AddAfter(vip.Name, 2*time.Second)
+				return nil
+			case vipErr != nil && !k8serrors.IsNotFound(vipErr):
+				klog.Errorf("failed to get vip %s mirrored by ip %s: %v", cachedIP.Spec.PodName, cachedIP.Name, vipErr)
+				return vipErr
+			}
+		}
 		subnet, err := c.subnetsLister.Get(cachedIP.Spec.Subnet)
 		if err != nil {
 			if !k8serrors.IsNotFound(err) {
@@ -388,12 +421,22 @@ func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP) error {
 }
 
 func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string, string, string, error) {
+	return c.acquireIPAddressWithMAC(subnetName, name, nicName, nil)
+}
+
+// acquireIPAddressWithMAC allocates a random v4/v6 address, pinning mac when non-nil
+// (random mac otherwise), retrying with the colliding address skipped when it turns out to
+// equal a node's own internal IP (validatePodIP), exactly as the fully-random path already
+// does. mac is never mutated by the retry: GetRandomAddress returns the same nic's already-
+// allocated mac unchanged on a retry for the same name/nicName (ipam.go, getV4RandomAddress
+// / getV6RandomAddress fast path), so only the IP half is ever re-rolled.
+func (c *Controller) acquireIPAddressWithMAC(subnetName, name, nicName string, mac *string) (string, string, string, error) {
 	var skippedAddrs []string
-	var v4ip, v6ip, mac string
+	var v4ip, v6ip, retMac string
 	checkConflict := true
 	var err error
 	for {
-		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, nil, subnetName, "", skippedAddrs, checkConflict)
+		v4ip, v6ip, retMac, err = c.ipam.GetRandomAddress(name, nicName, mac, subnetName, "", skippedAddrs, checkConflict)
 		if err != nil {
 			klog.Error(err)
 			return "", "", "", err
@@ -406,7 +449,7 @@ func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string,
 		}
 
 		if ipv4OK && ipv6OK {
-			return v4ip, v6ip, mac, nil
+			return v4ip, v6ip, retMac, nil
 		}
 
 		if !ipv4OK {
