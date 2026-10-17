@@ -103,7 +103,16 @@ Uses Exists operator for empty/nil-value labels and In for specific values.
 Number of master nodes
 */}}
 {{- define "kubeovn.nodeCount" -}}
-  {{- len (split "," ((join "," .Values.masterNodes) | default (include "kubeovn.nodeIPs" .))) }}
+  {{- if .Values.nodeCount -}}
+    {{- .Values.nodeCount }}
+  {{- else -}}
+    {{- $count := len (split "," ((join "," .Values.masterNodes) | default (include "kubeovn.nodeIPs" .))) -}}
+    {{- if .Values.central.dynamicPeers.enabled -}}
+      {{- min 3 $count }}
+    {{- else -}}
+      {{- $count }}
+    {{- end -}}
+  {{- end -}}
 {{- end -}}
 
 {{/*

@@ -3,10 +3,11 @@
 set -ex
 
 POD_NAMESPACE=${POD_NAMESPACE:-kube-system}
+OVN_CENTRAL_KIND=${OVN_CENTRAL_KIND:-deployment}
 
 UPDATE_STRATEGY=`kubectl -n $POD_NAMESPACE get ds ovs-ovn -o jsonpath='{.spec.updateStrategy.type}'`
 
-kubectl -n $POD_NAMESPACE rollout status deploy ovn-central --timeout=120s
+kubectl -n $POD_NAMESPACE rollout status $OVN_CENTRAL_KIND ovn-central --timeout=120s
 
 if [ $UPDATE_STRATEGY = OnDelete ]; then
   dsChartVer=`kubectl get ds -n $POD_NAMESPACE ovs-ovn -o jsonpath={.spec.template.metadata.annotations.chart-version}`

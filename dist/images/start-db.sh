@@ -1,6 +1,25 @@
 #!/bin/bash
 set -eo pipefail
 
+# DYNAMIC_PEERS short-circuit: hand off the entire lifecycle (preflight,
+# bring-up, runtime watchdog/kicker) to the ovn-central-controller binary,
+# which replaces both this script's dynamic-peers branch and the legacy
+# kube-ovn-leader-checker. The static (NODE_IPS-based) flow below is
+# unchanged.
+if [[ "${DYNAMIC_PEERS:-false}" == "true" ]]; then
+    # `exec` replaces this script's process image, so it must never run
+    # after that point. Start the TLS-rotation watcher backgrounded first
+    # (as the static flow below also does) -- exec only swaps the image
+    # of this process, it does not affect already-forked children, so
+    # the watcher keeps running and reconnecting ovsdb-server/northd on
+    # cert rotation even though ovn-central-controller has no reload
+    # path of its own.
+    if [[ "${ENABLE_SSL:-false}" == "true" ]]; then
+        bash /kube-ovn/kube-ovn-tls-reload.sh ovn-central &
+    fi
+    exec /kube-ovn/ovn-central-controller
+fi
+
 DEBUG_WRAPPER=${DEBUG_WRAPPER:-}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 PROBE_INTERVAL=${PROBE_INTERVAL:-180000}
