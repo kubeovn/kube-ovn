@@ -1,0 +1,12 @@
+suite: CNI plugin installation (v2)
+templates:
+  - agent/agent-daemonset.yaml
+tests:
+  - it: can skip installing bundled CNI plugins
+    template: agent/agent-daemonset.yaml
+    set:
+      cni.installCNIPlugins: false
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[1].command
+          content: --install-cni-plugins=false
