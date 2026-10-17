@@ -61,7 +61,10 @@ func TestServeWaitsForCancelledRunner(t *testing.T) {
 	}
 	finish()
 	select {
-	case <-serverDone:
+	case err := <-serverDone:
+		if err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Fatalf("helper returned an unexpected error: %v", err)
+		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("helper did not return after command cleanup")
 	}
