@@ -1,6 +1,7 @@
 package ipam
 
 import (
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -1718,17 +1719,21 @@ func TestSubnetSelectIPPoolIPs(t *testing.T) {
 	subnet, err := NewSubnet("dualSubnet", "10.0.0.0/24,2001:db8::/120", []string{"10.0.0.1", "10.0.0.2", "2001:db8::1"})
 	require.NoError(t, err)
 
-	// selection and reservation happen in one call
+	// selection alone does not commit the membership, activation does
 	v4, v6, err := subnet.SelectIPPoolIPs("pool1", nil, 3, 2)
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.0.0.3", "10.0.0.4", "10.0.0.5"}, v4)
 	require.Equal(t, []string{"2001:db8::2", "2001:db8::3"}, v6)
+	require.Nil(t, subnet.IPPools["pool1"])
+	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", append(slices.Clone(v4), v6...), 3, 2))
+	require.NotNil(t, subnet.IPPools["pool1"])
 
-	// the reservation holds: another pool cannot pick the same addresses
+	// the activation holds: another pool cannot pick the same addresses
 	v4, v6, err = subnet.SelectIPPoolIPs("pool2", nil, 2, 1)
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.0.0.6", "10.0.0.7"}, v4)
 	require.Equal(t, []string{"2001:db8::4"}, v6)
+	require.NoError(t, subnet.ActivateIPPoolIPs("pool2", append(slices.Clone(v4), v6...), 2, 1))
 
 	// re-selecting recovers the held selection, e.g. after a failed status update
 	v4, v6, err = subnet.SelectIPPoolIPs("pool1", nil, 2, 1)
@@ -1749,6 +1754,9 @@ func TestSubnetSelectIPPoolIPs(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.0.0.3", "10.0.0.4"}, v4)
 	require.Empty(t, v6)
+	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", v4, 2, 0))
+	require.Equal(t, "10.0.0.3-10.0.0.4", subnet.IPPools["pool1"].V4IPs.String())
+	require.Empty(t, subnet.IPPools["pool1"].V6IPs.String())
 
 	// requesting more than available fails without committing anything
 	_, _, err = subnet.SelectIPPoolIPs("pool4", nil, 250, 0)
@@ -1780,4 +1788,71 @@ func TestSubnetWithoutCIDRSelectIPPoolIPs(t *testing.T) {
 	require.ErrorContains(t, err, "does not have enough free addresses")
 	require.Empty(t, v4)
 	require.Empty(t, v6)
+
+	// and neither must an activation on it
+	require.Error(t, (&Subnet{}).ActivateIPPoolIPs("pool1", nil, 0, 0))
+}
+
+// TestSubnetSelectIPPoolIPsDropsExcluded covers a subnet's excludeIps growing over an
+// address a count-based pool already holds: the address is not allocatable anymore,
+// so the selection must drop and replace it instead of counting it towards ipCount.
+func TestSubnetSelectIPPoolIPsDropsExcluded(t *testing.T) {
+	subnet, err := NewSubnet("exclSubnet", "10.0.0.0/29", nil)
+	require.NoError(t, err)
+
+	v4, _, err := subnet.SelectIPPoolIPs("pool1", nil, 2, 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.1", "10.0.0.2"}, v4)
+	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", v4, 2, 0))
+
+	// excludeIps grows over 10.0.0.2, as AddOrUpdateSubnet applies it in place
+	subnet.V4Reserved, err = NewIPRangeListFrom("10.0.0.2")
+	require.NoError(t, err)
+
+	// the now reserved member is dropped and replaced although the pool still holds it
+	v4, _, err = subnet.SelectIPPoolIPs("pool1", []string{"10.0.0.1", "10.0.0.2"}, 2, 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.1", "10.0.0.3"}, v4)
+	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", v4, 2, 0))
+
+	// the committed pool no longer claims the reserved address
+	ip, err := NewIP("10.0.0.2")
+	require.NoError(t, err)
+	require.False(t, subnet.IPPools["pool1"].V4IPs.Contains(ip))
+	for _, member := range v4 {
+		ip, err = NewIP(member)
+		require.NoError(t, err)
+		require.True(t, subnet.IPPools["pool1"].V4IPs.Contains(ip))
+	}
+}
+
+// TestSubnetActivateIPPoolIPsSelectionChanged covers the commit-time verification: a
+// picked address stolen by a concurrent allocation from the default pool must fail
+// the activation without touching the current membership, and the retried selection
+// replaces the stolen entry.
+func TestSubnetActivateIPPoolIPsSelectionChanged(t *testing.T) {
+	subnet, err := NewSubnet("raceSubnet", "10.0.0.0/29", nil)
+	require.NoError(t, err)
+
+	v4, _, err := subnet.SelectIPPoolIPs("pool1", nil, 2, 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.1", "10.0.0.2"}, v4)
+
+	// a concurrent allocation takes one of the picked addresses from the default pool
+	stolen, err := NewIP("10.0.0.2")
+	require.NoError(t, err)
+	_, _, err = subnet.GetStaticAddress("pod1.default", "nic1", stolen, nil, false, false)
+	require.NoError(t, err)
+
+	// the activation rejects the stale selection and commits nothing
+	err = subnet.ActivateIPPoolIPs("pool1", v4, 2, 0)
+	require.ErrorIs(t, err, ErrSelectionChanged)
+	require.Nil(t, subnet.IPPools["pool1"])
+
+	// the retry drops the stolen address and commits the replacement instead
+	v4, _, err = subnet.SelectIPPoolIPs("pool1", v4, 2, 0)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.1", "10.0.0.3"}, v4)
+	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", v4, 2, 0))
+	require.NotNil(t, subnet.IPPools["pool1"])
 }
