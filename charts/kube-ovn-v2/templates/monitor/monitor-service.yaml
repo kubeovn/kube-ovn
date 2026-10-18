@@ -1,8 +1,9 @@
+{{- if include "kubeovn.renderControlPlane" . }}
 kind: Service
 apiVersion: v1
 metadata:
   name: kube-ovn-monitor
-  namespace: {{ .Values.namespace }}
+  namespace: {{ include "kubeovn.centralNamespace" . }}
   {{- with .Values.monitor.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -25,3 +26,4 @@ spec:
   {{- if eq .Values.networking.stack "Dual" }}
   ipFamilyPolicy: PreferDualStack
   {{- end }}
+{{- end }}

@@ -1,0 +1,239 @@
+suite: Kamaji hosted kube-ovn-controller (v2)
+templates:
+  - controller/hosted-controller-deployment.yaml
+  - misc/validation.yaml
+tests:
+  - it: does not render hosted controllers when hostedTenants is empty
+    template: controller/hosted-controller-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: renders one deployment per hosted tenant in controlPlaneOnly
+    template: controller/hosted-controller-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+      controller.hostedTenants:
+        - name: tenant-a
+          kubeconfigSecret: tenant-a-kubeconfig
+        - name: tenant-b
+          kubeconfigSecret: tenant-b-kubeconfig
+    asserts:
+      - hasDocuments:
+          count: 2
+      - equal:
+          path: metadata.name
+          value: kube-ovn-controller-tenant-a
+        documentIndex: 0
+      - equal:
+          path: metadata.name
+          value: kube-ovn-controller-tenant-b
+        documentIndex: 1
+      - equal:
+          path: spec.replicas
+          value: 2
+        documentIndex: 0
+
+  - it: authenticates with the tenant kubeconfig instead of a local service account
+    template: controller/hosted-controller-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+      controller.hostedTenants:
+        - name: tenant-a
+          kubeconfigSecret: tenant-a-kubeconfig
+          kubeconfigKey: admin.conf
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --kubeconfig=/etc/kube-ovn/tenant/kubeconfig
+      - equal:
+          path: spec.template.spec.automountServiceAccountToken
+          value: false
+      - notExists:
+          path: spec.template.spec.serviceAccountName
+      - contains:
+          path: spec.template.spec.containers[0].volumeMounts
+          content:
+            mountPath: /etc/kube-ovn/tenant
+            name: tenant-kubeconfig
+            readOnly: true
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: tenant-kubeconfig
+            secret:
+              secretName: tenant-a-kubeconfig
+              items:
+                - key: admin.conf
+                  path: kubeconfig
+
+  - it: uses cluster DNS and the KUBECONFIG fallback for controller-runtime clients
+    template: controller/hosted-controller-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+      controller.hostedTenants:
+        - name: tenant-a
+          kubeconfigSecret: tenant-a-kubeconfig
+          kubeconfigKey: admin.conf
+    asserts:
+      - equal:
+          path: spec.template.spec.dnsPolicy
+          value: ClusterFirstWithHostNet
+      - equal:
+          path: spec.template.spec.hostNetwork
+          value: true
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KUBECONFIG
+            value: /etc/kube-ovn/tenant/kubeconfig
+
+  - it: overrides POD_NAMESPACE with the tenant namespace
+    template: controller/hosted-controller-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+      controller.hostedTenants:
+        - name: tenant-a
+          kubeconfigSecret: tenant-a-kubeconfig
+          namespace: ovn-tenant
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POD_NAMESPACE
+            value: ovn-tenant
+
+  - it: defaults POD_NAMESPACE to the release namespace
+    template: controller/hosted-controller-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+      controller.hostedTenants:
+        - name: tenant-a
+          kubeconfigSecret: tenant-a-kubeconfig
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: POD_NAMESPACE
+            value: kube-system
+
+  - it: talks to the local ovn-central Services without external endpoints
+    template: controller/hosted-controller-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+      controller.hostedTenants:
+        - name: tenant-a
+          kubeconfigSecret: tenant-a-kubeconfig
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_DB_IPS
+            value: ""
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_NB_ADDR
+          any: true
+      - notContains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: OVN_SB_ADDR
+          any: true
+
+  - it: disables TLS rotation on hosted controllers
+    template: controller/hosted-controller-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+      controller.hostedTenants:
+        - name: tenant-a
+          kubeconfigSecret: tenant-a-kubeconfig
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].env
+          content:
+            name: KUBE_OVN_TLS_ROTATION_INTERVAL
+            value: "0"
+
+  - it: honors per-tenant replica overrides
+    template: controller/hosted-controller-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+      controller.hostedTenants:
+        - name: tenant-a
+          kubeconfigSecret: tenant-a-kubeconfig
+          replicas: 3
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 3
+        documentIndex: 0
+
+  - it: defaults hosted controller replicas to two
+    template: controller/hosted-controller-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+      controller.hostedTenants:
+        - name: tenant-a
+          kubeconfigSecret: tenant-a-kubeconfig
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+        documentIndex: 0
+
+  - it: deep-merges per-tenant networking values into the controller args
+    template: controller/hosted-controller-deployment.yaml
+    set:
+      installMode: controlPlaneOnly
+      networking.pods.cidr.v4: 10.200.0.0/16
+      controller.hostedTenants:
+        - name: tenant-a
+          kubeconfigSecret: tenant-a-kubeconfig
+          networking:
+            pods:
+              cidr:
+                v4: 10.201.0.0/16
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --default-cidr=10.201.0.0/16
+      - notContains:
+          path: spec.template.spec.containers[0].args
+          content: --default-cidr=10.200.0.0/16
+
+  - it: fails when hostedTenants is used outside controlPlaneOnly
+    template: misc/validation.yaml
+    set:
+      installMode: full
+      controller.hostedTenants:
+        - name: tenant-a
+          kubeconfigSecret: tenant-a-kubeconfig
+    asserts:
+      - failedTemplate:
+          errorPattern: "controller.hostedTenants is only supported with installMode=controlPlaneOnly"
+
+  - it: fails when hostedTenants entries lack kubeconfigSecret
+    template: misc/validation.yaml
+    set:
+      installMode: controlPlaneOnly
+      controller.hostedTenants:
+        - name: tenant-a
+    asserts:
+      - failedTemplate:
+          errorPattern: "controller.hostedTenants\\[tenant-a\\] requires kubeconfigSecret"
+
+  - it: fails on duplicate tenant names
+    template: misc/validation.yaml
+    set:
+      installMode: controlPlaneOnly
+      controller.hostedTenants:
+        - name: tenant-a
+          kubeconfigSecret: kc-a
+        - name: tenant-a
+          kubeconfigSecret: kc-b
+    asserts:
+      - failedTemplate:
+          errorPattern: "duplicate name \"tenant-a\""
