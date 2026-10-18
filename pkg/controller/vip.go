@@ -270,7 +270,12 @@ func (c *Controller) ensureVMVipIPCR(vip *kubeovnv1.Vip, subnet *kubeovnv1.Subne
 	if vip.Spec.Type != util.KubeHostVMVip {
 		return nil
 	}
-	if ip, err := c.ipsLister.Get(portName); err == nil && !ip.DeletionTimestamp.IsZero() {
+	if ip, err := c.ipsLister.Get(portName); err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get ip cr %s for vip %s: %v", portName, vip.Name, err)
+			return err
+		}
+	} else if !ip.DeletionTimestamp.IsZero() {
 		// createOrUpdateIPCR would silently skip a terminating ip; retry so the mirror
 		// is recreated once the old one is gone
 		return fmt.Errorf("ip %s is still being deleted, retry mirroring vip %s", portName, vip.Name)
@@ -311,20 +316,32 @@ func (c *Controller) deleteVMVipIPCR(vip *kubeovnv1.Vip, portName string) error 
 }
 
 // isVMVipMirror reports whether ip is actually the kube_host_vm_vip mirror of vip, i.e.
-// vip is of that type and ip is named after vip's lsp port. A bare podType/podName match is
-// not enough: a fabricated or stale IP CR could otherwise name any live Vip (including a
-// plain or switch_lb_rule one) as its owner and ride along with special-cased handling meant
-// only for real mirrors.
-func (c *Controller) isVMVipMirror(ip *kubeovnv1.IP, vip *kubeovnv1.Vip) bool {
+// vip is of that type, ip is named after vip's lsp port, and every other identifying field
+// on ip (PodName, Namespace, Subnet, MAC, allocated addresses) matches what createOrUpdateIPCR
+// writes for a real mirror. A bare name match is not enough: a fabricated or stale IP CR
+// could otherwise name any live Vip (including a plain or switch_lb_rule one, or carry the
+// right name but the wrong contents) and ride along with special-cased handling meant only
+// for real mirrors. A subnet lookup failure is returned rather than swallowed into false:
+// callers use the result to decide whether to retain or release the IP/LSP, so a lookup
+// failure must be propagated (and failed closed) instead of masquerading as "not a mirror".
+func (c *Controller) isVMVipMirror(ip *kubeovnv1.IP, vip *kubeovnv1.Vip) (bool, error) {
 	if vip.Spec.Type != util.KubeHostVMVip {
-		return false
+		return false, nil
 	}
 	subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
 	if err != nil {
 		klog.Errorf("failed to get subnet %s for vip %s: %v", vip.Spec.Subnet, vip.Name, err)
-		return false
+		return false, err
 	}
-	return ip.Name == ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+	if ip.Name != ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider) {
+		return false, nil
+	}
+	return ip.Spec.PodName == vip.Name &&
+		ip.Spec.Namespace == vip.Spec.Namespace &&
+		ip.Spec.Subnet == vip.Spec.Subnet &&
+		ip.Spec.MacAddress == vip.Status.Mac &&
+		ip.Spec.V4IPAddress == vip.Status.V4ip &&
+		ip.Spec.V6IPAddress == vip.Status.V6ip, nil
 }
 
 func (c *Controller) handleUpdateVirtualIP(key string) error {

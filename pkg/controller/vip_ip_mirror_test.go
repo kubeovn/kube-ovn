@@ -9,6 +9,7 @@ import (
 	"go.uber.org/mock/gomock"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8stesting "k8s.io/client-go/testing"
 
@@ -17,6 +18,24 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+// errorSubnetLister simulates a subnet informer that cannot look up a subnet, e.g. a
+// transient cache miss unrelated to the subnet actually being deleted.
+type errorSubnetLister struct {
+	err error
+}
+
+func (l *errorSubnetLister) List(labels.Selector) ([]*kubeovnv1.Subnet, error) { return nil, l.err }
+func (l *errorSubnetLister) Get(string) (*kubeovnv1.Subnet, error)             { return nil, l.err }
+
+// errorIPLister simulates an ip informer that cannot look up an ip, e.g. a transient cache
+// error unrelated to the ip actually being absent.
+type errorIPLister struct {
+	err error
+}
+
+func (l *errorIPLister) List(labels.Selector) ([]*kubeovnv1.IP, error) { return nil, l.err }
+func (l *errorIPLister) Get(string) (*kubeovnv1.IP, error)             { return nil, l.err }
 
 // Tests for the IP CR mirror of a kube_host_vm_vip (issue #7695): such a vip allocates a
 // real address and creates a real LSP, but on stock kube-ovn no IP CR exists for it, so it
@@ -83,10 +102,29 @@ func TestCheckIPOwnerExistsRejectsMismatchedMirror(t *testing.T) {
 	require.False(t, exists, "an ip CR naming a live but non-matching vip must not be kept alive")
 }
 
+func TestCheckIPOwnerExistsFailsClosedOnSubnetLookupError(t *testing.T) {
+	// a transient subnet informer error inside isVMVipMirror must not be swallowed into
+	// "not a mirror": gcIP must skip (not delete) rather than gc a live vip's mirror ip
+	// just because the subnet lookup momentarily failed.
+	subnet := vipMirrorSubnet()
+	vip := vipMirrorVip(util.KubeHostVMVip)
+	fc := vipMirrorTestController(t, subnet, []*kubeovnv1.Vip{vip}, nil)
+	fc.fakeController.subnetsLister = &errorSubnetLister{err: errors.New("subnet lister unavailable")}
+	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+	ip := &kubeovnv1.IP{
+		Name: portName,
+		Spec: kubeovnv1.IPSpec{PodName: vip.Name, Namespace: vip.Spec.Namespace, Subnet: subnet.Name, PodType: util.KindVip},
+	}
+
+	_, err := fc.fakeController.checkIPOwnerExists(ip)
+	require.Error(t, err, "a subnet lookup failure must be propagated, not treated as owner-gone")
+}
+
 func TestCalculateUsingIPsSkipsMirroredVMVips(t *testing.T) {
 	subnet := vipMirrorSubnet()
 	vmVip := vipMirrorVip(util.KubeHostVMVip)
 	vmVip.Labels[util.IPReservedLabel] = ""
+	vmVip.Status.V4ip, vmVip.Status.Mac = "10.0.0.6", "02:ac:10:ff:02:06"
 	plainVip := vipMirrorVip("")
 	plainVip.Name = "reserved"
 	plainVip.Labels[util.IPReservedLabel] = ""
@@ -96,11 +134,37 @@ func TestCalculateUsingIPsSkipsMirroredVMVips(t *testing.T) {
 
 	mirror := &kubeovnv1.IP{
 		Name: ovs.PodNameToPortName(vmVip.Name, vmVip.Spec.Namespace, subnet.Spec.Provider),
-		Spec: kubeovnv1.IPSpec{PodName: vmVip.Name, PodType: util.KindVip, V4IPAddress: "10.0.0.6"},
+		Spec: kubeovnv1.IPSpec{
+			PodName: vmVip.Name, Namespace: vmVip.Spec.Namespace, Subnet: subnet.Name, PodType: util.KindVip,
+			V4IPAddress: vmVip.Status.V4ip, MacAddress: vmVip.Status.Mac,
+		},
 	}
 	using, err := fc.fakeController.calculateUsingIPs(subnet, []*kubeovnv1.IP{mirror}, nil)
 	require.NoError(t, err)
 	// 1 mirror ip + 1 plain vip; the vm vip must not be counted twice
+	require.True(t, using.EqualInt64(2), "got %s", using)
+}
+
+func TestCalculateUsingIPsCountsMismatchedMirrorSeparately(t *testing.T) {
+	// a same-named ip CR whose other identifying fields do not match the vip it claims to
+	// mirror (issue #7696 review P2) must not suppress the vip's own usage count: the vip
+	// is counted on its own, in addition to the (fabricated) mirror ip.
+	subnet := vipMirrorSubnet()
+	vmVip := vipMirrorVip(util.KubeHostVMVip)
+	vmVip.Labels[util.IPReservedLabel] = ""
+	vmVip.Status.V4ip, vmVip.Status.Mac = "10.0.0.6", "02:ac:10:ff:02:06"
+	fc := vipMirrorTestController(t, subnet, []*kubeovnv1.Vip{vmVip}, nil)
+
+	mismatched := &kubeovnv1.IP{
+		Name: ovs.PodNameToPortName(vmVip.Name, vmVip.Spec.Namespace, subnet.Spec.Provider),
+		Spec: kubeovnv1.IPSpec{
+			PodName: vmVip.Name, Namespace: vmVip.Spec.Namespace, Subnet: subnet.Name, PodType: util.KindVip,
+			V4IPAddress: "10.0.0.99", MacAddress: "02:ac:10:ff:02:99", // does not match vmVip's allocated address/mac
+		},
+	}
+	using, err := fc.fakeController.calculateUsingIPs(subnet, []*kubeovnv1.IP{mismatched}, nil)
+	require.NoError(t, err)
+	// 1 fabricated ip + 1 real vip usage, counted separately
 	require.True(t, using.EqualInt64(2), "got %s", using)
 }
 
@@ -235,7 +299,10 @@ func TestHandleUpdateIPKeepsPortAndAddressOfLiveVMVipMirror(t *testing.T) {
 	now := metav1.Now()
 	mirror := &kubeovnv1.IP{
 		Name: portName, Finalizers: []string{util.KubeOVNControllerFinalizer}, DeletionTimestamp: &now,
-		Spec: kubeovnv1.IPSpec{PodName: vip.Name, Namespace: vip.Spec.Namespace, Subnet: subnet.Name, PodType: util.KindVip, V4IPAddress: "10.0.0.6"},
+		Spec: kubeovnv1.IPSpec{
+			PodName: vip.Name, Namespace: vip.Spec.Namespace, Subnet: subnet.Name, PodType: util.KindVip,
+			V4IPAddress: vip.Status.V4ip, MacAddress: vip.Status.Mac,
+		},
 	}
 	fc := vipMirrorTestController(t, subnet, []*kubeovnv1.Vip{vip}, []*kubeovnv1.IP{mirror})
 	_, _, _, err := fc.fakeController.ipam.GetStaticAddress(vip.Name, portName, "10.0.0.6", &vip.Status.Mac, subnet.Name, true)
@@ -304,6 +371,37 @@ func TestHandleUpdateIPPropagatesVipGetError(t *testing.T) {
 	require.Error(t, err, "the vip's address must not be released on a transient vip read error")
 }
 
+func TestHandleUpdateIPFailsClosedOnMirrorSubnetLookupError(t *testing.T) {
+	// the vip itself reads fine, but isVMVipMirror's own subnet lookup fails: this must not
+	// be swallowed into "not a mirror" either, or the delete path falls through and releases
+	// a possibly-live vip's lsp and ipam address.
+	subnet := vipMirrorSubnet()
+	vip := vipMirrorVip(util.KubeHostVMVip)
+	vip.Status.V4ip, vip.Status.Mac = "10.0.0.6", "02:ac:10:ff:02:06"
+	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+	now := metav1.Now()
+	mirror := &kubeovnv1.IP{
+		Name: portName, Finalizers: []string{util.KubeOVNControllerFinalizer}, DeletionTimestamp: &now,
+		Spec: kubeovnv1.IPSpec{
+			PodName: vip.Name, Namespace: vip.Spec.Namespace, Subnet: subnet.Name, PodType: util.KindVip,
+			V4IPAddress: vip.Status.V4ip, MacAddress: vip.Status.Mac,
+		},
+	}
+	fc := vipMirrorTestController(t, subnet, []*kubeovnv1.Vip{vip}, []*kubeovnv1.IP{mirror})
+	_, _, _, err := fc.fakeController.ipam.GetStaticAddress(vip.Name, portName, "10.0.0.6", &vip.Status.Mac, subnet.Name, true)
+	require.NoError(t, err)
+
+	fc.fakeController.subnetsLister = &errorSubnetLister{err: errors.New("subnet lister unavailable")}
+
+	// strict mock: no GetLogicalSwitchPort / DeleteLogicalSwitchPort call is expected
+	err = fc.fakeController.handleUpdateIP(portName)
+	require.EqualError(t, err, "subnet lister unavailable")
+
+	// address still held by the vip: the failed mirror check must not fall through to release it
+	_, _, _, err = fc.fakeController.ipam.GetStaticAddress("other", "other-port", "10.0.0.6", nil, subnet.Name, true)
+	require.Error(t, err, "the vip's address must not be released on a transient subnet lookup error")
+}
+
 func TestEnsureVMVipIPCRRetriesWhileOldMirrorIsDeleting(t *testing.T) {
 	subnet := vipMirrorSubnet()
 	vip := vipMirrorVip(util.KubeHostVMVip)
@@ -316,4 +414,18 @@ func TestEnsureVMVipIPCRRetriesWhileOldMirrorIsDeleting(t *testing.T) {
 	fc := vipMirrorTestController(t, subnet, nil, []*kubeovnv1.IP{mirror})
 	err := fc.fakeController.ensureVMVipIPCR(vip, subnet, portName, "10.0.0.6", "02:ac:10:ff:02:06")
 	require.ErrorContains(t, err, "still being deleted")
+}
+
+func TestEnsureVMVipIPCRPropagatesIPLookupError(t *testing.T) {
+	// a transient, non-NotFound failure reading the existing mirror ip must not be treated
+	// as "no mirror yet": it must be retried instead of blindly creating/updating on stale
+	// information.
+	subnet := vipMirrorSubnet()
+	vip := vipMirrorVip(util.KubeHostVMVip)
+	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+	fc := vipMirrorTestController(t, subnet, nil, nil)
+	fc.fakeController.ipsLister = &errorIPLister{err: errors.New("ip lister unavailable")}
+
+	err := fc.fakeController.ensureVMVipIPCR(vip, subnet, portName, "10.0.0.6", "02:ac:10:ff:02:06")
+	require.EqualError(t, err, "ip lister unavailable")
 }

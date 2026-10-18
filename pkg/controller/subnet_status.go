@@ -203,9 +203,16 @@ func (c *Controller) calculateUsingIPs(subnet *kubeovnv1.Subnet, podUsedIPs []*k
 		// mismatched ip CR cannot suppress the count of a real vip's usage.
 		vip, err := c.virtualIpsLister.Get(ip.Spec.PodName)
 		if err != nil {
-			continue
+			if k8serrors.IsNotFound(err) {
+				continue
+			}
+			return internal.BigInt{}, err
 		}
-		if c.isVMVipMirror(ip, vip) {
+		isMirror, err := c.isVMVipMirror(ip, vip)
+		if err != nil {
+			return internal.BigInt{}, err
+		}
+		if isMirror {
 			mirrored[vip.Name] = struct{}{}
 		}
 	}
