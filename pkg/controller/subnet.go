@@ -359,6 +359,18 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1
 	}
 
 	if !subnet.DeletionTimestamp.IsZero() {
+		// Normal reconciliation stops during deletion. Disable the OVN querier
+		// before releasing its IP, including while other IPs hold the finalizer.
+		// The IP deletion event refreshes usage before the next finalizer check.
+		if !subnet.Spec.EnableMulticastSnoop && subnet.Status.McastQuerierIP != "" {
+			if err := c.handleMcastQuerierChange(subnet); err != nil {
+				return subnet, false, err
+			}
+			subnet = subnet.DeepCopy()
+			if _, err := c.releaseMcastQuerierIP(subnet); err != nil {
+				return subnet, false, err
+			}
+		}
 		if err := c.deleteSubnetHealthCheckVip(subnet); err != nil {
 			return subnet, false, err
 		}
@@ -577,7 +589,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return c.recordResourceError(cachedSubnet, "FormatSubnetFailed", err)
 	}
 
-	err = c.validateSubnetVlan(subnet)
+	// A missing, conflicting or unprocessed VLAN must not prevent deletion.
+	// Keep the IP usage refresh and finalizer checks below for occupied subnets.
+	if subnet.DeletionTimestamp.IsZero() {
+		err = c.validateSubnetVlan(subnet)
+	}
 	if err != nil {
 		if errors.Is(err, errVlanNotReady) {
 			// vlan hasn't been processed yet, requeue silently without
@@ -638,7 +654,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return c.recordResourceError(subnet, "UpdateFinalizerFailed", err)
 	}
 	subnet = updatedSubnet
-	if deleted {
+	if deleted || !subnet.DeletionTimestamp.IsZero() {
 		return nil
 	}
 
