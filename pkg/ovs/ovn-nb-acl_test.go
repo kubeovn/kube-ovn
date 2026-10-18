@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
@@ -3267,4 +3268,67 @@ func (suite *OvnClientTestSuite) testUpdateACL() {
 		// TODO:// should err but not for now
 		require.NoError(t, err)
 	})
+}
+
+func (suite *OvnClientTestSuite) testMigrateACLTier() {
+	t := suite.T()
+	// MigrateACLTier updates ACLs across the whole database, so this test must
+	// not run in parallel with tests that create ACLs.
+
+	nbClient := suite.ovnNBClient
+	pgName := "test-migrate-acl-tier-pg"
+	priority := "1002"
+	kubeOvnMatch := "outport == @test_migrate_acl_tier_pg && ip4 && tcp.dst == 80"
+	anpMatch := "outport == @test_migrate_acl_tier_pg && ip4 && tcp.dst == 443"
+	externalMatch := "outport == @test_migrate_acl_tier_pg && ip4 && tcp.dst == 22"
+	noExtIDsMatch := "outport == @test_migrate_acl_tier_pg && ip"
+
+	err := nbClient.CreatePortGroup(pgName, nil)
+	require.NoError(t, err)
+
+	// a kube-ovn ACL left in the default tier by a version prior to v1.13.0
+	legacyACL, err := nbClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, kubeOvnMatch, ovnnb.ACLActionAllowRelated, 0)
+	require.NoError(t, err)
+	// a kube-ovn ACL in a non-default tier
+	anpACL, err := nbClient.newACL(pgName, ovnnb.ACLDirectionToLport, priority, anpMatch, ovnnb.ACLActionAllowRelated, util.AnpACLTier)
+	require.NoError(t, err)
+	// an ACL managed by an external system sharing the NB database, e.g. OpenStack Neutron
+	externalACL := &ovnnb.ACL{
+		UUID:        ovsclient.NamedUUID(),
+		Action:      ovnnb.ACLActionAllowRelated,
+		Direction:   ovnnb.ACLDirectionToLport,
+		Match:       externalMatch,
+		Priority:    1002,
+		ExternalIDs: map[string]string{"neutron:security_group_rule_id": "f6a1d2b4-2a2c-4c6e-9b8d-1e0f3a5b7c9d"},
+	}
+
+	// an external ACL without any external IDs, e.g. the Neutron default drop ACL
+	noExtIDsACL := &ovnnb.ACL{
+		UUID:      ovsclient.NamedUUID(),
+		Action:    ovnnb.ACLActionDrop,
+		Direction: ovnnb.ACLDirectionToLport,
+		Match:     noExtIDsMatch,
+		Priority:  1000,
+	}
+
+	err = nbClient.CreateAcls(pgName, portGroupKey, legacyACL, anpACL, externalACL, noExtIDsACL)
+	require.NoError(t, err)
+
+	err = nbClient.MigrateACLTier()
+	require.NoError(t, err)
+
+	getTier := func(match string) int {
+		var acls []ovnnb.ACL
+		err := nbClient.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool {
+			return acl.Match == match
+		}).List(context.Background(), &acls)
+		require.NoError(t, err)
+		require.Len(t, acls, 1)
+		return acls[0].Tier
+	}
+
+	require.Equal(t, util.NetpolACLTier, getTier(kubeOvnMatch))
+	require.Equal(t, util.AnpACLTier, getTier(anpMatch))
+	require.Equal(t, 0, getTier(externalMatch))
+	require.Equal(t, 0, getTier(noExtIDsMatch))
 }

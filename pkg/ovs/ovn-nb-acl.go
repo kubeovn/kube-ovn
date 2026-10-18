@@ -2158,8 +2158,11 @@ func (c *OVNNbClient) MigrateACLTier() error {
 	defer cancel()
 
 	var aclList []ovnnb.ACL
-	if err := c.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool { return acl.Tier == 0 }).List(ctx, &aclList); err != nil {
-		err = fmt.Errorf("failed to list acls with tier 0: %w", err)
+	if err := c.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool {
+		// Skip ACLs that don't belong to kube-ovn, e.g. those managed by OpenStack Neutron
+		return acl.Tier == 0 && acl.ExternalIDs["vendor"] == util.CniTypeName
+	}).List(ctx, &aclList); err != nil {
+		err = fmt.Errorf("failed to list kube-ovn acls with tier 0: %w", err)
 		klog.Error(err)
 		return err
 	}

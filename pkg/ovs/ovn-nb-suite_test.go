@@ -859,6 +859,10 @@ func (suite *OvnClientTestSuite) Test_newACLWithoutCheck() {
 	suite.testNewACLWithoutCheck()
 }
 
+func (suite *OvnClientTestSuite) Test_MigrateACLTier() {
+	suite.testMigrateACLTier()
+}
+
 func (suite *OvnClientTestSuite) Test_newNetworkPolicyAclMatch() {
 	suite.testnewNetworkPolicyACLMatch()
 }
