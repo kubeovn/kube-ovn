@@ -576,10 +576,21 @@ func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter
 	netAttachInformer := attachNetInformerFactory.K8sCniCncfIo().V1().NetworkAttachmentDefinitions()
 
 	// DRA informers are only requested when enabled so clusters without resource.k8s.io/v1 are unaffected.
+	// Their caches would never sync on a cluster that does not serve the API, so the feature is turned off there.
+	if config.EnableDRANic {
+		served, err := draNicAPIServed(config.KubeClient.Discovery())
+		if err != nil {
+			util.LogFatalAndExit(err, "failed to check for the DRA API")
+		}
+		if !served {
+			klog.Warningf("--enable-dra-nic is set but the cluster does not serve resourceclaims and resourceslices of resource.k8s.io/v1 (Kubernetes 1.34 or later), running without DRA NIC support")
+			config.EnableDRANic = false
+		}
+	}
 	var resourceClaimInformer, resourceSliceInformer cache.SharedIndexInformer
 	if config.EnableDRANic {
 		resourceClaimInformer = informerFactory.Resource().V1().ResourceClaims().Informer()
-		if err = resourceClaimInformer.AddIndexers(cache.Indexers{draClaimPodIndex: draClaimPodIndexFunc}); err != nil {
+		if err = resourceClaimInformer.AddIndexers(cache.Indexers{draClaimPodIndex: draClaimPodIndexFunc, draClaimPoolIndex: draClaimPoolIndexFunc}); err != nil {
 			util.LogFatalAndExit(err, "failed to add resource claim indexer")
 		}
 		resourceSliceInformer = informerFactory.Resource().V1().ResourceSlices().Informer()
@@ -1014,6 +1025,15 @@ func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter
 			UpdateFunc: controller.enqueueUpdateResourceClaim,
 		}); err != nil {
 			util.LogFatalAndExit(err, "failed to add resource claim event handler")
+		}
+	}
+	if resourceSliceInformer != nil {
+		if _, err = resourceSliceInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddResourceSlice,
+			UpdateFunc: controller.enqueueUpdateResourceSlice,
+			DeleteFunc: controller.enqueueDeleteResourceSlice,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add resource slice event handler")
 		}
 	}
 

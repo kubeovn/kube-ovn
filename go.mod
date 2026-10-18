@@ -67,6 +67,7 @@ require (
 	k8s.io/client-go v0.37.2
 	k8s.io/component-base v0.37.2
 	k8s.io/component-helpers v0.37.2
+	k8s.io/dynamic-resource-allocation v0.37.2
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kubectl v0.37.2
 	k8s.io/kubernetes v1.37.2
@@ -259,7 +260,6 @@ require (
 	k8s.io/cri-client v0.37.2 // indirect
 	k8s.io/cri-streaming v0.37.2 // indirect
 	k8s.io/csi-translation-lib v0.37.2 // indirect
-	k8s.io/dynamic-resource-allocation v0.37.2 // indirect
 	k8s.io/gengo/v2 v2.0.0-20260408192533-25e2208e0dc3 // indirect
 	k8s.io/kms v0.37.2 // indirect
 	k8s.io/kube-openapi v0.31.0 // indirect

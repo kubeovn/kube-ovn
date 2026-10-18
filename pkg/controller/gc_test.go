@@ -264,21 +264,31 @@ func TestGetVMLsps(t *testing.T) {
 	t.Parallel()
 
 	t.Run("keeps the ip CR ports of a stopped vm with a dra network", func(t *testing.T) {
+		const (
+			vmNetwork   = "nic0"
+			vmClaim     = "nic0-claim"
+			draVM       = "vm-dra"
+			plainVM     = "vm-plain"
+			namespace1  = "ns1"
+			namespace2  = "ns2"
+			providerNS1 = "blue." + namespace1 + ".ovn"
+			providerNS2 = "blue." + namespace2 + ".ovn"
+		)
 		dra := kubevirtv1.Network{
-			Name:          "nic0",
-			ResourceClaim: &kubevirtv1.ClaimRequest{ClaimName: "nic0-claim", RequestName: "nic0"},
+			Name:          vmNetwork,
+			ResourceClaim: &kubevirtv1.ClaimRequest{ClaimName: vmClaim, RequestName: vmNetwork},
 		}
 		vms := &kubevirtv1.VirtualMachineList{Items: []kubevirtv1.VirtualMachine{
-			{Name: "vm-dra", Namespace: "ns1", Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate([]kubevirtv1.Network{dra}, nil)}},
-			{Name: "vm-plain", Namespace: "ns1", Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate(nil, nil)}},
+			{Name: draVM, Namespace: namespace1, Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate([]kubevirtv1.Network{dra}, nil)}},
+			{Name: plainVM, Namespace: namespace1, Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate(nil, nil)}},
 		}}
-		draPort := ovs.PodNameToPortName("vm-dra", "ns1", "blue.ns1.ovn")
+		draPort := ovs.PodNameToPortName(draVM, namespace1, providerNS1)
 		indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 		for _, ip := range []*kubeovnv1.IP{
-			{Name: ovs.PodNameToPortName("vm-dra", "ns1", util.OvnProvider), Spec: kubeovnv1.IPSpec{PodName: "vm-dra", Namespace: "ns1", PodType: util.KindVirtualMachine}},
-			{Name: draPort, Spec: kubeovnv1.IPSpec{PodName: "vm-dra", Namespace: "ns1", PodType: util.KindVirtualMachine}},
-			{Name: ovs.PodNameToPortName("vm-plain", "ns1", "blue.ns1.ovn"), Spec: kubeovnv1.IPSpec{PodName: "vm-plain", Namespace: "ns1", PodType: util.KindVirtualMachine}},
-			{Name: ovs.PodNameToPortName("vm-dra", "ns2", "blue.ns2.ovn"), Spec: kubeovnv1.IPSpec{PodName: "vm-dra", Namespace: "ns2"}},
+			{Name: ovs.PodNameToPortName(draVM, namespace1, util.OvnProvider), Spec: kubeovnv1.IPSpec{PodName: draVM, Namespace: namespace1, PodType: util.KindVirtualMachine}},
+			{Name: draPort, Spec: kubeovnv1.IPSpec{PodName: draVM, Namespace: namespace1, PodType: util.KindVirtualMachine}},
+			{Name: ovs.PodNameToPortName(plainVM, namespace1, providerNS1), Spec: kubeovnv1.IPSpec{PodName: plainVM, Namespace: namespace1, PodType: util.KindVirtualMachine}},
+			{Name: ovs.PodNameToPortName(draVM, namespace2, providerNS2), Spec: kubeovnv1.IPSpec{PodName: draVM, Namespace: namespace2}},
 		} {
 			require.NoError(t, indexer.Add(ip))
 		}
@@ -290,10 +300,10 @@ func TestGetVMLsps(t *testing.T) {
 		lsps, err := c.getVMLsps()
 		require.NoError(t, err)
 		require.ElementsMatch(t, []string{
-			ovs.PodNameToPortName("vm-dra", "ns1", util.OvnProvider),
-			ovs.PodNameToPortName("vm-dra", "ns1", util.OvnProvider),
+			ovs.PodNameToPortName(draVM, namespace1, util.OvnProvider),
+			ovs.PodNameToPortName(draVM, namespace1, util.OvnProvider),
 			draPort,
-			ovs.PodNameToPortName("vm-plain", "ns1", util.OvnProvider),
+			ovs.PodNameToPortName(plainVM, namespace1, util.OvnProvider),
 		}, lsps)
 
 		c.config.EnableDRANic = false
