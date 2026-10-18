@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"testing"
 	"time"
@@ -16,6 +17,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/internal"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -486,7 +488,7 @@ func TestEnqueueAddIPPoolRoutesTerminatingToDeleteQueue(t *testing.T) {
 	require.Equal(t, 0, c.deleteIPPoolQueue.Len())
 }
 
-func TestReserveIPPoolIPs(t *testing.T) {
+func TestSelectIPPoolIPs(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
 		Name: "subnet1",
 		Spec: kubeovnv1.SubnetSpec{
@@ -509,46 +511,42 @@ func TestReserveIPPoolIPs(t *testing.T) {
 	require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps))
 
 	pool := ippool.DeepCopy()
-	ips, err := ctrl.reserveIPPoolIPs(pool)
-	require.NoError(t, err)
-	require.Equal(t, []string{"10.0.0.2", "10.0.0.3", "10.0.0.4"}, ips)
-	// IPAM holds the picked addresses now; recording them in the status is the
-	// caller's job
-	require.Empty(t, pool.Status.IPs)
-	pool.Status.IPs = ips
+	apply := func() []string {
+		t.Helper()
+		ips, sn, err := ctrl.selectIPPoolIPs(pool)
+		require.NoError(t, err)
+		// selection alone does not expose the membership; activation commits it,
+		// recording it in the status is the caller's job
+		require.NoError(t, ctrl.activateIPPoolIPs(pool, sn, ips))
+		pool.Status.IPs = ips
+		return ips
+	}
+
+	// selection and activation commit the picked addresses
+	require.Equal(t, []string{"10.0.0.2", "10.0.0.3", "10.0.0.4"}, apply())
 
 	// growing keeps the existing addresses and appends newly picked ones
 	pool.Spec.IPCount = 5
-	ips, err = ctrl.reserveIPPoolIPs(pool)
-	require.NoError(t, err)
-	require.Equal(t, []string{"10.0.0.2", "10.0.0.3", "10.0.0.4", "10.0.0.5", "10.0.0.6"}, ips)
-	pool.Status.IPs = ips
+	require.Equal(t, []string{"10.0.0.2", "10.0.0.3", "10.0.0.4", "10.0.0.5", "10.0.0.6"}, apply())
 
 	// shrinking releases the most recently added addresses first
 	pool.Spec.IPCount = 2
-	ips, err = ctrl.reserveIPPoolIPs(pool)
-	require.NoError(t, err)
-	require.Equal(t, []string{"10.0.0.2", "10.0.0.3"}, ips)
-	pool.Status.IPs = ips
+	require.Equal(t, []string{"10.0.0.2", "10.0.0.3"}, apply())
 
 	// not enough free addresses in the subnet, which only holds 13 of them
 	pool.Spec.IPCount = 20
-	_, err = ctrl.reserveIPPoolIPs(pool)
+	_, _, err = ctrl.selectIPPoolIPs(pool)
 	require.ErrorContains(t, err, "does not have enough free addresses")
 
 	// a failed selection is not recorded and did not touch the committed one
 	require.Equal(t, []string{"10.0.0.2", "10.0.0.3"}, pool.Status.IPs)
 	pool.Spec.IPCount = 2
-	ips, err = ctrl.reserveIPPoolIPs(pool.DeepCopy())
-	require.NoError(t, err)
-	require.Equal(t, []string{"10.0.0.2", "10.0.0.3"}, ips)
+	require.Equal(t, []string{"10.0.0.2", "10.0.0.3"}, apply())
 
 	// spec.ips is used as is
 	pool.Spec.IPCount = 0
 	pool.Spec.IPs = []string{"10.0.0.10"}
-	ips, err = ctrl.reserveIPPoolIPs(pool)
-	require.NoError(t, err)
-	require.Equal(t, []string{"10.0.0.10"}, ips)
+	require.Equal(t, []string{"10.0.0.10"}, apply())
 }
 
 func TestHandleAddOrUpdateIPPoolWithIPCount(t *testing.T) {
@@ -583,7 +581,7 @@ func TestHandleAddOrUpdateIPPoolWithIPCount(t *testing.T) {
 	require.True(t, got.Status.IsReady())
 }
 
-func TestReserveIPPoolIPsDualStack(t *testing.T) {
+func TestSelectIPPoolIPsDualStack(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
 		Name: "subnet3",
 		Spec: kubeovnv1.SubnetSpec{
@@ -606,13 +604,13 @@ func TestReserveIPPoolIPsDualStack(t *testing.T) {
 
 	// ipCount applies to each IP family
 	pool := ippool.DeepCopy()
-	ips, err := ctrl.reserveIPPoolIPs(pool)
+	ips, _, err := ctrl.selectIPPoolIPs(pool)
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.2.0.2", "10.2.0.3", "fd00::2", "fd00::3"}, ips)
 	pool.Status.IPs = ips
 
 	pool.Spec.IPCount = 1
-	ips, err = ctrl.reserveIPPoolIPs(pool)
+	ips, _, err = ctrl.selectIPPoolIPs(pool)
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.2.0.2", "fd00::2"}, ips)
 }
@@ -756,7 +754,102 @@ func TestHandleAddOrUpdateIPPoolAddressSetWithIPCount(t *testing.T) {
 	require.Equal(t, []string{"10.6.0.2", "10.6.0.3"}, got.Status.IPs)
 }
 
-func TestReserveIPPoolIPsStaleAddresses(t *testing.T) {
+// TestHandleAddOrUpdateIPPoolAddressSetFailureKeepsMembershipInactive pins the
+// exposure invariant: while the address set cannot be reconciled, the new membership
+// must not become allocatable in IPAM - although status.ips already records the
+// selection a retry or a restart restores it from.
+func TestHandleAddOrUpdateIPPoolAddressSetFailureKeepsMembershipInactive(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		Name: "subnet12",
+		Spec: kubeovnv1.SubnetSpec{
+			Protocol:   kubeovnv1.ProtocolIPv4,
+			CIDRBlock:  "10.12.0.0/24",
+			Gateway:    "10.12.0.1",
+			ExcludeIps: []string{"10.12.0.1"},
+		},
+	}
+	ippool := &kubeovnv1.IPPool{
+		Name: "pool12",
+		Spec: kubeovnv1.IPPoolSpec{Subnet: subnet.Name, IPCount: 2, EnableAddressSet: true},
+	}
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		IPPools: []*kubeovnv1.IPPool{ippool},
+	})
+	require.NoError(t, err)
+	ctrl := fakeController.fakeController
+	ctrl.ippoolKeyMutex = keymutex.NewHashed(97)
+	require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps))
+
+	asName := util.IPPoolAddressSetName(ippool.Name)
+	fakeController.mockOvnClient.EXPECT().CreateAddressSet(asName, gomock.Any()).Return(errors.New("ovn is down"))
+
+	err = ctrl.handleAddOrUpdateIPPool(ippool.Name)
+	require.ErrorContains(t, err, "ovn is down")
+	require.Nil(t, ctrl.ipam.Subnets[subnet.Name].IPPools[ippool.Name],
+		"the membership must stay invisible to consumers while the address set is not reconciled")
+
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().IPPools().Get(context.Background(), ippool.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.12.0.2", "10.12.0.3"}, got.Status.IPs,
+		"the selection is persisted for the retry and for the restore after a restart")
+	require.False(t, got.Status.IsReady())
+}
+
+// TestHandleAddOrUpdateIPPoolSelectionStolenBeforeActivation covers an address stolen
+// from the default pool between the selection and the activation: the activation must
+// fail without exposing a membership differing from the published one, and the
+// retried reconcile publishes and commits the replacement instead.
+func TestHandleAddOrUpdateIPPoolSelectionStolenBeforeActivation(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		Name: "subnet13",
+		Spec: kubeovnv1.SubnetSpec{
+			Protocol:   kubeovnv1.ProtocolIPv4,
+			CIDRBlock:  "10.13.0.0/24",
+			Gateway:    "10.13.0.1",
+			ExcludeIps: []string{"10.13.0.1"},
+		},
+	}
+	ippool := &kubeovnv1.IPPool{
+		Name: "pool13",
+		Spec: kubeovnv1.IPPoolSpec{Subnet: subnet.Name, IPCount: 1},
+	}
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		IPPools: []*kubeovnv1.IPPool{ippool},
+	})
+	require.NoError(t, err)
+	ctrl := fakeController.fakeController
+	ctrl.ippoolKeyMutex = keymutex.NewHashed(97)
+	fakeController.mockOvnClient.EXPECT().DeleteAddressSet(gomock.Any()).Return(nil).AnyTimes()
+	require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps))
+
+	pool := ippool.DeepCopy()
+	ips, sn, err := ctrl.selectIPPoolIPs(pool)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.13.0.2"}, ips)
+
+	// a concurrent pod allocation takes the picked address from the default pool
+	_, _, _, err = ctrl.ipam.GetStaticAddress("pod1.default", "nic1", "10.13.0.2", nil, subnet.Name, false)
+	require.NoError(t, err)
+
+	// the activation rejects the stale selection and commits nothing
+	err = ctrl.activateIPPoolIPs(pool, sn, ips)
+	require.ErrorIs(t, err, ipam.ErrSelectionChanged)
+	require.Nil(t, ctrl.ipam.Subnets[subnet.Name].IPPools[ippool.Name])
+
+	// a full reconcile recovers: it publishes and activates the replacement instead
+	require.NoError(t, ctrl.handleAddOrUpdateIPPool(ippool.Name))
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().IPPools().Get(context.Background(), ippool.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.13.0.3"}, got.Status.IPs)
+	require.True(t, got.Status.IsReady())
+	stolen, err := ipam.NewIP("10.13.0.2")
+	require.NoError(t, err)
+	require.False(t, ctrl.ipam.Subnets[subnet.Name].IPPools[ippool.Name].V4IPs.Contains(stolen))
+}
+
+func TestSelectIPPoolIPsStaleAddresses(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
 		Name: "subnet8",
 		Spec: kubeovnv1.SubnetSpec{
@@ -782,19 +875,19 @@ func TestReserveIPPoolIPsStaleAddresses(t *testing.T) {
 
 	// addresses outside the current CIDR are dropped, the missing one is picked again
 	pool := ippool.DeepCopy()
-	ips, err := ctrl.reserveIPPoolIPs(pool)
+	ips, _, err := ctrl.selectIPPoolIPs(pool)
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.7.0.5", "10.7.0.6", "10.7.0.2"}, ips)
 
 	// a pool whose subnet does not exist yet cannot be resolved
 	pool.Spec.Subnet = "noSuchSubnet"
-	_, err = ctrl.reserveIPPoolIPs(pool)
+	_, _, err = ctrl.selectIPPoolIPs(pool)
 	require.Error(t, err)
 }
 
 // TestReserveIPPoolIPsExceedingMaxCount covers pools created before the CRD gained its
 // upper bound: such a pool is rejected instead of carving a large chunk out of the subnet.
-func TestReserveIPPoolIPsExceedingMaxCount(t *testing.T) {
+func TestSelectIPPoolIPsExceedingMaxCount(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
 		Name: "subnet9",
 		Spec: kubeovnv1.SubnetSpec{Protocol: kubeovnv1.ProtocolIPv4, CIDRBlock: "10.9.0.0/26", Gateway: "10.9.0.1"},
@@ -811,21 +904,22 @@ func TestReserveIPPoolIPsExceedingMaxCount(t *testing.T) {
 	ctrl := fakeController.fakeController
 	require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
 
-	_, err = ctrl.reserveIPPoolIPs(ippool.DeepCopy())
+	_, _, err = ctrl.selectIPPoolIPs(ippool.DeepCopy())
 	require.ErrorContains(t, err, "more than the maximum")
 
 	// the limit itself is allowed
 	pool := ippool.DeepCopy()
 	pool.Spec.IPCount = maxIPPoolIPCount
-	ips, err := ctrl.reserveIPPoolIPs(pool)
+	ips, _, err := ctrl.selectIPPoolIPs(pool)
 	require.NoError(t, err)
 	require.Len(t, ips, maxIPPoolIPCount)
 }
 
-// TestReserveIPPoolIPsRecoversAfterFailedStatusPatch covers the pool whose status
-// update failed after IPAM accepted its selection: a retry must recover the held
-// selection instead of reporting insufficient addresses forever.
-func TestReserveIPPoolIPsRecoversAfterFailedStatusPatch(t *testing.T) {
+// TestSelectIPPoolIPsRecoversHeldSelection covers a retry whose informer view of the
+// pool lags behind the last activation: status.ips is not updated yet, so the
+// committed addresses must be recovered from what IPAM holds instead of being
+// reported as unavailable.
+func TestSelectIPPoolIPsRecoversHeldSelection(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
 		Name: "subnet10",
 		Spec: kubeovnv1.SubnetSpec{
@@ -847,14 +941,16 @@ func TestReserveIPPoolIPsRecoversAfterFailedStatusPatch(t *testing.T) {
 	ctrl := fakeController.fakeController
 	require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps))
 
-	// the subnet holds a single usable address; IPAM accepted it into the pool
-	ips, err := ctrl.reserveIPPoolIPs(ippool.DeepCopy())
+	// the subnet holds a single usable address; the pool activated its selection
+	ips, sn, err := ctrl.selectIPPoolIPs(ippool.DeepCopy())
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.10.0.2"}, ips)
+	require.NoError(t, ctrl.activateIPPoolIPs(ippool.DeepCopy(), sn, ips))
 
-	// the status update failed, so the retry resolves with status.ips still empty:
-	// the accepted address is recovered from IPAM, not requested as a new pick
-	ips, err = ctrl.reserveIPPoolIPs(ippool.DeepCopy())
+	// the status update did not reach the informer yet, so the retry selects with
+	// status.ips still empty: the committed address is recovered from what IPAM
+	// holds, not requested as a new pick
+	ips, _, err = ctrl.selectIPPoolIPs(ippool.DeepCopy())
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.10.0.2"}, ips)
 }
