@@ -59,6 +59,7 @@ IFACE=${IFACE:-}
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_TPROXY=${ENABLE_TPROXY:-false}
+ENABLE_RECOMPUTE=${ENABLE_RECOMPUTE:-false}
 OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
@@ -8819,6 +8820,7 @@ spec:
           - --enable-metrics=$ENABLE_METRICS
           - --kubelet-dir=$KUBELET_DIR
           - --enable-tproxy=$ENABLE_TPROXY
+          - --enable-recompute=$ENABLE_RECOMPUTE
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
           - --secure-serving=${SECURE_SERVING}
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC

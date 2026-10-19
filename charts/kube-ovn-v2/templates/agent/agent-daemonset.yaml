@@ -142,6 +142,7 @@ spec:
           - --enable-metrics={{- .Values.networking.enableMetrics }}
           - --kubelet-dir={{ .Values.kubelet.directory }}
           - --enable-tproxy={{ .Values.features.enableTproxy }}
+          - --enable-recompute={{ .Values.features.enableRecompute }}
           - --ovs-vsctl-concurrency={{ .Values.performance.ovsVsctlConcurrency }}
           - --secure-serving={{- .Values.features.enableSecureServing }}
           {{- if or .Values.networking.tlsMinVersion .Values.networking.tlsMaxVersion .Values.networking.tlsCipherSuites }}
