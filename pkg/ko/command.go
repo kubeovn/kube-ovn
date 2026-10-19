@@ -55,7 +55,6 @@ func New(streams genericiooptions.IOStreams) *Application {
 	a.addDiagnosticCommands()
 	a.addPerformanceCommand()
 	a.addACLCommands()
-	a.addGCCommands()
 	a.root.AddCommand(&cobra.Command{
 		Use: "version", Short: "Print the client build version without contacting a cluster", Args: cobra.NoArgs,
 		RunE: func(_ *cobra.Command, _ []string) error {

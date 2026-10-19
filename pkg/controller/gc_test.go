@@ -38,7 +38,6 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/gcexempt"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -921,13 +920,6 @@ func TestGcNodeKeepsPolicyAdoptedBySameNameReplacement(t *testing.T) {
 	require.Len(t, remaining, 1, "the policy of a same-name replacement node must survive gc")
 }
 
-func gcExemptionConfigMap(data map[string]string) *corev1.ConfigMap {
-	return &corev1.ConfigMap{
-		Name: util.GCExemptionConfig, Namespace: metav1.NamespaceSystem,
-		Data: data,
-	}
-}
-
 func newMarkAndCleanLSPTestController(t *testing.T, opts *FakeControllerOptions) (*Controller, *mockovs.MockNbClient) {
 	t.Helper()
 	fakeController, err := newFakeControllerWithOptions(t, opts)
@@ -1073,34 +1065,7 @@ func TestMarkAndCleanLSPSweepErrors(t *testing.T) {
 	}
 }
 
-type erroringConfigMapLister struct{ err error }
-
-func (l erroringConfigMapLister) List(labels.Selector) ([]*corev1.ConfigMap, error) {
-	return nil, l.err
-}
-
-func (l erroringConfigMapLister) Get(string) (*corev1.ConfigMap, error) { return nil, l.err }
-
-func (l erroringConfigMapLister) ConfigMaps(string) corelisters.ConfigMapNamespaceLister { return l }
-
-func TestResyncChassisGCExemptionsKeepsSnapshotOnListerError(t *testing.T) {
-	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(map[string]string{gcexempt.ChassisKey: "external-hv-1"})},
-	})
-	require.NoError(t, err)
-	ctrl := fakeController.fakeController
-
-	ctrl.resyncChassisGCExemptions()
-	require.True(t, ctrl.isChassisExempt("external-hv-1"))
-
-	// A transient, non-NotFound read error must not wipe the exemption,
-	// otherwise the external gateway chassis would be deleted on this tick.
-	ctrl.configMapsLister = erroringConfigMapLister{err: errors.New("apiserver unavailable")}
-	ctrl.resyncChassisGCExemptions()
-	require.True(t, ctrl.isChassisExempt("external-hv-1"))
-}
-
-func TestGcChassisWithoutExemptions(t *testing.T) {
+func TestGcChassisWithExternalVpcDisabled(t *testing.T) {
 	errBoom := errors.New("boom")
 	liveNode := &corev1.Node{Name: "node-1", Annotations: map[string]string{util.ChassisAnnotation: "chassis-live"}}
 	renamedNode := &corev1.Node{Name: "node-2", Annotations: map[string]string{util.ChassisAnnotation: "chassis-renamed"}}
@@ -1125,6 +1090,14 @@ func TestGcChassisWithoutExemptions(t *testing.T) {
 			setup: func(m *mockovs.MockSbClient) {
 				m.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{{Name: "chassis-renamed", Hostname: "old-name"}}, nil)
 				m.EXPECT().DeleteChassis("chassis-renamed").Return(nil).MinTimes(1)
+			},
+		},
+		{
+			name:  "untagged chassis is still gc'd when external vpc is disabled",
+			nodes: nil,
+			setup: func(m *mockovs.MockSbClient) {
+				m.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{{Name: "chassis-orphan", Hostname: "gone"}}, nil)
+				m.EXPECT().DeleteChassis("chassis-orphan").Return(nil)
 			},
 		},
 		{
@@ -1168,116 +1141,115 @@ func TestGcChassisWithoutExemptions(t *testing.T) {
 	}
 }
 
-func TestGcChassisSkipsExemptedUnclaimedChassis(t *testing.T) {
-	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(map[string]string{gcexempt.ChassisKey: "external-hv-1"})},
-	})
-	require.NoError(t, err)
-
-	ctrl := fakeController.fakeController
-	ctrl.resyncChassisGCExemptions()
-
-	fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
-		{Name: "external-hv-1", Hostname: "external-hv-1"},
-	}, nil)
-	// No DeleteChassis expectation: gomock fails if the exempted, unclaimed
-	// chassis is deleted.
-	require.NoError(t, ctrl.gcChassis())
-}
-
-func TestGcChassisSkipsExemptedChassisOnHostnameMismatch(t *testing.T) {
-	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		Nodes: []*corev1.Node{{
-			Name:        "node-1",
-			Annotations: map[string]string{util.ChassisAnnotation: "chassis-a"},
-		}},
-		ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(map[string]string{gcexempt.ChassisKey: "chassis-a"})},
-	})
-	require.NoError(t, err)
-
-	ctrl := fakeController.fakeController
-	ctrl.resyncChassisGCExemptions()
-
-	fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
-		{Name: "chassis-a", Hostname: "some-other-host"},
-	}, nil)
-	// No DeleteChassis expectation: gomock fails if the exempted chassis is
-	// deleted despite the hostname mismatch.
-	require.NoError(t, ctrl.gcChassis())
-}
-
-func TestGcChassisDeletesChassisAfterExemptionRemovedOnNextRun(t *testing.T) {
-	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(map[string]string{gcexempt.ChassisKey: "external-hv-1"})},
-	})
-	require.NoError(t, err)
-
-	ctrl := fakeController.fakeController
-	ctrl.resyncChassisGCExemptions()
-
-	fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
-		{Name: "external-hv-1", Hostname: "external-hv-1"},
-	}, nil).Times(2)
-	require.NoError(t, ctrl.gcChassis(), "chassis must survive while exempted")
-
-	// Simulate the exemption having been removed and already resynced, e.g.
-	// via `kubectl-ko gc-exemption --remove-chassis-exemption`.
-	ctrl.chassisGCExemptions.Store(emptyChassisGCExemptionSnapshot())
-
-	fakeController.mockOvnSbClient.EXPECT().DeleteChassis("external-hv-1").Return(nil)
-	require.NoError(t, ctrl.gcChassis(), "chassis must be deleted on the very next run, not after a two-cycle debounce")
-}
-
-func TestResyncChassisGCExemptionsParsesEdgeCases(t *testing.T) {
-	t.Run("missing configmap means no exemptions", func(t *testing.T) {
+// TestGcChassisUnderExternalVpcSkipsUntaggedChassis exercises the
+// --enable-external-vpc gating added to gcChassis: an untagged chassis is an
+// externally-managed gateway (e.g. a non-k8s KVM hypervisor bridged into the
+// same OVN deployment) and must never be deleted under this flag, whether
+// it's unclaimed by any node or merely has a hostname that doesn't match a
+// node's chassis annotation.
+func TestGcChassisUnderExternalVpcSkipsUntaggedChassis(t *testing.T) {
+	t.Run("unclaimed untagged chassis survives", func(t *testing.T) {
 		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{})
 		require.NoError(t, err)
 		ctrl := fakeController.fakeController
+		ctrl.config.EnableExternalVpc = true
 
-		ctrl.resyncChassisGCExemptions()
-		require.False(t, ctrl.isChassisExempt("anything"))
+		fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+			{Name: "external-hv-1", Hostname: "external-hv-1"},
+		}, nil)
+		// No DeleteChassis expectation: gomock fails if the untagged,
+		// unclaimed chassis is deleted.
+		require.NoError(t, ctrl.gcChassis())
 	})
 
-	t.Run("nil data means no exemptions", func(t *testing.T) {
+	t.Run("untagged chassis with a hostname mismatch survives", func(t *testing.T) {
 		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-			ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(nil)},
+			Nodes: []*corev1.Node{{
+				Name:        "node-1",
+				Annotations: map[string]string{util.ChassisAnnotation: "external-hv-1"},
+			}},
 		})
 		require.NoError(t, err)
 		ctrl := fakeController.fakeController
+		ctrl.config.EnableExternalVpc = true
 
-		ctrl.resyncChassisGCExemptions()
-		require.False(t, ctrl.isChassisExempt("anything"))
+		fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+			{Name: "external-hv-1", Hostname: "some-other-host"},
+		}, nil)
+		// No DeleteChassis expectation: gomock fails if the untagged chassis
+		// is deleted despite the hostname mismatch against node-1's
+		// annotation (a coincidental name collision, not actually node-1's
+		// chassis).
+		require.NoError(t, ctrl.gcChassis())
 	})
 
-	t.Run("whitespace and duplicates are trimmed and deduped", func(t *testing.T) {
+	t.Run("untagged chassis with ExternalIDs set but no vendor key survives", func(t *testing.T) {
+		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{})
+		require.NoError(t, err)
+		ctrl := fakeController.fakeController
+		ctrl.config.EnableExternalVpc = true
+
+		fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+			{Name: "external-hv-1", Hostname: "external-hv-1", ExternalIDs: map[string]string{"other": "tag"}},
+		}, nil)
+		require.NoError(t, ctrl.gcChassis())
+	})
+}
+
+// TestGcChassisUnderExternalVpcStillGCsTaggedChassis confirms the vendor
+// filter does not regress cleanup of kube-ovn's own node chassis: a
+// decommissioned/renamed k8s node's chassis is still tagged vendor=kube-ovn
+// by UpdateChassisTag, so it must still be gc'd like today even when
+// --enable-external-vpc is set.
+func TestGcChassisUnderExternalVpcStillGCsTaggedChassis(t *testing.T) {
+	kubeOvnTag := map[string]string{"vendor": util.CniTypeName}
+
+	t.Run("unclaimed tagged chassis is deleted", func(t *testing.T) {
+		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{})
+		require.NoError(t, err)
+		ctrl := fakeController.fakeController
+		ctrl.config.EnableExternalVpc = true
+
+		fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+			{Name: "stale-node-chassis", Hostname: "gone", ExternalIDs: kubeOvnTag},
+		}, nil)
+		fakeController.mockOvnSbClient.EXPECT().DeleteChassis("stale-node-chassis").Return(nil)
+		require.NoError(t, ctrl.gcChassis())
+	})
+
+	t.Run("tagged chassis of a live node is kept", func(t *testing.T) {
 		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-			ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(map[string]string{
-				gcexempt.ChassisKey: " a, ,b ,a,b,,c ",
-			})},
+			Nodes: []*corev1.Node{{
+				Name:        "node-1",
+				Annotations: map[string]string{util.ChassisAnnotation: "chassis-live"},
+			}},
 		})
 		require.NoError(t, err)
 		ctrl := fakeController.fakeController
+		ctrl.config.EnableExternalVpc = true
 
-		ctrl.resyncChassisGCExemptions()
-		snap := ctrl.chassisGCExemptions.Load()
-		require.NotNil(t, snap)
-		require.ElementsMatch(t, []string{"a", "b", "c"}, snap.chassis.List())
+		fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+			{Name: "chassis-live", Hostname: "node-1", ExternalIDs: kubeOvnTag},
+		}, nil)
+		require.NoError(t, ctrl.gcChassis())
 	})
 
-	t.Run("unchanged configmap data does not replace the cached snapshot", func(t *testing.T) {
+	t.Run("tagged chassis with a hostname mismatch is deleted", func(t *testing.T) {
 		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-			ConfigMaps: []*corev1.ConfigMap{gcExemptionConfigMap(map[string]string{gcexempt.ChassisKey: "a"})},
+			Nodes: []*corev1.Node{{
+				Name:        "node-2",
+				Annotations: map[string]string{util.ChassisAnnotation: "chassis-renamed"},
+			}},
 		})
 		require.NoError(t, err)
 		ctrl := fakeController.fakeController
+		ctrl.config.EnableExternalVpc = true
 
-		ctrl.resyncChassisGCExemptions()
-		first := ctrl.chassisGCExemptions.Load()
-		require.NotNil(t, first)
-
-		ctrl.resyncChassisGCExemptions()
-		second := ctrl.chassisGCExemptions.Load()
-		require.Same(t, first, second, "resyncChassisGCExemptions must not replace the snapshot when the configmap is unchanged")
+		fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+			{Name: "chassis-renamed", Hostname: "old-name", ExternalIDs: kubeOvnTag},
+		}, nil)
+		fakeController.mockOvnSbClient.EXPECT().DeleteChassis("chassis-renamed").Return(nil).MinTimes(1)
+		require.NoError(t, ctrl.gcChassis())
 	})
 }
 
