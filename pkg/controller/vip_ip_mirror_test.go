@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	k8stesting "k8s.io/client-go/testing"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -644,10 +645,11 @@ func TestHandleUpdateIPOrphanedVipTypePropagatesLSPLookupError(t *testing.T) {
 	require.Error(t, err, "the address must not be released when the lsp lookup fails")
 }
 
-func TestHandleUpdateIPOrphanedVipTypeSkipsReleaseWhenSubnetGone(t *testing.T) {
-	// the subnet backing an orphaned reserved-ip may already be gone by the time it is
-	// deleted; this must not panic (the same class of bug as Test_handleUpdateIP_deletedSubnet)
-	// and must still drop the finalizer so the CR can go away.
+func TestHandleUpdateIPOrphanedVipTypeHandlesSubnetTrulyGone(t *testing.T) {
+	// the subnet backing an orphaned reserved-ip may already be gone - both from the lister
+	// and from ipam - by the time it is deleted; this must not panic (the same class of bug
+	// as Test_handleUpdateIP_deletedSubnet) and must still drop the finalizer so the CR can
+	// go away, even though there is nothing left anywhere to release.
 	subnet := vipMirrorSubnet()
 	ip, portName := orphanedVipTypeIP(subnet, "ghost-vip", "10.0.0.6")
 	ip.Spec.Subnet = "deleted-subnet"
@@ -662,6 +664,42 @@ func TestHandleUpdateIPOrphanedVipTypeSkipsReleaseWhenSubnetGone(t *testing.T) {
 	got, err := client.IPs().Get(context.Background(), portName, metav1.GetOptions{})
 	if err == nil {
 		require.Empty(t, got.Finalizers, "the orphaned ip CR's finalizer must still be removed")
+	} else {
+		require.True(t, k8serrors.IsNotFound(err))
+	}
+}
+
+func TestHandleUpdateIPOrphanedVipTypeReleasesAddressOnStaleSubnetCache(t *testing.T) {
+	// issue #7696 review P2 on releaseOwnedIPResources itself: a subnet NotFound from the
+	// lister is not proof the subnet (or the ipam allocation under it) is actually gone - it
+	// can be a transient informer cache miss while ipam still holds the address. Treating
+	// NotFound as "nothing to release" here, the same as the generic (non-vip) ip deletion
+	// path never did, would strand the address forever: once the finalizer drops there is no
+	// object left to retry cleanup against.
+	subnet := vipMirrorSubnet()
+	ip, portName := orphanedVipTypeIP(subnet, "ghost-vip", "10.0.0.6")
+	ip.Finalizers = []string{util.KubeOVNControllerFinalizer}
+	now := metav1.Now()
+	ip.DeletionTimestamp = &now
+	fc := vipMirrorTestController(t, subnet, nil, []*kubeovnv1.IP{ip})
+	_, _, _, err := fc.fakeController.ipam.GetStaticAddress("whatever", portName, "10.0.0.6", nil, subnet.Name, true)
+	require.NoError(t, err)
+
+	fc.fakeController.subnetsLister = &errorSubnetLister{
+		err: k8serrors.NewNotFound(schema.GroupResource{Resource: "subnets"}, subnet.Name),
+	}
+
+	// strict mock: no GetLogicalSwitchPort / DeleteLogicalSwitchPort call is expected, since
+	// the lister can't confirm an ovn-backed subnet to look the port up against
+	require.NoError(t, fc.fakeController.handleUpdateIP(portName))
+
+	_, _, _, err = fc.fakeController.ipam.GetStaticAddress("someone-else", "someone-else-port", "10.0.0.6", nil, subnet.Name, true)
+	require.NoError(t, err, "the address must still be released from ipam on a stale subnet-lister cache miss")
+
+	client := fc.fakeController.config.KubeOvnClient.KubeovnV1()
+	got, err := client.IPs().Get(context.Background(), portName, metav1.GetOptions{})
+	if err == nil {
+		require.Empty(t, got.Finalizers, "the orphaned ip CR's finalizer must be removed")
 	} else {
 		require.True(t, k8serrors.IsNotFound(err))
 	}

@@ -415,6 +415,12 @@ func (c *Controller) handleVMVipMirrorDeletion(cachedIP *kubeovnv1.IP) error {
 // deletion path below, for an ip CR that reached here with no vip at all claiming ownership
 // of its name.
 func (c *Controller) releaseOwnedIPResources(cachedIP *kubeovnv1.IP) error {
+	// A subnet NotFound here is not proof the subnet, or the ipam allocation under it, is
+	// actually gone - it can just as well be a stale lister cache. Keep going through the
+	// ipam release below either way, same as the generic (non-vip) ip deletion path does:
+	// ipam.ReleaseAddressByNic itself no-ops for a subnet it doesn't know about, so this
+	// cannot resurrect a truly-deleted subnet, but it does avoid stranding the address on
+	// a transient cache miss and dropping the finalizer with no path left to retry.
 	subnet, err := c.subnetsLister.Get(cachedIP.Spec.Subnet)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
@@ -422,27 +428,26 @@ func (c *Controller) releaseOwnedIPResources(cachedIP *kubeovnv1.IP) error {
 			return err
 		}
 		klog.Warningf("subnet %s not found for deleting ip %s", cachedIP.Spec.Subnet, cachedIP.Name)
-	} else {
-		portName := cachedIP.Name
-		if isOvnSubnet(subnet) {
-			port, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
-			if err != nil {
-				klog.Errorf("failed to get logical switch port %s: %v", portName, err)
+	}
+	portName := cachedIP.Name
+	if isOvnSubnet(subnet) {
+		port, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
+		if err != nil {
+			klog.Errorf("failed to get logical switch port %s: %v", portName, err)
+			return err
+		}
+		if port != nil {
+			klog.Infof("delete ip cr lsp %s from switch %s", portName, subnet.Name)
+			if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+				klog.Errorf("failed to delete ip cr lsp %s from switch %s: %v", portName, subnet.Name, err)
 				return err
 			}
-			if port != nil {
-				klog.Infof("delete ip cr lsp %s from switch %s", portName, subnet.Name)
-				if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
-					klog.Errorf("failed to delete ip cr lsp %s from switch %s: %v", portName, subnet.Name, err)
-					return err
-				}
-			}
 		}
-		podKey := fmt.Sprintf("%s/%s", cachedIP.Spec.Namespace, cachedIP.Spec.PodName)
-		klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
-		c.ipam.ReleaseAddressByNic(podKey, portName, cachedIP.Spec.Subnet)
-		c.updateSubnetStatusQueue.Add(cachedIP.Spec.Subnet)
 	}
+	podKey := fmt.Sprintf("%s/%s", cachedIP.Spec.Namespace, cachedIP.Spec.PodName)
+	klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
+	c.ipam.ReleaseAddressByNic(podKey, portName, cachedIP.Spec.Subnet)
+	c.updateSubnetStatusQueue.Add(cachedIP.Spec.Subnet)
 	if err := c.handleDelIPFinalizer(cachedIP); err != nil {
 		klog.Errorf("failed to handle del ip finalizer %v", err)
 		return err
