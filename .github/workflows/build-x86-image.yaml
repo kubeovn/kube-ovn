@@ -2996,6 +2996,124 @@ jobs:
           name: webhook-e2e-ko-log
           path: webhook-e2e-ko-log.tar.gz
 
+  kube-ovn-dra-e2e:
+    name: DRA NIC E2E
+    needs:
+      - prepare-kind-node-images
+      - build-kube-ovn
+      - build-e2e-binaries
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: jlumbroso/free-disk-space@v2.0.0
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v7
+        id: setup-go
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.15.1
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download kube-ovn image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load images
+        run: |
+          docker load -i kube-ovn.tar
+
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator
+          make kind-init
+
+      - name: Install Kube-OVN with DRA NICs
+        id: install
+        run: ENABLE_DRA_NIC=true make kind-install
+
+      - name: Run E2E
+        id: e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+        run: make kube-ovn-dra-e2e
+
+
+      - name: Check kube ovn pod restarts
+        id: check-restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko logs
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        run: |
+          bash .github/scripts/collect-kubectl-ko-log.sh
+          mv kubectl-ko-log.tar.gz dra-e2e-ko-log.tar.gz
+
+      - name: upload kubectl ko logs
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        with:
+          name: dra-e2e-ko-log
+          path: dra-e2e-ko-log.tar.gz
+
   talos-installation-test:
     name: Talos Installation Test
     needs:
@@ -4909,6 +5027,7 @@ jobs:
       - no-np-test
       - lb-svc-e2e
       - webhook-e2e
+      - kube-ovn-dra-e2e
       - talos-installation-test
       - kube-ovn-cnp-domain-e2e
       - kube-ovn-anp-domain-e2e
