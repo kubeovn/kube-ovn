@@ -290,20 +290,7 @@ func (c *Controller) handleUpdateIP(key string) (err error) {
 	if !cachedIP.DeletionTimestamp.IsZero() {
 		klog.Infof("handle deleting ip %s", cachedIP.Name)
 		if cachedIP.Spec.PodType == util.KindVip {
-			if done, mirrorErr := c.handleVMVipMirrorDeletion(cachedIP); done {
-				return mirrorErr
-			}
-			// Not a live kube_host_vm_vip mirror: the vip is gone, terminating, or this ip
-			// never actually identified one (e.g. a stale or hand-crafted podType: Vip ip
-			// naming a live plain or switch_lb_rule vip's port). A podType: Vip ip never owns
-			// a real lsp/ipam address itself - that belongs to the Vip controller - so this is
-			// always CR-only cleanup; it must never fall into the generic lsp-delete/
-			// ipam-release path below, which would otherwise tear down another vip's port.
-			if err := c.handleDelIPFinalizer(cachedIP); err != nil {
-				klog.Errorf("failed to handle del ip finalizer %v", err)
-				return err
-			}
-			return nil
+			return c.handleVMVipMirrorDeletion(cachedIP)
 		}
 		subnet, err := c.subnetsLister.Get(cachedIP.Spec.Subnet)
 		if err != nil {
@@ -366,41 +353,101 @@ func (c *Controller) handleUpdateIP(key string) (err error) {
 	return nil
 }
 
-// handleVMVipMirrorDeletion handles the deletion-protection branch for an ip CR that mirrors a
-// kube_host_vm_vip. It returns done=true when the caller must stop processing cachedIP's deletion
-// here, either because the mirrored vip is still live (the ip was re-queued to re-mirror) or
-// because of an error; done=false means the normal lsp/ipam release should proceed.
-func (c *Controller) handleVMVipMirrorDeletion(cachedIP *kubeovnv1.IP) (done bool, err error) {
-	// The ip is only a mirror of a kube_host_vm_vip. While the vip lives, its lsp
-	// and ipam address belong to the vip: never tear them down from here, just let
-	// the ip go and re-mirror it from the vip. A live read (not the cached lister)
-	// guards this destructive decision against a stale informer cache, and a
-	// non-NotFound read error must not be treated as "vip is gone".
+// handleVMVipMirrorDeletion fully resolves the deletion of a podType: Vip ip CR: it either
+// protects a live kube_host_vm_vip's lsp/ipam address and re-mirrors it, releases an
+// allocation the ip CR owns outright, or drops only the CR while leaving a same-named live
+// vip's resources alone. A live read of the vip (not the cached lister) guards every
+// destructive decision against a stale informer cache, and a non-NotFound read error must
+// not be treated as "vip is gone".
+func (c *Controller) handleVMVipMirrorDeletion(cachedIP *kubeovnv1.IP) error {
 	vip, vipErr := c.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), cachedIP.Spec.PodName, metav1.GetOptions{})
-	var isMirror bool
-	if vipErr == nil && vip.DeletionTimestamp.IsZero() {
-		var mirrorErr error
-		if isMirror, mirrorErr = c.isVMVipMirror(cachedIP, vip); mirrorErr != nil {
+	switch {
+	case vipErr == nil && vip.DeletionTimestamp.IsZero():
+		isMirror, mirrorErr := c.isVMVipMirror(cachedIP, vip)
+		if mirrorErr != nil {
 			// fail closed: propagate rather than fall through to releasing the
 			// lsp/ipam on an inconclusive mirror check
 			klog.Errorf("failed to check whether ip %s mirrors vip %s: %v", cachedIP.Name, vip.Name, mirrorErr)
-			return true, mirrorErr
+			return mirrorErr
 		}
-	}
-	switch {
-	case vipErr == nil && vip.DeletionTimestamp.IsZero() && isMirror:
-		klog.Warningf("ip %s mirrors live vip %s, keeping lsp and ipam, re-mirroring", cachedIP.Name, vip.Name)
+		if isMirror {
+			klog.Warningf("ip %s mirrors live vip %s, keeping lsp and ipam, re-mirroring", cachedIP.Name, vip.Name)
+			if err := c.handleDelIPFinalizer(cachedIP); err != nil {
+				klog.Errorf("failed to handle del ip finalizer %v", err)
+				return err
+			}
+			c.addVirtualIPQueue.AddAfter(vip.Name, 2*time.Second)
+			return nil
+		}
+		// A live vip claims this name but isn't the ip's real mirror (stale or hand-crafted
+		// ip, or one naming a live plain/switch_lb_rule vip's port): that vip may be the
+		// real owner of the lsp/ipam address under this exact name, so only the CR can be
+		// safely dropped here - never fall into the generic lsp-delete/ipam-release path,
+		// which would otherwise tear down another vip's port.
 		if err := c.handleDelIPFinalizer(cachedIP); err != nil {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
-			return true, err
+			return err
 		}
-		c.addVirtualIPQueue.AddAfter(vip.Name, 2*time.Second)
-		return true, nil
-	case vipErr != nil && !k8serrors.IsNotFound(vipErr):
+		return nil
+	case vipErr != nil && k8serrors.IsNotFound(vipErr):
+		// No vip, live or otherwise, claims this name: any lsp/ipam allocation under it
+		// belongs to the ip CR itself, e.g. a bare podType: Vip ip accepted through
+		// handleAddReservedIP's independent reserved-ip path (issue #7696 review P2).
+		// Release it like any other owned ip CR instead of silently stranding it.
+		return c.releaseOwnedIPResources(cachedIP)
+	case vipErr != nil:
 		klog.Errorf("failed to get vip %s mirrored by ip %s: %v", cachedIP.Spec.PodName, cachedIP.Name, vipErr)
-		return true, vipErr
+		return vipErr
+	default:
+		// vip exists but is terminating: its own deletion flow owns releasing the
+		// lsp/ipam (see deleteVMVipIPCR), so this ip CR just needs its finalizer
+		// dropped to let it go away.
+		if err := c.handleDelIPFinalizer(cachedIP); err != nil {
+			klog.Errorf("failed to handle del ip finalizer %v", err)
+			return err
+		}
+		return nil
 	}
-	return false, nil
+}
+
+// releaseOwnedIPResources tears down the lsp and ipam allocation that cachedIP's own name
+// legitimately owns, then removes its finalizer. It mirrors the generic (non-vip) ip
+// deletion path below, for an ip CR that reached here with no vip at all claiming ownership
+// of its name.
+func (c *Controller) releaseOwnedIPResources(cachedIP *kubeovnv1.IP) error {
+	subnet, err := c.subnetsLister.Get(cachedIP.Spec.Subnet)
+	if err != nil {
+		if !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to get subnet %s: %v", cachedIP.Spec.Subnet, err)
+			return err
+		}
+		klog.Warningf("subnet %s not found for deleting ip %s", cachedIP.Spec.Subnet, cachedIP.Name)
+	} else {
+		portName := cachedIP.Name
+		if isOvnSubnet(subnet) {
+			port, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
+			if err != nil {
+				klog.Errorf("failed to get logical switch port %s: %v", portName, err)
+				return err
+			}
+			if port != nil {
+				klog.Infof("delete ip cr lsp %s from switch %s", portName, subnet.Name)
+				if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+					klog.Errorf("failed to delete ip cr lsp %s from switch %s: %v", portName, subnet.Name, err)
+					return err
+				}
+			}
+		}
+		podKey := fmt.Sprintf("%s/%s", cachedIP.Spec.Namespace, cachedIP.Spec.PodName)
+		klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
+		c.ipam.ReleaseAddressByNic(podKey, portName, cachedIP.Spec.Subnet)
+		c.updateSubnetStatusQueue.Add(cachedIP.Spec.Subnet)
+	}
+	if err := c.handleDelIPFinalizer(cachedIP); err != nil {
+		klog.Errorf("failed to handle del ip finalizer %v", err)
+		return err
+	}
+	return nil
 }
 
 func (c *Controller) handleDelIP(ip *kubeovnv1.IP) error {

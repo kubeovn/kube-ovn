@@ -16,6 +16,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -529,4 +530,167 @@ func TestEnsureVMVipIPCRPropagatesIPLookupError(t *testing.T) {
 
 	err := fc.fakeController.ensureVMVipIPCR(vip, subnet, portName, "10.0.0.6", "02:ac:10:ff:02:06")
 	require.EqualError(t, err, "ip lister unavailable")
+}
+
+// ---- issue #7696 review P2: a bare podType: Vip ip CR that owns its own reserved-ip
+// allocation, with no vip - live or otherwise - claiming its name ----
+
+// orphanedVipTypeIP builds a podType: Vip ip CR named after podName as if it were a
+// kube_host_vm_vip mirror, but with no matching Vip object ever created: exactly the bare,
+// hand-crafted ip ValidateIP and handleAddReservedIP both accept.
+func orphanedVipTypeIP(subnet *kubeovnv1.Subnet, podName, v4ip string) (*kubeovnv1.IP, string) {
+	portName := ovs.PodNameToPortName(podName, "tenant", subnet.Spec.Provider)
+	ip := &kubeovnv1.IP{
+		Name: portName,
+		Spec: kubeovnv1.IPSpec{
+			PodName: podName, Namespace: "tenant", Subnet: subnet.Name, PodType: util.KindVip,
+			V4IPAddress: v4ip,
+		},
+	}
+	return ip, portName
+}
+
+func TestHandleAddReservedIPAcceptsBareVipTypeIP(t *testing.T) {
+	// ValidateIP and handleAddReservedIP both accept podType: Vip on a bare, hand-created ip
+	// CR with no backing Vip object: this really allocates an address and adds the controller
+	// finalizer, exactly like any other reserved ip - it does not get treated as a vip mirror
+	// placeholder with no allocation of its own.
+	subnet := vipMirrorSubnet()
+	ip, portName := orphanedVipTypeIP(subnet, "ghost-vip", "")
+	fc := vipMirrorTestController(t, subnet, nil, []*kubeovnv1.IP{ip})
+	fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, true).Return(nil, nil)
+
+	require.NoError(t, fc.fakeController.handleAddReservedIP(ip.Name))
+
+	got, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().IPs().Get(context.Background(), ip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Contains(t, got.Finalizers, util.KubeOVNControllerFinalizer,
+		"a bare podType: Vip ip must get the controller finalizer like any reserved ip")
+	require.NotEmpty(t, got.Spec.V4IPAddress, "a bare podType: Vip ip must really allocate an address")
+
+	_, _, _, err = fc.fakeController.ipam.GetStaticAddress("someone-else", "someone-else-port", got.Spec.V4IPAddress, nil, subnet.Name, true)
+	require.Error(t, err, "the allocated address must be held in ipam, not left untracked")
+}
+
+func TestHandleUpdateIPReleasesOrphanedVipTypeReservedIPAddress(t *testing.T) {
+	// The actual issue #7696 review P2 regression: a podType: Vip ip accepted through
+	// handleAddReservedIP (no vip ever claimed its name) owns a real ipam allocation. Deleting
+	// it must release that allocation like any other owned ip, not strand it as if a Vip
+	// controller still owned it - otherwise reallocating the address fails with
+	// AddressConflict until a controller restart.
+	subnet := vipMirrorSubnet()
+	ip, portName := orphanedVipTypeIP(subnet, "ghost-vip", "10.0.0.6")
+	ip.Finalizers = []string{util.KubeOVNControllerFinalizer}
+	now := metav1.Now()
+	ip.DeletionTimestamp = &now
+	fc := vipMirrorTestController(t, subnet, nil, []*kubeovnv1.IP{ip})
+	_, _, _, err := fc.fakeController.ipam.GetStaticAddress("whatever", portName, "10.0.0.6", nil, subnet.Name, true)
+	require.NoError(t, err)
+
+	fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, true).Return(nil, nil)
+
+	require.NoError(t, fc.fakeController.handleUpdateIP(portName))
+
+	_, _, _, err = fc.fakeController.ipam.GetStaticAddress("someone-else", "someone-else-port", "10.0.0.6", nil, subnet.Name, true)
+	require.NoError(t, err, "the orphaned reserved-ip's address must be released, not stranded")
+
+	client := fc.fakeController.config.KubeOvnClient.KubeovnV1()
+	got, err := client.IPs().Get(context.Background(), portName, metav1.GetOptions{})
+	if err == nil {
+		require.Empty(t, got.Finalizers, "the orphaned ip CR's finalizer must be removed")
+	} else {
+		require.True(t, k8serrors.IsNotFound(err))
+	}
+}
+
+func TestHandleUpdateIPDeletesOrphanedVipTypeReservedIPLSP(t *testing.T) {
+	// if the orphaned reserved-ip's own port actually exists in OVN, it must be torn down
+	// too, same as the generic (non-vip) ip deletion path does.
+	subnet := vipMirrorSubnet()
+	ip, portName := orphanedVipTypeIP(subnet, "ghost-vip", "10.0.0.6")
+	ip.Finalizers = []string{util.KubeOVNControllerFinalizer}
+	now := metav1.Now()
+	ip.DeletionTimestamp = &now
+	fc := vipMirrorTestController(t, subnet, nil, []*kubeovnv1.IP{ip})
+	_, _, _, err := fc.fakeController.ipam.GetStaticAddress("whatever", portName, "10.0.0.6", nil, subnet.Name, true)
+	require.NoError(t, err)
+
+	fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, true).Return(&ovnnb.LogicalSwitchPort{Name: portName}, nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(portName).Return(nil)
+
+	require.NoError(t, fc.fakeController.handleUpdateIP(portName))
+}
+
+func TestHandleUpdateIPOrphanedVipTypePropagatesLSPLookupError(t *testing.T) {
+	// a transient OVN lookup failure while releasing an orphaned reserved-ip's own port must
+	// be retried, not swallowed into "release done".
+	subnet := vipMirrorSubnet()
+	ip, portName := orphanedVipTypeIP(subnet, "ghost-vip", "10.0.0.6")
+	ip.Finalizers = []string{util.KubeOVNControllerFinalizer}
+	now := metav1.Now()
+	ip.DeletionTimestamp = &now
+	fc := vipMirrorTestController(t, subnet, nil, []*kubeovnv1.IP{ip})
+	_, _, _, err := fc.fakeController.ipam.GetStaticAddress("whatever", portName, "10.0.0.6", nil, subnet.Name, true)
+	require.NoError(t, err)
+
+	injectedErr := errors.New("get logical switch port failed")
+	fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, true).Return(nil, injectedErr)
+
+	err = fc.fakeController.handleUpdateIP(portName)
+	require.ErrorIs(t, err, injectedErr)
+
+	// the address must still be held: a failed release must not silently drop the finalizer
+	_, _, _, err = fc.fakeController.ipam.GetStaticAddress("someone-else", "someone-else-port", "10.0.0.6", nil, subnet.Name, true)
+	require.Error(t, err, "the address must not be released when the lsp lookup fails")
+}
+
+func TestHandleUpdateIPOrphanedVipTypeSkipsReleaseWhenSubnetGone(t *testing.T) {
+	// the subnet backing an orphaned reserved-ip may already be gone by the time it is
+	// deleted; this must not panic (the same class of bug as Test_handleUpdateIP_deletedSubnet)
+	// and must still drop the finalizer so the CR can go away.
+	subnet := vipMirrorSubnet()
+	ip, portName := orphanedVipTypeIP(subnet, "ghost-vip", "10.0.0.6")
+	ip.Spec.Subnet = "deleted-subnet"
+	ip.Finalizers = []string{util.KubeOVNControllerFinalizer}
+	now := metav1.Now()
+	ip.DeletionTimestamp = &now
+	fc := vipMirrorTestController(t, subnet, nil, []*kubeovnv1.IP{ip})
+
+	require.NoError(t, fc.fakeController.handleUpdateIP(portName))
+
+	client := fc.fakeController.config.KubeOvnClient.KubeovnV1()
+	got, err := client.IPs().Get(context.Background(), portName, metav1.GetOptions{})
+	if err == nil {
+		require.Empty(t, got.Finalizers, "the orphaned ip CR's finalizer must still be removed")
+	} else {
+		require.True(t, k8serrors.IsNotFound(err))
+	}
+}
+
+func TestHandleUpdateIPLeavesTerminatingVipMirrorAddressAlone(t *testing.T) {
+	// a vip sharing the ip's name exists but is itself terminating: its own deletion flow
+	// (deleteVMVipIPCR) owns releasing the real lsp/ipam, so this ip CR must only drop its
+	// finalizer, never race that flow by releasing the address here too.
+	subnet := vipMirrorSubnet()
+	vip := vipMirrorVip(util.KubeHostVMVip)
+	vip.Status.V4ip, vip.Status.Mac = "10.0.0.6", "02:ac:10:ff:02:06"
+	now := metav1.Now()
+	vip.DeletionTimestamp = &now
+	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+	mirror := &kubeovnv1.IP{
+		Name: portName, Finalizers: []string{util.KubeOVNControllerFinalizer}, DeletionTimestamp: &now,
+		Spec: kubeovnv1.IPSpec{
+			PodName: vip.Name, Namespace: vip.Spec.Namespace, Subnet: subnet.Name, PodType: util.KindVip,
+			V4IPAddress: vip.Status.V4ip, MacAddress: vip.Status.Mac,
+		},
+	}
+	fc := vipMirrorTestController(t, subnet, []*kubeovnv1.Vip{vip}, []*kubeovnv1.IP{mirror})
+	_, _, _, err := fc.fakeController.ipam.GetStaticAddress(vip.Name, portName, "10.0.0.6", &vip.Status.Mac, subnet.Name, true)
+	require.NoError(t, err)
+
+	// strict mock: no GetLogicalSwitchPort / DeleteLogicalSwitchPort call is expected
+	require.NoError(t, fc.fakeController.handleUpdateIP(portName))
+
+	_, _, _, err = fc.fakeController.ipam.GetStaticAddress("other", "other-port", "10.0.0.6", nil, subnet.Name, true)
+	require.Error(t, err, "a terminating vip's address must not be released by its mirror ip's own delete handling")
 }
