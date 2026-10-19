@@ -428,7 +428,7 @@ func bringUp(ctx context.Context, cfg *Config, kc kubernetes.Interface, ls *life
 		}
 	}
 
-	if err := startNBSBOvsdb(cfg, peers); err != nil {
+	if err := startNBSBOvsdb(ctx, cfg, peers); err != nil {
 		return err
 	}
 	postOvsdbStart(ctx, cfg)
@@ -441,7 +441,7 @@ func bringUp(ctx context.Context, cfg *Config, kc kubernetes.Interface, ls *life
 		if err := refreshStatus(ctx, cfg, kc, updateAndComputeStatus(ctx, cfg, ls)); err != nil {
 			klog.Warningf("label refresh post-ready: %v", err)
 		}
-		return startNorthd(cfg, bootstrap, peers)
+		return startNorthd(ctx, cfg, bootstrap, peers)
 	}
 
 	klog.Warningf("waitForLeader timed out, entering recovery decision")
@@ -556,7 +556,7 @@ func reconvertFn(cfg *Config) func(context.Context) error {
 // lost mid-op aborts before any peer-visible side effect.
 func executeUnderLease(ctx context.Context, cfg *Config, kc kubernetes.Interface, ls *lifecycleState,
 	op string, peers []string, fn func(context.Context) error,
-) error {
+) (retErr error) {
 	// Diagnostic: peers don't consult statusRecovering for decisions
 	// (only active+ready), but it's useful in `kubectl describe`.
 	if err := refreshStatus(ctx, cfg, kc, statusRecovering); err != nil {
@@ -568,7 +568,17 @@ func executeUnderLease(ctx context.Context, cfg *Config, kc kubernetes.Interface
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("lease lost after %s, aborting: %w", op, err)
 	}
-	if err := startNBSBOvsdb(cfg, peers); err != nil {
+	// Any failure past this point (lease lost, readiness timeout) leaves
+	// freshly started servers behind. Stop them before the lease is handed
+	// over, otherwise they would run concurrently with the next holder's
+	// bootstrap/reconvert.
+	defer func() {
+		if retErr != nil {
+			klog.Warningf("%s failed, stopping ovsdb/northd before releasing lease: %v", op, retErr)
+			stopNBSBOvsdb()
+		}
+	}()
+	if err := startNBSBOvsdb(ctx, cfg, peers); err != nil {
 		return err
 	}
 	postOvsdbStart(ctx, cfg)
@@ -578,7 +588,7 @@ func executeUnderLease(ctx context.Context, cfg *Config, kc kubernetes.Interface
 	if err := refreshStatus(ctx, cfg, kc, updateAndComputeStatus(ctx, cfg, ls)); err != nil {
 		klog.Warningf("label refresh post-recovery: %v", err)
 	}
-	if err := startNorthd(cfg, op == "bootstrap", peers); err != nil {
+	if err := startNorthd(ctx, cfg, op == "bootstrap", peers); err != nil {
 		return err
 	}
 	if err := waitForSelfReady(ctx, cfg, kc, cfg.SelfReadyTimeout); err != nil {

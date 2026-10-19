@@ -245,10 +245,13 @@ var errLeaseLost = fmt.Errorf("bootstrap lease lost: %w", errRetry)
 // minutes) so an apiserver hiccup doesn't release the lease mid-op.
 //
 // client-go runs OnStartedLeading in its own goroutine and RunOrDie does
-// not wait for it, so we join the callback before returning: the lease is
-// never released (and the next holder never starts) while fn is still
-// executing. The ctx handed to fn is cancelled the moment renewal stops;
-// fn must treat that as a fence and abort before its next destructive step.
+// not wait for it. Its ReleaseOnCancel also releases the lease inside
+// renew(), i.e. before Run cancels the ctx handed to fn, so it would let the
+// next holder in while fn is still running. We therefore disable it, join the
+// callback, and only then release the lease ourselves: the next holder never
+// starts while fn (or anything fn started) is still executing. The ctx handed
+// to fn is cancelled the moment renewal stops; fn must treat that as a fence
+// and abort before its next destructive step.
 func withBootstrapLease(ctx context.Context, kc kubernetes.Interface, cfg *Config,
 	fn func(context.Context) error,
 ) error {
@@ -268,7 +271,7 @@ func withBootstrapLease(ctx context.Context, kc kubernetes.Interface, cfg *Confi
 	)
 	leaderelection.RunOrDie(leCtx, leaderelection.LeaderElectionConfig{
 		Lock:            lock,
-		ReleaseOnCancel: true,
+		ReleaseOnCancel: false,
 		LeaseDuration:   cfg.BootstrapLeaseDuration,
 		RenewDeadline:   cfg.BootstrapRenewDeadline,
 		RetryPeriod:     bootstrapRetryPeriod,
@@ -298,7 +301,7 @@ func withBootstrapLease(ctx context.Context, kc kubernetes.Interface, cfg *Confi
 				mu.Unlock()
 				cancel()
 			},
-			OnStoppedLeading: func() { klog.Infof("released bootstrap lease") },
+			OnStoppedLeading: func() { klog.Infof("stopped leading bootstrap lease") },
 		},
 	})
 
@@ -310,9 +313,38 @@ func withBootstrapLease(ctx context.Context, kc kubernetes.Interface, cfg *Confi
 		return ctx.Err()
 	}
 	<-done
+	releaseBootstrapLease(lock, cfg.PodName)
 	mu.Lock()
 	defer mu.Unlock()
 	return fnErr
+}
+
+// releaseBootstrapLease hands the lease over immediately instead of letting
+// it expire, but only if we are still the holder. Uses a fresh ctx: the
+// caller's may already be cancelled (shutdown or lost lease) and the handoff
+// must still be attempted. Failure is not fatal; the lease then expires.
+func releaseBootstrapLease(lock resourcelock.Interface, identity string) {
+	ctx, cancel := context.WithTimeout(context.Background(), apiCallTimeout)
+	defer cancel()
+	rec, _, err := lock.Get(ctx)
+	if err != nil {
+		klog.Warningf("release bootstrap lease: get: %v", err)
+		return
+	}
+	if rec.HolderIdentity != identity {
+		return
+	}
+	now := metav1.NewTime(time.Now())
+	if err := lock.Update(ctx, resourcelock.LeaderElectionRecord{
+		LeaderTransitions:    rec.LeaderTransitions,
+		LeaseDurationSeconds: 1,
+		RenewTime:            now,
+		AcquireTime:          now,
+	}); err != nil {
+		klog.Warningf("release bootstrap lease: update: %v", err)
+		return
+	}
+	klog.Infof("released bootstrap lease")
 }
 
 // patchNodeClusterID stamps the NB raft cluster UUID on the node so the

@@ -1154,7 +1154,8 @@ central:
   # @section -- OVN-central daemon configuration.
   dynamicPeers:
     # -- Enable the ovn-central-controller binary. Switches the readiness probe
-    # to ovn-central-controller-readiness.sh.
+    # to ovn-central-controller-readiness.sh. Not supported together with
+    # central.hcp.enabled (rendering fails).
     # @section -- OVN-central daemon configuration.
     enabled: false
     # -- Seconds the ovn-central-controller waits for cluster_member + leader

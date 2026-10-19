@@ -218,10 +218,15 @@ func reconvert(ctx context.Context, d dbInfo, localAddr string, remotes []string
 // startNBSBOvsdb starts both ovsdb-server processes via ovn-ctl. Returns
 // after ovn-ctl returns (which itself waits for the unix sockets to be
 // ready). Caller is responsible for waiting for the cluster to elect a
-// leader (see waitForLeader). Detached from parent ctx.
-func startNBSBOvsdb(cfg *Config, peers []string) error {
+// leader (see waitForLeader). ovn-ctl itself is detached from ctx (a killed
+// start would leave a half-started server), but ctx is checked before every
+// launch so a lost bootstrap lease stops the sequence between NB and SB.
+func startNBSBOvsdb(ctx context.Context, cfg *Config, peers []string) error {
 	common := buildOvnCtlArgs(cfg, peers)
 	for _, d := range []dbInfo{nbDB(cfg), sbDB(cfg)} {
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("start_%s_ovsdb aborted: %w", d.short, err)
+		}
 		args := append([]string{}, common...)
 		args = append(args,
 			"start_"+d.short+"_ovsdb",
@@ -249,8 +254,12 @@ func stopNBSBOvsdb() {
 
 // startNorthd launches ovn-northd. Optionally writes NB_Global / SB_Global
 // option overrides if `bootstrap` (we just created a 1-node cluster).
-// Detached: ovn-ctl + ovn-{nb,sb}ctl are mutational on remote DB state.
-func startNorthd(cfg *Config, bootstrap bool, peers []string) error {
+// Detached: ovn-ctl + ovn-{nb,sb}ctl are mutational on remote DB state, so
+// ctx only fences between steps, never kills a running command.
+func startNorthd(ctx context.Context, cfg *Config, bootstrap bool, peers []string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("start_northd aborted: %w", err)
+	}
 	args := buildOvnCtlArgs(cfg, peers)
 	args = append(args,
 		"--ovn-manage-ovsdb=no",
@@ -272,6 +281,9 @@ func startNorthd(cfg *Config, bootstrap bool, peers []string) error {
 	// upgrades and pod restarts keep the NB schema version pinned correctly.
 	if cfg.VersionCompatibility != "" {
 		c := mk("ovn-nbctl", "NB_Global", "options:version_compatibility="+cfg.VersionCompatibility)
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := run(context.Background(), execTimeoutMutational, c[0], c[1:]...); err != nil {
 			return fmt.Errorf("%v: %w", c, err)
 		}
@@ -291,6 +303,9 @@ func startNorthd(cfg *Config, bootstrap bool, peers []string) error {
 		mk("ovn-nbctl", "NB_Global", "options:use_logical_dp_groups=true"),
 	}
 	for _, c := range cmds {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := run(context.Background(), execTimeoutMutational, c[0], c[1:]...); err != nil {
 			return fmt.Errorf("%v: %w", c, err)
 		}

@@ -1,3 +1,6 @@
+{{- if and .Values.central.hcp.enabled .Values.central.dynamicPeers.enabled -}}
+{{- fail "central.dynamicPeers.enabled is not supported together with central.hcp.enabled: the HCP ovn-central service account has no bootstrap Lease permissions" -}}
+{{- end -}}
 {{- $centralImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.central.image) | fromYaml -}}
 kind: {{ ternary "StatefulSet" "Deployment" (or .Values.central.hcp.enabled .Values.central.dynamicPeers.enabled) }}
 apiVersion: apps/v1
