@@ -288,6 +288,17 @@ func (c *Controller) handleUpdateIP(key string) (err error) {
 			if done, mirrorErr := c.handleVMVipMirrorDeletion(cachedIP); done {
 				return mirrorErr
 			}
+			// Not a live kube_host_vm_vip mirror: the vip is gone, terminating, or this ip
+			// never actually identified one (e.g. a stale or hand-crafted podType: Vip ip
+			// naming a live plain or switch_lb_rule vip's port). A podType: Vip ip never owns
+			// a real lsp/ipam address itself - that belongs to the Vip controller - so this is
+			// always CR-only cleanup; it must never fall into the generic lsp-delete/
+			// ipam-release path below, which would otherwise tear down another vip's port.
+			if err := c.handleDelIPFinalizer(cachedIP); err != nil {
+				klog.Errorf("failed to handle del ip finalizer %v", err)
+				return err
+			}
+			return nil
 		}
 		subnet, err := c.subnetsLister.Get(cachedIP.Spec.Subnet)
 		if err != nil {

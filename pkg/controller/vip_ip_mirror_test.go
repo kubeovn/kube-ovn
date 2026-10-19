@@ -268,7 +268,10 @@ func TestHandleUpdateVirtualIPDeletesVMVipMirror(t *testing.T) {
 	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
 	mirror := &kubeovnv1.IP{
 		Name: portName, Finalizers: []string{util.KubeOVNControllerFinalizer},
-		Spec: kubeovnv1.IPSpec{PodName: vip.Name, Namespace: vip.Spec.Namespace, Subnet: subnet.Name, PodType: util.KindVip, V4IPAddress: "10.0.0.6"},
+		Spec: kubeovnv1.IPSpec{
+			PodName: vip.Name, Namespace: vip.Spec.Namespace, Subnet: subnet.Name, PodType: util.KindVip,
+			V4IPAddress: vip.Status.V4ip, MacAddress: vip.Status.Mac,
+		},
 	}
 	fc := vipMirrorTestController(t, subnet, []*kubeovnv1.Vip{vip}, []*kubeovnv1.IP{mirror})
 	_, _, _, err := fc.fakeController.ipam.GetStaticAddress(vip.Name, portName, "10.0.0.6", &vip.Spec.MacAddress, subnet.Name, true)
@@ -287,6 +290,68 @@ func TestHandleUpdateVirtualIPDeletesVMVipMirror(t *testing.T) {
 	} else {
 		require.True(t, k8serrors.IsNotFound(err))
 	}
+}
+
+func TestHandleUpdateVirtualIPLeavesMismatchedSameNamedIPAlone(t *testing.T) {
+	// a same-named ip CR that is not actually this vip's mirror (e.g. hand-crafted, wrong
+	// fields) must survive the vip's deletion untouched: only a confirmed mirror may be
+	// deleted here.
+	subnet := vipMirrorSubnet()
+	vip := vipMirrorVip(util.KubeHostVMVip)
+	vip.Spec.V4ip, vip.Spec.MacAddress = "10.0.0.6", "02:ac:10:ff:02:06"
+	vip.Status.V4ip, vip.Status.Mac = "10.0.0.6", "02:ac:10:ff:02:06"
+	vip.Finalizers = []string{util.KubeOVNControllerFinalizer}
+	now := metav1.Now()
+	vip.DeletionTimestamp = &now
+	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+	foreign := &kubeovnv1.IP{
+		Name: portName, Finalizers: []string{util.KubeOVNControllerFinalizer},
+		Spec: kubeovnv1.IPSpec{
+			PodName: "someone-else", Namespace: vip.Spec.Namespace, Subnet: subnet.Name, PodType: util.KindVip,
+			V4IPAddress: "10.0.0.9", MacAddress: "02:ac:10:ff:02:09",
+		},
+	}
+	fc := vipMirrorTestController(t, subnet, []*kubeovnv1.Vip{vip}, []*kubeovnv1.IP{foreign})
+	_, _, _, err := fc.fakeController.ipam.GetStaticAddress(vip.Name, portName, "10.0.0.6", &vip.Spec.MacAddress, subnet.Name, true)
+	require.NoError(t, err)
+
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(portName).Return(nil)
+	fc.mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name}, gomock.Any()).Return(nil, nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(gomock.Any()).Return(nil).AnyTimes() // virtual port names
+
+	require.NoError(t, fc.fakeController.handleUpdateVirtualIP(vip.Name))
+
+	client := fc.fakeController.config.KubeOvnClient.KubeovnV1()
+	got, err := client.IPs().Get(context.Background(), portName, metav1.GetOptions{})
+	require.NoError(t, err, "a foreign ip CR must not be deleted by an unrelated vip's deletion")
+	require.True(t, got.DeletionTimestamp.IsZero(), "a foreign ip CR must not even be marked for deletion")
+}
+
+func TestDeleteVMVipIPCRFailsClosedOnMirrorLookupError(t *testing.T) {
+	// a transient, non-NotFound failure identifying the mirror must not be treated as "safe
+	// to delete": the caller must get the error back instead of risking a foreign ip CR.
+	subnet := vipMirrorSubnet()
+	vip := vipMirrorVip(util.KubeHostVMVip)
+	vip.Status.V4ip, vip.Status.Mac = "10.0.0.6", "02:ac:10:ff:02:06"
+	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+	mirror := &kubeovnv1.IP{
+		Name: portName, Finalizers: []string{util.KubeOVNControllerFinalizer},
+		Spec: kubeovnv1.IPSpec{
+			PodName: vip.Name, Namespace: vip.Spec.Namespace, Subnet: subnet.Name, PodType: util.KindVip,
+			V4IPAddress: vip.Status.V4ip, MacAddress: vip.Status.Mac,
+		},
+	}
+	fc := vipMirrorTestController(t, subnet, []*kubeovnv1.Vip{vip}, []*kubeovnv1.IP{mirror})
+
+	fc.fakeController.subnetsLister = &errorSubnetLister{err: errors.New("subnet lister unavailable")}
+
+	err := fc.fakeController.deleteVMVipIPCR(vip, portName)
+	require.EqualError(t, err, "subnet lister unavailable")
+
+	client := fc.fakeController.config.KubeOvnClient.KubeovnV1()
+	got, err := client.IPs().Get(context.Background(), portName, metav1.GetOptions{})
+	require.NoError(t, err, "the mirror must not be deleted on a failed identity check")
+	require.True(t, got.DeletionTimestamp.IsZero())
 }
 
 func TestHandleUpdateIPKeepsPortAndAddressOfLiveVMVipMirror(t *testing.T) {
@@ -318,6 +383,42 @@ func TestHandleUpdateIPKeepsPortAndAddressOfLiveVMVipMirror(t *testing.T) {
 	key, shutdown := fc.fakeController.addVirtualIPQueue.Get()
 	require.False(t, shutdown)
 	require.Equal(t, vip.Name, key)
+}
+
+func TestHandleUpdateIPLeavesLivePlainVipLspAndAddressAlone(t *testing.T) {
+	// a podType: Vip ip CR is never itself the owner of a real lsp/ipam address - the vip
+	// is. A stale or hand-crafted podType: Vip ip naming a live plain (non
+	// kube_host_vm_vip) vip's port must be cleaned up as a CR-only delete: it must never
+	// reach the generic lsp-delete/ipam-release path and tear down the live vip's port.
+	subnet := vipMirrorSubnet()
+	plainVip := vipMirrorVip("") // plain reservation vip, not a kube_host_vm_vip
+	portName := ovs.PodNameToPortName(plainVip.Name, plainVip.Spec.Namespace, subnet.Spec.Provider)
+	now := metav1.Now()
+	staleIP := &kubeovnv1.IP{
+		Name: portName, Finalizers: []string{util.KubeOVNControllerFinalizer}, DeletionTimestamp: &now,
+		Spec: kubeovnv1.IPSpec{
+			PodName: plainVip.Name, Namespace: plainVip.Spec.Namespace, Subnet: subnet.Name, PodType: util.KindVip,
+			V4IPAddress: "10.0.0.6",
+		},
+	}
+	fc := vipMirrorTestController(t, subnet, []*kubeovnv1.Vip{plainVip}, []*kubeovnv1.IP{staleIP})
+	_, _, _, err := fc.fakeController.ipam.GetStaticAddress(plainVip.Name, portName, "10.0.0.6", nil, subnet.Name, true)
+	require.NoError(t, err)
+
+	// strict mock: no GetLogicalSwitchPort / DeleteLogicalSwitchPort call is expected
+	require.NoError(t, fc.fakeController.handleUpdateIP(portName))
+
+	// the live plain vip's address must still be held
+	_, _, _, err = fc.fakeController.ipam.GetStaticAddress("other", "other-port", "10.0.0.6", nil, subnet.Name, true)
+	require.Error(t, err, "a non-mirror podType: Vip ip must not release a live plain vip's address")
+
+	client := fc.fakeController.config.KubeOvnClient.KubeovnV1()
+	got, err := client.IPs().Get(context.Background(), portName, metav1.GetOptions{})
+	if err == nil {
+		require.Empty(t, got.Finalizers, "the stale ip CR's finalizer must still be removed")
+	} else {
+		require.True(t, k8serrors.IsNotFound(err))
+	}
 }
 
 func TestHandleAddVirtualIPSkipsVipBeingDeleted(t *testing.T) {

@@ -303,9 +303,27 @@ func (c *Controller) reconcileVMVipMirror(vip *kubeovnv1.Vip) error {
 	return c.ensureVMVipIPCR(vip, subnet, portName, util.GetStringIP(vip.Status.V4ip, vip.Status.V6ip), vip.Status.Mac)
 }
 
-// deleteVMVipIPCR removes the IP CR mirror of a kube_host_vm_vip being deleted.
+// deleteVMVipIPCR removes the IP CR mirror of a kube_host_vm_vip being deleted. It only ever
+// deletes an ip confirmed to actually be this vip's mirror: a same-named ip CR that is not the
+// mirror (e.g. hand-crafted, or left over from something else) is left alone, and a failure to
+// tell the two apart is failed closed rather than treated as "safe to delete".
 func (c *Controller) deleteVMVipIPCR(vip *kubeovnv1.Vip, portName string) error {
 	if vip.Spec.Type != util.KubeHostVMVip {
+		return nil
+	}
+	ip, err := c.ipsLister.Get(portName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		klog.Errorf("failed to get ip cr %s for vip %s: %v", portName, vip.Name, err)
+		return err
+	}
+	if isMirror, err := c.isVMVipMirror(ip, vip); err != nil {
+		klog.Errorf("failed to check whether ip %s mirrors vip %s: %v", ip.Name, vip.Name, err)
+		return err
+	} else if !isMirror {
+		klog.Warningf("ip %s is named after vip %s's lsp but is not its mirror, leaving it alone", ip.Name, vip.Name)
 		return nil
 	}
 	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), portName, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
