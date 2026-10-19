@@ -505,17 +505,17 @@ func newSwitchLBVipTestController(t *testing.T, subnet *kubeovnv1.Subnet, vips .
 
 func switchLBVip(name, subnet, v4ip, v6ip string) *kubeovnv1.Vip {
 	return &kubeovnv1.Vip{
-		ObjectMeta: metav1.ObjectMeta{Name: name},
-		Spec:       kubeovnv1.VipSpec{Namespace: "ns", Subnet: subnet, Type: util.SwitchLBRuleVip},
-		Status:     kubeovnv1.VipStatus{V4ip: v4ip, V6ip: v6ip, Mac: "00:00:00:00:00:01"},
+		Name:   name,
+		Spec:   kubeovnv1.VipSpec{Namespace: "ns", Subnet: subnet, Type: util.SwitchLBRuleVip},
+		Status: kubeovnv1.VipStatus{V4ip: v4ip, V6ip: v6ip, Mac: "00:00:00:00:00:01"},
 	}
 }
 
 func TestSyncSwitchLBVipArpProxyCollectsSwitchLBVipsOfSubnet(t *testing.T) {
 	const subnetName = "foo-subnet"
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
-		Spec:       kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
 	}
 	deleting := switchLBVip("deleting", subnetName, "10.0.1.9", "")
 	deleting.DeletionTimestamp = &metav1.Time{Time: time.Now()}
@@ -539,8 +539,8 @@ func TestSyncSwitchLBVipArpProxyCollectsSwitchLBVipsOfSubnet(t *testing.T) {
 func TestSyncSwitchLBVipArpProxyClearsOptionWithoutVips(t *testing.T) {
 	const subnetName = "foo-subnet"
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
-		Spec:       kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
 	}
 	fakeController := newSwitchLBVipTestController(t, subnet)
 	mockOvnClient := fakeController.mockOvnClient
@@ -560,8 +560,8 @@ func TestSyncSwitchLBVipArpProxyClearsOptionWithoutVips(t *testing.T) {
 func TestReconcileSwitchLBVipPortSetsProxyBeforeDeletingStalePort(t *testing.T) {
 	const subnetName = "foo-subnet"
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
-		Spec:       kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
 	}
 	vip := switchLBVip("a", subnetName, "10.0.1.2", "")
 	fakeController := newSwitchLBVipTestController(t, subnet, vip)
