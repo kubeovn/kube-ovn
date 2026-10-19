@@ -1,3 +1,4 @@
+{{- $centralImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.central.image) | fromYaml -}}
 kind: {{ ternary "StatefulSet" "Deployment" .Values.central.hcp.enabled }}
 apiVersion: apps/v1
 metadata:
@@ -72,8 +73,8 @@ spec:
           type: RuntimeDefault
       initContainers:
         - name: {{ ternary "volume-init" "hostpath-init" .Values.central.hcp.enabled }}
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ $centralImage.prefix }}{{ $centralImage.repository }}:{{ $centralImage.tag }}
+          imagePullPolicy: {{ $centralImage.pullPolicy }}
           command:
             - sh
             - -c
@@ -98,8 +99,8 @@ spec:
               name: {{ ternary "log-ovn" "host-log-ovn" .Values.central.hcp.enabled }}
       containers:
         - name: ovn-central
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ $centralImage.prefix }}{{ $centralImage.repository }}:{{ $centralImage.tag }}
+          imagePullPolicy: {{ $centralImage.pullPolicy }}
           command: 
           - bash
           - /kube-ovn/start-db.sh

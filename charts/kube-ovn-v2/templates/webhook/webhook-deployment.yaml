@@ -1,4 +1,5 @@
 {{- if .Values.validatingWebhook.enabled }}
+{{- $webhookImage := include "kubeovn.imageSpec" (dict "root" . "image" .Values.validatingWebhook.image) | fromYaml -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -50,8 +51,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: kube-ovn-webhook
-          image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
-          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          image: {{ $webhookImage.prefix }}{{ $webhookImage.repository }}:{{ $webhookImage.tag }}
+          imagePullPolicy: {{ $webhookImage.pullPolicy }}
           command:
             - /kube-ovn/kube-ovn-webhook
           args:
