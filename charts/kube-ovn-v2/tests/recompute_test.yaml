@@ -1,0 +1,24 @@
+suite: periodic recompute configuration (v2)
+templates:
+  - agent/agent-daemonset.yaml
+tests:
+  - it: disables periodic recompute by default
+    template: agent/agent-daemonset.yaml
+    set:
+      masterNodes:
+        - "10.0.0.1"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-recompute=false
+
+  - it: renders periodic recompute override
+    template: agent/agent-daemonset.yaml
+    set:
+      masterNodes:
+        - "10.0.0.1"
+      features.enableRecompute: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-recompute=true
