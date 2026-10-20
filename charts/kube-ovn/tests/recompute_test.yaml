@@ -7,13 +7,13 @@ tests:
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --enable-recompute=false
+          content: --enable-recompute=true
 
-  - it: renders periodic recompute override
+  - it: renders periodic recompute opt-out
     template: ovncni-ds.yaml
     set:
-      func.ENABLE_RECOMPUTE: true
+      func.ENABLE_RECOMPUTE: false
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --enable-recompute=true
+          content: --enable-recompute=false

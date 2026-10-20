@@ -1086,7 +1086,7 @@ false
   "enableNetworkPolicies": true,
   "enableOvnInterconnections": false,
   "enableOvnIpsec": false,
-  "enableRecompute": false,
+  "enableRecompute": true,
   "enableSecureServing": false,
   "enableTproxy": false,
   "enableU2OInterconnections": false
@@ -1189,7 +1189,7 @@ false
 			<td>features.enableRecompute</td>
 			<td>bool</td>
 			<td><pre lang="json">
-false
+true
 </pre>
 </td>
 			<td>Enable periodic ovn-controller recompute</td>

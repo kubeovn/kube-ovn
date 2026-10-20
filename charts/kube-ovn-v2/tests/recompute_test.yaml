@@ -10,15 +10,15 @@ tests:
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --enable-recompute=false
+          content: --enable-recompute=true
 
-  - it: renders periodic recompute override
+  - it: renders periodic recompute opt-out
     template: agent/agent-daemonset.yaml
     set:
       masterNodes:
         - "10.0.0.1"
-      features.enableRecompute: true
+      features.enableRecompute: false
     asserts:
       - contains:
           path: spec.template.spec.containers[0].args
-          content: --enable-recompute=true
+          content: --enable-recompute=false

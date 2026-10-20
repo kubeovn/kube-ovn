@@ -111,7 +111,7 @@ func:
   SECURE_SERVING: false
   U2O_INTERCONNECTION: false
   ENABLE_TPROXY: false
-  ENABLE_RECOMPUTE: false
+  ENABLE_RECOMPUTE: true
   ENABLE_IC: false
   ENABLE_NAT_GW: true
   ENABLE_OVN_IPSEC: false

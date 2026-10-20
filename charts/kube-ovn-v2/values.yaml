@@ -228,7 +228,7 @@ features:
   enableTproxy: false
   # -- Enable periodic ovn-controller recompute
   # @section -- Opt-in/out Features
-  enableRecompute: false
+  enableRecompute: true
   # -- Enable OVN interconnections
   # @section -- Opt-in/out Features
   enableOvnInterconnections: false

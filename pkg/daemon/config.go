@@ -138,7 +138,7 @@ func ParseFlags() *Configuration {
 		argTCPConnectivityCheckPort  = pflag.Int32("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
 		argUDPConnectivityCheckPort  = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 		argEnableTProxy              = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
-		argEnableRecompute           = pflag.Bool("enable-recompute", false, "Enable periodic ovn-controller recompute")
+		argEnableRecompute           = pflag.Bool("enable-recompute", true, "Enable periodic ovn-controller recompute")
 		argOVSVsctlConcurrency       = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
 		argEnableOVNIPSec            = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argCertManagerIPSecCert      = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")

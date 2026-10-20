@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 INSTALL_SCRIPT="$SCRIPT_DIR/install.sh"
 
-grep -Fxq 'ENABLE_RECOMPUTE=${ENABLE_RECOMPUTE:-false}' "$INSTALL_SCRIPT"
+grep -Fxq 'ENABLE_RECOMPUTE=${ENABLE_RECOMPUTE:-true}' "$INSTALL_SCRIPT"
 
 extract_cni_args() {
   local recompute=$1
@@ -18,10 +18,10 @@ extract_cni_args() {
   ' "$INSTALL_SCRIPT"
 }
 
-default_args=$(extract_cni_args false)
-grep -qx -- '          - --enable-recompute=false' <<<"$default_args"
+default_args=$(extract_cni_args true)
+grep -qx -- '          - --enable-recompute=true' <<<"$default_args"
 
-enabled_args=$(extract_cni_args true)
-grep -qx -- '          - --enable-recompute=true' <<<"$enabled_args"
+disabled_args=$(extract_cni_args false)
+grep -qx -- '          - --enable-recompute=false' <<<"$disabled_args"
 
 echo 'install.sh recompute tests passed'
