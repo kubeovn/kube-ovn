@@ -1,0 +1,19 @@
+suite: periodic recompute configuration
+templates:
+  - ovncni-ds.yaml
+tests:
+  - it: disables periodic recompute by default
+    template: ovncni-ds.yaml
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-recompute=false
+
+  - it: renders periodic recompute override
+    template: ovncni-ds.yaml
+    set:
+      func.ENABLE_RECOMPUTE: true
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --enable-recompute=true

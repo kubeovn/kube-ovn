@@ -1063,7 +1063,9 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	go wait.Until(c.gcInterfaces, time.Minute, stopCh)
 	go wait.Until(c.reconcileACLSamplingCollectorSet, time.Minute, stopCh)
-	go wait.Until(recompute, 10*time.Minute, stopCh)
+	if c.config.EnableRecompute {
+		go wait.Until(recompute, 10*time.Minute, stopCh)
+	}
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
 
 	klog.Info("Started workers")
