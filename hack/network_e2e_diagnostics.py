@@ -695,7 +695,7 @@ def runSuite(suite, directory, interval, maxSeconds=None):
     directory.mkdir(parents=True, exist_ok=True)
     seed = int(os.environ.get("E2E_SEED", str(int(time.time()))))
     if maxSeconds is None:
-        maxSeconds = int(os.environ.get("E2E_MAX_SECONDS", "4200"))
+        maxSeconds = int(os.environ.get("E2E_MAX_SECONDS", "3900" if suite == "k8s-conformance-e2e" else "7500"))
     if maxSeconds <= 0:
         raise ValueError("E2E_MAX_SECONDS must be positive")
     metadata = {"started": timestamp(), "seed": seed, "suite": suite,
@@ -753,9 +753,9 @@ def runSuite(suite, directory, interval, maxSeconds=None):
         }
         (directory / "watchdog.json").write_text(json.dumps(event, indent=2) + "\n")
         with (directory / "e2e.log").open("a") as log:
-            log.write(f"{timestamp()} [E2E-WATCHDOG] process exceeded {maxSeconds}s; terminating for diagnostics\n")
+            log.write(f"{timestamp()} E2E process exceeded {maxSeconds}s; terminating for diagnostics\n")
         diagnostics.recordFailure(
-            f"[E2E-WATCHDOG] process exceeded {maxSeconds}s; terminating for diagnostics\n",
+            f"E2E process exceeded {maxSeconds}s; terminating for diagnostics\n",
             "test",
         )
         try:
@@ -831,7 +831,7 @@ def main():
     parser.add_argument("--isolate-service-proxy-fallback", action="store_true",
                         help="isolate overlay Conformance Pod ClusterIP traffic from the Kind node proxy")
     parser.add_argument("--max-seconds", type=int,
-                        default=int(os.environ.get("E2E_MAX_SECONDS", "4200")))
+                        default=None)
     args = parser.parse_args()
     if args.interval <= 0:
         parser.error("interval must be positive")

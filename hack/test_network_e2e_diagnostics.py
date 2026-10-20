@@ -346,7 +346,7 @@ sys.exit({exitCode})
                              expectedCode if expectedCode is not None else exitCode)
             self.assertEqual(metadata["seed"], 1234)
             if hang:
-                self.assertIn("E2E-WATCHDOG", (output / "e2e.log").read_text())
+                self.assertIn("E2E process exceeded", (output / "e2e.log").read_text())
                 self.assertTrue((output / "watchdog.json").exists())
             else:
                 self.assertIn("test output", (output / "e2e.log").read_text())

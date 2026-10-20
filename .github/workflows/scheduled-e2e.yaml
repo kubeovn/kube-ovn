@@ -25,8 +25,7 @@ jobs:
   k8s-conformance-e2e:
     name: Kubernetes Conformance E2E
     runs-on: ubuntu-24.04
-    # Leave time after the Ginkgo timeout for diagnostics and artifact uploads.
-    timeout-minutes: 90
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -123,39 +122,12 @@ jobs:
           docker pull "kubeovn/kube-ovn:$version"
           VERSION="$version" make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
-      - name: Enable networking debug logs before E2E
-        timeout-minutes: 5
-        run: >-
-          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" prepare
-          "$GITHUB_WORKSPACE/network-e2e-diagnostics/preparation"
-
       - name: Run E2E
         env:
           E2E_BRANCH: ${{ matrix.branch }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: ${{ matrix.mode }}
-          E2E_MAX_SECONDS: 4200
-        run: >-
-          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" run
-          "$GITHUB_WORKSPACE/network-e2e-diagnostics"
-          --suite k8s-conformance-e2e
-
-      - name: Collect final network state
-        if: always()
-        continue-on-error: true
-        timeout-minutes: 3
-        run: >-
-          python3 hack/network_e2e_diagnostics.py snapshot
-          network-e2e-diagnostics/post-job
-
-      - name: Upload network diagnostics and test reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: k8s-conformance-e2e-${{ matrix.branch }}-${{ matrix.ip-family }}-${{ matrix.mode }}-diagnostics
-          path: network-e2e-diagnostics/
-          retention-days: 7
-          if-no-files-found: warn
+        run: make k8s-conformance-e2e
 
       - name: Check kube ovn pod restarts
         run: |
@@ -164,8 +136,7 @@ jobs:
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
     runs-on: ubuntu-24.04
-    # Leave time after the Ginkgo timeout for diagnostics and artifact uploads.
-    timeout-minutes: 150
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -243,38 +214,8 @@ jobs:
           docker pull kubeovn/kube-ovn:$version
           VERSION=$version make kind-install-${{ matrix.ip-family }}
 
-      - name: Enable networking debug logs before E2E
-        timeout-minutes: 5
-        run: >-
-          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" prepare
-          "$GITHUB_WORKSPACE/network-e2e-diagnostics/preparation"
-
       - name: Run E2E
-        env:
-          E2E_BRANCH: ${{ matrix.branch }}
-          E2E_IP_FAMILY: ${{ matrix.ip-family }}
-          E2E_MAX_SECONDS: 4200
-        run: >-
-          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" run
-          "$GITHUB_WORKSPACE/network-e2e-diagnostics"
-          --suite k8s-netpol-e2e
-
-      - name: Collect final network state
-        if: always()
-        continue-on-error: true
-        timeout-minutes: 3
-        run: >-
-          python3 hack/network_e2e_diagnostics.py snapshot
-          network-e2e-diagnostics/post-job
-
-      - name: Upload network diagnostics and test reports
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: k8s-netpol-e2e-${{ matrix.branch }}-${{ matrix.ip-family }}-diagnostics
-          path: network-e2e-diagnostics/
-          retention-days: 7
-          if-no-files-found: warn
+        run: make k8s-netpol-e2e
 
       - name: Check kube ovn pod restarts
         run: |

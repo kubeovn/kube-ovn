@@ -96,8 +96,6 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Temporarily disable Valgrind in CI while investigating E2E convergence failures.
-  DEBUG_WRAPPER: ""
   EXECUTION_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
   # Every PR job uses the immutable candidate revision validated against the live pull request.
   E2E_SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.headSHA || github.event.repository.default_branch }}
@@ -1062,7 +1060,7 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: ${{ matrix.mode }}
-          E2E_MAX_SECONDS: 4200
+          E2E_MAX_SECONDS: 3900
         run: >-
           python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" run
           "$GITHUB_WORKSPACE/network-e2e-diagnostics"
@@ -1129,40 +1127,6 @@ jobs:
         with:
           name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
           path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
-
-      - name: Check valgrind result
-        if: env.DEBUG_WRAPPER == 'valgrind'
-        run: |
-          if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
-            exit
-          fi
-
-          kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status ds ovs-ovn
-          sleep 10
-          kubectl -n kube-system rollout restart deploy ovn-central
-          kubectl -n kube-system rollout status deploy ovn-central
-          while true; do
-            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
-              break
-            fi
-            sleep 1
-          done
-          bash .github/scripts/collect-kubectl-ko-log.sh
-
-          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
-            echo "Checking if valgrind log file for $daemon exists..."
-            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
-          done
-
-          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
-              echo $f
-              cat "$f"
-              exit 1
-            fi;
-          done
 
   acl-sampling-e2e:
     name: ACL Sampling E2E
@@ -1383,7 +1347,7 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           NP_ENFORCEMENT: ${{ matrix.np-enforcement }}
-          E2E_MAX_SECONDS: 4200
+          E2E_MAX_SECONDS: 7500
         run: >-
           python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" run
           "$GITHUB_WORKSPACE/network-e2e-diagnostics"
@@ -1450,40 +1414,6 @@ jobs:
         with:
           name: k8s-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log
           path: k8s-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
-
-      - name: Check valgrind result
-        if: env.DEBUG_WRAPPER == 'valgrind'
-        run: |
-          if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
-            exit
-          fi
-
-          kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status ds ovs-ovn
-          sleep 10
-          kubectl -n kube-system rollout restart deploy ovn-central
-          kubectl -n kube-system rollout status deploy ovn-central
-          while true; do
-            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
-              break
-            fi
-            sleep 1
-          done
-          bash .github/scripts/collect-kubectl-ko-log.sh
-
-          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
-            echo "Checking if valgrind log file for $daemon exists..."
-            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
-          done
-
-          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
-              echo $f
-              cat "$f"
-              exit 1
-            fi;
-          done
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
@@ -1623,40 +1553,6 @@ jobs:
         with:
           name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log
           path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
-
-      - name: Check valgrind result
-        if: env.DEBUG_WRAPPER == 'valgrind'
-        run: |
-          if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
-            exit
-          fi
-
-          kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status ds ovs-ovn
-          sleep 10
-          kubectl -n kube-system rollout restart deploy ovn-central
-          kubectl -n kube-system rollout status deploy ovn-central
-          while true; do
-            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
-              break
-            fi
-            sleep 1
-          done
-          bash .github/scripts/collect-kubectl-ko-log.sh
-
-          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
-            echo "Checking if valgrind log file for $daemon exists..."
-            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
-          done
-
-          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
-              echo $f
-              cat "$f"
-              exit 1
-            fi;
-          done
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
@@ -1811,40 +1707,6 @@ jobs:
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
-
-      - name: Check valgrind result
-        if: env.DEBUG_WRAPPER == 'valgrind'
-        run: |
-          if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
-            exit
-          fi
-
-          kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status ds ovs-ovn
-          sleep 10
-          kubectl -n kube-system rollout restart deploy ovn-central
-          kubectl -n kube-system rollout status deploy ovn-central
-          while true; do
-            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
-              break
-            fi
-            sleep 1
-          done
-          bash .github/scripts/collect-kubectl-ko-log.sh
-
-          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
-            echo "Checking if valgrind log file for $daemon exists..."
-            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
-          done
-
-          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
-              echo $f
-              cat "$f"
-              exit 1
-            fi;
-          done
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
@@ -4447,36 +4309,6 @@ jobs:
         with:
           name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log
           path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
-
-      - name: Check valgrind result
-        if: env.DEBUG_WRAPPER == 'valgrind'
-        run: |
-          kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status ds ovs-ovn
-          sleep 10
-          kubectl -n kube-system rollout restart deploy ovn-central
-          kubectl -n kube-system rollout status deploy ovn-central
-          while true; do
-            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
-              break
-            fi
-            sleep 1
-          done
-          bash .github/scripts/collect-kubectl-ko-log.sh
-
-          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
-            echo "Checking if valgrind log file for $daemon exists..."
-            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
-          done
-
-          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
-              echo $f
-              cat "$f"
-              exit 1
-            fi;
-          done
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh

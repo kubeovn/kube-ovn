@@ -1536,7 +1536,7 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 }
 
 func (c *Controller) reconcileServiceTemplateState(svc *v1.Service, prefix string, migrations []ovs.TemplateVIPMigration, desiredTemplateVIPs, variablesByChassis map[string]map[string]string, plans ...*serviceLoadBalancerReconciliation) error {
-	klog.V(5).InfoS("[DEBUG-network-e2e] desired service template backends", "service", klog.KObj(svc), "uid", svc.UID, "trafficDistribution", svc.Spec.TrafficDistribution, "vips", desiredTemplateVIPs, "variablesByChassis", variablesByChassis)
+	klog.V(5).InfoS("Desired service template backends", "service", klog.KObj(svc), "uid", svc.UID, "trafficDistribution", svc.Spec.TrafficDistribution, "vips", desiredTemplateVIPs, "variablesByChassis", variablesByChassis)
 	if len(plans) != 0 && plans[0] != nil {
 		return plans[0].addTemplateState(prefix, migrations, desiredTemplateVIPs, variablesByChassis)
 	}
