@@ -608,11 +608,32 @@ func (c *Controller) InitIPAM() error {
 // startup. The full v4/v6 address set must be passed to GetStaticAddress together: a vip
 // with only a v6ip would otherwise look unset and fail, and a dual-stack vip would have its
 // v6ip silently dropped and re-randomized by GetStaticAddress's own dual-stack completion.
+//
+// A single vip failing to restore (a stale provider mapping, a now-conflicting address, an
+// unexpected ipam error) is logged and skipped, exactly like every other per-object restore
+// loop in InitIPAM (StatefulSet/VM IP CRs, iptables/ovn EIPs, node annotations): it must
+// never fail (or be made to fail) the whole InitIPAM call over one bad object - InitIPAM's
+// caller treats its error as fatal (util.LogFatalAndExit), and a vip that can never restore
+// would otherwise crash-loop the entire controller, taking every pod's networking down with
+// it. The vip's own add/update controller keeps retrying that one object on its regular work
+// queue independently of InitIPAM, so the system still converges.
 func (c *Controller) restoreVipsToIPAM(vips []*kubeovnv1.Vip, subnetProviderMaps map[string]string) {
 	for _, vip := range vips {
+		if vip.Status.Mac == "" && vip.Status.V4ip == "" && vip.Status.V6ip == "" {
+			// Never allocated yet (e.g. still pending its first reconcile, or a previous
+			// allocation attempt failed): there is nothing in ipam to protect, and an empty
+			// v4ip/v6ip/mac would make GetStaticAddress reject it outright. Checking all
+			// three fields (not just status.Mac) matters: a real mac-only-protocol subnet
+			// vip permanently has an empty v4ip/v6ip even once allocated (only its mac is
+			// set), but the reverse also has to be covered - any vip that already has a
+			// v4ip or v6ip reserved must still be restored even if, for whatever reason,
+			// its mac ended up unset, otherwise that address is left unreserved in ipam
+			// and can be handed to a pod while the vip is still using it.
+			continue
+		}
 		provider, ok := subnetProviderMaps[vip.Spec.Subnet]
 		if !ok {
-			klog.Errorf("failed to find subnet %s for vip %s", vip.Spec.Subnet, vip.Name)
+			klog.Errorf("failed to find subnet %s for vip %s, skip restoring it to ipam", vip.Spec.Subnet, vip.Name)
 			continue
 		}
 		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, provider)
