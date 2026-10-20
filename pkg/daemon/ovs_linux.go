@@ -1160,25 +1160,6 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 	return nil
 }
 
-func configureLoNic() error {
-	loLink, err := netlink.LinkByName(util.LoNic)
-	if err != nil {
-		err := fmt.Errorf("can not find nic %s, %w", util.LoNic, err)
-		klog.Error(err)
-		return err
-	}
-
-	if loLink.Attrs().OperState != netlink.OperUp {
-		if err = netlink.LinkSetUp(loLink); err != nil {
-			err := fmt.Errorf("failed to set up nic %s, %w", util.LoNic, err)
-			klog.Error(err)
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (c *Controller) transferAddrsAndRoutes(nicName, brName string, delNonExistent bool) (int, error) {
 	nic, err := netlink.LinkByName(nicName)
 	if err != nil {

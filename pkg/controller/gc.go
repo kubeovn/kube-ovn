@@ -445,7 +445,6 @@ func (c *Controller) keepNodeLSPs(nodes []*corev1.Node, ipMap *strset.Set) map[s
 			result[portName] = node.Name
 			ipMap.Add(portName)
 		}
-
 	}
 	return result
 }
