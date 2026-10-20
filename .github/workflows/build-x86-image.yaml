@@ -247,8 +247,6 @@ jobs:
 
       - name: Scan base image
         uses: aquasecurity/trivy-action@0.35.0
-        env:
-          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         with:
           scan-type: image
           scanners: vuln
@@ -4302,8 +4300,6 @@ jobs:
           fi
 
       - name: Security Scan
-        env:
-          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         run: |
           sudo apt-get install wget apt-transport-https gnupg lsb-release
           wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
