@@ -1227,14 +1227,15 @@ func TestGcChassisUnderExternalVpcSelfHealsUntaggedLiveNodeChassis(t *testing.T)
 		require.NoError(t, ctrl.gcChassis())
 	})
 
-	t.Run("untagged chassis matching a live but not-yet-annotated node is tagged but still gc'd this tick", func(t *testing.T) {
+	t.Run("untagged chassis matching a live but not-yet-annotated node is tagged and deferred, not gc'd", func(t *testing.T) {
 		// The node hasn't gotten its ChassisAnnotation patched yet (same
-		// race as the readiness gate, just past it): self-healing the
-		// vendor tag alone isn't enough to protect it without a matching
-		// annotation - this is the known, documented residual window the
-		// readiness gate (TestGcChassisSkipsUntilNodeChassisInitialized)
-		// closes for the very first tick. Confirms the tag still gets
-		// applied even on a chassis this tick ends up deleting.
+		// race as the readiness gate, just past it). Self-healing the vendor
+		// tag alone doesn't give this chassis a matching annotation this
+		// tick, so it must be deferred rather than swept as an orphan in the
+		// same pass - a genuinely external chassis can never share a
+		// hostname with a live k8s Node, so treating the match as pending
+		// convergence (not absence) is safe. Confirms the tag is still
+		// applied, but DeleteChassis is never called.
 		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 			Nodes: []*corev1.Node{{Name: "node-1"}},
 		})
@@ -1246,7 +1247,8 @@ func TestGcChassisUnderExternalVpcSelfHealsUntaggedLiveNodeChassis(t *testing.T)
 			{Name: "node-1-chassis", Hostname: "node-1"},
 		}, nil)
 		fakeController.mockOvnSbClient.EXPECT().UpdateChassisTag("node-1-chassis", "node-1").Return(nil)
-		fakeController.mockOvnSbClient.EXPECT().DeleteChassis("node-1-chassis").Return(nil)
+		// No DeleteChassis expectation: gomock fails if the chassis is
+		// deleted before the node's annotation converges to it.
 		require.NoError(t, ctrl.gcChassis())
 	})
 

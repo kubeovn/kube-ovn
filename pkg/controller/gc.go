@@ -1340,7 +1340,23 @@ func (c *Controller) gcChassis() error {
 		}
 	}
 
+	liveNodeNames := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		liveNodeNames[node.Name] = struct{}{}
+	}
+
 	for chassisName, hostname := range chassisNodes {
+		if _, isLiveNode := liveNodeNames[hostname]; isLiveNode {
+			// This chassis's hostname is a current k8s Node, but no node's
+			// ChassisAnnotation claimed it in the loop above - the node is
+			// either not yet annotated or still carries a stale annotation
+			// pointing elsewhere. A genuinely external chassis can never
+			// share a hostname with a k8s Node, so deleting here would risk
+			// removing a live node's chassis mid-convergence. Defer instead;
+			// it's picked up on a later tick once the annotation catches up.
+			klog.Infof("defer gc of chassis %s: hostname %s matches a live node pending chassis annotation convergence", chassisName, hostname)
+			continue
+		}
 		klog.Infof("gc node %s chassis %s", hostname, chassisName)
 		if err := c.OVNSbClient.DeleteChassis(chassisName); err != nil {
 			klog.Errorf("failed to delete node %s chassis %s %v", hostname, chassisName, err)
