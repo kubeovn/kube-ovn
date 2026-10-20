@@ -108,6 +108,7 @@ type FakeControllerOptions struct {
 	Namespaces            []*corev1.Namespace
 	Services              []*corev1.Service
 	Vpcs                  []*kubeovnv1.Vpc
+	VpcDNSs               []*kubeovnv1.VpcDns
 	RouterLBRules         []*kubeovnv1.RouterLBRule
 	SwitchLBRules         []*kubeovnv1.SwitchLBRule
 	OvnEips               []*kubeovnv1.OvnEip
@@ -232,6 +233,14 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	for _, vpc := range opts.Vpcs {
 		_, err := kubeovnClient.KubeovnV1().Vpcs().Create(
 			context.Background(), vpc, metav1.CreateOptions{},
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+	for _, vpcDNS := range opts.VpcDNSs {
+		_, err := kubeovnClient.KubeovnV1().VpcDnses().Create(
+			context.Background(), vpcDNS, metav1.CreateOptions{},
 		)
 		if err != nil {
 			return nil, err
@@ -369,6 +378,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	ippoolInformer := kubeovnInformerFactory.Kubeovn().V1().IPPools()
 	routerLBRuleInformer := kubeovnInformerFactory.Kubeovn().V1().RouterLBRules()
 	switchLBRuleInformer := kubeovnInformerFactory.Kubeovn().V1().SwitchLBRules()
+	vpcDNSInformer := kubeovnInformerFactory.Kubeovn().V1().VpcDnses()
 	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
 	ovnFipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnFips()
@@ -417,8 +427,11 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		vlansLister:                   vlanInformer.Lister(),
 		providerNetworksLister:        providerNetworkInformer.Lister(),
 		routerLBRuleLister:            routerLBRuleInformer.Lister(),
-		switchLBRuleLister:            switchLBRuleInformer.Lister(),
 		routerLBRuleSynced:            alwaysReady,
+		switchLBRuleLister:            switchLBRuleInformer.Lister(),
+		switchLBRuleSynced:            alwaysReady,
+		vpcDNSLister:                  vpcDNSInformer.Lister(),
+		vpcDNSSynced:                  alwaysReady,
 		ovnEipsLister:                 ovnEipInformer.Lister(),
 		ovnEipSynced:                  alwaysReady,
 		ovnDnatRulesLister:            ovnDnatRuleInformer.Lister(),
