@@ -87,6 +87,7 @@ spec:
         imagePullPolicy: {{ $agentImage.pullPolicy }}
         command:
           - /kube-ovn/install-cni.sh
+          - --install-cni-plugins={{ .Values.cni.installCNIPlugins }}
           - --cni-conf-dir={{ .Values.cni.mountConfigDirectory }}
           - --cni-conf-file={{ .Values.cni.localConfigFile }}
           - --cni-conf-name={{- .Values.cni.configPriority -}}-kube-ovn.conflist
@@ -160,6 +161,7 @@ spec:
           {{- end }}
           - --kubelet-dir={{ .Values.kubelet.directory }}
           - --enable-tproxy={{ .Values.features.enableTproxy }}
+          - --enable-recompute={{ .Values.features.enableRecompute }}
           - --ovs-vsctl-concurrency={{ .Values.performance.ovsVsctlConcurrency }}
           - --secure-serving={{- .Values.features.enableSecureServing }}
           {{- if or .Values.networking.tlsMinVersion .Values.networking.tlsMaxVersion .Values.networking.tlsCipherSuites }}

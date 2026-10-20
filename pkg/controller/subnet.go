@@ -359,6 +359,18 @@ func (c *Controller) handleSubnetFinalizer(subnet *kubeovnv1.Subnet) (*kubeovnv1
 	}
 
 	if !subnet.DeletionTimestamp.IsZero() {
+		// Normal reconciliation stops during deletion. Disable the OVN querier
+		// before releasing its IP, including while other IPs hold the finalizer.
+		// The IP deletion event refreshes usage before the next finalizer check.
+		if !subnet.Spec.EnableMulticastSnoop && subnet.Status.McastQuerierIP != "" {
+			if err := c.handleMcastQuerierChange(subnet); err != nil {
+				return subnet, false, err
+			}
+			subnet = subnet.DeepCopy()
+			if _, err := c.releaseMcastQuerierIP(subnet); err != nil {
+				return subnet, false, err
+			}
+		}
 		if err := c.deleteSubnetHealthCheckVip(subnet); err != nil {
 			return subnet, false, err
 		}
@@ -577,7 +589,11 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return c.recordResourceError(cachedSubnet, "FormatSubnetFailed", err)
 	}
 
-	err = c.validateSubnetVlan(subnet)
+	// A missing, conflicting or unprocessed VLAN must not prevent deletion.
+	// Keep the IP usage refresh and finalizer checks below for occupied subnets.
+	if subnet.DeletionTimestamp.IsZero() {
+		err = c.validateSubnetVlan(subnet)
+	}
 	if err != nil {
 		if errors.Is(err, errVlanNotReady) {
 			// vlan hasn't been processed yet, requeue silently without
@@ -638,7 +654,7 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 		return c.recordResourceError(subnet, "UpdateFinalizerFailed", err)
 	}
 	subnet = updatedSubnet
-	if deleted {
+	if deleted || !subnet.DeletionTimestamp.IsZero() {
 		return nil
 	}
 
@@ -1659,6 +1675,15 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 		return nil
 	}
 
+	if err := c.reconcileServiceProxyFallbackDropPolicy(subnet); err != nil {
+		klog.Error(err)
+		return err
+	}
+	if err := c.reconcileServiceProxyFallbackReroutePolicy(subnet); err != nil {
+		klog.Error(err)
+		return err
+	}
+
 	if subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway {
 		// physical switch provide gw for this underlay subnet
 		pods, err := c.podsLister.Pods(metav1.NamespaceAll).List(labels.Everything())
@@ -2420,6 +2445,13 @@ func (c *Controller) deletePolicyRouteForDistributedSubnet(subnet *kubeovnv1.Sub
 }
 
 func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, gatewayType string, isDelete bool) error {
+	if isDelete && subnet.Spec.Vpc == c.config.ClusterRouter {
+		for _, owner := range []string{"isServiceProxyFallbackDropPolicy", "isServiceProxyFallbackReroutePolicy"} {
+			if err := c.deleteServiceProxyFallbackPolicies(subnet, owner); err != nil {
+				return err
+			}
+		}
+	}
 	if (subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) || subnet.Spec.Vpc != c.config.ClusterRouter {
 		return nil
 	}

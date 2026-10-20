@@ -5,7 +5,7 @@ import (
 	"strconv"
 
 	"k8s.io/klog/v2"
-	"kernel.org/pub/linux/libs/security/libcap/cap"
+	libcap "kernel.org/pub/linux/libs/security/libcap/cap"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovn_ic_controller"
@@ -18,7 +18,7 @@ func CmdMain() {
 
 	klog.Info(versions.String())
 
-	currentCaps := cap.GetProc()
+	currentCaps := libcap.GetProc()
 	klog.Infof("current capabilities: %s", currentCaps.String())
 
 	config, err := ovn_ic_controller.ParseFlags()

@@ -29,3 +29,12 @@ tests:
       - notContains:
           path: spec.template.spec.containers[0].securityContext.capabilities.add
           content: SYS_PTRACE
+
+  - it: can skip installing bundled CNI plugins
+    template: ovncni-ds.yaml
+    set:
+      cni_conf.INSTALL_CNI_PLUGINS: false
+    asserts:
+      - contains:
+          path: spec.template.spec.initContainers[1].command
+          content: --install-cni-plugins=false

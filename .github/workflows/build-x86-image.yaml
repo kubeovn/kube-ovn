@@ -102,13 +102,13 @@ env:
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
   KIND_VERSION: v0.33.0
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
-  GOLANGCI_LINT_VERSION: v2.14.0
+  GOLANGCI_LINT_VERSION: v2.15.0
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
-  HELM_VERSION: v4.3.0
+  HELM_VERSION: v4.3.1
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
   SUBMARINER_VERSION: 0.24.2
   # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
-  TALOS_VERSION: v1.14.2
+  TALOS_VERSION: v1.14.4
 
 jobs:
   e2e-selection:
@@ -712,8 +712,6 @@ jobs:
 
       - name: Scan base image
         uses: aquasecurity/trivy-action@v0.36.0
-        env:
-          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         with:
           scan-type: image
           scanners: vuln
@@ -5628,8 +5626,6 @@ jobs:
           fi
 
       - name: Security Scan
-        env:
-          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         run: |
           sudo apt-get install wget apt-transport-https gnupg lsb-release
           wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -

@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -54,6 +55,17 @@ func TestReconcileRouteSubnetsPortGroups(t *testing.T) {
 							fc.mockOvnClient.EXPECT().RemovePortFromPortGroups(portName, "node.other").Return(nil)
 						}
 						fc.mockOvnClient.EXPECT().PortGroupAddPorts("node.one", portName).Return(nil)
+					}
+					if gateway == kubeovnv1.GWCentralizedType {
+						pgName := serviceProxyFallbackPortGroupName(subnet.Name, "one")
+						port := ovnnb.LogicalSwitchPort{UUID: "pod-port", Name: portName}
+						fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, false).Return(&port, nil)
+						fc.mockOvnClient.EXPECT().ListPortGroups(buildPolicyRouteExternalIDs(subnet.Name, map[string]string{serviceProxyFallbackPortGroupKey: "true"})).Return(nil, nil)
+						fc.mockOvnClient.EXPECT().CreatePortGroup(pgName, map[string]string{serviceProxyFallbackPortGroupKey: "true", "subnet": subnet.Name, "node": "one"}).Return(nil)
+						fc.mockOvnClient.EXPECT().GetPortGroup(pgName, false).Return(&ovnnb.PortGroup{Name: pgName}, nil)
+						fc.mockOvnClient.EXPECT().GetPortGroup("node.one", true).Return(&ovnnb.PortGroup{Ports: []string{port.UUID}}, nil)
+						fc.mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name}, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{port}, nil)
+						fc.mockOvnClient.EXPECT().PortGroupSetPorts(pgName, []string{portName}).Return(nil)
 					}
 					if gateway != kubeovnv1.GWCentralizedType {
 						if tc.otherSubnetGroup {

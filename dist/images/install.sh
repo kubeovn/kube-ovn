@@ -36,6 +36,8 @@ LS_DNAT_MOD_DL_DST=${LS_DNAT_MOD_DL_DST:-true}
 LS_CT_SKIP_DST_LPORT_IPS=${LS_CT_SKIP_DST_LPORT_IPS:-true}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-false}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
+# Set to false to preserve CNI plugins already installed on the host.
+INSTALL_CNI_PLUGINS=${INSTALL_CNI_PLUGINS:-true}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
 ENABLE_NFTABLE_LB_SVC=${ENABLE_NFTABLE_LB_SVC:-true}
 ENABLE_NAT_GW=${ENABLE_NAT_GW:-true}
@@ -61,6 +63,7 @@ IFACE=${IFACE:-}
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_TPROXY=${ENABLE_TPROXY:-false}
+ENABLE_RECOMPUTE=${ENABLE_RECOMPUTE:-false}
 OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
@@ -9227,6 +9230,7 @@ ${TPROXY_SECURITY_CONTEXT}
         imagePullPolicy: $IMAGE_PULL_POLICY
         command:
           - /kube-ovn/install-cni.sh
+          - --install-cni-plugins=$INSTALL_CNI_PLUGINS
           - --cni-conf-name=${CNI_CONFIG_PRIORITY}-kube-ovn.conflist
         env:
           - name: POD_IPS
@@ -9269,6 +9273,7 @@ ${TPROXY_SECURITY_CONTEXT}
           - --gateway-netfilter-detect-timeout=$GATEWAY_NETFILTER_DETECT_TIMEOUT
           - --kubelet-dir=$KUBELET_DIR
           - --enable-tproxy=$ENABLE_TPROXY
+          - --enable-recompute=$ENABLE_RECOMPUTE
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
           - --secure-serving=${SECURE_SERVING}
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC

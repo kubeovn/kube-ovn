@@ -506,6 +506,7 @@ func TestCheckAndUpdateNodePortGroup_EmptyPgName(t *testing.T) {
 	// The initialized node should still be processed; the uninitialized node should be skipped.
 	mockNb.EXPECT().PortGroupSetPorts("node.initialized.node", gomock.Any()).Return(nil)
 	mockNb.EXPECT().DeleteAcls("node.initialized.node", portGroupKey, "", nil).Return(nil)
+	mockNb.EXPECT().ListPortGroups(map[string]string{"vendor": util.CniTypeName, serviceProxyFallbackPortGroupKey: "true"}).Return(nil, nil)
 
 	// PortGroupSetPorts should NOT be called for empty pgName
 	mockNb.EXPECT().PortGroupSetPorts("", gomock.Any()).Times(0)
