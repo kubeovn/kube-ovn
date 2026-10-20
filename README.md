@@ -45,6 +45,39 @@ Kube-OVN is easy to install, please refer to the [Installation Guide](https://ku
 
 ## Documents
 
+### Runtime images for offline installations
+
+GitHub releases include `images-amd64.txt` and `images-arm64.txt`: sorted,
+deduplicated runtime image references for mirroring. Both include NAT gateways
+and optional chart components; only AMD64 includes the DPDK image. Build-time
+base images are excluded. The references use multi-platform tags where available;
+select `linux/amd64` or `linux/arm64` in your mirroring tool as appropriate.
+
+To generate a list from a release checkout, install Helm 3 or newer and Python 3
+with PyYAML, then run:
+
+```sh
+make image-list > images-amd64.txt
+make image-list IMAGE_LIST_ARGS='--arch arm64' > images-arm64.txt
+```
+
+The generator renders the Helm v2 chart with optional image-producing components
+enabled. Release tags default to `VERSION`; use `--version v1.x.y` to override.
+Custom Helm v2 image settings are supported through `--values` and
+`--set-string`, and take precedence over the release tag defaults:
+
+```sh
+make image-list IMAGE_LIST_ARGS='--arch amd64 --values mirror-values.yaml'
+```
+
+These lists cover images configured by Kube-OVN, including the NAT BGP sidecar.
+Separately installed dependencies such as Multus and cert-manager, and application
+images, must be mirrored separately. To generate a historical release's inventory,
+use that release's chart and generator rather than changing only `--version` on
+a newer checkout.
+
+### Guides
+
 - [CNI Selection Recommendations](https://kubeovn.github.io/docs/stable/en/#cni-selection-recommendations)
 - [Getting Start](https://kubeovn.github.io/docs/stable/en/start/prepare/)
 - [KubeVirt Usage](https://kubeovn.github.io/docs/stable/en/kubevirt/static-ip/)
