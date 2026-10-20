@@ -999,6 +999,11 @@ func (c *Controller) gcDisabledDNSNameResolvers() error {
 	if c.config.EnableANP && c.config.EnableDNSNameResolver {
 		return nil
 	}
+	if c.config.EnableANP {
+		if err := c.gcPoliciesWithDisabledDNSNameResolver(); err != nil {
+			return err
+		}
+	}
 
 	resolvers, err := c.config.KubeOvnClient.KubeovnV1().DNSNameResolvers().List(
 		context.TODO(), metav1.ListOptions{LabelSelector: adminNetworkPolicyKey},
@@ -1018,6 +1023,53 @@ func (c *Controller) gcDisabledDNSNameResolvers() error {
 		); err != nil && !k8serrors.IsNotFound(err) {
 			klog.Errorf("delete disabled admin network policy DNSNameResolver %s: %v", resolver.Name, err)
 			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcPoliciesWithDisabledDNSNameResolver() error {
+	anps, err := c.anpsLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("list admin network policies for disabled DNS resolver: %w", err)
+	}
+	for _, anp := range anps {
+		if hasAnpDomainNames(anp) {
+			anpName := getAnpName(anp.Name)
+			if err := c.gcPolicyOVNResources(adminNetworkPolicyKey, anpName, anpName); err != nil {
+				return err
+			}
+		}
+	}
+
+	cnps, err := c.cnpsLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("list cluster network policies for disabled DNS resolver: %w", err)
+	}
+	for _, cnp := range cnps {
+		if hasCnpDomainNames(cnp) {
+			if err := c.gcPolicyOVNResources(clusterNetworkPolicyKey, getCnpName(cnp.Name), getCnpPortGroupName(cnp)); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcPolicyOVNResources(externalIDKey, policyName, portGroupID string) error {
+	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{externalIDKey: portGroupID})
+	if err != nil {
+		return fmt.Errorf("list port groups for %s %s: %w", externalIDKey, policyName, err)
+	}
+	for _, pg := range pgs {
+		if err := c.OVNNbClient.DeletePortGroup(pg.Name); err != nil {
+			return fmt.Errorf("delete port group %s for %s %s: %w", pg.Name, externalIDKey, policyName, err)
+		}
+	}
+	for _, direction := range []string{"ingress", "egress"} {
+		externalIDs := map[string]string{externalIDKey: policyName + "/" + direction}
+		if err := c.OVNNbClient.DeleteAddressSets(externalIDs); err != nil {
+			return fmt.Errorf("delete %s address sets for %s %s: %w", direction, externalIDKey, policyName, err)
 		}
 	}
 	return nil

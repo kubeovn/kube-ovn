@@ -24,6 +24,10 @@ import (
 	"k8s.io/utils/keymutex"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
+	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
+	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	anplisters "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
+	cnplisters "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
@@ -460,6 +464,8 @@ func TestGcDisabledDNSNameResolvers(t *testing.T) {
 			})
 			require.NoError(t, err)
 			ctrl := fakeController.fakeController
+			ctrl.anpsLister = anplisters.NewAdminNetworkPolicyLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+			ctrl.cnpsLister = cnplisters.NewClusterNetworkPolicyLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
 
 			resolver := &kubeovnv1.DNSNameResolver{
 				Name:   "anp-example-resolver",
@@ -483,6 +489,51 @@ func TestGcDisabledDNSNameResolvers(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestGcDisabledDNSNameResolversDeletesPoliciesWithDomains(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{EnableANP: true})
+	require.NoError(t, err)
+	ctrl := fakeController.fakeController
+
+	anp := &v1alpha1.AdminNetworkPolicy{
+		Name: "uses-dns",
+		Spec: v1alpha1.AdminNetworkPolicySpec{Egress: []v1alpha1.AdminNetworkPolicyEgressRule{{
+			To: []v1alpha1.AdminNetworkPolicyEgressPeer{{DomainNames: []v1alpha1.DomainName{"example.test."}}},
+		}}},
+	}
+	cnp := &v1alpha2.ClusterNetworkPolicy{
+		Name: "uses-dns",
+		Spec: v1alpha2.ClusterNetworkPolicySpec{Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{{
+			To: []v1alpha2.ClusterNetworkPolicyEgressPeer{{DomainNames: []v1alpha2.DomainName{"example.test."}}},
+		}}},
+	}
+	anpIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	cnpIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, anpIndexer.Add(anp))
+	require.NoError(t, cnpIndexer.Add(cnp))
+	require.NoError(t, anpIndexer.Add(&v1alpha1.AdminNetworkPolicy{Name: "without-dns"}))
+	require.NoError(t, cnpIndexer.Add(&v1alpha2.ClusterNetworkPolicy{Name: "without-dns"}))
+	ctrl.anpsLister = anplisters.NewAdminNetworkPolicyLister(anpIndexer)
+	ctrl.cnpsLister = cnplisters.NewClusterNetworkPolicyLister(cnpIndexer)
+
+	for _, policy := range []struct {
+		key         string
+		name        string
+		portGroupID string
+	}{
+		{adminNetworkPolicyKey, getAnpName(anp.Name), getAnpName(anp.Name)},
+		{clusterNetworkPolicyKey, getCnpName(cnp.Name), getCnpPortGroupName(cnp)},
+	} {
+		externalIDs := map[string]string{policy.key: policy.portGroupID}
+		pgName := policy.name + ".pg"
+		fakeController.mockOvnClient.EXPECT().ListPortGroups(externalIDs).Return([]ovnnb.PortGroup{{Name: pgName}}, nil)
+		fakeController.mockOvnClient.EXPECT().DeletePortGroup(pgName).Return(nil)
+		fakeController.mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{policy.key: policy.name + "/ingress"}).Return(nil)
+		fakeController.mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{policy.key: policy.name + "/egress"}).Return(nil)
+	}
+
+	require.NoError(t, ctrl.gcDisabledDNSNameResolvers())
 }
 
 func TestHandleDeleteNpReturnsMeterError(t *testing.T) {

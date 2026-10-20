@@ -31,6 +31,15 @@ func TestValidateAnpConfig(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("domain names require resolver", func(t *testing.T) {
+		anp.Spec.Egress = []v1alpha1.AdminNetworkPolicyEgressRule{{
+			To: []v1alpha1.AdminNetworkPolicyEgressPeer{{DomainNames: []v1alpha1.DomainName{"example.test."}}},
+		}}
+		err := ctrl.validateAnpConfig(anp)
+		require.ErrorContains(t, err, "DNSNameResolver is disabled")
+		anp.Spec.Egress = nil
+	})
+
 	t.Run("conflict priority", func(t *testing.T) {
 		ctrl.anpPrioNameMap = map[int32]string{anp.Spec.Priority: anp.Name + "-conflict"}
 		err := ctrl.validateAnpConfig(anp)

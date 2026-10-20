@@ -513,6 +513,10 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 }
 
 func (c *Controller) validateAnpConfig(anp *v1alpha1.AdminNetworkPolicy) error {
+	if hasAnpDomainNames(anp) && !c.config.EnableDNSNameResolver {
+		return errors.New("DNSNameResolver is disabled but domain names are specified")
+	}
+
 	// The behavior is undefined if two ANP objects have same priority.
 	if anpName, exist := c.anpPrioNameMap[anp.Spec.Priority]; exist && anpName != anp.Name {
 		err := fmt.Errorf("can not create anp with same priority %d, exist one is %s, new created is %s", anp.Spec.Priority, anpName, anp.Name)
@@ -535,6 +539,17 @@ func (c *Controller) validateAnpConfig(anp *v1alpha1.AdminNetworkPolicy) error {
 	}
 
 	return nil
+}
+
+func hasAnpDomainNames(anp *v1alpha1.AdminNetworkPolicy) bool {
+	for _, rule := range anp.Spec.Egress {
+		for _, peer := range rule.To {
+			if len(peer.DomainNames) != 0 {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (c *Controller) fetchSelectedPods(anpSubject *v1alpha1.AdminNetworkPolicySubject) ([]string, error) {
