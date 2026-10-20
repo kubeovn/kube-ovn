@@ -4,7 +4,10 @@ import (
 	"testing"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/keymutex"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
+	anplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
 
 	"github.com/stretchr/testify/require"
 
@@ -31,6 +34,15 @@ func TestValidateAnpConfig(t *testing.T) {
 		require.NoError(t, err)
 	})
 
+	t.Run("domain names require resolver", func(t *testing.T) {
+		anp.Spec.Egress = []v1alpha1.AdminNetworkPolicyEgressRule{{
+			To: []v1alpha1.AdminNetworkPolicyEgressPeer{{DomainNames: []v1alpha1.DomainName{"example.test."}}},
+		}}
+		err := ctrl.validateAnpConfig(anp)
+		require.ErrorContains(t, err, "DNSNameResolver is disabled")
+		anp.Spec.Egress = nil
+	})
+
 	t.Run("conflict priority", func(t *testing.T) {
 		ctrl.anpPrioNameMap = map[int32]string{anp.Spec.Priority: anp.Name + "-conflict"}
 		err := ctrl.validateAnpConfig(anp)
@@ -42,6 +54,39 @@ func TestValidateAnpConfig(t *testing.T) {
 		err := ctrl.validateAnpConfig(anp)
 		require.ErrorContains(t, err, "is greater than max value")
 	})
+}
+
+func TestHandleUpdateAnpRejectsDomainNamesWhenDNSDisabled(t *testing.T) {
+	fake := newFakeController(t)
+	c := fake.fakeController
+	c.config.EnableDNSNameResolver = false
+	c.anpKeyMutex = keymutex.NewHashed(1)
+	c.anpPrioNameMap = map[int32]string{55: "existing"}
+	c.anpNamePrioMap = map[string]int32{"existing": 55}
+
+	anp := &v1alpha1.AdminNetworkPolicy{
+		Name: "existing",
+		Spec: v1alpha1.AdminNetworkPolicySpec{
+			Priority: 55,
+			Subject:  v1alpha1.AdminNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
+			Egress: []v1alpha1.AdminNetworkPolicyEgressRule{{
+				Name:   "egress",
+				Action: v1alpha1.AdminNetworkPolicyRuleActionAllow,
+				To:     []v1alpha1.AdminNetworkPolicyEgressPeer{{DomainNames: []v1alpha1.DomainName{"example.test."}}},
+			}},
+		},
+	}
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(anp))
+	c.anpsLister = anplister.NewAdminNetworkPolicyLister(indexer)
+
+	changed := &AdminNetworkPolicyChangedDelta{key: anp.Name, field: ChangedEgressRule}
+	changed.ruleNames[0] = ChangedName{curRuleName: "egress"}
+
+	// No OVN expectations: validation must reject the update before any mutation.
+	require.ErrorContains(t, c.handleUpdateAnp(changed), "DNSNameResolver is disabled")
+	require.Equal(t, map[int32]string{55: "existing"}, c.anpPrioNameMap)
+	require.Equal(t, map[string]int32{"existing": 55}, c.anpNamePrioMap)
 }
 
 func TestFetchCIDRAddrs(t *testing.T) {

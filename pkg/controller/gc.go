@@ -994,6 +994,11 @@ func (c *Controller) gcDisabledDNSNameResolvers() error {
 	if c.config.EnableANP && c.config.EnableDNSNameResolver {
 		return nil
 	}
+	if c.config.EnableANP {
+		if err := c.gcPoliciesWithDisabledDNSNameResolver(); err != nil {
+			return err
+		}
+	}
 
 	resolvers, err := c.config.KubeOvnClient.KubeovnV1().DNSNameResolvers().List(
 		context.TODO(), metav1.ListOptions{LabelSelector: adminNetworkPolicyKey},
@@ -1013,6 +1018,117 @@ func (c *Controller) gcDisabledDNSNameResolvers() error {
 		); err != nil && !k8serrors.IsNotFound(err) {
 			klog.Errorf("delete disabled admin network policy DNSNameResolver %s: %v", resolver.Name, err)
 			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcPoliciesWithDisabledDNSNameResolver() error {
+	activePortGroupIDs := map[string]map[string]struct{}{
+		adminNetworkPolicyKey:   {},
+		clusterNetworkPolicyKey: {},
+	}
+	activeAddressSetIDs := map[string]map[string]struct{}{
+		adminNetworkPolicyKey:   {},
+		clusterNetworkPolicyKey: {},
+	}
+
+	anps, err := c.anpsLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("list admin network policies for disabled DNS resolver: %w", err)
+	}
+	for _, anp := range anps {
+		anpName := getAnpName(anp.Name)
+		activePortGroupIDs[adminNetworkPolicyKey][anpName] = struct{}{}
+		activeAddressSetIDs[adminNetworkPolicyKey][anpName] = struct{}{}
+		if hasAnpDomainNames(anp) {
+			if err := c.gcPolicyOVNResources(adminNetworkPolicyKey, anpName, anpName); err != nil {
+				return err
+			}
+		}
+	}
+
+	cnps, err := c.cnpsLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("list cluster network policies for disabled DNS resolver: %w", err)
+	}
+	for _, cnp := range cnps {
+		cnpName := getCnpName(cnp.Name)
+		activePortGroupIDs[clusterNetworkPolicyKey][getCnpPortGroupName(cnp)] = struct{}{}
+		activeAddressSetIDs[clusterNetworkPolicyKey][cnpName] = struct{}{}
+		if hasCnpDomainNames(cnp) {
+			if err := c.gcPolicyOVNResources(clusterNetworkPolicyKey, cnpName, getCnpPortGroupName(cnp)); err != nil {
+				return err
+			}
+		}
+	}
+
+	for _, externalIDKey := range []string{adminNetworkPolicyKey, clusterNetworkPolicyKey} {
+		if err := c.gcOrphanedPolicyOVNResources(
+			externalIDKey,
+			activePortGroupIDs[externalIDKey],
+			activeAddressSetIDs[externalIDKey],
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcOrphanedPolicyOVNResources(
+	externalIDKey string,
+	activePortGroupIDs, activeAddressSetIDs map[string]struct{},
+) error {
+	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{externalIDKey: ""})
+	if err != nil {
+		return fmt.Errorf("list orphaned port groups for %s: %w", externalIDKey, err)
+	}
+	for _, pg := range pgs {
+		if _, ok := activePortGroupIDs[pg.ExternalIDs[externalIDKey]]; ok {
+			continue
+		}
+		if err := c.OVNNbClient.DeletePortGroup(pg.Name); err != nil {
+			return fmt.Errorf("delete orphaned port group %s for %s: %w", pg.Name, externalIDKey, err)
+		}
+	}
+
+	addressSets, err := c.OVNNbClient.ListAddressSets(map[string]string{externalIDKey: ""})
+	if err != nil {
+		return fmt.Errorf("list orphaned address sets for %s: %w", externalIDKey, err)
+	}
+	addressSetExternalIDs := map[string]struct{}{}
+	for _, addressSet := range addressSets {
+		policyID, direction, ok := strings.Cut(addressSet.ExternalIDs[externalIDKey], "/")
+		if !ok || (direction != "ingress" && direction != "egress") {
+			continue
+		}
+		if _, ok := activeAddressSetIDs[policyID]; ok {
+			continue
+		}
+		addressSetExternalIDs[addressSet.ExternalIDs[externalIDKey]] = struct{}{}
+	}
+	for externalID := range addressSetExternalIDs {
+		if err := c.OVNNbClient.DeleteAddressSets(map[string]string{externalIDKey: externalID}); err != nil {
+			return fmt.Errorf("delete orphaned address sets for %s %s: %w", externalIDKey, externalID, err)
+		}
+	}
+	return nil
+}
+
+func (c *Controller) gcPolicyOVNResources(externalIDKey, policyName, portGroupID string) error {
+	pgs, err := c.OVNNbClient.ListPortGroups(map[string]string{externalIDKey: portGroupID})
+	if err != nil {
+		return fmt.Errorf("list port groups for %s %s: %w", externalIDKey, policyName, err)
+	}
+	for _, pg := range pgs {
+		if err := c.OVNNbClient.DeletePortGroup(pg.Name); err != nil {
+			return fmt.Errorf("delete port group %s for %s %s: %w", pg.Name, externalIDKey, policyName, err)
+		}
+	}
+	for _, direction := range []string{"ingress", "egress"} {
+		externalIDs := map[string]string{externalIDKey: policyName + "/" + direction}
+		if err := c.OVNNbClient.DeleteAddressSets(externalIDs); err != nil {
+			return fmt.Errorf("delete %s address sets for %s %s: %w", direction, externalIDKey, policyName, err)
 		}
 	}
 	return nil
