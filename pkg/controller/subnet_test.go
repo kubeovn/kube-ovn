@@ -1415,3 +1415,53 @@ func TestRecordSubnetGatewayMACRetriesAfterFailedPatch(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, gatewayMAC, got.Status.GatewayMAC)
 }
+
+// Vips are counted by their subnet label only: the ip_reserved label, which used to
+// exclude vips assigned to a pod, no longer has any effect since v1.17.
+func TestCalculateUsingIPsCountsVips(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		Name: "subnet-a",
+		Spec: kubeovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24", Provider: util.OvnProvider},
+	}
+	vips := []*kubeovnv1.Vip{
+		{
+			// created by this controller: no ip_reserved label at all
+			Name:   "aap",
+			Labels: map[string]string{util.SubnetNameLabel: subnet.Name},
+			Spec:   kubeovnv1.VipSpec{Subnet: subnet.Name},
+		},
+		{
+			// upgraded cluster: label kept from v1.16, no longer read by anything
+			Name:   "legacy-free",
+			Labels: map[string]string{util.SubnetNameLabel: subnet.Name, util.IPReservedLabel: ""},
+			Spec:   kubeovnv1.VipSpec{Subnet: subnet.Name},
+		},
+		{
+			// upgraded cluster: still labelled as reserved by a pre-v1.17 pod. It holds an
+			// address of its own once that pod is gone, so it must be counted as well.
+			Name:   "legacy-reserved",
+			Labels: map[string]string{util.SubnetNameLabel: subnet.Name, util.IPReservedLabel: "busybox.default"},
+			Spec:   kubeovnv1.VipSpec{Subnet: subnet.Name},
+		},
+		{
+			Name:   "other-subnet",
+			Labels: map[string]string{util.SubnetNameLabel: "subnet-b"},
+			Spec:   kubeovnv1.VipSpec{Subnet: "subnet-b"},
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		Vips:    vips,
+	})
+	require.NoError(t, err)
+
+	podUsedIPs := []*kubeovnv1.IP{{
+		Name: "busybox.default",
+		Spec: kubeovnv1.IPSpec{Subnet: subnet.Name, IPAddress: "10.0.0.10"},
+	}}
+
+	using, err := fc.fakeController.calculateUsingIPs(subnet, podUsedIPs, nil)
+	require.NoError(t, err)
+	// 1 pod + the 3 vips of subnet-a, the vip of another subnet excluded
+	require.Equal(t, int64(4), using.Int64())
+}

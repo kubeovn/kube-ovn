@@ -22,13 +22,11 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	kubescheme "k8s.io/client-go/kubernetes/scheme"
 	k8stesting "k8s.io/client-go/testing"
-	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/internal"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -1662,53 +1660,6 @@ func TestHandleDeletePodRecordsFailure(t *testing.T) {
 	assertPodEvent(t, fc.fakeController, "Warning PodNetworkReleaseFailed", "stage=deleteLogicalSwitchPort", "delete lsp failed")
 }
 
-func TestHandleDeletePodReportsVIPListerFailure(t *testing.T) {
-	pod, subnet := podEventFixture()
-	pod.Annotations[util.VipAnnotation] = "test-vip"
-	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
-	require.NoError(t, err)
-	failure := errors.New("get vip failed")
-	fc.fakeController.virtualIpsLister = &errorVipLister{err: failure}
-	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, map[string]string{"pod": "default/test-pod"}).Return(nil, nil)
-	storeDeletingPod(fc.fakeController, pod)
-
-	err = fc.fakeController.handleDeletePod("default/test-pod")
-
-	require.ErrorIs(t, err, failure)
-	assertPodEvent(t, fc.fakeController, "Warning PodNetworkReleaseFailed", "stage=releaseVIP", failure.Error())
-	_, retained := fc.fakeController.deletingPodObjMap.Load("default/test-pod")
-	assert.True(t, retained, "deleting pod must remain queued for retry")
-}
-
-func TestReleaseVipReportsLabelChange(t *testing.T) {
-	tests := []struct {
-		name          string
-		labels        map[string]string
-		expectChanged bool
-	}{
-		{name: "reserved label", labels: map[string]string{util.IPReservedLabel: "test-pod.default"}, expectChanged: true},
-		{name: "no reserved label", labels: map[string]string{}, expectChanged: false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fc, err := newFakeControllerWithOptions(t, nil)
-			require.NoError(t, err)
-			vip := &kubeovnv1.Vip{Name: "test-vip", Labels: tt.labels}
-			_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), vip, metav1.CreateOptions{})
-			require.NoError(t, err)
-			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-			require.NoError(t, indexer.Add(vip))
-			fc.fakeController.virtualIpsLister = kubeovnlister.NewVipLister(indexer)
-
-			changed, err := fc.fakeController.releaseVip(vip.Name)
-
-			require.NoError(t, err)
-			assert.Equal(t, tt.expectChanged, changed)
-		})
-	}
-}
-
 func TestHandleDeletePodRetriesOrphanedVMPortIPLookupFailure(t *testing.T) {
 	pod, subnet := podEventFixture()
 	now := metav1.Now()
@@ -2007,28 +1958,6 @@ func TestReconcileAllocateSubnetsSpecificFailureEventsIncludeStage(t *testing.T)
 
 		require.Error(t, err)
 		assertPodEvent(t, fc.fakeController, "Warning AcquireAddressFailed", "stage=acquireAddress", err.Error())
-	})
-
-	t.Run("validate network broadcast", func(t *testing.T) {
-		pod, subnet := podEventFixture()
-		pod.Annotations[util.VipAnnotation] = "broadcast-vip"
-		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
-		require.NoError(t, err)
-		vip := &kubeovnv1.Vip{
-			Name: "broadcast-vip", Labels: map[string]string{},
-			Spec:   kubeovnv1.VipSpec{Subnet: subnet.Name},
-			Status: kubeovnv1.VipStatus{V4ip: "10.0.0.0", Mac: "00:00:00:00:00:01"},
-		}
-		_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), vip, metav1.CreateOptions{})
-		require.NoError(t, err)
-		indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-		require.NoError(t, indexer.Add(vip))
-		fc.fakeController.virtualIpsLister = kubeovnlister.NewVipLister(indexer)
-
-		_, err = fc.fakeController.reconcileAllocateSubnets(pod, []*kubeovnNet{{Type: providerTypeOriginal, ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}})
-
-		require.Error(t, err)
-		assertPodEvent(t, fc.fakeController, "Warning ValidatePodNetworkFailed", "stage=validateNetworkBroadcast", err.Error())
 	})
 
 	t.Run("get vlan info", func(t *testing.T) {
@@ -2492,18 +2421,6 @@ type errorOnceIPLister struct {
 	calls int
 }
 
-type errorVipLister struct {
-	err error
-}
-
-func (l *errorVipLister) List(labels.Selector) ([]*kubeovnv1.Vip, error) {
-	return nil, l.err
-}
-
-func (l *errorVipLister) Get(string) (*kubeovnv1.Vip, error) {
-	return nil, l.err
-}
-
 func (l *errorOnceIPLister) List(labels.Selector) ([]*kubeovnv1.IP, error) {
 	return []*kubeovnv1.IP{l.ip}, nil
 }
@@ -2803,4 +2720,58 @@ func TestIsMigrationSourcePod(t *testing.T) {
 			require.Equal(t, tt.want, isMigrationSourcePod(tt.podName, tt.state))
 		})
 	}
+}
+
+// The ovn.kubernetes.io/vip annotation was removed in v1.17: it must be ignored and
+// the pod must get an address from ipam instead of the vip's.
+func TestAcquireAddressIgnoresVipAnnotation(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		Name: "subnet-a",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/24",
+			Gateway:   "10.0.0.1",
+			Protocol:  kubeovnv1.ProtocolIPv4,
+			Provider:  util.OvnProvider,
+			Vpc:       util.DefaultVpc,
+			Default:   true,
+		},
+	}
+	pod := &corev1.Pod{
+		Name:      "test-pod",
+		Namespace: metav1.NamespaceDefault,
+		Annotations: map[string]string{
+			util.LogicalSwitchAnnotation: subnet.Name,
+			util.VipAnnotation:           "static-vip",
+		},
+	}
+	vip := &kubeovnv1.Vip{
+		Name:   "static-vip",
+		Labels: map[string]string{util.SubnetNameLabel: subnet.Name},
+		Spec:   kubeovnv1.VipSpec{Subnet: subnet.Name, Namespace: metav1.NamespaceDefault},
+		Status: kubeovnv1.VipStatus{V4ip: "10.0.0.100", Mac: "00:00:00:00:00:01"},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		Pods:    []*corev1.Pod{pod},
+		Vips:    []*kubeovnv1.Vip{vip},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	ctrl.ipam = newIPAMForTest([]*kubeovnv1.Subnet{subnet})
+
+	podNets, err := ctrl.getPodKubeovnNets(pod)
+	require.NoError(t, err)
+	require.Len(t, podNets, 1)
+
+	v4, _, mac, gotSubnet, err := ctrl.acquireAddress(pod, podNets[0])
+	require.NoError(t, err)
+	assert.Equal(t, subnet.Name, gotSubnet.Name)
+	assert.NotEqual(t, vip.Status.V4ip, v4)
+	assert.NotEqual(t, vip.Status.Mac, mac)
+	assert.Equal(t, 1, ctrl.ipam.Subnets[subnet.Name].V4Using.Len())
+
+	// the vip must keep its own labels: nothing reserves it for the pod anymore
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), vip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.NotContains(t, got.Labels, util.IPReservedLabel)
 }

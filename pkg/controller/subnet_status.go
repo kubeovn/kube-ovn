@@ -188,7 +188,6 @@ func (c *Controller) calculateUsingIPs(subnet *kubeovnv1.Subnet, podUsedIPs []*k
 
 	vips, err := c.virtualIpsLister.List(labels.SelectorFromSet(labels.Set{
 		util.SubnetNameLabel: subnet.Name,
-		util.IPReservedLabel: "",
 	}))
 	if err != nil {
 		return internal.BigInt{}, err

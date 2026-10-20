@@ -1553,18 +1553,6 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				c.updateSubnetStatusQueue.Add(podNet.Subnet.Name)
 			}
 		}
-		if pod.Annotations[util.VipAnnotation] != "" {
-			stage = "releaseVIP"
-			var vipReleased bool
-			if vipReleased, err = c.releaseVip(pod.Annotations[util.VipAnnotation]); err != nil {
-				klog.Errorf("failed to clean label from vip %s, %v", pod.Annotations[util.VipAnnotation], err)
-				return err
-			}
-			if vipReleased {
-				changed = true
-				released = append(released, "vip="+pod.Annotations[util.VipAnnotation])
-			}
-		}
 	}
 	for _, podNet := range podNets {
 		// Skip non-OVN subnets for security group synchronization
@@ -2668,23 +2656,10 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		return "", "", "", podNet.Subnet, err
 	}
 
-	var checkVMPod bool
 	isStsPod, _, _ := isStatefulSetPod(pod)
-	// if pod has static vip
-	vipName := pod.Annotations[util.VipAnnotation]
-	if vipName != "" {
-		vip, err := c.virtualIpsLister.Get(vipName)
-		if err != nil {
-			klog.Errorf("failed to get static vip '%s', %v", vipName, err)
-			return "", "", "", podNet.Subnet, err
-		}
-		if c.config.EnableKeepVMIP {
-			checkVMPod, _ = isVMPod(pod)
-		}
-		if err = c.podReuseVip(vipName, portName, isStsPod || checkVMPod); err != nil {
-			return "", "", "", podNet.Subnet, err
-		}
-		return vip.Status.V4ip, vip.Status.V6ip, vip.Status.Mac, podNet.Subnet, nil
+	if vipName := pod.Annotations[util.VipAnnotation]; vipName != "" {
+		klog.Warningf("annotation %s=%s was removed in v1.17 and is ignored, pod %s/%s gets its address from ipam, use an ippool or a static ip annotation instead",
+			util.VipAnnotation, vipName, pod.Namespace, pod.Name)
 	}
 
 	var macPointer *string
