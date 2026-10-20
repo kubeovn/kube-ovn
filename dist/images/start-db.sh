@@ -237,7 +237,12 @@ function is_clustered {
   return 1
 }
 
-if [[ -n "${NODE_IPS:-}" ]]; then
+# A single configured central instance initializes standalone NB/SB, including
+# HCP and host-network installs. Preserve existing Raft files on upgrades.
+. /kube-ovn/ovn-db-mode.sh
+NODE_IPS=${NODE_IPS:-}
+configure_ovn_db_mode /etc/ovn
+if [[ -n "$NODE_IPS" ]]; then
     normalize_raft_addrs
 fi
 
