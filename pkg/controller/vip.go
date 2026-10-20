@@ -195,8 +195,9 @@ func (c *Controller) resolveVipMacAddress(key string, vip *kubeovnv1.Vip, subnet
 	return newMac, nil
 }
 
-// acquireVipAddress allocates vip's v4/v6 ip and mac from ipam: statically, if an ip or
-// mac was requested, or at random otherwise.
+// acquireVipAddress allocates vip's v4/v6 ip and mac from ipam: statically, if an ip was
+// requested, at random with a pinned mac for a mac-only kube_host_vm_vip (#7703), or at
+// random otherwise.
 func (c *Controller) acquireVipAddress(vip *kubeovnv1.Vip, subnet *kubeovnv1.Subnet, portName, macAddress string) (v4ip, v6ip, mac string, err error) {
 	// v6 ip address can not use upper case
 	if util.ContainsUppercase(vip.Spec.V6ip) {
@@ -205,13 +206,30 @@ func (c *Controller) acquireVipAddress(vip *kubeovnv1.Vip, subnet *kubeovnv1.Sub
 		return "", "", "", err
 	}
 	ipStr := util.GetStringIP(vip.Spec.V4ip, vip.Spec.V6ip)
-	if ipStr != "" || macAddress != "" {
+	switch {
+	case ipStr != "":
 		var macPointer *string
 		if macAddress != "" {
 			macPointer = &macAddress
 		}
 		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr, macPointer)
-	} else {
+	case macAddress != "" && vip.Spec.Type == util.KubeHostVMVip:
+		// mac pinned, ip random: acquireStaticIPAddress requires an ip and loops forever
+		// on "failed to parse vip ip" otherwise (#7703). Goes through the same node-IP
+		// collision retry (validatePodIP) as a fully random vip, not a bare ipam call, so
+		// a vip here is exactly as safe as an ordinary random one, just with a fixed mac.
+		//
+		// Scoped to kube_host_vm_vip only: a switch_lb_rule vip's mac is managed separately
+		// through resolveVipMacAddress/needsSwitchLBRuleMacRepair, and a plain reservation
+		// vip with only macAddress set has never supported "pick a random ip for this mac" -
+		// changing that behavior for those types would be an unreviewed, untested scope
+		// expansion beyond what #7703 asks for. Other vip types with a mac-only spec keep
+		// falling into acquireStaticIPAddress below with an empty ip, i.e. unchanged
+		// pre-existing behavior.
+		v4ip, v6ip, mac, err = c.acquireIPAddressWithMAC(subnet.Name, vip.Name, portName, &macAddress)
+	case macAddress != "":
+		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, vip.Name, portName, ipStr, &macAddress)
+	default:
 		// Random allocate
 		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, vip.Name, portName)
 	}
