@@ -1309,10 +1309,6 @@ func (c *Controller) gcLbSvcPods() error {
 }
 
 func (c *Controller) gcVPCDNS() error {
-	if !c.config.EnableOvnLB {
-		return nil
-	}
-
 	klog.Infof("start to gc vpc dns")
 	vds, err := c.vpcDNSLister.List(labels.Everything())
 	if err != nil {
@@ -1328,10 +1324,16 @@ func (c *Controller) gcVPCDNS() error {
 		klog.Errorf("failed to list vpc-dns deployment, %s", err)
 		return err
 	}
+	expectedVpcDNS := vds
+	if !c.config.EnableOvnLB {
+		// The CRs are retained so the feature can be re-enabled, but their
+		// generated resources must not survive while the feature is disabled.
+		expectedVpcDNS = nil
+	}
 
 	for _, dep := range deps.Items {
 		canFind := false
-		for _, vd := range vds {
+		for _, vd := range expectedVpcDNS {
 			name := genVpcDNSDpName(vd.Name)
 			if dep.Name == name {
 				canFind = true
@@ -1356,7 +1358,7 @@ func (c *Controller) gcVPCDNS() error {
 
 	for _, slr := range slrs {
 		canFind := false
-		for _, vd := range vds {
+		for _, vd := range expectedVpcDNS {
 			name := genVpcDNSDpName(vd.Name)
 			if slr.Name == name {
 				canFind = true
@@ -1377,10 +1379,6 @@ func (c *Controller) gcVPCDNS() error {
 }
 
 func (c *Controller) gcRouterLBRules() error {
-	if !c.config.EnableOvnLB {
-		return nil
-	}
-
 	klog.Infof("start to gc router lb rules")
 
 	rlrs, err := c.routerLBRuleLister.List(labels.Everything())
@@ -1390,12 +1388,14 @@ func (c *Controller) gcRouterLBRules() error {
 	}
 
 	expectedSvcs := make(map[string]struct{}, len(rlrs))
-	for _, rlr := range rlrs {
-		namespace := rlr.Spec.Namespace
-		if namespace == "" {
-			namespace = metav1.NamespaceDefault
+	if c.config.EnableOvnLB {
+		for _, rlr := range rlrs {
+			namespace := rlr.Spec.Namespace
+			if namespace == "" {
+				namespace = metav1.NamespaceDefault
+			}
+			expectedSvcs[namespace+"/"+generateRlrSvcName(rlr.Name)] = struct{}{}
 		}
-		expectedSvcs[namespace+"/"+generateRlrSvcName(rlr.Name)] = struct{}{}
 	}
 
 	svcs, err := c.servicesLister.List(labels.Everything())

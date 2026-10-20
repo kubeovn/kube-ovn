@@ -746,9 +746,13 @@ func Run(ctx context.Context, config *Configuration) {
 	} else {
 		go controller.runDisabledACLSamplingCleanup(ctx)
 	}
+	controller.routerLBRuleLister = routerLBRuleInformer.Lister()
+	controller.routerLBRuleSynced = routerLBRuleInformer.Informer().HasSynced
+	controller.switchLBRuleLister = switchLBRuleInformer.Lister()
+	controller.switchLBRuleSynced = switchLBRuleInformer.Informer().HasSynced
+	controller.vpcDNSLister = vpcDNSInformer.Lister()
+	controller.vpcDNSSynced = vpcDNSInformer.Informer().HasSynced
 	if config.EnableOvnLB {
-		controller.routerLBRuleLister = routerLBRuleInformer.Lister()
-		controller.routerLBRuleSynced = routerLBRuleInformer.Informer().HasSynced
 		controller.addRouterLBRuleQueue = newTypedRateLimitingQueue("AddRouterLBRule", custCrdRateLimiter)
 		controller.delRouterLBRuleQueue = newTypedRateLimitingQueue(
 			"DeleteRouterLBRule",
@@ -765,8 +769,6 @@ func Run(ctx context.Context, config *Configuration) {
 			),
 		)
 
-		controller.switchLBRuleLister = switchLBRuleInformer.Lister()
-		controller.switchLBRuleSynced = switchLBRuleInformer.Informer().HasSynced
 		controller.addSwitchLBRuleQueue = newTypedRateLimitingQueue("AddSwitchLBRule", custCrdRateLimiter)
 		controller.delSwitchLBRuleQueue = newTypedRateLimitingQueue(
 			"DeleteSwitchLBRule",
@@ -783,8 +785,6 @@ func Run(ctx context.Context, config *Configuration) {
 			),
 		)
 
-		controller.vpcDNSLister = vpcDNSInformer.Lister()
-		controller.vpcDNSSynced = vpcDNSInformer.Informer().HasSynced
 		controller.addOrUpdateVpcDNSQueue = newTypedRateLimitingQueue("AddOrUpdateVpcDns", custCrdRateLimiter)
 		controller.delVpcDNSQueue = newTypedRateLimitingQueue("DeleteVpcDns", custCrdRateLimiter)
 	}
@@ -886,9 +886,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
 		controller.ovnDnatRuleSynced,
 	}
-	if controller.config.EnableOvnLB {
-		cacheSyncs = append(cacheSyncs, controller.routerLBRuleSynced, controller.switchLBRuleSynced, controller.vpcDNSSynced)
-	}
+	cacheSyncs = append(cacheSyncs, controller.routerLBRuleSynced, controller.switchLBRuleSynced, controller.vpcDNSSynced)
 	if controller.config.EnableNP {
 		cacheSyncs = append(cacheSyncs, controller.npsSynced)
 	}

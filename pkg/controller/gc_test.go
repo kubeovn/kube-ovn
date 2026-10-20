@@ -10,9 +10,11 @@ import (
 	"time"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -115,6 +117,118 @@ func TestGcNetworkPolicyQueuesNormalizedPortGroupDeletion(t *testing.T) {
 	ctrl.deleteNpQueue.Done(request)
 	require.Equal(t, "default/np1test", request.key)
 	require.Equal(t, "np1test.default", request.portGroupName)
+}
+
+func TestGcVPCDNSWhenOvnLBDisabledDeletesGeneratedResources(t *testing.T) {
+	const name = "dns1"
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		VpcDNSs: []*kubeovnv1.VpcDns{{Name: name}},
+		SwitchLBRules: []*kubeovnv1.SwitchLBRule{{
+			Name:   genVpcDNSDpName(name),
+			Labels: map[string]string{util.VpcDNSNameLabel: "true"},
+		}},
+		Deployments: []*appsv1.Deployment{{
+			Name:      genVpcDNSDpName(name),
+			Namespace: metav1.NamespaceSystem,
+			Labels:    map[string]string{util.VpcDNSNameLabel: "true"},
+		}},
+	})
+	require.NoError(t, err)
+	fc.fakeController.config.EnableOvnLB = false
+
+	require.NoError(t, fc.fakeController.gcVPCDNS())
+	_, err = fc.kubeClient.AppsV1().Deployments(metav1.NamespaceSystem).Get(
+		context.Background(), genVpcDNSDpName(name), metav1.GetOptions{},
+	)
+	require.True(t, k8serrors.IsNotFound(err))
+	_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().SwitchLBRules().Get(
+		context.Background(), genVpcDNSDpName(name), metav1.GetOptions{},
+	)
+	require.True(t, k8serrors.IsNotFound(err))
+	_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().VpcDnses().Get(
+		context.Background(), name, metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+}
+
+func TestGcRouterLBRulesWhenOvnLBDisabledDeletesGeneratedServices(t *testing.T) {
+	const name = "rlr1"
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		RouterLBRules: []*kubeovnv1.RouterLBRule{{Name: name}},
+		Services: []*corev1.Service{{
+			Name:      generateRlrSvcName(name),
+			Namespace: metav1.NamespaceDefault,
+			Annotations: map[string]string{
+				util.RouterLBRuleVipsAnnotation: "192.0.2.1",
+			},
+		}},
+	})
+	require.NoError(t, err)
+	fc.fakeController.config.EnableOvnLB = false
+
+	require.NoError(t, fc.fakeController.gcRouterLBRules())
+	_, err = fc.kubeClient.CoreV1().Services(metav1.NamespaceDefault).Get(
+		context.Background(), generateRlrSvcName(name), metav1.GetOptions{},
+	)
+	require.True(t, k8serrors.IsNotFound(err))
+	_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().RouterLBRules().Get(
+		context.Background(), name, metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+}
+
+func TestGcLoadBalancerWhenOvnLBDisabledDeletesOwnedOrphans(t *testing.T) {
+	const (
+		vpcName    = "vpc1"
+		subnetName = "subnet1"
+		orphanLB   = "orphan-lb"
+		keptLB     = "keep-dnat"
+	)
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{{
+			Name: subnetName,
+			Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+		}},
+		Vpcs: []*kubeovnv1.Vpc{{
+			Name: vpcName,
+			Status: kubeovnv1.VpcStatus{
+				Subnets:                 []string{subnetName},
+				TCPLoadBalancer:         "tcp-lb",
+				TCPSessionLoadBalancer:  "tcp-session-lb",
+				UDPLoadBalancer:         "udp-lb",
+				UDPSessionLoadBalancer:  "udp-session-lb",
+				SctpLoadBalancer:        "sctp-lb",
+				SctpSessionLoadBalancer: "sctp-session-lb",
+			},
+		}},
+		OvnDnatRules: []*kubeovnv1.OvnDnatRule{{Name: keptLB}},
+	})
+	require.NoError(t, err)
+	fc.fakeController.config.EnableOvnLB = false
+
+	fc.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers(
+		subnetName, ovsdb.MutateOperationDelete,
+		"tcp-lb", "tcp-session-lb", "udp-lb", "udp-session-lb", "sctp-lb", "sctp-session-lb",
+	).Return(nil)
+	fc.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).DoAndReturn(func(filter func(*ovnnb.LoadBalancer) bool) error {
+		require.True(t, filter(&ovnnb.LoadBalancer{Name: orphanLB, ExternalIDs: map[string]string{"vendor": util.CniTypeName}}))
+		require.False(t, filter(&ovnnb.LoadBalancer{Name: keptLB, ExternalIDs: map[string]string{"vendor": util.CniTypeName}}))
+		require.False(t, filter(&ovnnb.LoadBalancer{Name: "external-lb", ExternalIDs: map[string]string{"vendor": "external"}}))
+		return nil
+	})
+	fc.mockOvnClient.EXPECT().DeleteChassisTemplateVariables(gomock.Any()).Return(nil)
+
+	require.NoError(t, fc.fakeController.gcLoadBalancer())
+	vpc, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().Vpcs().Get(
+		context.Background(), vpcName, metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	require.Empty(t, vpc.Status.TCPLoadBalancer)
+	require.Empty(t, vpc.Status.TCPSessionLoadBalancer)
+	require.Empty(t, vpc.Status.UDPLoadBalancer)
+	require.Empty(t, vpc.Status.UDPSessionLoadBalancer)
+	require.Empty(t, vpc.Status.SctpLoadBalancer)
+	require.Empty(t, vpc.Status.SctpSessionLoadBalancer)
 }
 
 func vmTemplate(networks []kubevirtv1.Network, annotations map[string]string) *kubevirtv1.VirtualMachineInstanceTemplateSpec {
