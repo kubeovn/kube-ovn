@@ -1013,6 +1013,10 @@ func (c *Controller) initNodeChassis() error {
 			}
 		}
 	}
+	// gcChassis (periodic ticker + the reactive call above) relies on every
+	// live node's chassis already being tagged/annotated by this point;
+	// only flip the gate on a clean, full pass over every node.
+	c.nodeChassisInitialized.Store(true)
 	return nil
 }
 

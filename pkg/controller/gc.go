@@ -22,6 +22,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -1253,7 +1254,50 @@ func (c *Controller) gcStaticRoute() error {
 	return nil
 }
 
+// gcChassisCandidates applies the --enable-external-vpc vendor filter and
+// returns the chassis/hostname pairs gcChassis's caller should consider for
+// deletion. An untagged chassis is normally treated as externally managed
+// (e.g. a non-k8s KVM hypervisor bridged into this OVN deployment) and never
+// a candidate - except when its hostname matches a *current* k8s Node, which
+// a genuinely external chassis can never do. That case is a kube-ovn chassis
+// that predates vendor tagging (an upgrade) or raced
+// initNodeChassis/UpdateChassisTag, not an externally-managed one; it is
+// self-healed (tagged) here and included like any other kube-ovn chassis,
+// instead of being permanently excluded from GC.
+func (c *Controller) gcChassisCandidates(chassises []ovnsb.Chassis, nodes []*corev1.Node) (map[string]string, error) {
+	nodeNames := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		nodeNames[node.Name] = struct{}{}
+	}
+	chassisNodes := make(map[string]string, len(chassises))
+	for _, chassis := range chassises {
+		if c.config.EnableExternalVpc && (chassis.ExternalIDs == nil || chassis.ExternalIDs["vendor"] != util.CniTypeName) {
+			if _, isLiveNode := nodeNames[chassis.Hostname]; !isLiveNode {
+				continue
+			}
+			klog.Infof("chassis %s matches live node %s but is missing the vendor tag, tagging it", chassis.Name, chassis.Hostname)
+			if err := c.OVNSbClient.UpdateChassisTag(chassis.Name, chassis.Hostname); err != nil {
+				klog.Errorf("failed to tag chassis %s for node %s: %v", chassis.Name, chassis.Hostname, err)
+				return nil, err
+			}
+		}
+		chassisNodes[chassis.Name] = chassis.Hostname
+	}
+	return chassisNodes, nil
+}
+
 func (c *Controller) gcChassis() error {
+	if !c.nodeChassisInitialized.Load() {
+		// The periodic GC ticker starts (and fires once immediately) before
+		// initResourceOnce's initNodeChassis pass has tagged every live
+		// node's chassis and before kube-ovn-cni may have even patched a
+		// just-ready node's ChassisAnnotation. Running the full sweep this
+		// early can treat a live node's not-yet-recognized chassis as an
+		// orphan and delete it. Skip this tick; the next one (GCInterval
+		// later) runs well after initNodeChassis has completed.
+		klog.Infof("skip gc chassis: node chassis not initialized yet")
+		return nil
+	}
 	// gcChassis now runs from both the periodic GC ticker and the reactive
 	// UpdateChassisTag path; serialize them so they don't race on
 	// ListChassis/DeleteChassis.
@@ -1266,23 +1310,13 @@ func (c *Controller) gcChassis() error {
 		klog.Errorf("failed to get all chassis, %v", err)
 		return err
 	}
-	chassisNodes := make(map[string]string, len(*chassises))
-	for _, chassis := range *chassises {
-		if c.config.EnableExternalVpc && (chassis.ExternalIDs == nil || chassis.ExternalIDs["vendor"] != util.CniTypeName) {
-			// Under --enable-external-vpc, restrict chassis GC to chassis
-			// kube-ovn itself tagged vendor=kube-ovn (every k8s node's
-			// chassis, stamped by UpdateChassisTag). An untagged chassis is
-			// externally managed (e.g. a non-k8s KVM hypervisor bridged
-			// into this OVN deployment) and must never be considered for
-			// deletion here, matching the same vendor filter already
-			// applied to LSP/LS/LR GC under this flag.
-			continue
-		}
-		chassisNodes[chassis.Name] = chassis.Hostname
-	}
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes, %v", err)
+		return err
+	}
+	chassisNodes, err := c.gcChassisCandidates(*chassises, nodes)
+	if err != nil {
 		return err
 	}
 	for _, node := range nodes {

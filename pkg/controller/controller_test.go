@@ -506,6 +506,12 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	nadInformerFactory.WaitForCacheSync(stopCh)
 	kubeovnInformerFactory.WaitForCacheSync(stopCh)
 
+	// gcChassis no-ops until initNodeChassis has run once; tests exercise
+	// gcChassis directly without going through controller startup, so
+	// default this to "initialized" like a running controller past its
+	// startup phase. Tests of the gate itself override it explicitly.
+	ctrl.nodeChassisInitialized.Store(true)
+
 	return &fakeController{
 		fakeController:  ctrl,
 		fakeInformers:   fakeInformers,

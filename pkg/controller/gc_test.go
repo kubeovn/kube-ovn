@@ -1196,6 +1196,96 @@ func TestGcChassisUnderExternalVpcSkipsUntaggedChassis(t *testing.T) {
 	})
 }
 
+// TestGcChassisUnderExternalVpcSelfHealsUntaggedLiveNodeChassis covers the
+// upgrade/migration gap a reviewer flagged: a chassis that genuinely belongs
+// to a still-live k8s node but is missing the vendor tag (an upgrade from
+// before vendor tagging existed, or a race with initNodeChassis/
+// UpdateChassisTag) must not be permanently excluded from GC like a real
+// external chassis - gcChassis must recognize it via its hostname matching a
+// current Node, tag it, and subject it to the normal match/orphan logic.
+func TestGcChassisUnderExternalVpcSelfHealsUntaggedLiveNodeChassis(t *testing.T) {
+	errBoom := errors.New("boom")
+
+	t.Run("untagged chassis matching a live, correctly-annotated node is tagged and kept", func(t *testing.T) {
+		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Nodes: []*corev1.Node{{
+				Name:        "node-1",
+				Annotations: map[string]string{util.ChassisAnnotation: "node-1-chassis"},
+			}},
+		})
+		require.NoError(t, err)
+		ctrl := fakeController.fakeController
+		ctrl.config.EnableExternalVpc = true
+
+		fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+			{Name: "node-1-chassis", Hostname: "node-1"},
+		}, nil)
+		fakeController.mockOvnSbClient.EXPECT().UpdateChassisTag("node-1-chassis", "node-1").Return(nil)
+		// No DeleteChassis expectation: the node is live and correctly
+		// annotated, so the now-tagged chassis must be kept, not swept as an
+		// orphan in the same pass.
+		require.NoError(t, ctrl.gcChassis())
+	})
+
+	t.Run("untagged chassis matching a live but not-yet-annotated node is tagged but still gc'd this tick", func(t *testing.T) {
+		// The node hasn't gotten its ChassisAnnotation patched yet (same
+		// race as the readiness gate, just past it): self-healing the
+		// vendor tag alone isn't enough to protect it without a matching
+		// annotation - this is the known, documented residual window the
+		// readiness gate (TestGcChassisSkipsUntilNodeChassisInitialized)
+		// closes for the very first tick. Confirms the tag still gets
+		// applied even on a chassis this tick ends up deleting.
+		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Nodes: []*corev1.Node{{Name: "node-1"}},
+		})
+		require.NoError(t, err)
+		ctrl := fakeController.fakeController
+		ctrl.config.EnableExternalVpc = true
+
+		fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+			{Name: "node-1-chassis", Hostname: "node-1"},
+		}, nil)
+		fakeController.mockOvnSbClient.EXPECT().UpdateChassisTag("node-1-chassis", "node-1").Return(nil)
+		fakeController.mockOvnSbClient.EXPECT().DeleteChassis("node-1-chassis").Return(nil)
+		require.NoError(t, ctrl.gcChassis())
+	})
+
+	t.Run("tag failure aborts gc", func(t *testing.T) {
+		fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			Nodes: []*corev1.Node{{
+				Name:        "node-1",
+				Annotations: map[string]string{util.ChassisAnnotation: "node-1-chassis"},
+			}},
+		})
+		require.NoError(t, err)
+		ctrl := fakeController.fakeController
+		ctrl.config.EnableExternalVpc = true
+
+		fakeController.mockOvnSbClient.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+			{Name: "node-1-chassis", Hostname: "node-1"},
+		}, nil)
+		fakeController.mockOvnSbClient.EXPECT().UpdateChassisTag("node-1-chassis", "node-1").Return(errBoom)
+		require.ErrorIs(t, ctrl.gcChassis(), errBoom)
+	})
+}
+
+// TestGcChassisSkipsUntilNodeChassisInitialized covers the startup race a
+// reviewer flagged: the periodic GC ticker (controller.go) starts and fires
+// its first tick before initResourceOnce's initNodeChassis pass has tagged
+// every live node's chassis, and possibly before kube-ovn-cni has even
+// patched a just-allocated node's ChassisAnnotation. gcChassis must no-op
+// entirely (not even list chassis) until that pass has completed once.
+func TestGcChassisSkipsUntilNodeChassisInitialized(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{})
+	require.NoError(t, err)
+	ctrl := fakeController.fakeController
+	ctrl.nodeChassisInitialized.Store(false)
+
+	// No ListChassis/DeleteChassis expectations at all: gomock fails this
+	// test if gcChassis does anything besides returning nil early.
+	require.NoError(t, ctrl.gcChassis())
+}
+
 // TestGcChassisUnderExternalVpcStillGCsTaggedChassis confirms the vendor
 // filter does not regress cleanup of kube-ovn's own node chassis: a
 // decommissioned/renamed k8s node's chassis is still tagged vendor=kube-ovn
@@ -1277,11 +1367,18 @@ func TestGcChassisConcurrentReactiveAndPeriodicRunsSerialize(t *testing.T) {
 		return &[]ovnsb.Chassis{}, nil
 	}).Times(2)
 
+	// require.NoError inside a goroutine only unwinds that goroutine (via
+	// t.FailNow -> runtime.Goexit); the parent keeps running past wg.Wait
+	// unaware, and the assertion below can mask the real failure. Collect
+	// each call's error and assert on it from the parent instead.
+	errs := make([]error, 2)
 	var wg sync.WaitGroup
 	wg.Add(2)
-	go func() { defer wg.Done(); require.NoError(t, ctrl.gcChassis()) }()
-	go func() { defer wg.Done(); require.NoError(t, ctrl.gcChassis()) }()
+	go func() { defer wg.Done(); errs[0] = ctrl.gcChassis() }()
+	go func() { defer wg.Done(); errs[1] = ctrl.gcChassis() }()
 	wg.Wait()
 
+	require.NoError(t, errs[0])
+	require.NoError(t, errs[1])
 	require.Equal(t, int32(1), atomic.LoadInt32(&maxConcurrent), "gcChassisMu must serialize concurrent gcChassis calls")
 }

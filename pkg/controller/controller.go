@@ -138,6 +138,16 @@ type Controller struct {
 	// gcChassisMu serializes gcChassis against its two call sites: the
 	// periodic GC ticker and the reactive call from UpdateChassisTag.
 	gcChassisMu sync.Mutex
+	// nodeChassisInitialized guards gcChassis against running before
+	// initNodeChassis has had a chance to tag every live node's chassis. The
+	// periodic GC ticker starts (and fires once immediately) inside
+	// startWorkers, which only waits for AllocatedAnnotation on each node -
+	// a node can pass that barrier before kube-ovn-cni has patched its
+	// ChassisAnnotation, let alone before initResourceOnce's initNodeChassis
+	// pass (which runs after startWorkers returns) has tagged its chassis.
+	// Without this gate, that chassis looks orphaned on the very first tick
+	// and gets deleted. Set once, at the end of initNodeChassis.
+	nodeChassisInitialized atomic.Bool
 
 	routerLBRuleLister      kubeovnlister.RouterLBRuleLister
 	routerLBRuleSynced      cache.InformerSynced
