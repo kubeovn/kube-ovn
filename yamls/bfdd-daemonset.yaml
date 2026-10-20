@@ -9,7 +9,6 @@
 #   init-peer  - discover local IP via route lookup, validate against whitelist
 #   bfdd       - bfdd-beacon daemon, listens on local IP
 #   reconcile  - continuous loop: check BFD session, add gateway peer if missing
-#                (mirrors pkg/daemon/ovs_linux.go:checkNodeGwNicInNs logic)
 #
 # Environment variables:
 #   GATEWAY_ADDRESS          - Switch gateway address for route lookup (required),
@@ -42,7 +41,7 @@
 #   bfdd-control status remote <gateway-ip> local <local-ip>
 #   # Example: bfdd-control status remote 10.32.32.1 local 10.32.32.2
 #
-#   # ---- Session management (same as reconcile sidecar & checkNodeGwNicInNs) ----
+#   # ---- Session management (same as reconcile sidecar) ----
 #   # Add a BFD peer (initiates session to remote)
 #   bfdd-control allow <remote-ip>
 #   # Example: bfdd-control allow 10.32.32.1
@@ -75,8 +74,7 @@
 #   # Delete OVN BFD entry by UUID
 #   kubectl ko exec nbctl -- destroy bfd <uuid>
 #
-# Reference: pkg/daemon/ovs_linux.go:checkNodeGwNicInNs,loopOvnExt0Check
-#            pkg/controller/vpc_egress_gateway.go:reconcileVpcEgressGatewayOVNRoutes
+# Reference: pkg/controller/vpc_egress_gateway.go:reconcileVpcEgressGatewayOVNRoutes
 #            pkg/ovs/ovn-nb-bfd.go (CreateBFD/DeleteBFD/FindBFD/ListBFDs)
 #            pkg/speaker/config.go:resolveWhitelistedNeighborLocalAddress
 #            dist/images/start-bfdd.sh, dist/images/bfdd-prestart.sh
@@ -224,7 +222,7 @@ spec:
               mountPath: /bfdd-peer
               readOnly: true
         # Reconcile loop: continuously check BFD session and add gateway peer
-        # if missing. Mirrors pkg/daemon/ovs_linux.go:checkNodeGwNicInNs logic.
+        # if missing.
         - name: reconcile
           image: "docker.io/kubeovn/kube-ovn:v1.16.0"
           imagePullPolicy: IfNotPresent

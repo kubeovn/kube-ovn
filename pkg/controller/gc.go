@@ -446,10 +446,6 @@ func (c *Controller) keepNodeLSPs(nodes []*corev1.Node, ipMap *strset.Set) map[s
 			ipMap.Add(portName)
 		}
 
-		if _, err := c.ovnEipsLister.Get(node.Name); err == nil {
-			// node external gw lsp is managed by ovn eip cr, skip gc its lsp
-			ipMap.Add(node.Name)
-		}
 	}
 	return result
 }

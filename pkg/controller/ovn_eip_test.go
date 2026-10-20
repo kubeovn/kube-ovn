@@ -146,7 +146,7 @@ func TestHandleAddOvnEipWithAllocatedStatus(t *testing.T) {
 		{name: "LRP becomes ready", usageType: util.OvnEipTypeLRP, allocated: true, wantReady: true},
 		{name: "NAT becomes ready", usageType: util.OvnEipTypeNAT, allocated: true, wantReady: true},
 		{name: "default NAT becomes ready", allocated: true, wantReady: true},
-		{name: "LSP waits for node", usageType: util.OvnEipTypeLSP, allocated: true},
+		{name: "LSP becomes ready", usageType: util.OvnEipTypeLSP, allocated: true, wantReady: true},
 		{name: "ready LRP is unchanged", usageType: util.OvnEipTypeLRP, allocated: true, ready: true, wantReady: true},
 		{name: "terminating LRP stays unready", usageType: util.OvnEipTypeLRP, allocated: true, terminating: true},
 		{name: "terminating unallocated EIP is skipped", terminating: true},

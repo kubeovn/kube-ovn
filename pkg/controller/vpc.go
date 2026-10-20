@@ -617,7 +617,6 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 		klog.Error(err)
 		return err
 	}
-	custVpcEnableExternalEcmp := false
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == key {
 			// Accelerate subnet update when vpc config is updated.
@@ -625,14 +624,11 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 			if subnet.Status.IsNotReady() {
 				c.addOrUpdateSubnetQueue.Add(subnet.Name)
 			}
-			if vpc.Name != util.DefaultVpc && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
-				custVpcEnableExternalEcmp = true
-			}
 		}
 	}
 
 	if vpc.Spec.EnableExternal || vpc.Status.EnableExternal {
-		if err = c.handleUpdateVpcExternal(cachedVpc, custVpcEnableExternalEcmp, externalSubnetExist, externalSubnetGW); err != nil {
+		if err = c.handleUpdateVpcExternal(cachedVpc, externalSubnetExist, externalSubnetGW); err != nil {
 			klog.Errorf("failed to handle update external subnet for vpc %s, %v", key, err)
 			return err
 		}
@@ -663,7 +659,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 	return nil
 }
 
-func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableExternalEcmp, defaultExternalSubnetExist bool, externalSubnetGW string) error {
+func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, defaultExternalSubnetExist bool, externalSubnetGW string) error {
 	if c.config.EnableEipSnat && vpc.Name == util.DefaultVpc {
 		klog.Infof("external_gw handle ovn default external gw %s", vpc.Name)
 		return nil
@@ -751,7 +747,7 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 	// custom vpc enable bfd
 	if vpc.Spec.EnableBfd && vpc.Name != util.DefaultVpc && defaultExternalSubnetExist {
 		// create bfd between lrp and physical switch gw
-		// bfd status down means current lrp binding chassis node external nic lost external network connectivity
+		// bfd status down means the current LRP binding lost external network connectivity
 		// should switch lrp to another node
 		lrpEipName := fmt.Sprintf("%s-%s", vpc.Name, c.config.ExternalGatewaySwitch)
 		v4ExtGw, _ := util.SplitStringIP(externalSubnetGW)
@@ -759,15 +755,6 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 		if _, err := c.OVNNbClient.CreateBFD(lrpEipName, v4ExtGw, c.config.BfdMinRx, c.config.BfdMinTx, c.config.BfdDetectMult, nil); err != nil {
 			klog.Error(err)
 			return err
-		}
-		// TODO: support multi external nic
-		if custVpcEnableExternalEcmp {
-			klog.Infof("remove normal static ecmp route for vpc %s", vpc.Name)
-			// auto remove normal type static route, if using ecmp based bfd
-			if err := c.reconcileCustomVpcDelNormalStaticRoute(vpc.Name); err != nil {
-				klog.Errorf("failed to reconcile del vpc %q normal static route", vpc.Name)
-				return err
-			}
 		}
 	}
 

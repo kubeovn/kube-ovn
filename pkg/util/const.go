@@ -135,7 +135,6 @@ const (
 	SubnetNameLabel                    = "ovn.kubernetes.io/subnet"
 	ICGatewayLabel                     = "ovn.kubernetes.io/ic-gw"
 	ExGatewayLabel                     = "ovn.kubernetes.io/external-gw"
-	NodeExtGwLabel                     = "ovn.kubernetes.io/node-ext-gw"
 	VpcNatGatewayLabel                 = "ovn.kubernetes.io/vpc-nat-gw"
 	IPReservedLabel                    = "ovn.kubernetes.io/ip_reserved"
 	VpcNatGatewayNameLabel             = "ovn.kubernetes.io/vpc-nat-gw-name"
@@ -169,9 +168,6 @@ const (
 	NetworkTypeStt    = "stt"
 
 	LoNic         = "lo"
-	NodeGwNic     = "ovnext0"
-	NodeGwNs      = "ovnext"
-	NodeGwNsPath  = "/var/run/netns/ovnext"
 	BindMountPath = "/run/netns"
 
 	NodeNic           = "ovn0"
