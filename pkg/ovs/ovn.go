@@ -332,12 +332,12 @@ func (c *ovsDbClient) transact(method string, operations []ovsdb.Operation) (boo
 	if klog.V(4).Enabled() {
 		transaction = transactionSequence.Add(1)
 		ctx = klog.NewContext(ctx, klog.Background().WithName("libovsdb").WithValues("transaction", transaction, "method", method))
-		klog.V(4).InfoS("[DEBUG-network-e2e] OVSDB transaction begin", "transaction", transaction, "method", method, "operations", operations)
+		klog.V(4).InfoS("OVSDB transaction started", "transaction", transaction, "method", method, "operations", operations)
 	}
 	results, err := c.Client.Transact(ctx, operations...)
 	elapsed := float64(time.Since(start) / time.Millisecond)
 	if transaction != 0 {
-		klog.V(4).InfoS("[DEBUG-network-e2e] OVSDB RPC returned", "transaction", transaction, "method", method, "elapsedMs", elapsed, "error", err, "results", results)
+		klog.V(4).InfoS("OVSDB transaction returned", "transaction", transaction, "method", method, "elapsedMs", elapsed, "error", err, "results", results)
 	}
 
 	var dbType string
