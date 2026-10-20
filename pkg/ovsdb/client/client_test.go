@@ -2,6 +2,9 @@ package client
 
 import (
 	"context"
+	"os"
+	"os/exec"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -12,6 +15,34 @@ import (
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 )
+
+func TestLibovsdbDebugVerbosity(t *testing.T) {
+	if os.Getenv("KUBE_OVN_LOGGER_TEST_CHILD") == "1" {
+		logger.V(3).Info("test-connection-marker")
+		for range 150 {
+			logger.V(4).Info("test-transaction-marker")
+		}
+		logger.V(5).Info("test-reconnect-marker")
+		return
+	}
+	for _, verbosity := range []string{"", "3", "5", "invalid"} {
+		t.Run(verbosity, func(t *testing.T) {
+			// Use a fresh process because the logger reads its setting during init.
+			cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestLibovsdbDebugVerbosity$")
+			cmd.Env = append(os.Environ(), "KUBE_OVN_LOGGER_TEST_CHILD=1", "KUBE_OVN_LIBOVSDB_LOG_VERBOSITY="+verbosity)
+			output, err := cmd.CombinedOutput()
+			require.NoError(t, err, "%s", output)
+			require.Contains(t, string(output), "test-connection-marker")
+			if verbosity == "5" {
+				require.Equal(t, 150, strings.Count(string(output), "test-transaction-marker"))
+				require.Contains(t, string(output), "test-reconnect-marker")
+			} else {
+				require.NotContains(t, string(output), "test-transaction-marker")
+				require.NotContains(t, string(output), "test-reconnect-marker")
+			}
+		})
+	}
+}
 
 type blockingMonitorClient struct {
 	rpcMutex          sync.RWMutex

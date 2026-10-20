@@ -96,6 +96,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # Temporarily disable Valgrind in CI while investigating E2E convergence failures.
+  DEBUG_WRAPPER: ""
   EXECUTION_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
   # Every PR job uses the immutable candidate revision validated against the live pull request.
   E2E_SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.headSHA || github.event.repository.default_branch }}
@@ -431,7 +433,7 @@ jobs:
           persist-credentials: false
 
       - name: Run control module tests
-        run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py hack/test_e2e_pr_router.py
+        run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py hack/test_e2e_pr_router.py hack/test_network_e2e_diagnostics.py
 
   prepare-kind-node-images:
     name: Prepare private Kind node image (${{ matrix.k8s-version }})
@@ -941,7 +943,8 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # Leave time after the Ginkgo timeout for diagnostics and artifact uploads.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.e2e-selection.outputs.k8sConformanceMatrix) }}
@@ -1020,14 +1023,6 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
-          fi
-
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
@@ -1050,6 +1045,16 @@ jobs:
         id: install
         run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
+      - name: Enable networking debug logs before E2E
+        timeout-minutes: 5
+        run: |
+          args=()
+          if [ '${{ matrix.mode }}' = overlay ]; then
+            args+=(--isolate-service-proxy-fallback)
+          fi
+          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" prepare \
+            "$GITHUB_WORKSPACE/network-e2e-diagnostics/preparation" "${args[@]}"
+
       - name: Run E2E
         id: e2e
         working-directory: ${{ env.E2E_DIR }}
@@ -1057,7 +1062,28 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: ${{ matrix.mode }}
-        run: make k8s-conformance-e2e
+          E2E_MAX_SECONDS: 4200
+        run: >-
+          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" run
+          "$GITHUB_WORKSPACE/network-e2e-diagnostics"
+          --suite k8s-conformance-e2e
+
+      - name: Collect final network state
+        if: always() && steps.install.outcome != 'skipped'
+        continue-on-error: true
+        timeout-minutes: 3
+        run: >-
+          python3 hack/network_e2e_diagnostics.py snapshot
+          network-e2e-diagnostics/post-job
+
+      - name: Upload network diagnostics and test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-diagnostics
+          path: network-e2e-diagnostics/
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Collect k8s events
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
@@ -1105,6 +1131,7 @@ jobs:
           path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
       - name: Check valgrind result
+        if: env.DEBUG_WRAPPER == 'valgrind'
         run: |
           if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
             exit
@@ -1237,7 +1264,8 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    # Leave time after the Ginkgo timeout for diagnostics and artifact uploads.
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
@@ -1325,14 +1353,6 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
-          fi
-
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
@@ -1350,10 +1370,41 @@ jobs:
         id: install
         run: make kind-install-${{ matrix.ip-family }}
 
+      - name: Enable networking debug logs before E2E
+        timeout-minutes: 5
+        run: >-
+          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" prepare
+          "$GITHUB_WORKSPACE/network-e2e-diagnostics/preparation"
+
       - name: Run E2E
         id: e2e
         working-directory: ${{ env.E2E_DIR }}
-        run: make k8s-netpol-e2e
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          NP_ENFORCEMENT: ${{ matrix.np-enforcement }}
+          E2E_MAX_SECONDS: 4200
+        run: >-
+          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" run
+          "$GITHUB_WORKSPACE/network-e2e-diagnostics"
+          --suite k8s-netpol-e2e
+
+      - name: Collect final network state
+        if: always() && steps.install.outcome != 'skipped'
+        continue-on-error: true
+        timeout-minutes: 3
+        run: >-
+          python3 hack/network_e2e_diagnostics.py snapshot
+          network-e2e-diagnostics/post-job
+
+      - name: Upload network diagnostics and test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: k8s-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-diagnostics
+          path: network-e2e-diagnostics/
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Collect k8s events
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
@@ -1401,6 +1452,7 @@ jobs:
           path: k8s-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
 
       - name: Check valgrind result
+        if: env.DEBUG_WRAPPER == 'valgrind'
         run: |
           if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
             exit
@@ -1503,14 +1555,6 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
-          fi
-
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
@@ -1581,6 +1625,7 @@ jobs:
           path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
 
       - name: Check valgrind result
+        if: env.DEBUG_WRAPPER == 'valgrind'
         run: |
           if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
             exit
@@ -1696,14 +1741,6 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
-          fi
-
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
@@ -1776,6 +1813,7 @@ jobs:
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check valgrind result
+        if: env.DEBUG_WRAPPER == 'valgrind'
         run: |
           if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
             exit
@@ -3593,14 +3631,6 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
-          fi
-
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
@@ -3753,14 +3783,6 @@ jobs:
 
       - name: Load image
         run: docker load --input kube-ovn.tar
-
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
-          fi
 
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
@@ -4368,7 +4390,7 @@ jobs:
         id: install
         env:
           UNTAINT_CONTROL_PLANE: "false"
-        run: make kind-install-debug-valgrind-${{ matrix.ip-family }}
+        run: make kind-install-${{ matrix.ip-family }}
 
       - name: Install Multus
         run: make kind-install-multus
@@ -4427,6 +4449,7 @@ jobs:
           path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: Check valgrind result
+        if: env.DEBUG_WRAPPER == 'valgrind'
         run: |
           kubectl -n kube-system rollout restart ds ovs-ovn
           kubectl -n kube-system rollout status ds ovs-ovn

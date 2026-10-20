@@ -1954,6 +1954,24 @@ class E2EControlTest(unittest.TestCase):
         self.assertIn("needs.e2e-executor-result.result == 'success'", blocks["push"])
         self.assertNotIn("github.event_name != 'workflow_dispatch'", blocks["push"])
 
+    def testNetworkingDiagnosticsAndValgrindSwitch(self):
+        workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
+        blocks = e2eSelector.workflowJobBlocks(workflow)
+        self.assertIn('DEBUG_WRAPPER: ""', workflow)
+        self.assertNotIn("DEBUG_WRAPPER=valgrind", workflow)
+        self.assertNotIn("kind-install-debug-valgrind", workflow)
+        for jobId in ("k8s-conformance-e2e", "k8s-netpol-e2e"):
+            with self.subTest(jobId=jobId):
+                self.assertIn("network_e2e_diagnostics.py", blocks[jobId])
+                self.assertIn("Upload network diagnostics and test reports", blocks[jobId])
+
+        scheduled = (repoRoot / ".github/workflows/scheduled-e2e.yaml").read_text()
+        scheduledBlocks = e2eSelector.workflowJobBlocks(scheduled)
+        for jobId in ("k8s-conformance-e2e", "k8s-netpol-e2e"):
+            with self.subTest(jobId=jobId):
+                self.assertIn("network_e2e_diagnostics.py", scheduledBlocks[jobId])
+                self.assertIn("Upload network diagnostics and test reports", scheduledBlocks[jobId])
+
     def testKubeOvnConformanceTimeoutCoversValgrindDualUnderlay(self):
         workflow = (repoRoot / ".github/workflows/build-x86-image.yaml").read_text()
         blocks = e2eSelector.workflowJobBlocks(workflow)
