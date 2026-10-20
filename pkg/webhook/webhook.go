@@ -26,7 +26,8 @@ type ValidatingHook struct {
 
 	// controllerUserName is the identity (system:serviceaccount:<ns>:<name>) kube-ovn
 	// components authenticate as. It is used to recognize requests from the controller
-	// itself, e.g. for the one-time switch_lb_rule vip mac repair in VipUpdateHook.
+	// itself, e.g. for the one-time switch_lb_rule vip mac repair in VipUpdateHook and
+	// for the share DNAT owner labels (see validateNftableLbOwnerLabels).
 	controllerUserName string
 }
 
@@ -45,6 +46,8 @@ func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache
 	createHooks[cronJobGVK] = v.CronJobCreateHook
 	createHooks[jobGVK] = v.JobCreateHook
 	createHooks[podGVK] = v.PodCreateHook
+	createHooks[serviceGVK] = v.ServiceCreateHook
+	updateHooks[serviceGVK] = v.ServiceUpdateHook
 
 	createHooks[subnetGVK] = v.SubnetCreateHook
 	updateHooks[subnetGVK] = v.SubnetUpdateHook

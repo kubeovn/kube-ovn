@@ -667,8 +667,13 @@ spec:
             type: object
           spec:
             properties:
+              clusterIP:
+                description: Kubernetes Service ClusterIP served by this rule for
+                  traffic from within the VPC.
+                type: string
               eip:
-                description: EIP name for DNAT rule
+                description: Name of the EIP used as the rule's external address.
+                  Optional when ClusterIP is set.
                 type: string
               externalPort:
                 description: External port number

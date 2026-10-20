@@ -39,7 +39,8 @@ CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 # Set to false to preserve CNI plugins already installed on the host.
 INSTALL_CNI_PLUGINS=${INSTALL_CNI_PLUGINS:-true}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
-ENABLE_NFTABLE_LB_SVC=${ENABLE_NFTABLE_LB_SVC:-true}
+ENABLE_GW_NFTABLE_LB_SVC=${ENABLE_GW_NFTABLE_LB_SVC:-false}
+ENABLE_GW_NFTABLE_SVC_CLUSTER_IP=${ENABLE_GW_NFTABLE_SVC_CLUSTER_IP:-false}
 ENABLE_NAT_GW=${ENABLE_NAT_GW:-true}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
 ENABLE_ARP_DETECT_IP_CONFLICT=${ENABLE_ARP_DETECT_IP_CONFLICT:-true}
@@ -1099,8 +1100,13 @@ spec:
             type: object
           spec:
             properties:
+              clusterIP:
+                description: Kubernetes Service ClusterIP served by this rule for
+                  traffic from within the VPC.
+                type: string
               eip:
-                description: EIP name for DNAT rule
+                description: Name of the EIP used as the rule's external address.
+                  Optional when ClusterIP is set.
                 type: string
               externalPort:
                 description: External port number
@@ -9058,7 +9064,8 @@ spec:
           - --log_file=/var/log/kube-ovn/kube-ovn-controller.log
           - --log_file_max_size=200
           - --enable-lb-svc=$ENABLE_LB_SVC
-          - --enable-nftable-lb-svc=$ENABLE_NFTABLE_LB_SVC
+          - --enable-gw-nftable-lb-svc=$ENABLE_GW_NFTABLE_LB_SVC
+          - --enable-gw-nftable-svc-cluster-ip=$ENABLE_GW_NFTABLE_SVC_CLUSTER_IP
           - --keep-vm-ip=$ENABLE_KEEP_VM_IP
           - --enable-metrics=$ENABLE_METRICS
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
