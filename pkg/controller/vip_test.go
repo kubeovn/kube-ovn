@@ -493,7 +493,11 @@ func TestHandleAddVirtualIP_SwitchLBRuleRepairNotSilentlySkippedWhenIPAMSubnetUn
 
 func newSwitchLBVipTestController(t *testing.T, subnet *kubeovnv1.Subnet, vips ...*kubeovnv1.Vip) *fakeController {
 	t.Helper()
-	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}})
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		// the router name differs from the vpc name on purpose: the router port is named after the router
+		Vpcs: []*kubeovnv1.Vpc{{Name: subnet.Spec.Vpc, Status: kubeovnv1.VpcStatus{Router: "foo-router"}}},
+	})
 	require.NoError(t, err)
 	vipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	for _, vip := range vips {
@@ -530,7 +534,7 @@ func TestSyncSwitchLBVipArpProxyCollectsSwitchLBVipsOfSubnet(t *testing.T) {
 		otherType,
 	)
 	fakeController.mockOvnClient.EXPECT().
-		SetLogicalSwitchPortArpProxy("foo-subnet-foo-vpc", []string{"10.0.1.2", "10.0.1.3", "fd00::3"}).
+		SetLogicalSwitchPortArpProxy("foo-subnet-foo-router", []string{"10.0.1.2", "10.0.1.3", "fd00::3"}).
 		Return(nil)
 
 	require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName))
@@ -546,13 +550,13 @@ func TestSyncSwitchLBVipArpProxyClearsOptionWithoutVips(t *testing.T) {
 	mockOvnClient := fakeController.mockOvnClient
 
 	t.Run("router port exists", func(t *testing.T) {
-		mockOvnClient.EXPECT().LogicalSwitchPortExists("foo-subnet-foo-vpc").Return(true, nil)
-		mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("foo-subnet-foo-vpc", []string(nil)).Return(nil)
+		mockOvnClient.EXPECT().LogicalSwitchPortExists("foo-subnet-foo-router").Return(true, nil)
+		mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("foo-subnet-foo-router", []string(nil)).Return(nil)
 		require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName))
 	})
 
 	t.Run("router port does not exist", func(t *testing.T) {
-		mockOvnClient.EXPECT().LogicalSwitchPortExists("foo-subnet-foo-vpc").Return(false, nil)
+		mockOvnClient.EXPECT().LogicalSwitchPortExists("foo-subnet-foo-router").Return(false, nil)
 		require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName))
 	})
 }
@@ -568,9 +572,82 @@ func TestReconcileSwitchLBVipPortSetsProxyBeforeDeletingStalePort(t *testing.T) 
 	mockOvnClient := fakeController.mockOvnClient
 
 	gomock.InOrder(
-		mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("foo-subnet-foo-vpc", []string{"10.0.1.2"}).Return(nil),
+		mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("foo-subnet-foo-router", []string{"10.0.1.2"}).Return(nil),
 		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)).Return(nil),
 	)
 
 	require.NoError(t, fakeController.fakeController.reconcileSwitchLBVipPort(vip))
+}
+
+func TestSyncSwitchLBVipArpProxyIgnoresMissingVpc(t *testing.T) {
+	const subnetName = "foo-subnet"
+	subnet := &kubeovnv1.Subnet{
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Vpc: "gone-vpc"},
+	}
+	fakeController := newSwitchLBVipTestController(t, subnet, switchLBVip("a", subnetName, "10.0.1.2", ""))
+	fakeController.fakeController.vpcsLister = kubeovnlisters.NewVpcLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+
+	require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName))
+}
+
+func TestHandleDeletingVipSyncsArpProxyBeforeRemovingFinalizer(t *testing.T) {
+	const subnetName = "foo-subnet"
+	subnet := &kubeovnv1.Subnet{
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider, Vpc: "foo-vpc"},
+	}
+	vip := switchLBVip("a", subnetName, "10.0.1.2", "")
+	vip.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+	vip.Finalizers = []string{util.KubeOVNControllerFinalizer}
+	fakeController := newSwitchLBVipTestController(t, subnet, vip)
+	ctrl := fakeController.fakeController
+	ctrl.updateSubnetStatusQueue = newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil)
+	defer ctrl.updateSubnetStatusQueue.ShutDown()
+	_, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Create(t.Context(), vip.DeepCopy(), metav1.CreateOptions{})
+	require.NoError(t, err)
+	mockOvnClient := fakeController.mockOvnClient
+
+	// the deleting vip is not collected any more, so its address is dropped from the router port
+	mockOvnClient.EXPECT().DeleteLogicalSwitchPort(gomock.Any()).Return(nil).AnyTimes()
+	gomock.InOrder(
+		mockOvnClient.EXPECT().LogicalSwitchPortExists("foo-subnet-foo-router").Return(true, nil),
+		mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("foo-subnet-foo-router", []string(nil)).Return(nil),
+	)
+	mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+
+	require.NoError(t, ctrl.handleDeletingVip(vip.Name, vip))
+
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Empty(t, got.Finalizers)
+}
+
+func TestEnqueueUpdateVirtualIPOnSwitchLBVipStatusChange(t *testing.T) {
+	queue := newTypedRateLimitingQueue[string]("UpdateVirtualIP", nil)
+	defer queue.ShutDown()
+	parentsQueue := newTypedRateLimitingQueue[string]("UpdateVirtualParents", nil)
+	defer parentsQueue.ShutDown()
+	ctrl := &Controller{updateVirtualIPQueue: queue, updateVirtualParentsQueue: parentsQueue}
+
+	t.Run("switch lb vip", func(t *testing.T) {
+		oldVip := &kubeovnv1.Vip{Name: "lb-vip", Spec: kubeovnv1.VipSpec{Type: util.SwitchLBRuleVip, V4ip: "10.0.1.2"}}
+		newVip := oldVip.DeepCopy()
+		newVip.Status.V4ip = "10.0.1.2"
+
+		ctrl.enqueueUpdateVirtualIP(oldVip, newVip)
+		require.Equal(t, 1, queue.Len())
+		key, _ := queue.Get()
+		require.Equal(t, "lb-vip", key)
+		queue.Done(key)
+	})
+
+	t.Run("other vip", func(t *testing.T) {
+		oldVip := &kubeovnv1.Vip{Name: "plain-vip", Spec: kubeovnv1.VipSpec{V4ip: "10.0.1.3"}}
+		newVip := oldVip.DeepCopy()
+		newVip.Status.V4ip = "10.0.1.3"
+
+		ctrl.enqueueUpdateVirtualIP(oldVip, newVip)
+		require.Zero(t, queue.Len())
+	})
 }
