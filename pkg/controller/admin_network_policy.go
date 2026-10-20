@@ -442,6 +442,15 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	desiredAnp := cachedAnp.DeepCopy()
 	klog.Infof("handle update admin network policy %s", desiredAnp.Name)
 
+	// Verify the ANP is correctly written before changing any OVN resources.
+	c.priorityMapMutex.RLock()
+	err = c.validateAnpConfig(desiredAnp)
+	c.priorityMapMutex.RUnlock()
+	if err != nil {
+		klog.Errorf("failed to validate anp %s: %v", desiredAnp.Name, err)
+		return err
+	}
+
 	anpName := getAnpName(desiredAnp.Name)
 	pgName := strings.ReplaceAll(anpName, "-", ".")
 
