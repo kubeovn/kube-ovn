@@ -11,13 +11,14 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def validate(manifest, enabled):
+def validate(manifest, enabled, recompute_enabled=False):
     documents = [item for item in yaml.safe_load_all(manifest) if item]
     cni = next(item for item in documents if item.get("kind") == "DaemonSet" and item["metadata"]["name"] == "kube-ovn-cni")
     pod = cni["spec"]["template"]["spec"]
     containers = {item["name"]: item for item in pod["containers"]}
     daemon = containers["cni-server"]
     assert f"--enable-tproxy={str(enabled).lower()}" in daemon["args"]
+    assert f"--enable-recompute={str(recompute_enabled).lower()}" in daemon["args"]
     assert ("tproxy" in containers) == enabled
     volumes = {item["name"]: item for item in pod["volumes"]}
     assert ("tproxy-socket" in volumes) == enabled
@@ -55,7 +56,7 @@ def validate(manifest, enabled):
             assert all(mount["mountPath"] != "/var/run/netns" for mount in container.get("volumeMounts", []))
 
 
-def installer_manifest(enabled, run_as_user=65534):
+def installer_manifest(enabled, recompute_enabled=False, run_as_user=65534):
     text = (ROOT / "dist/images/install.sh").read_text()
     start = text.index('TPROXY_CONTAINER=""')
     end = text.index("cat <<EOF > kube-ovn.yaml", start)
@@ -66,24 +67,26 @@ def installer_manifest(enabled, run_as_user=65534):
     # Supply only interpolation values, then execute the rendering fragment.
     # Do not source install.sh: it invokes kubectl and modifies the cluster.
     script = rendering + "cat <<EOF\n" + cni + "\nEOF\n"
-    env = dict(os.environ, ENABLE_TPROXY=str(enabled).lower(), REGISTRY="registry.test/kubeovn", VERSION="test",
+    env = dict(os.environ, ENABLE_TPROXY=str(enabled).lower(), ENABLE_RECOMPUTE=str(recompute_enabled).lower(), REGISTRY="registry.test/kubeovn", VERSION="test",
                IMAGE_PULL_POLICY="IfNotPresent", RUN_AS_USER=str(run_as_user), KUBELET_DIR="/var/lib/kubelet",
                CNI_SERVER_CAPABILITIES="                - NET_ADMIN\n                - NET_BIND_SERVICE\n                - NET_RAW")
     return subprocess.check_output(["bash", "-c", script], env=env, text=True)
 
 
 def main():
-    for chart, switch, ipsec_switch in (("kube-ovn", "func.ENABLE_TPROXY", "func.ENABLE_OVN_IPSEC"),
-                                         ("kube-ovn-v2", "features.enableTproxy", "features.enableOvnIpsec")):
+    for chart, switch, recompute_switch, ipsec_switch in (("kube-ovn", "func.ENABLE_TPROXY", "func.ENABLE_RECOMPUTE", "func.ENABLE_OVN_IPSEC"),
+                                                           ("kube-ovn-v2", "features.enableTproxy", "features.enableRecompute", "features.enableOvnIpsec")):
         for enabled in (False, True):
-            command = ["helm", "template", "tproxy-test", str(ROOT / "charts" / chart), "--set", f"{switch}={str(enabled).lower()}"]
-            validate(subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL), enabled)
-            validate(subprocess.check_output(command + ["--set", f"{ipsec_switch}=true"], text=True, stderr=subprocess.DEVNULL), enabled)
-            if chart == "kube-ovn-v2":
-                validate(subprocess.check_output(command + ["--set", "ovsOvn.dpdkHybrid.enabled=true"], text=True, stderr=subprocess.DEVNULL), enabled)
+            for recompute_enabled in (False, True):
+                command = ["helm", "template", "tproxy-test", str(ROOT / "charts" / chart), "--set", f"{switch}={str(enabled).lower()}", "--set", f"{recompute_switch}={str(recompute_enabled).lower()}"]
+                validate(subprocess.check_output(command, text=True, stderr=subprocess.DEVNULL), enabled, recompute_enabled)
+                validate(subprocess.check_output(command + ["--set", f"{ipsec_switch}=true"], text=True, stderr=subprocess.DEVNULL), enabled, recompute_enabled)
+                if chart == "kube-ovn-v2":
+                    validate(subprocess.check_output(command + ["--set", "ovsOvn.dpdkHybrid.enabled=true"], text=True, stderr=subprocess.DEVNULL), enabled, recompute_enabled)
     for enabled in (False, True):
-        for run_as_user in (0, 65534):
-            validate(installer_manifest(enabled, run_as_user), enabled)
+        for recompute_enabled in (False, True):
+            for run_as_user in (0, 65534):
+                validate(installer_manifest(enabled, recompute_enabled, run_as_user), enabled, recompute_enabled)
     for name in ("start-ovs.sh", "start-ovs-dpdk-v2.sh"):
         assert "kube-ovn-tproxy" not in (ROOT / "dist/images" / name).read_text()
     dockerfile = (ROOT / "dist/images/Dockerfile").read_text()
