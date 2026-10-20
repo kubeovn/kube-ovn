@@ -272,34 +272,6 @@ func TestMarkAndCleanLSPKeepsExistingNodeLSP(t *testing.T) {
 	require.True(t, lastNoPodLSP.Has("orphan"))
 }
 
-func TestKeepNodeLSPsKeepsExternalGatewayLSP(t *testing.T) {
-	nodeEip := &kubeovnv1.OvnEip{}
-	nodeEip.Name = "node-2"
-	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		Nodes: []*corev1.Node{
-			{
-				Name: "node-1",
-				Annotations: map[string]string{
-					util.AllocatedAnnotation: "true",
-				},
-			},
-			{Name: "node-2"},
-		},
-		OvnEips: []*kubeovnv1.OvnEip{nodeEip},
-	})
-	require.NoError(t, err)
-
-	ctrl := fakeController.fakeController
-	nodes, err := ctrl.nodesLister.List(labels.Everything())
-	require.NoError(t, err)
-	ipMap := strset.New()
-	nodeLSPs := ctrl.keepNodeLSPs(nodes, ipMap)
-
-	require.Equal(t, map[string]string{util.NodeLspName("node-1"): "node-1"}, nodeLSPs)
-	require.True(t, ipMap.Has(util.NodeLspName("node-1")))
-	require.True(t, ipMap.Has("node-2"))
-}
-
 func TestEnqueueMissingNodeLSPsSkipsExistingLSP(t *testing.T) {
 	fakeController := newFakeController(t)
 	ctrl := fakeController.fakeController

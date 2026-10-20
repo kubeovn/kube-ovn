@@ -50,7 +50,7 @@ type OvnEipSpec struct {
 	// usage type: lrp, lsp, nat
 	// nat: used by nat: dnat, snat, fip
 	// lrp: lrp created by vpc enable external, and also could be used by nat
-	// lsp: in the case of bfd session between lrp and lsp, the lsp is on the node as ecmp nexthop
+	// lsp: used by a logical switch port EIP
 }
 
 type OvnEipStatus struct {
