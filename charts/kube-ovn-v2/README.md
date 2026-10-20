@@ -48,6 +48,58 @@ All three `ovsOvn` directories must point outside `/etc`, which is read-only on 
 only becomes a host mount when `features.enableOvnIpsec` is enabled, but setting it up front keeps IPSEC
 from failing later with `mkdir /etc/origin: read-only file system`.
 
+## Externally managed webhook certificates
+
+By default, enabling the validating webhook creates a cert-manager Certificate and
+a self-signed Issuer. To use your own Certificate specification and existing
+Issuer or ClusterIssuer, keep the webhook enabled and disable only certificate
+creation:
+
+```yaml
+validatingWebhook:
+  enabled: true
+  certificate:
+    create: false
+```
+
+Manage the replacement Certificate outside this chart, for example in a parent
+chart. It must be named `kube-ovn-webhook-serving-cert` in the configured
+`namespace` and write to `kube-ovn-webhook-secret`. Include all three Service DNS
+names, substituting your configured `namespace` and `clusterDomain`:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kube-ovn-webhook-serving-cert
+  namespace: kube-system
+spec:
+  secretName: kube-ovn-webhook-secret
+  dnsNames:
+    - kube-ovn-webhook.kube-system
+    - kube-ovn-webhook.kube-system.svc
+    - kube-ovn-webhook.kube-system.svc.cluster.local
+  issuerRef:
+    group: cert-manager.io
+    kind: Issuer
+    name: existing-webhook-issuer
+```
+
+The referenced Issuer must already exist in the Certificate namespace, or use
+`kind: ClusterIssuer` for a cluster-scoped issuer. Add any certificate policy
+fields required by your environment to this external Certificate.
+
+cert-manager and its CA injector are still required: the webhook configuration
+continues to reference this Certificate for CA bundle injection. The Certificate
+must populate the Secret with `tls.crt`, `tls.key`, and `ca.crt` before the webhook
+can serve requests.
+
+For an existing installation, plan the Certificate ownership transfer before
+changing this setting. Helm removes the previously managed Certificate and Issuer
+on upgrade; simply applying another Certificate with the same name does not
+transfer ownership. Secret deletion also depends on cert-manager owner-reference
+configuration.
+
 ## Migrate from v1 to v2 Chart
 
 > **⚠️ This is a breaking migration.** The v2 chart adopts standard Kubernetes labels (`app.kubernetes.io/name`,
@@ -2812,6 +2864,15 @@ false
 </pre>
 </td>
 			<td>Annotations to be added to all top-level kube-ovn-webhook objects (resources under templates/webhook)</td>
+		</tr>
+		<tr>
+			<td>validatingWebhook.certificate.create</td>
+			<td>bool</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+			<td>Create the webhook Certificate and self-signed Issuer. Set to false to manage your own cert-manager Certificate and issuer outside this chart; the webhook remains enabled. See the README for required resource names and upgrade considerations.</td>
 		</tr>
 		<tr>
 			<td>validatingWebhook.enabled</td>

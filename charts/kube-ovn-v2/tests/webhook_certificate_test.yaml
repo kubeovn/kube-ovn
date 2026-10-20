@@ -1,0 +1,89 @@
+suite: Webhook certificate management (v2)
+templates:
+  - webhook/certificate.yaml
+  - webhook/webhook-deployment.yaml
+  - webhook/service.yaml
+  - webhook/webhook.yaml
+tests:
+  - it: creates the existing Certificate and self-signed Issuer by default when the webhook is enabled
+    set:
+      validatingWebhook.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 2
+        template: webhook/certificate.yaml
+      - isKind:
+          of: Certificate
+        documentIndex: 0
+        template: webhook/certificate.yaml
+      - equal:
+          path: spec.issuerRef.name
+          value: kube-ovn-webhook-selfsigned-issuer
+        documentIndex: 0
+        template: webhook/certificate.yaml
+      - isKind:
+          of: Issuer
+        documentIndex: 1
+        template: webhook/certificate.yaml
+      - equal:
+          path: spec.selfSigned
+          value: {}
+        documentIndex: 1
+        template: webhook/certificate.yaml
+
+  - it: omits the bundled Certificate and Issuer but preserves the webhook and certificate wiring
+    set:
+      namespace: custom-namespace
+      validatingWebhook.enabled: true
+      validatingWebhook.certificate.create: false
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: webhook/certificate.yaml
+      - isKind:
+          of: Deployment
+        template: webhook/webhook-deployment.yaml
+      - contains:
+          path: spec.template.spec.volumes
+          content:
+            name: cert
+            secret:
+              defaultMode: 420
+              secretName: kube-ovn-webhook-secret
+        template: webhook/webhook-deployment.yaml
+      - isKind:
+          of: Service
+        template: webhook/service.yaml
+      - equal:
+          path: metadata.namespace
+          value: custom-namespace
+        template: webhook/service.yaml
+      - isKind:
+          of: ValidatingWebhookConfiguration
+        template: webhook/webhook.yaml
+      - equal:
+          path: metadata.annotations["cert-manager.io/inject-ca-from"]
+          value: custom-namespace/kube-ovn-webhook-serving-cert
+        template: webhook/webhook.yaml
+      - equal:
+          path: webhooks[0].clientConfig.service.namespace
+          value: custom-namespace
+        template: webhook/webhook.yaml
+
+  - it: omits all webhook resources when the webhook is disabled even if certificate creation is enabled
+    set:
+      validatingWebhook.enabled: false
+      validatingWebhook.certificate.create: true
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: webhook/certificate.yaml
+      - hasDocuments:
+          count: 0
+        template: webhook/webhook-deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: webhook/service.yaml
+      - hasDocuments:
+          count: 0
+        template: webhook/webhook.yaml

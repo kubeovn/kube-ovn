@@ -314,6 +314,10 @@ validatingWebhook:
   # -- Enable the deployment of the validating webhook.
   # @section -- Validating webhook configuration
   enabled: false
+  certificate:
+    # -- Create the webhook Certificate and self-signed Issuer. Set to false to manage your own cert-manager Certificate and issuer outside this chart; the webhook remains enabled. See the README for required resource names and upgrade considerations.
+    # @section -- Validating webhook configuration
+    create: true
   # -- Override image settings for kube-ovn-webhook. Empty fields fall back to the global kube-ovn image.
   # @section -- Validating webhook configuration
   image:
