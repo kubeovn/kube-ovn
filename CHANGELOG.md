@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.16.15 (2026-10-21)
+
+ * [02fccb4e1](https://github.com/kubeovn/kube-ovn/commit/02fccb4e162d28ec6db6120c89e5f11e9ad138e0) release v1.16.15
+ * [fd986f245](https://github.com/kubeovn/kube-ovn/commit/fd986f245600b64a505452b60f44120d51475eb0) fix: make EVPN VXLAN SVI forwarding reliable (#7732)
+ * [18bab5674](https://github.com/kubeovn/kube-ovn/commit/18bab567441866fe9333ebcacf67f5ffc933b77f) build: use Trivy default database repositories (#7734)
+ * [fdb3f271c](https://github.com/kubeovn/kube-ovn/commit/fdb3f271ca0a40cfad385b58eb7440cf8bd0981d) [release-1.16] feat(cni): make periodic recompute optional (#7720)
+ * [a06d9c002](https://github.com/kubeovn/kube-ovn/commit/a06d9c0020b0044d26d531bfc9d653c74e8803ea) chore(deps): update dependency go to v1.27.3 (#7717)
+ * [c237a5d32](https://github.com/kubeovn/kube-ovn/commit/c237a5d322193a6b2f7b4a4408e1dad2e00fc064) fix(helm): fix pinger external-address and add v2 image overrides (#7713)
+ * [a777c2c9e](https://github.com/kubeovn/kube-ovn/commit/a777c2c9e38e3c84d3edb4a6b5423093b553b6cd) fix(controller): only migrate the tier of kube-ovn ACLs (#7711)
+ * [f56b52fde](https://github.com/kubeovn/kube-ovn/commit/f56b52fde51674c8b38795dc5c71c4c19705c075) feat(cni): optionally skip bundled CNI plugins (#7705)
+ * [7dec0f7b9](https://github.com/kubeovn/kube-ovn/commit/7dec0f7b96032aef236a6472c90eade18b965bf5) fix: route terminating ippools to the delete queue on informer list (#7701)
+ * [d800c0034](https://github.com/kubeovn/kube-ovn/commit/d800c00345b5efb7b664a117ab24270a79e1b8bf) fix: run modernize from Go tool dependencies (#7700)
+ * [f72da8e29](https://github.com/kubeovn/kube-ovn/commit/f72da8e29ed432623334b866cca522705add1e38) prepare for next release
+
+### Contributors
+
+ * renovate[bot]
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.14 (2026-10-14)
 
  * [1f127ff43](https://github.com/kubeovn/kube-ovn/commit/1f127ff4331f876b076fb201cbd09a9547f8fbed) release v1.16.14
@@ -722,6 +742,21 @@
  * jskrill
  * renovate[bot]
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.15.32 (2026-10-21)
+
+ * [e0b25258a](https://github.com/kubeovn/kube-ovn/commit/e0b25258a5f82644c9c358e32a407af46f2c63ad) release v1.15.32
+ * [dbd806a07](https://github.com/kubeovn/kube-ovn/commit/dbd806a07605e68f6c018a8112be976516ede4e5) fix: update Go to 1.26.10 for release-1.15
+ * [c4bab6604](https://github.com/kubeovn/kube-ovn/commit/c4bab6604df1cc3080f12bacbed314dee5288c60) build: use Trivy default database repositories (#7733)
+ * [5c23035de](https://github.com/kubeovn/kube-ovn/commit/5c23035de9f92424b76b66cc59b165f5d80a781d) fix(controller): requeue network policies when pod is routed (#7603) (#7724)
+ * [3d4abb6b9](https://github.com/kubeovn/kube-ovn/commit/3d4abb6b98630912748edee52faf248e97b21868) fix(helm): fix pinger external-address and add v2 image overrides (#7712)
+ * [5267acce4](https://github.com/kubeovn/kube-ovn/commit/5267acce49ba3f432cf31f03dfe0141e122aea43) fix: route terminating ippools to the delete queue on informer list (#7698)
+ * [9bb725a0f](https://github.com/kubeovn/kube-ovn/commit/9bb725a0f48e9e9c0c30fff1c72001a5469473e6) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 
