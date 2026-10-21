@@ -1,15 +1,15 @@
-{{- if and .Values.monitor.serviceMonitor.enabled (include "kubeovn.renderControlPlane" .) }}
+{{- if and .Values.monitor.serviceMonitor.enabled (include "kubeovn.renderControlPlane" .) (not .Values.central.hcp.enabled) }}
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: kube-ovn-monitor
+  name: kube-ovn-monitor{{ include "kubeovn.centralSuffix" . }}
   namespace: {{ include "kubeovn.centralNamespace" . }}
   {{- with .Values.monitor.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   labels:
-    app.kubernetes.io/name: kube-ovn-monitor
+    app.kubernetes.io/name: kube-ovn-monitor{{ include "kubeovn.centralSuffix" . }}
     app.kubernetes.io/part-of: kube-ovn
     {{- with .Values.monitor.labels }}
     {{- toYaml . | nindent 4 }}

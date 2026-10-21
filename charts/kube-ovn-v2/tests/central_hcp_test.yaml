@@ -10,6 +10,9 @@ templates:
   - ovs-ovn/ovs-ovn-daemonset.yaml
   - ovs-ovn/ovs-ovn-dpdk-daemonset.yaml
   - hooks/upgrade-ovs-ovn.yaml
+  - monitor/monitor-deployment.yaml
+  - monitor/monitor-service.yaml
+  - monitor/monitor-servicemonitor.yaml
 tests:
   - it: renders ovn-central as a PVC-backed StatefulSet in the HCP namespace
     template: central/central-deployment.yaml
@@ -331,3 +334,24 @@ tests:
           content:
             name: OVN_NB_ADDR
             value: tcp:ovn-nb.example.com:6641
+
+  - it: does not render the monitor resources when HCP is enabled
+    set:
+      central.hcp.enabled: true
+      central.hcp.namespace: hcp
+      central.hcp.nbAddress: tcp:ovn-nb.example.com:6641
+      central.hcp.sbAddress: tcp:ovn-sb.example.com:6642
+      monitor.serviceMonitor.enabled: true
+    asserts:
+      - hasDocuments:
+          count: 0
+    templates:
+      - monitor/monitor-deployment.yaml
+      - monitor/monitor-service.yaml
+      - monitor/monitor-servicemonitor.yaml
+
+  - it: still renders the monitor Deployment when HCP is disabled
+    template: monitor/monitor-deployment.yaml
+    asserts:
+      - isKind:
+          of: Deployment
