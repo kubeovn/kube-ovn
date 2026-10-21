@@ -1128,6 +1128,10 @@ central:
     enabled: false
     namespace: hcp
     replicas: 3
+    # -- Suffix appended to ovn-central resource names (deployment/services/RBAC),
+    # allowing several hosted ovn-central instances in the same namespace.
+    # Empty keeps the default names ovn-central/ovn-nb/ovn-sb/ovn-northd.
+    suffix: ""
     # -- OVN NB address used by workload clusters, for example tcp:ovn-nb.example.com:6641.
     nbAddress: ""
     # -- OVN SB address used by workload clusters, for example tcp:ovn-sb.example.com:6642.

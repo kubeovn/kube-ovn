@@ -22,7 +22,7 @@ spec:
     type: RollingUpdate
   selector:
     matchLabels:
-      app.kubernetes.io/name: kube-ovn-monitor
+      app.kubernetes.io/name: kube-ovn-monitor{{ include "kubeovn.centralSuffix" . }}
       app.kubernetes.io/part-of: kube-ovn
   template:
     metadata:
@@ -31,7 +31,7 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: kube-ovn-monitor
+        app.kubernetes.io/name: kube-ovn-monitor{{ include "kubeovn.centralSuffix" . }}
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.monitor.podLabels }}
         {{- toYaml . | nindent 8 }}
@@ -52,10 +52,10 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
-                  app.kubernetes.io/name: kube-ovn-monitor
+                  app.kubernetes.io/name: kube-ovn-monitor{{ include "kubeovn.centralSuffix" . }}
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
-      serviceAccountName: kube-ovn-app
+      serviceAccountName: kube-ovn-app{{ include "kubeovn.centralSuffix" . }}
       automountServiceAccountToken: true
       hostNetwork: true
       securityContext:
@@ -80,7 +80,7 @@ spec:
             - name: kube-ovn-log
               mountPath: /var/log/kube-ovn
       containers:
-        - name: kube-ovn-monitor
+        - name: kube-ovn-monitor{{ include "kubeovn.centralSuffix" . }}
           image: {{ $monitorImage.prefix }}{{ $monitorImage.repository }}:{{ $monitorImage.tag }}
           imagePullPolicy: {{ $monitorImage.pullPolicy }}
           command: ["/kube-ovn/start-ovn-monitor.sh"]

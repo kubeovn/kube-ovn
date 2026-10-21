@@ -20,7 +20,7 @@ spec:
       port: {{ .Values.monitor.metrics.port }}
   type: ClusterIP
   selector:
-    app.kubernetes.io/name: kube-ovn-monitor
+    app.kubernetes.io/name: kube-ovn-monitor{{ include "kubeovn.centralSuffix" . }}
     app.kubernetes.io/part-of: kube-ovn
   sessionAffinity: None
   {{- if eq .Values.networking.stack "Dual" }}

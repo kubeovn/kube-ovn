@@ -53,7 +53,7 @@ imagePullSecrets:
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: kube-ovn-app
+  name: kube-ovn-app{{ include "kubeovn.centralSuffix" . }}
   namespace: {{ include "kubeovn.centralNamespace" . }}
 automountServiceAccountToken: false
 {{-  if .Values.global.registry.imagePullSecrets }}

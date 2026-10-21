@@ -2,7 +2,7 @@
 kind: Service
 apiVersion: v1
 metadata:
-  name: ovn-sb
+  name: {{ include "kubeovn.sbName" . }}
   namespace: {{ include "kubeovn.centralNamespace" . }}
   {{- with .Values.central.annotations }}
   annotations:
@@ -26,7 +26,7 @@ spec:
   ipFamilyPolicy: PreferDualStack
   {{- end }}
   selector:
-    app.kubernetes.io/name: ovn-central
+    app.kubernetes.io/name: {{ include "kubeovn.centralName" . }}
     app.kubernetes.io/part-of: kube-ovn
     ovn-sb-leader: "true"
   sessionAffinity: None

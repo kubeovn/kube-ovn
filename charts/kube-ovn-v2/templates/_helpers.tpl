@@ -165,11 +165,32 @@ TLS arguments for kube-ovn components that expose HTTPS endpoints.
 {{- end -}}
 {{- end -}}
 
+{{- define "kubeovn.centralSuffix" -}}
+{{- .Values.central.hcp.suffix | default "" -}}
+{{- end -}}
+
+{{- define "kubeovn.centralName" -}}
+{{- printf "ovn-central%s" (include "kubeovn.centralSuffix" .) -}}
+{{- end -}}
+
+{{- define "kubeovn.nbName" -}}
+{{- printf "ovn-nb%s" (include "kubeovn.centralSuffix" .) -}}
+{{- end -}}
+
+{{- define "kubeovn.sbName" -}}
+{{- printf "ovn-sb%s" (include "kubeovn.centralSuffix" .) -}}
+{{- end -}}
+
+{{- define "kubeovn.northdName" -}}
+{{- printf "ovn-northd%s" (include "kubeovn.centralSuffix" .) -}}
+{{- end -}}
+
 {{- define "kubeovn.centralRaftAddresses" -}}
 {{- $namespace := include "kubeovn.centralNamespace" . -}}
+{{- $name := include "kubeovn.centralName" . -}}
 {{- $addresses := list -}}
 {{- range $i := until (int .Values.central.hcp.replicas) -}}
-{{- $addresses = append $addresses (printf "ovn-central-%d.ovn-central.%s.svc" $i $namespace) -}}
+{{- $addresses = append $addresses (printf "%s-%d.%s.%s.svc" $name $i $name $namespace) -}}
 {{- end -}}
 {{- join "," $addresses -}}
 {{- end -}}

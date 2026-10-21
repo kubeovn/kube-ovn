@@ -46,7 +46,7 @@ rules:
     resources:
       - deployments
     resourceNames:
-      - ovn-central
+      - {{ include "kubeovn.centralName" . }}
     verbs:
       - get
       - list

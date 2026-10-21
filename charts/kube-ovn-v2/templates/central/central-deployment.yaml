@@ -3,7 +3,7 @@
 kind: {{ ternary "StatefulSet" "Deployment" .Values.central.hcp.enabled }}
 apiVersion: apps/v1
 metadata:
-  name: ovn-central
+  name: {{ include "kubeovn.centralName" . }}
   namespace: {{ include "kubeovn.centralNamespace" . }}
   {{- with .Values.central.annotations }}
   annotations:
@@ -16,7 +16,7 @@ metadata:
 spec:
   replicas: {{ include "kubeovn.centralReplicas" . }}
   {{- if .Values.central.hcp.enabled }}
-  serviceName: ovn-central
+  serviceName: {{ include "kubeovn.centralName" . }}
   podManagementPolicy: Parallel
   persistentVolumeClaimRetentionPolicy:
     whenDeleted: Delete
@@ -31,7 +31,7 @@ spec:
   {{- end }}
   selector:
     matchLabels:
-      app.kubernetes.io/name: ovn-central
+      app.kubernetes.io/name: {{ include "kubeovn.centralName" . }}
       app.kubernetes.io/part-of: kube-ovn
   template:
     metadata:
@@ -40,13 +40,13 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        app.kubernetes.io/name: ovn-central
+        app.kubernetes.io/name: {{ include "kubeovn.centralName" . }}
         app.kubernetes.io/part-of: kube-ovn
         {{- with .Values.central.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
         # Legacy labels
-        app: ovn-central
+        app: {{ include "kubeovn.centralName" . }}
         component: network
         type: infra
     spec:
@@ -63,10 +63,10 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             - labelSelector:
                 matchLabels:
-                  app.kubernetes.io/name: ovn-central
+                  app.kubernetes.io/name: {{ include "kubeovn.centralName" . }}
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
-      serviceAccountName: {{ ternary "ovn-central" "ovn-ovs" .Values.central.hcp.enabled }}
+      serviceAccountName: {{ ternary (include "kubeovn.centralName" .) "ovn-ovs" .Values.central.hcp.enabled }}
       automountServiceAccountToken: true
       hostNetwork: {{ ternary "false" "true" .Values.central.hcp.enabled }}
       securityContext:
@@ -130,7 +130,7 @@ spec:
               value: "{{ ternary (include "kubeovn.centralRaftAddresses" .) (include "kubeovn.ovnDbAddresses" .) .Values.central.hcp.enabled }}"
             {{- if .Values.central.hcp.enabled }}
             - name: DB_CLUSTER_ADDR
-              value: "$(POD_NAME).ovn-central.$(POD_NAMESPACE).svc"
+              value: "$(POD_NAME).{{ include "kubeovn.centralName" . }}.$(POD_NAMESPACE).svc"
             {{- end }}
             - name: POD_IP
               {{- if .Values.central.hcp.enabled }}
@@ -237,9 +237,9 @@ spec:
     - metadata:
         name: ovn-data
         labels:
-          app.kubernetes.io/name: ovn-central
+          app.kubernetes.io/name: {{ include "kubeovn.centralName" . }}
           app.kubernetes.io/part-of: kube-ovn
-          app: ovn-central
+          app: {{ include "kubeovn.centralName" . }}
       spec:
         accessModes:
           - ReadWriteOnce

@@ -4,7 +4,7 @@ kind: ClusterRole
 metadata:
   annotations:
     rbac.authorization.k8s.io/system-only: "true"
-  name: system:ovn
+  name: system:ovn{{ include "kubeovn.centralSuffix" . }}
 rules:
   - apiGroups:
       - "kubeovn.io"
@@ -317,7 +317,7 @@ kind: ClusterRole
 metadata:
   annotations:
     rbac.authorization.k8s.io/system-only: "true"
-  name: system:ovn-ovs
+  name: system:ovn-ovs{{ include "kubeovn.centralSuffix" . }}
 rules:
   - apiGroups:
       - ""
@@ -352,7 +352,7 @@ kind: ClusterRole
 metadata:
   annotations:
     rbac.authorization.k8s.io/system-only: "true"
-  name: system:kube-ovn-app
+  name: system:kube-ovn-app{{ include "kubeovn.centralSuffix" . }}
 rules:
   - apiGroups:
       - ""
