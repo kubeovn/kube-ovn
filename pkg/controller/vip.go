@@ -45,13 +45,6 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj any) {
 		klog.Infof("enqueue update vip %s", key)
 		c.updateVirtualIPQueue.Add(key)
 	}
-	if newVip.Spec.Type == util.SwitchLBRuleVip &&
-		(oldVip.Status.V4ip != newVip.Status.V4ip || oldVip.Status.V6ip != newVip.Status.V6ip) {
-		// a status-only change, e.g. the add path of a vip whose spec is already complete,
-		// still has to reach the router port arp_proxy
-		klog.Infof("enqueue update vip %s for status ip change", key)
-		c.updateVirtualIPQueue.Add(key)
-	}
 	if !slices.Equal(oldVip.Spec.Selector, newVip.Spec.Selector) ||
 		oldVip.Status.Mac != newVip.Status.Mac ||
 		oldVip.Status.V4ip != newVip.Status.V4ip ||
@@ -159,6 +152,13 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	v4ip, v6ip, mac, err := c.acquireVipAddress(vip, subnet, portName, macAddress)
 	if err != nil {
 		return err
+	}
+	if vip.Spec.Type == util.SwitchLBRuleVip {
+		// The vip is ready as soon as its status holds the addresses, so the router port has to
+		// answer for them before that. The lister does not know the vip yet, pass its addresses.
+		if err := c.syncSwitchLBVipArpProxy(subnet.Name, v4ip, v6ip); err != nil {
+			return err
+		}
 	}
 	if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, subnet.Name, v4ip, v6ip, mac, needsMacRepair); err != nil {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
@@ -328,6 +328,8 @@ func (c *Controller) reconcileVipType(vip *kubeovnv1.Vip) error {
 			return err
 		}
 	} else if vip.Status.Type == util.SwitchLBRuleVip {
+		// The webhook rejects changing the type of an assigned vip, so no lsp of the old type is
+		// left to clean up here.
 		if err := c.detachAllVipAttachSubnets(vip); err != nil {
 			return err
 		}
@@ -384,7 +386,8 @@ func (c *Controller) reconcileSwitchLBVipPort(vip *kubeovnv1.Vip) error {
 // addresses of all its switch_lb_vip vips. The switch then answers ARP/ND for them with the gateway
 // MAC, so frames DNATed by the switch load balancer reach the router port instead of an unbound
 // port owning the vip MAC. The gateway MAC stays owned by the router port alone.
-func (c *Controller) syncSwitchLBVipArpProxy(subnetName string) error {
+// extraIPs are addresses of vips that are not in the lister yet.
+func (c *Controller) syncSwitchLBVipArpProxy(subnetName string, extraIPs ...string) error {
 	subnet, err := c.subnetsLister.Get(subnetName)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -398,7 +401,7 @@ func (c *Controller) syncSwitchLBVipArpProxy(subnetName string) error {
 		klog.Errorf("failed to list vips: %v", err)
 		return err
 	}
-	var proxyIPs []string
+	proxyIPs := slices.DeleteFunc(slices.Clone(extraIPs), func(ip string) bool { return ip == "" })
 	for _, v := range vips {
 		if v.Spec.Subnet != subnetName || v.Spec.Type != util.SwitchLBRuleVip || !v.DeletionTimestamp.IsZero() {
 			continue
@@ -410,12 +413,12 @@ func (c *Controller) syncSwitchLBVipArpProxy(subnetName string) error {
 		}
 	}
 	slices.Sort(proxyIPs)
+	proxyIPs = slices.Compact(proxyIPs)
 
+	// A missing vpc is an error, not a no-op: callers go on to remove the stale vip lsp, which must
+	// not happen before the proxy is configured.
 	vpc, err := c.vpcsLister.Get(subnet.Spec.Vpc)
 	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
 		klog.Errorf("failed to get vpc %s: %v", subnet.Spec.Vpc, err)
 		return err
 	}
