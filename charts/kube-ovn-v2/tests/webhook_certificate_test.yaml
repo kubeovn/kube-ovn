@@ -31,6 +31,40 @@ tests:
         documentIndex: 1
         template: webhook/certificate.yaml
 
+  - it: preserves certificate creation when legacy values omit the certificate map
+    set:
+      validatingWebhook.enabled: true
+      validatingWebhook.certificate: null
+    asserts:
+      - hasDocuments:
+          count: 2
+        template: webhook/certificate.yaml
+      - isKind:
+          of: Certificate
+        documentIndex: 0
+        template: webhook/certificate.yaml
+      - isKind:
+          of: Issuer
+        documentIndex: 1
+        template: webhook/certificate.yaml
+
+  - it: preserves certificate creation when the create setting is null
+    set:
+      validatingWebhook.enabled: true
+      validatingWebhook.certificate.create: null
+    asserts:
+      - hasDocuments:
+          count: 2
+        template: webhook/certificate.yaml
+      - isKind:
+          of: Certificate
+        documentIndex: 0
+        template: webhook/certificate.yaml
+      - isKind:
+          of: Issuer
+        documentIndex: 1
+        template: webhook/certificate.yaml
+
   - it: omits the bundled Certificate and Issuer but preserves the webhook and certificate wiring
     set:
       namespace: custom-namespace
@@ -74,6 +108,24 @@ tests:
     set:
       validatingWebhook.enabled: false
       validatingWebhook.certificate.create: true
+    asserts:
+      - hasDocuments:
+          count: 0
+        template: webhook/certificate.yaml
+      - hasDocuments:
+          count: 0
+        template: webhook/webhook-deployment.yaml
+      - hasDocuments:
+          count: 0
+        template: webhook/service.yaml
+      - hasDocuments:
+          count: 0
+        template: webhook/webhook.yaml
+
+  - it: omits all webhook resources when the webhook is disabled with legacy certificate values
+    set:
+      validatingWebhook.enabled: false
+      validatingWebhook.certificate: null
     asserts:
       - hasDocuments:
           count: 0
