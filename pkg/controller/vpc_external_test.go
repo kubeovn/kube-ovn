@@ -267,7 +267,7 @@ func TestHandleUpdateVpcExternalReconcilesExternalSubnets(t *testing.T) {
 
 		cachedVpc, err := ctrl.vpcsLister.Get(extTestVpcName)
 		require.NoError(t, err)
-		require.NoError(t, ctrl.handleUpdateVpcExternal(cachedVpc, false, true, ""))
+		require.NoError(t, ctrl.handleUpdateVpcExternal(cachedVpc, true, ""))
 
 		vpc, err := ctrl.config.KubeOvnClient.KubeovnV1().Vpcs().
 			Get(context.Background(), extTestVpcName, metav1.GetOptions{})
@@ -294,7 +294,7 @@ func TestHandleUpdateVpcExternalReconcilesExternalSubnets(t *testing.T) {
 
 		cachedVpc, err := ctrl.vpcsLister.Get(extTestVpcName)
 		require.NoError(t, err)
-		require.NoError(t, ctrl.handleUpdateVpcExternal(cachedVpc, false, true, ""))
+		require.NoError(t, ctrl.handleUpdateVpcExternal(cachedVpc, true, ""))
 
 		vpc, err = ctrl.config.KubeOvnClient.KubeovnV1().Vpcs().
 			Get(context.Background(), extTestVpcName, metav1.GetOptions{})

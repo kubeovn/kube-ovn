@@ -1,6 +1,8 @@
 package ko
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -40,6 +42,24 @@ func TestNodePortProbeUsesAllocatedServiceFamilies(t *testing.T) {
 			require.Equal(t, tc.want, targets)
 		})
 	}
+}
+
+func TestDatabaseIsStandalone(t *testing.T) {
+	app, executor, _, _ := testApplication(t)
+	target := Target{Namespace: "ovn-system", Pod: "ovn-central", Container: "ovn-central"}
+
+	executor.run = func(_ context.Context, _ Target, argv []string, _ Streams) error {
+		require.Equal(t, []string{"ovsdb-tool", "db-is-standalone", "/etc/ovn/ovnnb_db.db"}, argv)
+		return nil
+	}
+	client, err := app.newClient()
+	require.NoError(t, err)
+	require.True(t, databaseIsStandalone(t.Context(), client, target, "nb"))
+
+	executor.run = func(_ context.Context, _ Target, _ []string, _ Streams) error {
+		return errors.New("clustered database")
+	}
+	require.False(t, databaseIsStandalone(t.Context(), client, target, "nb"))
 }
 
 func TestNodePortProbeRejectsMissingFamilyTargets(t *testing.T) {

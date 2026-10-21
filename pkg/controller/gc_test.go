@@ -10,9 +10,11 @@ import (
 	"time"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -24,6 +26,10 @@ import (
 	"k8s.io/utils/keymutex"
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
+	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
+	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	anplisters "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
+	cnplisters "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
@@ -115,6 +121,118 @@ func TestGcNetworkPolicyQueuesNormalizedPortGroupDeletion(t *testing.T) {
 	ctrl.deleteNpQueue.Done(request)
 	require.Equal(t, "default/np1test", request.key)
 	require.Equal(t, "np1test.default", request.portGroupName)
+}
+
+func TestGcVPCDNSWhenOvnLBDisabledDeletesGeneratedResources(t *testing.T) {
+	const name = "dns1"
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		VpcDNSs: []*kubeovnv1.VpcDns{{Name: name}},
+		SwitchLBRules: []*kubeovnv1.SwitchLBRule{{
+			Name:   genVpcDNSDpName(name),
+			Labels: map[string]string{util.VpcDNSNameLabel: "true"},
+		}},
+		Deployments: []*appsv1.Deployment{{
+			Name:      genVpcDNSDpName(name),
+			Namespace: metav1.NamespaceSystem,
+			Labels:    map[string]string{util.VpcDNSNameLabel: "true"},
+		}},
+	})
+	require.NoError(t, err)
+	fc.fakeController.config.EnableOvnLB = false
+
+	require.NoError(t, fc.fakeController.gcVPCDNS())
+	_, err = fc.kubeClient.AppsV1().Deployments(metav1.NamespaceSystem).Get(
+		context.Background(), genVpcDNSDpName(name), metav1.GetOptions{},
+	)
+	require.True(t, k8serrors.IsNotFound(err))
+	_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().SwitchLBRules().Get(
+		context.Background(), genVpcDNSDpName(name), metav1.GetOptions{},
+	)
+	require.True(t, k8serrors.IsNotFound(err))
+	_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().VpcDnses().Get(
+		context.Background(), name, metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+}
+
+func TestGcRouterLBRulesWhenOvnLBDisabledDeletesGeneratedServices(t *testing.T) {
+	const name = "rlr1"
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		RouterLBRules: []*kubeovnv1.RouterLBRule{{Name: name}},
+		Services: []*corev1.Service{{
+			Name:      generateRlrSvcName(name),
+			Namespace: metav1.NamespaceDefault,
+			Annotations: map[string]string{
+				util.RouterLBRuleVipsAnnotation: "192.0.2.1",
+			},
+		}},
+	})
+	require.NoError(t, err)
+	fc.fakeController.config.EnableOvnLB = false
+
+	require.NoError(t, fc.fakeController.gcRouterLBRules())
+	_, err = fc.kubeClient.CoreV1().Services(metav1.NamespaceDefault).Get(
+		context.Background(), generateRlrSvcName(name), metav1.GetOptions{},
+	)
+	require.True(t, k8serrors.IsNotFound(err))
+	_, err = fc.fakeController.config.KubeOvnClient.KubeovnV1().RouterLBRules().Get(
+		context.Background(), name, metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+}
+
+func TestGcLoadBalancerWhenOvnLBDisabledDeletesOwnedOrphans(t *testing.T) {
+	const (
+		vpcName    = "vpc1"
+		subnetName = "subnet1"
+		orphanLB   = "orphan-lb"
+		keptLB     = "keep-dnat"
+	)
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{{
+			Name: subnetName,
+			Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+		}},
+		Vpcs: []*kubeovnv1.Vpc{{
+			Name: vpcName,
+			Status: kubeovnv1.VpcStatus{
+				Subnets:                 []string{subnetName},
+				TCPLoadBalancer:         "tcp-lb",
+				TCPSessionLoadBalancer:  "tcp-session-lb",
+				UDPLoadBalancer:         "udp-lb",
+				UDPSessionLoadBalancer:  "udp-session-lb",
+				SctpLoadBalancer:        "sctp-lb",
+				SctpSessionLoadBalancer: "sctp-session-lb",
+			},
+		}},
+		OvnDnatRules: []*kubeovnv1.OvnDnatRule{{Name: keptLB}},
+	})
+	require.NoError(t, err)
+	fc.fakeController.config.EnableOvnLB = false
+
+	fc.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers(
+		subnetName, ovsdb.MutateOperationDelete,
+		"tcp-lb", "tcp-session-lb", "udp-lb", "udp-session-lb", "sctp-lb", "sctp-session-lb",
+	).Return(nil)
+	fc.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).DoAndReturn(func(filter func(*ovnnb.LoadBalancer) bool) error {
+		require.True(t, filter(&ovnnb.LoadBalancer{Name: orphanLB, ExternalIDs: map[string]string{"vendor": util.CniTypeName}}))
+		require.False(t, filter(&ovnnb.LoadBalancer{Name: keptLB, ExternalIDs: map[string]string{"vendor": util.CniTypeName}}))
+		require.False(t, filter(&ovnnb.LoadBalancer{Name: "external-lb", ExternalIDs: map[string]string{"vendor": "external"}}))
+		return nil
+	})
+	fc.mockOvnClient.EXPECT().DeleteChassisTemplateVariables(gomock.Any()).Return(nil)
+
+	require.NoError(t, fc.fakeController.gcLoadBalancer())
+	vpc, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().Vpcs().Get(
+		context.Background(), vpcName, metav1.GetOptions{},
+	)
+	require.NoError(t, err)
+	require.Empty(t, vpc.Status.TCPLoadBalancer)
+	require.Empty(t, vpc.Status.TCPSessionLoadBalancer)
+	require.Empty(t, vpc.Status.UDPLoadBalancer)
+	require.Empty(t, vpc.Status.UDPSessionLoadBalancer)
+	require.Empty(t, vpc.Status.SctpLoadBalancer)
+	require.Empty(t, vpc.Status.SctpSessionLoadBalancer)
 }
 
 func vmTemplate(networks []kubevirtv1.Network, annotations map[string]string) *kubevirtv1.VirtualMachineInstanceTemplateSpec {
@@ -270,34 +388,6 @@ func TestMarkAndCleanLSPKeepsExistingNodeLSP(t *testing.T) {
 	require.NoError(t, ctrl.markAndCleanLSP())
 	require.Equal(t, 0, ctrl.addNodeQueue.Len())
 	require.True(t, lastNoPodLSP.Has("orphan"))
-}
-
-func TestKeepNodeLSPsKeepsExternalGatewayLSP(t *testing.T) {
-	nodeEip := &kubeovnv1.OvnEip{}
-	nodeEip.Name = "node-2"
-	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		Nodes: []*corev1.Node{
-			{
-				Name: "node-1",
-				Annotations: map[string]string{
-					util.AllocatedAnnotation: "true",
-				},
-			},
-			{Name: "node-2"},
-		},
-		OvnEips: []*kubeovnv1.OvnEip{nodeEip},
-	})
-	require.NoError(t, err)
-
-	ctrl := fakeController.fakeController
-	nodes, err := ctrl.nodesLister.List(labels.Everything())
-	require.NoError(t, err)
-	ipMap := strset.New()
-	nodeLSPs := ctrl.keepNodeLSPs(nodes, ipMap)
-
-	require.Equal(t, map[string]string{util.NodeLspName("node-1"): "node-1"}, nodeLSPs)
-	require.True(t, ipMap.Has(util.NodeLspName("node-1")))
-	require.True(t, ipMap.Has("node-2"))
 }
 
 func TestEnqueueMissingNodeLSPsSkipsExistingLSP(t *testing.T) {
@@ -460,6 +550,8 @@ func TestGcDisabledDNSNameResolvers(t *testing.T) {
 			})
 			require.NoError(t, err)
 			ctrl := fakeController.fakeController
+			ctrl.anpsLister = anplisters.NewAdminNetworkPolicyLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+			ctrl.cnpsLister = cnplisters.NewClusterNetworkPolicyLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
 
 			resolver := &kubeovnv1.DNSNameResolver{
 				Name:   "anp-example-resolver",
@@ -472,6 +564,12 @@ func TestGcDisabledDNSNameResolvers(t *testing.T) {
 			_, err = client.Create(context.Background(), unmanaged, metav1.CreateOptions{})
 			require.NoError(t, err)
 
+			if tt.enableANP && !tt.enableDNSNameResolver {
+				fakeController.mockOvnClient.EXPECT().ListPortGroups(map[string]string{adminNetworkPolicyKey: ""}).Return(nil, nil)
+				fakeController.mockOvnClient.EXPECT().ListAddressSets(map[string]string{adminNetworkPolicyKey: ""}).Return(nil, nil)
+				fakeController.mockOvnClient.EXPECT().ListPortGroups(map[string]string{clusterNetworkPolicyKey: ""}).Return(nil, nil)
+				fakeController.mockOvnClient.EXPECT().ListAddressSets(map[string]string{clusterNetworkPolicyKey: ""}).Return(nil, nil)
+			}
 			require.NoError(t, ctrl.gcDisabledDNSNameResolvers())
 			_, err = client.Get(context.Background(), resolver.Name, metav1.GetOptions{})
 			if tt.shouldDelete {
@@ -483,6 +581,126 @@ func TestGcDisabledDNSNameResolvers(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestGcDisabledDNSNameResolversDeletesPoliciesWithDomains(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{EnableANP: true})
+	require.NoError(t, err)
+	ctrl := fakeController.fakeController
+
+	anp := &v1alpha1.AdminNetworkPolicy{
+		Name: "uses-dns",
+		Spec: v1alpha1.AdminNetworkPolicySpec{Egress: []v1alpha1.AdminNetworkPolicyEgressRule{{
+			To: []v1alpha1.AdminNetworkPolicyEgressPeer{{DomainNames: []v1alpha1.DomainName{"example.test."}}},
+		}}},
+	}
+	cnp := &v1alpha2.ClusterNetworkPolicy{
+		Name: "uses-dns",
+		Spec: v1alpha2.ClusterNetworkPolicySpec{Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{{
+			To: []v1alpha2.ClusterNetworkPolicyEgressPeer{{DomainNames: []v1alpha2.DomainName{"example.test."}}},
+		}}},
+	}
+	anpIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	cnpIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, anpIndexer.Add(anp))
+	require.NoError(t, cnpIndexer.Add(cnp))
+	require.NoError(t, anpIndexer.Add(&v1alpha1.AdminNetworkPolicy{Name: "without-dns"}))
+	require.NoError(t, cnpIndexer.Add(&v1alpha2.ClusterNetworkPolicy{Name: "without-dns"}))
+	ctrl.anpsLister = anplisters.NewAdminNetworkPolicyLister(anpIndexer)
+	ctrl.cnpsLister = cnplisters.NewClusterNetworkPolicyLister(cnpIndexer)
+
+	for _, policy := range []struct {
+		key         string
+		name        string
+		portGroupID string
+	}{
+		{adminNetworkPolicyKey, getAnpName(anp.Name), getAnpName(anp.Name)},
+		{clusterNetworkPolicyKey, getCnpName(cnp.Name), getCnpPortGroupName(cnp)},
+	} {
+		externalIDs := map[string]string{policy.key: policy.portGroupID}
+		pgName := policy.name + ".pg"
+		fakeController.mockOvnClient.EXPECT().ListPortGroups(externalIDs).Return([]ovnnb.PortGroup{{Name: pgName}}, nil)
+		fakeController.mockOvnClient.EXPECT().DeletePortGroup(pgName).Return(nil)
+		fakeController.mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{policy.key: policy.name + "/ingress"}).Return(nil)
+		fakeController.mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{policy.key: policy.name + "/egress"}).Return(nil)
+	}
+	fakeController.mockOvnClient.EXPECT().ListPortGroups(map[string]string{adminNetworkPolicyKey: ""}).Return(nil, nil)
+	fakeController.mockOvnClient.EXPECT().ListAddressSets(map[string]string{adminNetworkPolicyKey: ""}).Return(nil, nil)
+	fakeController.mockOvnClient.EXPECT().ListPortGroups(map[string]string{clusterNetworkPolicyKey: ""}).Return(nil, nil)
+	fakeController.mockOvnClient.EXPECT().ListAddressSets(map[string]string{clusterNetworkPolicyKey: ""}).Return(nil, nil)
+
+	require.NoError(t, ctrl.gcDisabledDNSNameResolvers())
+}
+
+func TestGcDisabledDNSNameResolversDeletesOrphanedPolicyResources(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{EnableANP: true})
+	require.NoError(t, err)
+	ctrl := fakeController.fakeController
+	ctrl.anpsLister = anplisters.NewAdminNetworkPolicyLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+	ctrl.cnpsLister = cnplisters.NewClusterNetworkPolicyLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+
+	anpPG := ovnnb.PortGroup{
+		Name:        "anp-orphan.pg",
+		ExternalIDs: map[string]string{adminNetworkPolicyKey: "anp-orphan"},
+	}
+	cnpPG := ovnnb.PortGroup{
+		Name:        "cnp-orphan.pg",
+		ExternalIDs: map[string]string{clusterNetworkPolicyKey: "cnp-orphan"},
+	}
+	fakeController.mockOvnClient.EXPECT().ListPortGroups(map[string]string{adminNetworkPolicyKey: ""}).Return([]ovnnb.PortGroup{anpPG}, nil)
+	fakeController.mockOvnClient.EXPECT().DeletePortGroup(anpPG.Name).Return(nil)
+	fakeController.mockOvnClient.EXPECT().ListAddressSets(map[string]string{adminNetworkPolicyKey: ""}).Return([]ovnnb.AddressSet{{
+		Name:        "anp-orphan.egress.0.rule.ipv4",
+		ExternalIDs: map[string]string{adminNetworkPolicyKey: "anp-orphan/egress"},
+	}}, nil)
+	fakeController.mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{adminNetworkPolicyKey: "anp-orphan/egress"}).Return(nil)
+
+	fakeController.mockOvnClient.EXPECT().ListPortGroups(map[string]string{clusterNetworkPolicyKey: ""}).Return([]ovnnb.PortGroup{cnpPG}, nil)
+	fakeController.mockOvnClient.EXPECT().DeletePortGroup(cnpPG.Name).Return(nil)
+	fakeController.mockOvnClient.EXPECT().ListAddressSets(map[string]string{clusterNetworkPolicyKey: ""}).Return([]ovnnb.AddressSet{{
+		Name:        "cnp-orphan.egress.0.rule.ipv4",
+		ExternalIDs: map[string]string{clusterNetworkPolicyKey: "cnp-orphan/egress"},
+	}}, nil)
+	fakeController.mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{clusterNetworkPolicyKey: "cnp-orphan/egress"}).Return(nil)
+
+	require.NoError(t, ctrl.gcDisabledDNSNameResolvers())
+}
+
+func TestGcDisabledDNSNameResolversPreservesPoliciesWithoutDomains(t *testing.T) {
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{EnableANP: true})
+	require.NoError(t, err)
+	ctrl := fakeController.fakeController
+
+	anp := &v1alpha1.AdminNetworkPolicy{Name: "live-anp"}
+	cnp := &v1alpha2.ClusterNetworkPolicy{Name: "live-cnp"}
+	anpIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	cnpIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, anpIndexer.Add(anp))
+	require.NoError(t, cnpIndexer.Add(cnp))
+	ctrl.anpsLister = anplisters.NewAdminNetworkPolicyLister(anpIndexer)
+	ctrl.cnpsLister = cnplisters.NewClusterNetworkPolicyLister(cnpIndexer)
+
+	anpID := getAnpName(anp.Name)
+	cnpID := getCnpName(cnp.Name)
+	cnpPGID := getCnpPortGroupName(cnp)
+	fakeController.mockOvnClient.EXPECT().ListPortGroups(map[string]string{adminNetworkPolicyKey: ""}).Return([]ovnnb.PortGroup{{
+		Name:        "live-anp.pg",
+		ExternalIDs: map[string]string{adminNetworkPolicyKey: anpID},
+	}}, nil)
+	fakeController.mockOvnClient.EXPECT().ListAddressSets(map[string]string{adminNetworkPolicyKey: ""}).Return([]ovnnb.AddressSet{{
+		Name:        "live-anp.egress.0.rule.ipv4",
+		ExternalIDs: map[string]string{adminNetworkPolicyKey: anpID + "/egress"},
+	}}, nil)
+	fakeController.mockOvnClient.EXPECT().ListPortGroups(map[string]string{clusterNetworkPolicyKey: ""}).Return([]ovnnb.PortGroup{{
+		Name:        "live-cnp.pg",
+		ExternalIDs: map[string]string{clusterNetworkPolicyKey: cnpPGID},
+	}}, nil)
+	fakeController.mockOvnClient.EXPECT().ListAddressSets(map[string]string{clusterNetworkPolicyKey: ""}).Return([]ovnnb.AddressSet{{
+		Name:        "live-cnp.egress.0.rule.ipv4",
+		ExternalIDs: map[string]string{clusterNetworkPolicyKey: cnpID + "/egress"},
+	}}, nil)
+
+	require.NoError(t, ctrl.gcDisabledDNSNameResolvers())
 }
 
 func TestHandleDeleteNpReturnsMeterError(t *testing.T) {

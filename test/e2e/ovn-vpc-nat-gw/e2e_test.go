@@ -264,7 +264,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		providerBridgeIps = make([]string, 0, len(nodes))
 		extraProviderBridgeIps = make([]string, 0, len(nodes))
 
-		// node ext gw ovn eip name is the same as node name in this scenario
 		for index, node := range nodes {
 			links, err := node.ListLinks()
 			framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
@@ -1120,18 +1119,10 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("2.1 Test custom vpc dnat, fip, snat in traditional way")
 		ginkgo.By("Create dnat, fip, snat with eip name and ip or ip cidr")
 
-		for _, nodeName := range nodeNames {
-			// in this case, each node has one ecmp bfd ovs lsp nic
-			eipName := nodeName
-			ginkgo.By("Creating ovn node-ext-gw type eip " + nodeName)
-			eip := makeOvnEip(eipName, underlaySubnetName, "", "", "", util.OvnEipTypeLSP)
-			_ = ovnEipClient.CreateSync(eip)
-		}
-
 		// TODO:// ipv6, dual stack support
 		bfdSubnetV4Cidr := "192.168.1.0/24"
 		bfdSubnetV4Gw := "192.168.1.1"
-		enableBfd := true
+		enableBfd := false
 		bfdVpc := framework.MakeVpc(bfdVpcName, "", enableExternal, enableBfd, nil)
 		_ = vpcClient.CreateSync(bfdVpc)
 		ginkgo.By("Creating overlay subnet enable ecmp")
@@ -1199,21 +1190,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		framework.ExpectEqual(ipSnat.Status.Vpc, bfdVpcName)
 		framework.ExpectEqual(ipSnat.Status.V4IpCidr, ipSnatVip.Status.V4ip)
 
-		k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
-		framework.ExpectNoError(err)
-		for _, node := range k8sNodes.Items {
-			// label should be true after setup node external gw
-			framework.ExpectHaveKeyWithValue(node.Labels, util.NodeExtGwLabel, "true")
-		}
-		// make sure vpc has bfd external static routes
-		bfdVpc = vpcClient.Get(bfdVpcName)
-		for _, route := range bfdVpc.Spec.StaticRoutes {
-			framework.ExpectEqual(route.RouteTable, util.MainRouteTable)
-			framework.ExpectEqual(route.ECMPMode, util.StaticRouteBfdEcmp)
-			framework.ExpectEqual(route.Policy, kubeovnv1.PolicySrc)
-			framework.ExpectNotEmpty(route.CIDR)
-		}
-
 		for _, node := range nodeNames {
 			podOnNodeName := "bfd-" + node
 			ginkgo.By("Creating bfd pod " + podOnNodeName + " with subnet " + bfdSubnetName)
@@ -1275,8 +1251,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		ginkgo.By("6. Deleting crd in distributed case")
 		for _, node := range nodeNames {
-			ginkgo.By("Deleting node external gw ovn eip " + node)
-			ovnEipClient.DeleteSync(node)
 			podOnNodeName := "on-node-" + node
 			eipOnNodeName := "eip-on-node-" + node
 			fipOnNodeName := "fip-on-node-" + node
@@ -1303,15 +1277,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 				return false, nil
 			}
 
-			k8sNodes, err = e2enode.GetReadySchedulableNodes(context.Background(), cs)
-			if err != nil {
-				return false, err
-			}
-			for _, node := range k8sNodes.Items {
-				if node.Labels[util.NodeExtGwLabel] != "false" {
-					return false, nil
-				}
-			}
 			return true, nil
 		}, "default VPC and gateway nodes have external access disabled")
 

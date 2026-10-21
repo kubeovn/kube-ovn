@@ -218,6 +218,7 @@ install-chart:
 		--set func.ENABLE_BIND_LOCAL_IP=$(or $(ENABLE_BIND_LOCAL_IP),true) \
 		--set func.ENABLE_OVN_IPSEC=$(or $(ENABLE_OVN_IPSEC),false) \
 		--set func.ENABLE_TPROXY=$(or $(ENABLE_TPROXY),false) \
+		--set func.ENABLE_RECOMPUTE=$(or $(ENABLE_RECOMPUTE),false) \
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false) \
 		--set func.ENABLE_ANP=$(or $(ENABLE_ANP),false) \
 		--set cni_conf.NON_PRIMARY_CNI=$(or $(ENABLE_NON_PRIMARY_CNI),false) \
@@ -250,6 +251,7 @@ upgrade-chart:
 		--set func.ENABLE_BIND_LOCAL_IP=$(or $(ENABLE_BIND_LOCAL_IP),true) \
 		--set func.ENABLE_OVN_IPSEC=$(or $(ENABLE_OVN_IPSEC),false) \
 		--set func.ENABLE_TPROXY=$(or $(ENABLE_TPROXY),false) \
+		--set func.ENABLE_RECOMPUTE=$(or $(ENABLE_RECOMPUTE),false) \
 		--set func.ENABLE_IC=$(shell kubectl get node --show-labels | grep -qw "ovn.kubernetes.io/ic-gw" && echo true || echo false) \
 		--set func.ENABLE_ANP=$(or $(ENABLE_ANP),false) \
 		--set cni_conf.NON_PRIMARY_CNI=$(or $(ENABLE_NON_PRIMARY_CNI),false) \
@@ -263,6 +265,7 @@ install-chart-v2:
 	helm install kubeovn ./charts/kube-ovn-v2 --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		$(HELM_OVN_DB_TLS_ARGS_V2) \
+		--set features.enableRecompute=$(or $(ENABLE_RECOMPUTE),false) \
 		--set cni.nonPrimaryCNI=$(or $(ENABLE_NON_PRIMARY_CNI),false) \
 		--set cni.configPriority=$(or $(CNI_CONFIG_PRIORITY),01)
 
@@ -271,6 +274,7 @@ upgrade-chart-v2:
 	helm upgrade kubeovn ./charts/kube-ovn-v2 --wait \
 		--set global.images.kubeovn.tag=$(VERSION) \
 		$(HELM_OVN_DB_TLS_ARGS_V2) \
+		--set features.enableRecompute=$(or $(ENABLE_RECOMPUTE),false) \
 		--set cni.nonPrimaryCNI=$(or $(ENABLE_NON_PRIMARY_CNI),false) \
 		--set cni.configPriority=$(or $(CNI_CONFIG_PRIORITY),01)
 	kubectl -n kube-system wait pod --for=condition=ready -l app=ovs --timeout=60s
