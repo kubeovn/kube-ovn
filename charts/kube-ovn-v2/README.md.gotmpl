@@ -89,10 +89,12 @@ The referenced Issuer must already exist in the Certificate namespace, or use
 `kind: ClusterIssuer` for a cluster-scoped issuer. Add any certificate policy
 fields required by your environment to this external Certificate.
 
-cert-manager and its CA injector are still required: the webhook configuration
-continues to reference this Certificate for CA bundle injection. The Certificate
-must populate the Secret with `tls.crt`, `tls.key`, and `ca.crt` before the webhook
-can serve requests.
+The Secret must contain `tls.crt` and `tls.key` for the webhook to serve HTTPS;
+`ca.crt` is not required by the serving process itself. Separately, cert-manager
+and its CA injector are still required: the webhook configuration continues to
+reference this Certificate for CA bundle injection. Ensure the Certificate's
+Secret provides the CA data in `ca.crt` needed by the injector so the API server
+can verify the serving certificate.
 
 For an existing installation, plan the Certificate ownership transfer before
 changing this setting. Helm removes the previously managed Certificate and Issuer
