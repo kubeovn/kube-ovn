@@ -26,23 +26,13 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	result := make(map[string]int)
 
 	// get ovn-northbound status
-	output, err := ovs.OvnDatabaseControl(ovnnb.DatabaseName, "cluster/status", ovnnb.DatabaseName)
-	if err != nil {
-		klog.Errorf("get ovn-northbound status failed, err %v", err)
-		result["ovsdb-server-northbound"] = 0
-	}
-	result["ovsdb-server-northbound"] = parseDbStatus(output)
+	result["ovsdb-server-northbound"] = getDatabaseStatus(ovnnb.DatabaseName, e.Client.Database.Northbound.File.Data.Path)
 
 	// get ovn-southbound status
-	output, err = ovs.OvnDatabaseControl(ovnsb.DatabaseName, "cluster/status", ovnsb.DatabaseName)
-	if err != nil {
-		klog.Errorf("get ovn-southbound status failed, err %v", err)
-		result["ovsdb-server-southbound"] = 0
-	}
-	result["ovsdb-server-southbound"] = parseDbStatus(output)
+	result["ovsdb-server-southbound"] = getDatabaseStatus(ovnsb.DatabaseName, e.Client.Database.Southbound.File.Data.Path)
 
 	// get ovn-northd status
-	if output, err = ovs.Appctl(ovs.OvnNorthd, "status"); err != nil {
+	if output, err := ovs.Appctl(ovs.OvnNorthd, "status"); err != nil {
 		klog.Errorf("get ovn-northd status failed, err %v", err)
 		result["ovn-northd"] = 0
 	} else if len(strings.Split(output, ":")) != 2 {
@@ -60,30 +50,54 @@ func (e *Exporter) getOvnStatus() map[string]int {
 	return result
 }
 
+func getDatabaseStatus(dbName, dbPath string) int {
+	if isDatabaseStandalone(dbPath) {
+		if healthy, err := getDBStatus(dbName); err != nil || !healthy {
+			return 0
+		}
+		return 1
+	}
+	output, err := ovs.OvnDatabaseControl(dbName, "cluster/status", dbName)
+	if err != nil {
+		klog.Errorf("get %s status failed, err %v", dbName, err)
+		return 0
+	}
+	return parseDbStatus(output)
+}
+
 func (e *Exporter) getOvnStatusContent() map[string]string {
 	result := map[string]string{"ovsdb-server-northbound": "", "ovsdb-server-southbound": ""}
 
 	// get ovn-northbound status
-	output, err := ovs.OvnDatabaseControl(ovnnb.DatabaseName, "cluster/status", ovnnb.DatabaseName)
-	if err != nil {
-		klog.Errorf("get ovn-northbound status failed, err %v", err)
-	}
-	if strings.Contains(output, "Servers:") {
-		servers := strings.Split(output, "Servers:")[1]
-		result["ovsdb-server-northbound"] = servers
+	if !isDatabaseStandalone(e.Client.Database.Northbound.File.Data.Path) {
+		output, err := ovs.OvnDatabaseControl(ovnnb.DatabaseName, "cluster/status", ovnnb.DatabaseName)
+		if err != nil {
+			klog.Errorf("get ovn-northbound status failed, err %v", err)
+		}
+		if strings.Contains(output, "Servers:") {
+			servers := strings.Split(output, "Servers:")[1]
+			result["ovsdb-server-northbound"] = servers
+		}
 	}
 
 	// get ovn-southbound status
-	output, err = ovs.OvnDatabaseControl(ovnsb.DatabaseName, "cluster/status", ovnsb.DatabaseName)
-	if err != nil {
-		klog.Errorf("get ovn-southbound status failed, err %v", err)
-	}
-	if strings.Contains(output, "Servers:") {
-		servers := strings.Split(output, "Servers:")[1]
-		result["ovsdb-server-southbound"] = servers
+	if !isDatabaseStandalone(e.Client.Database.Southbound.File.Data.Path) {
+		output, err := ovs.OvnDatabaseControl(ovnsb.DatabaseName, "cluster/status", ovnsb.DatabaseName)
+		if err != nil {
+			klog.Errorf("get ovn-southbound status failed, err %v", err)
+		}
+		if strings.Contains(output, "Servers:") {
+			servers := strings.Split(output, "Servers:")[1]
+			result["ovsdb-server-southbound"] = servers
+		}
 	}
 
 	return result
+}
+
+func isDatabaseStandalone(dbPath string) bool {
+	_, err := exec.Command("ovsdb-tool", "db-is-standalone", dbPath).CombinedOutput() // #nosec G204
+	return err == nil
 }
 
 func getClusterEnableState(dbName string) (bool, error) {

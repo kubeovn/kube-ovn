@@ -10,9 +10,12 @@ ovn-ctl status_northd
 ovn-ctl status_ovnnb | grep -q '^running'
 ovn-ctl status_ovnsb | grep -q '^running'
 
-# Standalone (single-replica) mode has no raft cluster, so `cluster/status` is
-# not applicable. Fall back to a storage-status check on each local DB.
-if [[ -z "${NODE_IPS:-}" ]]; then
+# Standalone databases have no raft cluster, so `cluster/status` is not
+# applicable. Determine the mode from the database files because this script
+# runs as a separate probe process and cannot observe start-db.sh's normalized
+# NODE_IPS value.
+if ovsdb-tool db-is-standalone /etc/ovn/ovnnb_db.db &&
+    ovsdb-tool db-is-standalone /etc/ovn/ovnsb_db.db; then
     nb_storage=$(ovn-appctl -t /var/run/ovn/ovnnb_db.ctl ovsdb-server/get-db-storage-status OVN_Northbound)
     sb_storage=$(ovn-appctl -t /var/run/ovn/ovnsb_db.ctl ovsdb-server/get-db-storage-status OVN_Southbound)
     if echo "${nb_storage}" | grep -q "inconsistent"; then
