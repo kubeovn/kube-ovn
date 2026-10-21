@@ -153,6 +153,7 @@ type Configuration struct {
 	EnableMetrics               bool
 	EnableANP                   bool
 	EnableDNSNameResolver       bool
+	EnableExternalEndpoint      bool
 	EnableOVNIPSec              bool
 	CertManagerIPSecCert        bool
 	EnableLiveMigrationOptimize bool
@@ -272,6 +273,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnableMetrics               = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableANP                   = pflag.Bool("enable-anp", false, "Enable support for admin network policy and baseline admin network policy")
 		argEnableDNSNameResolver       = pflag.Bool("enable-dns-name-resolver", false, "Enable support for DNS name resolver")
+		argEnableExternalEndpoint      = pflag.Bool("enable-external-endpoint", false, "Enable ExternalEndpoint, which attaches NICs of workloads outside of Kubernetes to Kube-OVN subnets")
 		argEnableOVNIPSec              = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argCertManagerIPSecCert        = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
 		argEnableLiveMigrationOptimize = pflag.Bool("enable-live-migration-optimize", true, "Whether to enable kubevirt live migration optimize")
@@ -401,6 +403,7 @@ func ParseFlags() (*Configuration, error) {
 		BfdDetectMult:               *argBfdDetectMult,
 		EnableANP:                   *argEnableANP,
 		EnableDNSNameResolver:       *argEnableDNSNameResolver,
+		EnableExternalEndpoint:      *argEnableExternalEndpoint,
 		Image:                       *argImage,
 		FRRImage:                    *argFRRImage,
 		LogPerm:                     *argLogPerm,

@@ -126,7 +126,8 @@ func (v *ValidatingHook) ValidateIP(ctx context.Context, ip *ovnv1.IP) error {
 
 	if ip.Spec.PodType != "" &&
 		ip.Spec.PodType != util.KindVirtualMachine &&
-		ip.Spec.PodType != util.KindStatefulSet {
+		ip.Spec.PodType != util.KindStatefulSet &&
+		ip.Spec.PodType != util.KindExternalEndpoint {
 		return fmt.Errorf("podType %s is not supported", ip.Spec.PodType)
 	}
 

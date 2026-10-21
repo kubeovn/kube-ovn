@@ -39,6 +39,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
+	kubeovninformerv1 "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/kubeovn/v1"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/informer"
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
@@ -173,6 +174,10 @@ type Controller struct {
 	addIPQueue    workqueue.TypedRateLimitingInterface[string]
 	updateIPQueue workqueue.TypedRateLimitingInterface[string]
 	delIPQueue    workqueue.TypedRateLimitingInterface[*kubeovnv1.IP]
+
+	externalEndpointsLister          kubeovnlister.ExternalEndpointLister
+	externalEndpointSynced           cache.InformerSynced
+	addOrUpdateExternalEndpointQueue workqueue.TypedRateLimitingInterface[string]
 
 	virtualIpsLister          kubeovnlister.VipLister
 	virtualIpsSynced          cache.InformerSynced
@@ -825,6 +830,16 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.cnpKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
 
+	// the informer is only started when the feature is enabled, so that a cluster
+	// without the ExternalEndpoint CRD does not block on its cache sync
+	var externalEndpointInformer kubeovninformerv1.ExternalEndpointInformer
+	if config.EnableExternalEndpoint {
+		externalEndpointInformer = kubeovnInformerFactory.Kubeovn().V1().ExternalEndpoints()
+		controller.externalEndpointsLister = externalEndpointInformer.Lister()
+		controller.externalEndpointSynced = externalEndpointInformer.Informer().HasSynced
+		controller.addOrUpdateExternalEndpointQueue = newTypedRateLimitingQueue[string]("AddOrUpdateExternalEndpoint", nil)
+	}
+
 	if config.EnableDNSNameResolver {
 		if !config.EnableANP {
 			klog.Warning("DNS name resolver is enabled but ANP support is disabled, DNSNameResolver resources will not take effect")
@@ -895,6 +910,9 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 	if controller.config.EnableDNSNameResolver {
 		cacheSyncs = append(cacheSyncs, controller.dnsNameResolversSynced)
+	}
+	if controller.config.EnableExternalEndpoint {
+		cacheSyncs = append(cacheSyncs, controller.externalEndpointSynced)
 	}
 
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
@@ -1002,6 +1020,15 @@ func Run(ctx context.Context, config *Configuration) {
 		DeleteFunc: controller.enqueueDelIP,
 	}); err != nil {
 		util.LogFatalAndExit(err, "failed to add ips event handler")
+	}
+
+	if config.EnableExternalEndpoint {
+		if _, err = externalEndpointInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    controller.enqueueAddExternalEndpoint,
+			UpdateFunc: controller.enqueueUpdateExternalEndpoint,
+		}); err != nil {
+			util.LogFatalAndExit(err, "failed to add external endpoint event handler")
+		}
 	}
 
 	if _, err = vlanInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -1382,6 +1409,10 @@ func (c *Controller) shutdown() {
 	c.updateIPQueue.ShutDown()
 	c.delIPQueue.ShutDown()
 
+	if c.config.EnableExternalEndpoint {
+		c.addOrUpdateExternalEndpointQueue.ShutDown()
+	}
+
 	c.addVirtualIPQueue.ShutDown()
 	c.updateVirtualIPQueue.ShutDown()
 	c.updateVirtualParentsQueue.ShutDown()
@@ -1662,6 +1693,11 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("add ip", c.addIPQueue, c.handleAddReservedIP), time.Second, ctx.Done())
 	go wait.Until(runWorker("update ip", c.updateIPQueue, c.handleUpdateIP), time.Second, ctx.Done())
 	go wait.Until(runWorker("delete ip", c.delIPQueue, c.handleDelIP), time.Second, ctx.Done())
+
+	if c.config.EnableExternalEndpoint {
+		go wait.Until(runWorker("add/update external endpoint", c.addOrUpdateExternalEndpointQueue, c.handleAddOrUpdateExternalEndpoint), time.Second, ctx.Done())
+		go wait.Until(c.resyncExternalEndpoints, time.Duration(c.config.InspectInterval)*time.Second, ctx.Done())
+	}
 
 	go wait.Until(runWorker("add vip", c.addVirtualIPQueue, c.handleAddVirtualIP), time.Second, ctx.Done())
 	go wait.Until(runWorker("update vip", c.updateVirtualIPQueue, c.handleUpdateVirtualIP), time.Second, ctx.Done())

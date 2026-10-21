@@ -253,6 +253,14 @@ vpc-egress-gateway-e2e:
 	$(GINKGO_E2E_RUN_PARALLEL) --timeout=30m \
 		--focus=CNI:Kube-OVN ./test/e2e/vpc-egress-gateway/vpc-egress-gateway.test -- $(TEST_BIN_ARGS)
 
+.PHONY: external-endpoint-e2e
+external-endpoint-e2e:
+	$(GINKGO_E2E_BUILD) ./test/e2e/external-endpoint
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	$(GINKGO_E2E_RUN) --timeout=30m \
+		--focus=CNI:Kube-OVN ./test/e2e/external-endpoint/external-endpoint.test -- $(TEST_BIN_ARGS)
+
 .PHONY: iptables-eip-conformance-e2e
 iptables-eip-conformance-e2e:
 	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)

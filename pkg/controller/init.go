@@ -1,10 +1,12 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"time"
 
@@ -484,6 +486,9 @@ func (c *Controller) InitIPAM() error {
 			klog.Errorf("failed to init IPAM from IP CR %s: %v", ip.Name, err)
 		}
 	}
+
+	klog.Infof("Init IPAM from external endpoint")
+	c.restoreExternalEndpointsToIPAM(ips)
 
 	klog.Infof("Init IPAM from pod")
 	pods, err := c.podsLister.List(labels.Everything())
@@ -1121,4 +1126,57 @@ func hasAllocatedAnnotation(pod *v1.Pod) bool {
 		}
 	}
 	return false
+}
+
+// restoreExternalEndpointsToIPAM reserves the addresses of external endpoints from
+// their IP CRs. The IP CR is written before the logical switch port is created, so
+// it never lags behind the port, and it is read even when the feature is disabled
+// so that the address of a port that is kept is not handed out to another pod.
+// Like the other restore loops, a failure for one address is logged and skipped.
+func (c *Controller) restoreExternalEndpointsToIPAM(ips []*kubeovnv1.IP) {
+	eps := make([]*kubeovnv1.IP, 0, len(ips))
+	for _, ip := range ips {
+		if ip.Spec.PodType == util.KindExternalEndpoint && ip.DeletionTimestamp.IsZero() {
+			eps = append(eps, ip)
+		}
+	}
+	// restore the oldest address first, so that if two endpoints ever claim the same
+	// address the original owner keeps it regardless of the lister's order
+	slices.SortFunc(eps, func(a, b *kubeovnv1.IP) int {
+		if c := a.CreationTimestamp.Compare(b.CreationTimestamp.Time); c != 0 {
+			return c
+		}
+		return cmp.Compare(a.Name, b.Name)
+	})
+	restored := make(map[string]bool, len(eps))
+	for _, ip := range eps {
+		mac := ip.Spec.MacAddress
+		if _, _, _, err := c.ipam.GetStaticAddress(externalEndpointIPAMKey(ip.Spec.Namespace, ip.Spec.PodName), ip.Name, ip.Spec.IPAddress, &mac, ip.Spec.Subnet, true); err != nil {
+			klog.Errorf("failed to init IPAM from external endpoint ip CR %s: %v", ip.Name, err)
+			continue
+		}
+		restored[ip.Name] = true
+	}
+	if !c.config.EnableExternalEndpoint {
+		return
+	}
+
+	// an IP CR can be missing for a moment (deleted by hand, recreated by the endpoint
+	// handler), while the port keeps serving the address recorded in the endpoint's
+	// status: reserve that address too, so that it is not handed out to a pod
+	endpoints, err := c.externalEndpointsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list external endpoints: %v", err)
+		return
+	}
+	for _, ep := range endpoints {
+		ipStr := util.GetStringIP(ep.Status.V4IP, ep.Status.V6IP)
+		if ipStr == "" || ep.Status.InterfaceID == "" || restored[ep.Status.InterfaceID] || !ep.DeletionTimestamp.IsZero() {
+			continue
+		}
+		mac := ep.Status.MacAddress
+		if _, _, _, err = c.ipam.GetStaticAddress(externalEndpointIPAMKey(ep.Namespace, ep.Name), ep.Status.InterfaceID, ipStr, &mac, ep.Spec.Subnet, true); err != nil {
+			klog.Errorf("failed to init IPAM from the status of external endpoint %s/%s: %v", ep.Namespace, ep.Name, err)
+		}
+	}
 }

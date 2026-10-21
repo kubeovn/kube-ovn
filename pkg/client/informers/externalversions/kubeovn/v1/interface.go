@@ -30,6 +30,8 @@ type Interface interface {
 	DNSNameResolvers() DNSNameResolverInformer
 	// EvpnConves returns a EvpnConfInformer.
 	EvpnConves() EvpnConfInformer
+	// ExternalEndpoints returns a ExternalEndpointInformer.
+	ExternalEndpoints() ExternalEndpointInformer
 	// IPs returns a IPInformer.
 	IPs() IPInformer
 	// IPPools returns a IPPoolInformer.
@@ -100,6 +102,11 @@ func (v *version) DNSNameResolvers() DNSNameResolverInformer {
 // EvpnConves returns a EvpnConfInformer.
 func (v *version) EvpnConves() EvpnConfInformer {
 	return &evpnConfInformer{factory: v.factory, tweakListOptions: v.tweakListOptions}
+}
+
+// ExternalEndpoints returns a ExternalEndpointInformer.
+func (v *version) ExternalEndpoints() ExternalEndpointInformer {
+	return &externalEndpointInformer{factory: v.factory, namespace: v.namespace, tweakListOptions: v.tweakListOptions}
 }
 
 // IPs returns a IPInformer.

@@ -19,6 +19,9 @@ for vd in $(kubectl  get vpc-dnses.kubeovn.io -o name); do
   kubectl delete --ignore-not-found $vd
 done
 
+# external endpoints carry the controller's finalizer: delete them while the controller still runs
+kubectl delete --ignore-not-found --all-namespaces --all external-endpoints.kubeovn.io 2>/dev/null || true
+
 for vip in $(kubectl get vips.kubeovn.io -o name); do
    kubectl delete --ignore-not-found $vip
 done
@@ -130,6 +133,7 @@ kubectl delete --ignore-not-found crd \
   iptables-fip-rules.kubeovn.io \
   iptables-eips.kubeovn.io \
   vips.kubeovn.io \
+  external-endpoints.kubeovn.io \
   switch-lb-rules.kubeovn.io \
   vpc-dnses.kubeovn.io \
   ovn-dnat-rules.kubeovn.io \

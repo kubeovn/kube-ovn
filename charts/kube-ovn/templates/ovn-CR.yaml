@@ -57,6 +57,8 @@ rules:
       - switch-lb-rules/status
       - router-lb-rules
       - router-lb-rules/status
+      - external-endpoints
+      - external-endpoints/status
       - vpc-dnses
       - vpc-dnses/status
       - dnsnameresolvers

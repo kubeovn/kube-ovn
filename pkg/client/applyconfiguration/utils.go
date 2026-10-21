@@ -62,6 +62,12 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.EvpnConfApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("EvpnConfSpec"):
 		return &kubeovnv1.EvpnConfSpecApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("ExternalEndpoint"):
+		return &kubeovnv1.ExternalEndpointApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("ExternalEndpointSpec"):
+		return &kubeovnv1.ExternalEndpointSpecApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("ExternalEndpointStatus"):
+		return &kubeovnv1.ExternalEndpointStatusApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("IP"):
 		return &kubeovnv1.IPApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("IPPool"):
