@@ -519,6 +519,11 @@ func (c *Client) configurationChecks(ctx context.Context) []diagnosticCheck {
 	return checks
 }
 
+func databaseIsStandalone(ctx context.Context, client *Client, target Target, role string) bool {
+	_, err := client.capture(ctx, target, "ovsdb-tool", "db-is-standalone", "/etc/ovn/ovn"+role+"_db.db")
+	return err == nil
+}
+
 func (a *Application) diagnoseOVN(ctx context.Context, client *Client) error {
 	var failures []error
 	nodes, err := client.Kubernetes.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
@@ -537,7 +542,11 @@ func (a *Application) diagnoseOVN(ctx context.Context, client *Client) error {
 			failures = append(failures, err)
 			continue
 		}
-		commands := [][]string{{"ovn-" + role + "ctl", "show"}, databaseCommand(role, "cluster/status"), databaseCommand(role, "ovsdb-server/get-db-storage-status")}
+		commands := [][]string{{"ovn-" + role + "ctl", "show"}}
+		if !databaseIsStandalone(ctx, client, target, role) {
+			commands = append(commands, databaseCommand(role, "cluster/status"))
+		}
+		commands = append(commands, databaseCommand(role, "ovsdb-server/get-db-storage-status"))
 		if role == "nb" {
 			for _, args := range [][]string{{"lr-policy-list", "ovn-cluster"}, {"lr-route-list", "ovn-cluster"}, {"ls-lb-list", "ovn-default"}, {"list", "address_set"}, {"list", "acl"}} {
 				commands = append(commands, append([]string{"ovn-nbctl"}, args...))
