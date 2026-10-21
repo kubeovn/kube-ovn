@@ -37,7 +37,11 @@ func (a *Application) addDatabaseCommands() {
 				if err != nil {
 					return err
 				}
-				for _, action := range []string{"cluster/status", "ovsdb-server/get-db-storage-status"} {
+				actions := []string{"ovsdb-server/get-db-storage-status"}
+				if !databaseIsStandalone(ctx, client, target, role) {
+					actions = append([]string{"cluster/status"}, actions...)
+				}
+				for _, action := range actions {
 					if err := client.Executor.Exec(ctx, target, databaseCommand(role, action), a.outputStreams()); err != nil {
 						return err
 					}
@@ -140,7 +144,12 @@ func (a *Application) backup(ctx context.Context, client *Client, target Target,
 		_, err := client.capture(cleanupCtx, target, "rm", "-f", remote)
 		resultErr = errors.Join(resultErr, err)
 	}()
-	if _, err := client.capture(ctx, target, "ovsdb-tool", "cluster-to-standalone", remote, "/etc/ovn/ovn"+role+"_db.db"); err != nil {
+	database := "/etc/ovn/ovn" + role + "_db.db"
+	if databaseIsStandalone(ctx, client, target, role) {
+		if _, err := client.capture(ctx, target, "cp", database, remote); err != nil {
+			return err
+		}
+	} else if _, err := client.capture(ctx, target, "ovsdb-tool", "cluster-to-standalone", remote, database); err != nil {
 		return err
 	}
 	name, err := client.capture(ctx, target, "ovsdb-tool", "db-name", remote)
