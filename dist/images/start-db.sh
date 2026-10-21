@@ -491,7 +491,8 @@ if [[ "$ENABLE_SSL" == "false" ]]; then
         # backed by a PV, so clean up any leftover sockets/pids on the host before
         # starting ovsdb-server.
         rm -f /var/run/ovn/*.pid /var/run/ovn/*.ctl 2>/dev/null || true
-        /usr/share/ovn/scripts/ovn-ctl --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" restart_northd
+        /usr/share/ovn/scripts/ovn-ctl $DEBUG_OPT \
+            --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" restart_northd
         ovn-nbctl --no-leader-only set-connection ptcp:"${NB_PORT}":["${DB_ADDR}"]
         ovn-nbctl --no-leader-only set Connection . inactivity_probe=${PROBE_INTERVAL}
         ovn-nbctl --no-leader-only set NB_Global . options:northd_probe_interval=${OVN_NORTHD_PROBE_INTERVAL}
@@ -616,7 +617,7 @@ else
         # Standalone (single-replica) mode. Same rationale as the non-SSL branch:
         # clean up stale sockets/pids so a drifted pod can come up on a new node.
         rm -f /var/run/ovn/*.pid /var/run/ovn/*.ctl 2>/dev/null || true
-        /usr/share/ovn/scripts/ovn-ctl $(ovn_db_ssl_args /var/run/tls) \
+        /usr/share/ovn/scripts/ovn-ctl $DEBUG_OPT $(ovn_db_ssl_args /var/run/tls) \
             --ovn-northd-n-threads="${OVN_NORTHD_N_THREADS}" \
             restart_northd
         ovn-nbctl --no-leader-only $SSL_OPTIONS set-connection pssl:"${NB_PORT}":["${DB_ADDR}"]

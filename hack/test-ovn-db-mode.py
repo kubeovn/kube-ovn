@@ -125,6 +125,7 @@ esac
                        COMMAND_LOG=str(log), TEST_DB_DIR=str(db_dir), NODE_IPS=addresses,
                        POD_IP=addresses.split(",")[0] or "192.0.2.1", POD_IPS="192.0.2.1",
                        OVN_LEADER_PROBE_INTERVAL="5", ENABLE_SSL=str(ssl).lower(),
+                       DEBUG_WRAPPER="valgrind",
                        STOP_BEFORE_RECOVERY=str(any(v in ("clustered", "raft-header") for v in (databases or {}).values())).lower())
             result = subprocess.run(["bash", str(startup)], env=env,
                                     capture_output=True, text=True, timeout=10)
@@ -138,6 +139,7 @@ esac
                     result, commands, _ = self.run_start(address, ssl)
                     self.assertEqual(result.returncode, 0, result.stderr)
                     self.assertIn("restart_northd", commands)
+                    self.assertIn("--ovn-northd-wrapper=valgrind", commands)
                     self.assertNotIn("--db-nb-cluster-local-addr", commands)
                     self.assertIn("kube-ovn-leader-checker --probeInterval=5 --enableCompact=false --remoteAddresses=\n", commands)
 
