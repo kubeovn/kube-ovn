@@ -674,7 +674,9 @@ jobs:
           echo "OVSDB_CNI_TEST_BIN_DIR=$RUNNER_TEMP/cni-ovsdb-bin" >> "$GITHUB_ENV"
 
       - name: Unit test
-        run: make ut
+        run: |
+          python3 hack/test-ovn-db-mode.py
+          make ut
 
       - uses: shogo82148/actions-goveralls@v1
         continue-on-error: true
