@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"reflect"
@@ -67,6 +68,7 @@ func (c *Controller) enqueueUpdateIPPool(oldObj, newObj any) {
 	}
 	if !slices.Equal(oldIPPool.Spec.Namespaces, newIPPool.Spec.Namespaces) ||
 		!slices.Equal(oldIPPool.Spec.IPs, newIPPool.Spec.IPs) ||
+		oldIPPool.Spec.IPCount != newIPPool.Spec.IPCount ||
 		oldIPPool.Spec.EnableAddressSet != newIPPool.Spec.EnableAddressSet {
 		key := cache.MetaObjectToName(newIPPool).String()
 		klog.V(3).Infof("enqueue update ippool %s", key)
@@ -98,7 +100,36 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		return nil
 	}
 	ippool.Status.EnsureStandardConditions()
-	if err = c.reconcileIPPoolAddressSet(ippool); err != nil {
+	// select the membership without exposing it to pod allocation: it becomes visible
+	// only at the activation step below, once the other prerequisites hold
+	ips, subnet, err := c.selectIPPoolIPs(ippool)
+	if err != nil {
+		klog.Errorf("failed to select IPs for ippool %s in subnet %s: %v", ippool.Name, ippool.Spec.Subnet, err)
+		if patchErr := c.patchIPPoolStatusCondition(ippool, "SelectIPsFailed", err.Error()); patchErr != nil {
+			klog.Error(patchErr)
+			return errors.Join(err, c.recordResourceError(ippool, "UpdateStatusFailed", patchErr))
+		}
+		return err
+	}
+	// persist the selection first: after a controller restart the pool is restored from
+	// status.ips, which then already describes the membership waiting to be activated
+	switch {
+	case ippool.Spec.IPCount > 0:
+		if err = c.patchIPPoolIPs(ippool, ips); err != nil {
+			klog.Error(err)
+			return c.recordResourceError(ippool, "UpdateStatusFailed", err)
+		}
+	case len(ippool.Status.IPs) > 0:
+		// the pool left count mode: clear the recorded addresses, they describe the
+		// former selection and must not be reused when the pool re-enters count mode
+		if err = c.patchIPPoolIPs(ippool, nil); err != nil {
+			klog.Error(err)
+			return c.recordResourceError(ippool, "UpdateStatusFailed", err)
+		}
+	}
+	// the address set must match the new membership before it becomes allocatable, so
+	// that no consumer can get a pool address the data plane does not match yet
+	if err = c.reconcileIPPoolAddressSet(ippool, ips); err != nil {
 		klog.Errorf("failed to reconcile address set for ippool %s: %v", ippool.Name, err)
 		if patchErr := c.patchIPPoolStatusCondition(ippool, "ReconcileAddressSetFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
@@ -106,9 +137,13 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		}
 		return err
 	}
-	if err = c.ipam.AddOrUpdateIPPool(ippool.Spec.Subnet, ippool.Name, ippool.Spec.IPs); err != nil {
-		klog.Errorf("failed to add/update ippool %s with IPs %v in subnet %s: %v", ippool.Name, ippool.Spec.IPs, ippool.Spec.Subnet, err)
-		if patchErr := c.patchIPPoolStatusCondition(ippool, "UpdateIPAMFailed", err.Error()); patchErr != nil {
+	// activate the membership in IPAM only now that persistence and the data plane both
+	// describe exactly this selection; the activation verifies that it is still the
+	// pickable one and abandons the reconcile without committing otherwise, since a
+	// membership consumers could observe must equal the published one
+	if err = c.activateIPPoolIPs(ippool, subnet, ips); err != nil {
+		klog.Errorf("failed to activate IPs %v for ippool %s in subnet %s: %v", ips, ippool.Name, ippool.Spec.Subnet, err)
+		if patchErr := c.patchIPPoolStatusCondition(ippool, "ActivateIPsFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
 			return errors.Join(err, c.recordResourceError(ippool, "UpdateStatusFailed", patchErr))
 		}
@@ -116,7 +151,6 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 	}
 
 	c.updateIPPoolStatistics(ippool)
-
 	if err = c.patchIPPoolStatusCondition(ippool, "UpdateIPAMSucceeded", ""); err != nil {
 		klog.Error(err)
 		return c.recordResourceError(ippool, "UpdateStatusFailed", err)
@@ -127,6 +161,91 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 	}
 
 	return nil
+}
+
+// ippoolIPs returns the addresses the pool currently consists of: the ones picked from
+// the subnet and recorded in status.ips when spec.ipCount is used, spec.ips otherwise.
+func ippoolIPs(ippool *kubeovnv1.IPPool) []string {
+	if ippool.Spec.IPCount > 0 {
+		return ippool.Status.IPs
+	}
+	return ippool.Spec.IPs
+}
+
+// maxIPPoolIPCount bounds spec.ipCount: an ippool is meant to carve a small set of
+// addresses out of a subnet, larger needs are served by a dedicated subnet or by listing
+// ranges in spec.ips. The CRD rejects larger values; this check also covers pools created
+// before that validation existed.
+const maxIPPoolIPCount = 32
+
+// selectIPPoolIPs picks the addresses of a pool using spec.ipCount, without
+// committing them to IPAM: they become allocatable only when activateIPPoolIPs
+// commits the same selection after the data plane and persistence prerequisites
+// succeeded. Addresses recorded in status.ips are retained while they stay usable and
+// unclaimed by others, addresses the pool already holds in IPAM - e.g. committed by a
+// previous reconcile a stale informer cache does not know about - are retained next,
+// and missing ones are taken from the subnet's free addresses. The selection stays
+// stable across reconciles and restarts: growing appends newly picked addresses,
+// shrinking drops the most recently added ones first. For a pool listing spec.ips it
+// simply returns that listing, and subnet is nil.
+func (c *Controller) selectIPPoolIPs(ippool *kubeovnv1.IPPool) ([]string, *kubeovnv1.Subnet, error) {
+	if ippool.Spec.IPCount <= 0 {
+		return ippool.Spec.IPs, nil, nil
+	}
+	if ippool.Spec.IPCount > maxIPPoolIPCount {
+		return nil, nil, fmt.Errorf("ippool %s requests %d addresses per IP family, more than the maximum of %d",
+			ippool.Name, ippool.Spec.IPCount, maxIPPoolIPCount)
+	}
+
+	subnet, err := c.subnetsLister.Get(ippool.Spec.Subnet)
+	if err != nil {
+		klog.Errorf("failed to get subnet %s: %v", ippool.Spec.Subnet, err)
+		return nil, nil, err
+	}
+
+	wantV4, wantV6 := ipPoolFamilyCounts(ippool.Spec.IPCount, subnet)
+
+	// offer the recorded addresses that still belong to the subnet as keep candidates;
+	// IPAM revalidates them against its own state and replaces stale ones itself
+	kept := make([]string, 0, len(ippool.Status.IPs))
+	for _, ip := range ippool.Status.IPs {
+		if util.CIDRContainIP(subnet.Spec.CIDRBlock, ip) {
+			kept = append(kept, ip)
+		}
+	}
+	v4, v6, err := c.ipam.SelectIPPoolIPs(subnet.Name, ippool.Name, kept, wantV4, wantV6)
+	if err != nil {
+		klog.Error(err)
+		return nil, nil, err
+	}
+	return append(v4, v6...), subnet, nil
+}
+
+// ipPoolFamilyCounts returns the per-family address counts a pool using spec.ipCount
+// requests on the given subnet.
+func ipPoolFamilyCounts(count int32, subnet *kubeovnv1.Subnet) (v4, v6 int) {
+	v4, v6 = int(count), int(count)
+	// subnet.Spec.Protocol may still be empty right after the subnet is created
+	switch util.CheckProtocol(subnet.Spec.CIDRBlock) {
+	case kubeovnv1.ProtocolIPv4:
+		v6 = 0
+	case kubeovnv1.ProtocolIPv6:
+		v4 = 0
+	}
+	return v4, v6
+}
+
+// activateIPPoolIPs commits the membership a pool published - in status.ips for
+// count-based pools, in the address set for both kinds - making its addresses
+// allocatable. For a count-based pool the commit is verified against the current IPAM
+// state: if part of the selection was allocated elsewhere in the meantime it fails
+// without committing anything, and the retried reconcile selects and publishes again.
+func (c *Controller) activateIPPoolIPs(ippool *kubeovnv1.IPPool, subnet *kubeovnv1.Subnet, ips []string) error {
+	if ippool.Spec.IPCount <= 0 {
+		return c.ipam.AddOrUpdateIPPool(ippool.Spec.Subnet, ippool.Name, ips)
+	}
+	v4Count, v6Count := ipPoolFamilyCounts(ippool.Spec.IPCount, subnet)
+	return c.ipam.ActivateIPPoolIPs(subnet.Name, ippool.Name, ips, v4Count, v6Count)
 }
 
 func (c *Controller) handleDeleteIPPool(ippool *kubeovnv1.IPPool) (err error) {
@@ -213,8 +332,30 @@ func (c *Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason
 	return nil
 }
 
+// patchIPPoolIPs records the addresses picked for a pool using spec.ipCount. It is the
+// only writer of status.ips: patchIPPoolStatus deliberately leaves the field out, so that
+// a statistics update built from a stale informer cache cannot roll the addresses back.
+func (c *Controller) patchIPPoolIPs(ippool *kubeovnv1.IPPool, ips []string) error {
+	if slices.Equal(ippool.Status.IPs, ips) {
+		return nil
+	}
+	bytes, err := json.Marshal(map[string]any{"status": map[string]any{"ips": ips}})
+	if err != nil {
+		klog.Errorf("failed to generate json representation for IPs of ippool %s: %v", ippool.Name, err)
+		return err
+	}
+	if _, err = c.config.KubeOvnClient.KubeovnV1().IPPools().Patch(context.Background(), ippool.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		klog.Errorf("failed to patch IPs of ippool %s: %v", ippool.Name, err)
+		return err
+	}
+	ippool.Status.IPs = ips
+	return nil
+}
+
 func (c *Controller) patchIPPoolStatus(ippool *kubeovnv1.IPPool) error {
-	bytes, err := ippool.Status.Bytes()
+	status := ippool.Status
+	status.IPs = nil // owned by patchIPPoolIPs, see the comment there
+	bytes, err := status.Bytes()
 	if err != nil {
 		klog.Errorf("failed to generate json representation for status of ippool %s: %v", ippool.Name, err)
 		return err
@@ -299,7 +440,7 @@ func (c *Controller) updateIPPoolStatistics(ippool *kubeovnv1.IPPool) {
 	ippool.Status.V6UsingIPRange = v6us
 }
 
-func (c *Controller) reconcileIPPoolAddressSet(ippool *kubeovnv1.IPPool) error {
+func (c *Controller) reconcileIPPoolAddressSet(ippool *kubeovnv1.IPPool, ips []string) error {
 	asName := util.IPPoolAddressSetName(ippool.Name)
 
 	if !ippool.Spec.EnableAddressSet {
@@ -311,7 +452,7 @@ func (c *Controller) reconcileIPPoolAddressSet(ippool *kubeovnv1.IPPool) error {
 		return nil
 	}
 
-	addresses, err := util.ExpandIPPoolAddressesForOVN(ippool.Spec.IPs)
+	addresses, err := util.ExpandIPPoolAddressesForOVN(ips)
 	if err != nil {
 		err = fmt.Errorf("failed to build address set entries for ippool %s: %w", ippool.Name, err)
 		klog.Error(err)
