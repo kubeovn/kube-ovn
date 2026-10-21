@@ -11,6 +11,62 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DatabaseModeTest(unittest.TestCase):
+    def run_healthcheck(self, addresses, databases):
+        with tempfile.TemporaryDirectory(prefix="ovn-healthcheck-") as tmp:
+            root = Path(tmp)
+            db_dir = root / "db"
+            run_dir = root / "run"
+            bin_dir = root / "bin"
+            for directory in (db_dir, run_dir, bin_dir):
+                directory.mkdir()
+            for name, content in databases.items():
+                (db_dir / name).write_text(content)
+            log = root / "commands"
+            log.touch()
+            stub = '''#!/usr/bin/env bash
+set -euo pipefail
+name=${0##*/}
+printf '%s %s\\n' "$name" "$*" >> "$COMMAND_LOG"
+case "$name" in
+    ovn-ctl)
+        case "$1" in
+            status_northd) ;;
+            status_ovnnb|status_ovnsb) echo running ;;
+        esac ;;
+    ovsdb-tool)
+        case "$1" in
+            db-is-standalone) [[ $(cat "$2") == standalone ]] ;;
+            db-is-clustered) [[ $(cat "$2") == clustered ]] ;;
+        esac ;;
+    ovn-appctl)
+        if [[ "$*" == *cluster/status* ]]; then
+            echo 'Status: cluster'
+            echo 'Role: leader'
+        else
+            echo 'status: ok'
+        fi ;;
+esac
+'''
+            for name in ("ovn-ctl", "ovsdb-tool", "ovn-appctl"):
+                executable = bin_dir / name
+                executable.write_text(stub)
+                executable.chmod(0o755)
+            script = (ROOT / "dist/images" / "ovn-healthcheck.sh").read_text()
+            replacements = {
+                "/usr/share/ovn/scripts/ovn-ctl": f"{bin_dir}/ovn-ctl",
+                "/etc/ovn": str(db_dir),
+                "/var/run/ovn": str(run_dir),
+            }
+            for old, new in replacements.items():
+                script = script.replace(old, new)
+            healthcheck = root / "ovn-healthcheck.sh"
+            healthcheck.write_text(script)
+            env = dict(os.environ, PATH=f"{bin_dir}:{os.environ['PATH']}",
+                       COMMAND_LOG=str(log), NODE_IPS=addresses)
+            result = subprocess.run(["bash", str(healthcheck)], env=env,
+                                    capture_output=True, text=True, timeout=10)
+            return result, log.read_text()
+
     def run_start(self, addresses, ssl=False, databases=None):
         with tempfile.TemporaryDirectory(prefix="ovn-db-mode-") as tmp:
             root = Path(tmp)
@@ -115,6 +171,19 @@ esac
             self.assertIn("Preserving existing Raft data", result.stderr)
             self.assertNotIn("restart_northd", commands)
             self.assertEqual(after, databases)
+
+    def test_healthcheck_uses_database_model(self):
+        standalone = {"ovnnb_db.db": "standalone\n", "ovnsb_db.db": "standalone\n"}
+        result, commands = self.run_healthcheck("192.0.2.1", standalone)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("get-db-storage-status", commands)
+        self.assertNotIn("cluster/status", commands)
+
+        clustered = {"ovnnb_db.db": "clustered\n", "ovnsb_db.db": "clustered\n"}
+        result, commands = self.run_healthcheck("192.0.2.1", clustered)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("cluster/status", commands)
+        self.assertNotIn("get-db-storage-status", commands)
 
     def test_unsafe_or_unknown_modes_stop_before_starting_servers(self):
         cases = [
