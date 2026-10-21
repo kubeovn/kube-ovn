@@ -48,7 +48,7 @@ require (
 	github.com/ti-mo/conntrack v0.6.0
 	github.com/ti-mo/netfilter v0.5.3
 	github.com/vishvananda/netlink v1.3.2-0.20260402033159-af2a3ea580ab
-	go.podman.io/image/v5 v5.41.2
+	go.podman.io/image/v5 v5.42.0
 	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.28.0
 	go.universe.tf/metallb v0.16.1
@@ -91,7 +91,7 @@ require (
 	github.com/JeffAshton/win_pdh v0.0.0-20161109143554-76bb4ee9f0ab // indirect
 	github.com/MakeNowJust/heredoc v1.0.0 // indirect
 	github.com/Masterminds/semver/v3 v3.5.0 // indirect
-	github.com/Microsoft/go-winio v0.6.3-0.20251027160822-ad3df93bed29 // indirect
+	github.com/Microsoft/go-winio v0.6.3-0.20260930231756-f19d9717deb0 // indirect
 	github.com/Microsoft/hnslib v0.1.3 // indirect
 	github.com/NYTimes/gziphandler v1.1.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
@@ -178,7 +178,7 @@ require (
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/liggitt/tabwriter v0.0.0-20181228230101-89fcab3d43de // indirect
 	github.com/lithammer/dedent v1.1.0 // indirect
-	github.com/mattn/go-shellwords v1.0.14 // indirect
+	github.com/mattn/go-shellwords v1.0.16 // indirect
 	github.com/mdlayher/ethernet v0.0.0-20220221185849-529eae5b6118 // indirect
 	github.com/mdlayher/netlink v1.11.2 // indirect
 	github.com/mdlayher/socket v0.7.0 // indirect
@@ -240,7 +240,7 @@ require (
 	go.opentelemetry.io/otel/sdk v1.46.0 // indirect
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
-	go.podman.io/storage v1.64.1 // indirect
+	go.podman.io/storage v1.65.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
