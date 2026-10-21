@@ -221,6 +221,8 @@ spec:
             - name: OVN_SB_ADDR
               value: "{{ include "kubeovn.ovnSbAddress" . }}"
             {{- end }}
+            {{- include "kubeovn.ovnNbServiceEnv" . | nindent 12 }}
+            {{- include "kubeovn.ovnSbServiceEnv" . | nindent 12 }}
             - name: OVN_DB_IPS
               value: "{{ include "kubeovn.ovnDbAddresses" . }}"
             - name: POD_IP

@@ -361,6 +361,37 @@ OVN_SB_PORT for agents/controller. In dataPlaneOnly mode picks up externalOvnCen
 {{- end -}}
 
 {{/*
+OVN_NB_SERVICE_HOST/PORT env for data-plane components (start-controller.sh,
+upgrade-ovs.sh fall back to them when OVN_NB_ADDR is unset). In full /
+controlPlaneOnly installs the pods sit next to the ovn-nb Service, which
+auto-injects these through enableServiceLinks; in dataPlaneOnly installs there
+is no local Service, so the values must be rendered explicitly.
+*/}}
+{{- define "kubeovn.ovnNbServiceEnv" -}}
+{{- if eq .Values.installMode "dataPlaneOnly" }}
+- name: OVN_NB_SERVICE_HOST
+  value: {{ required "installMode=dataPlaneOnly requires externalOvnCentral.nbEndpoint" .Values.externalOvnCentral.nbEndpoint | quote }}
+- name: OVN_NB_SERVICE_PORT
+  value: {{ include "kubeovn.ovnNbPort" . | quote }}
+{{- end }}
+{{- end -}}
+
+{{/*
+OVN_SB_SERVICE_HOST/PORT env for data-plane components. start-ovs-dpdk-v2.sh
+and ovs-dpdk-healthcheck.sh read them directly and ovs-healthcheck.sh /
+start-ovs.sh fall back to them when OVN_DB_IPS is empty, so they must be
+rendered explicitly in dataPlaneOnly installs.
+*/}}
+{{- define "kubeovn.ovnSbServiceEnv" -}}
+{{- if eq .Values.installMode "dataPlaneOnly" }}
+- name: OVN_SB_SERVICE_HOST
+  value: {{ required "installMode=dataPlaneOnly requires externalOvnCentral.sbEndpoint" .Values.externalOvnCentral.sbEndpoint | quote }}
+- name: OVN_SB_SERVICE_PORT
+  value: {{ include "kubeovn.ovnSbPort" . | quote }}
+{{- end }}
+{{- end -}}
+
+{{/*
 Kube-OVN TLS rotation interval. Disabled in dataPlaneOnly installs.
 */}}
 {{- define "kubeovn.kubeOVNTLSRotationInterval" -}}
