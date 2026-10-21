@@ -55,8 +55,6 @@ jobs:
 
       - name: Scan base image
         uses: aquasecurity/trivy-action@0.35.0
-        env:
-          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         with:
           scan-type: image
           scanners: vuln
