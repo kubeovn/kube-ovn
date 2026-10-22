@@ -115,16 +115,16 @@ func (c *Controller) onServiceCIDRDelete(obj any) {
 // against the freshly merged set.
 //
 // VpcNatGateways are deliberately skipped: handleAddOrUpdateVpcNatGw only diffs
-// Spec, and handleInitVpcNatGw bails on VpcNatGatewayInitAnnotation. Existing
-// NAT GWs need pod recreation to pick up new routes; new ones already render
-// against the current store.
+// Spec, and the gateway init script re-runs as a no-op once its chains exist.
+// Existing NAT GWs need pod recreation to pick up new routes; new ones already
+// render against the current store.
 func (c *Controller) reconcileForServiceCIDRChange() {
 	subnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list subnets: %v", err)
 	} else {
 		for _, s := range subnets {
-			if s.Spec.U2OInterconnection {
+			if isOvnSubnet(s) && s.Name != c.config.NodeSwitch && (s.Spec.Vpc == c.config.ClusterRouter || s.Spec.U2OInterconnection) {
 				c.addOrUpdateSubnetQueue.Add(s.Name)
 			}
 		}

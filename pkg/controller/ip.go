@@ -25,6 +25,21 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const (
+	reasonAddIPFailed    = "AddIPFailed"
+	reasonUpdateIPFailed = "UpdateIPFailed"
+)
+
+func (c *Controller) recordIPError(ip *kubeovnv1.IP, reason string, err error) {
+	if strings.HasPrefix(ip.Name, util.U2OInterconnName[:20]) ||
+		strings.HasPrefix(ip.Name, util.McastQuerierName[:14]) {
+		return
+	}
+	if c.recorder != nil {
+		c.recorder.Eventf(ip, corev1.EventTypeWarning, reason, "%s", err.Error())
+	}
+}
+
 func (c *Controller) enqueueAddIP(obj any) {
 	ipObj := obj.(*kubeovnv1.IP)
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:20]) ||
@@ -48,29 +63,41 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 	newIP := newObj.(*kubeovnv1.IP)
 	// ip can not change these specs below
 	if oldIP.Spec.Subnet != "" && newIP.Spec.Subnet != oldIP.Spec.Subnet {
-		klog.Warningf("ip %s subnet changed from %s to %s", newIP.Name, oldIP.Spec.Subnet, newIP.Spec.Subnet)
+		err := fmt.Errorf("ip %s subnet changed from %s to %s", newIP.Name, oldIP.Spec.Subnet, newIP.Spec.Subnet)
+		klog.Warning(err)
+		c.recordIPError(newIP, reasonUpdateIPFailed, err)
 		c.updateSubnetStatusQueue.Add(oldIP.Spec.Subnet)
 		c.updateSubnetStatusQueue.Add(newIP.Spec.Subnet)
 		return
 	}
 	if oldIP.Spec.Namespace != "" && newIP.Spec.Namespace != oldIP.Spec.Namespace {
-		klog.Errorf("ip %s namespace can not change", newIP.Name)
+		err := fmt.Errorf("ip %s namespace can not change", newIP.Name)
+		klog.Error(err)
+		c.recordIPError(newIP, reasonUpdateIPFailed, err)
 		return
 	}
 	if oldIP.Spec.PodName != "" && newIP.Spec.PodName != oldIP.Spec.PodName {
-		klog.Errorf("ip %s podName can not change", newIP.Name)
+		err := fmt.Errorf("ip %s podName can not change", newIP.Name)
+		klog.Error(err)
+		c.recordIPError(newIP, reasonUpdateIPFailed, err)
 		return
 	}
 	if oldIP.Spec.PodType != "" && newIP.Spec.PodType != oldIP.Spec.PodType {
-		klog.Errorf("ip %s podType can not change", newIP.Name)
+		err := fmt.Errorf("ip %s podType can not change", newIP.Name)
+		klog.Error(err)
+		c.recordIPError(newIP, reasonUpdateIPFailed, err)
 		return
 	}
 	if oldIP.Spec.MacAddress != "" && newIP.Spec.MacAddress != oldIP.Spec.MacAddress {
-		klog.Errorf("ip %s macAddress can not change", newIP.Name)
+		err := fmt.Errorf("ip %s macAddress can not change", newIP.Name)
+		klog.Error(err)
+		c.recordIPError(newIP, reasonUpdateIPFailed, err)
 		return
 	}
 	if oldIP.Spec.V4IPAddress != "" && newIP.Spec.V4IPAddress != oldIP.Spec.V4IPAddress {
-		klog.Errorf("ip %s v4IPAddress can not change", newIP.Name)
+		err := fmt.Errorf("ip %s v4IPAddress can not change", newIP.Name)
+		klog.Error(err)
+		c.recordIPError(newIP, reasonUpdateIPFailed, err)
 		return
 	}
 	if oldIP.Spec.V6IPAddress != "" {
@@ -78,10 +105,15 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 		if util.ContainsUppercase(newIP.Spec.V6IPAddress) {
 			err := fmt.Errorf("ip %s v6 ip address %s can not contain upper case", newIP.Name, newIP.Spec.V6IPAddress)
 			klog.Error(err)
+			if newIP.Spec.V6IPAddress != oldIP.Spec.V6IPAddress {
+				c.recordIPError(newIP, reasonUpdateIPFailed, err)
+			}
 			return
 		}
 		if newIP.Spec.V6IPAddress != oldIP.Spec.V6IPAddress {
-			klog.Errorf("ip %s v6IPAddress can not change", newIP.Name)
+			err := fmt.Errorf("ip %s v6IPAddress can not change", newIP.Name)
+			klog.Error(err)
+			c.recordIPError(newIP, reasonUpdateIPFailed, err)
 			return
 		}
 	}
@@ -117,8 +149,13 @@ func (c *Controller) enqueueDelIP(obj any) {
 		return
 	}
 
-	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:20]) ||
-		strings.HasPrefix(ipObj.Name, util.McastQuerierName[0:14]) {
+	if strings.HasPrefix(ipObj.Name, util.McastQuerierName[0:14]) {
+		// Recheck deletion only after the informer has removed the querier IP
+		// from its cache, so stale usage cannot keep the subnet finalizer.
+		c.addOrUpdateSubnetQueue.Add(ipObj.Spec.Subnet)
+		return
+	}
+	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:20]) {
 		return
 	}
 
@@ -127,7 +164,7 @@ func (c *Controller) enqueueDelIP(obj any) {
 	c.delIPQueue.Add(ipObj)
 }
 
-func (c *Controller) handleAddReservedIP(key string) error {
+func (c *Controller) handleAddReservedIP(key string) (err error) {
 	ip, err := c.ipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -136,6 +173,11 @@ func (c *Controller) handleAddReservedIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+	defer func() {
+		if err != nil {
+			c.recordIPError(ip, reasonAddIPFailed, err)
+		}
+	}()
 	if !ip.DeletionTimestamp.IsZero() {
 		klog.Infof("handle add process stop for deleting ip %s", ip.Name)
 		return nil
@@ -229,7 +271,7 @@ func (c *Controller) handleAddReservedIP(key string) error {
 	return nil
 }
 
-func (c *Controller) handleUpdateIP(key string) error {
+func (c *Controller) handleUpdateIP(key string) (err error) {
 	cachedIP, err := c.ipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -238,6 +280,11 @@ func (c *Controller) handleUpdateIP(key string) error {
 		klog.Error(err)
 		return err
 	}
+	defer func() {
+		if err != nil {
+			c.recordIPError(cachedIP, reasonUpdateIPFailed, err)
+		}
+	}()
 	if !cachedIP.DeletionTimestamp.IsZero() {
 		klog.Infof("handle deleting ip %s", cachedIP.Name)
 		subnet, err := c.subnetsLister.Get(cachedIP.Spec.Subnet)
@@ -285,6 +332,11 @@ func (c *Controller) handleUpdateIP(key string) error {
 			}
 		}
 		podKey := fmt.Sprintf("%s/%s", cachedIP.Spec.Namespace, cachedIP.Spec.PodName)
+		if cachedIP.Spec.Namespace == "" && portName == util.NodeLspName(cachedIP.Spec.NodeName) {
+			// a node address is allocated under its port name, not a pod key: releasing it under
+			// another key frees the address but leaves the node's entry behind with a nil address
+			podKey = portName
+		}
 		klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
 		c.ipam.ReleaseAddressByNic(podKey, portName, cachedIP.Spec.Subnet)
 		if err = c.handleDelIPFinalizer(cachedIP); err != nil {
@@ -520,7 +572,8 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		newIPCR.Spec.AttachMacs = []string{}
 		newIPCR.Spec.AttachSubnets = []string{}
 		newIPCR.Spec.PodType = podType
-		if maps.Equal(newIPCR.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) {
+		if maps.Equal(newIPCR.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) &&
+			reflect.DeepEqual(newIPCR.OwnerReferences, ipCR.OwnerReferences) {
 			return nil
 		}
 		controllerutil.AddFinalizer(newIPCR, util.KubeOVNControllerFinalizer)

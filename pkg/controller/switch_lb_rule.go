@@ -22,6 +22,7 @@ import (
 type SwitchLBRuleInfo struct {
 	Name       string
 	Namespace  string
+	UID        string
 	Subnet     string
 	VPC        string
 	IsRecreate bool
@@ -46,6 +47,7 @@ func NewSwitchLBRuleInfo(slr *kubeovnv1.SwitchLBRule) *SwitchLBRuleInfo {
 	return &SwitchLBRuleInfo{
 		Name:      slr.Name,
 		Namespace: namespace,
+		UID:       string(slr.UID),
 		Subnet:    slr.Annotations[util.LogicalSwitchAnnotation],
 		VPC:       slr.Annotations[util.LogicalRouterAnnotation],
 		Vips:      vips,
@@ -145,11 +147,37 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 	}
 
 	var (
-		eps *corev1.Endpoints
-		svc *corev1.Service
+		eps           *corev1.Endpoints
+		svc           *corev1.Service
+		slrForService = slr
 	)
 
-	// user-defined endpoints used to work with the case of static ips which could not get by selector
+	// Clear the selector before writing user-defined endpoints. This prevents
+	// EndpointSlice controller from retaining selector-generated endpoints when
+	// an existing Service is repurposed for a static SwitchLBRule.
+	if len(slr.Spec.Endpoints) > 0 {
+		slrForService = slr.DeepCopy()
+		slrForService.Spec.Selector = nil
+	}
+
+	svc = generateHeadlessService(slrForService, oldSvc)
+	if needToCreateSvc {
+		if _, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Create(context.Background(), svc, metav1.CreateOptions{}); err != nil {
+			err = fmt.Errorf("failed to create service '%s', err: %w", svc, err)
+			klog.Error(err)
+			return err
+		}
+	} else {
+		if _, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Update(context.Background(), svc, metav1.UpdateOptions{}); err != nil {
+			err = fmt.Errorf("failed to update service '%s', err: %w", svc, err)
+			klog.Error(err)
+			return err
+		}
+	}
+
+	// User-defined endpoints are used for static IPs which cannot be selected
+	// from pods. Write them after the Service no longer has a selector, so the
+	// Endpoints mirror produces a fresh EndpointSlice for the intended targets.
 	if len(slr.Spec.Endpoints) > 0 {
 		eps = generateEndpoints(slr, oldEps)
 		if needToCreateEps {
@@ -164,23 +192,6 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 				klog.Error(err)
 				return err
 			}
-		}
-		// avoid conflicts between selectors and user-defined endpoints
-		slr.Spec.Selector = nil
-	}
-
-	svc = generateHeadlessService(slr, oldSvc)
-	if needToCreateSvc {
-		if _, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Create(context.Background(), svc, metav1.CreateOptions{}); err != nil {
-			err = fmt.Errorf("failed to create service '%s', err: %w", svc, err)
-			klog.Error(err)
-			return err
-		}
-	} else {
-		if _, err = c.config.KubeClient.CoreV1().Services(slr.Spec.Namespace).Update(context.Background(), svc, metav1.UpdateOptions{}); err != nil {
-			err = fmt.Errorf("failed to update service '%s', err: %w", svc, err)
-			klog.Error(err)
-			return err
 		}
 	}
 
@@ -218,12 +229,17 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 	)
 
 	name = generateSvcName(info.Name)
+	ownerSvc := &corev1.Service{Name: name, Namespace: info.Namespace}
+	setServiceScopedLBOwner(ownerSvc, switchLBRuleLBOwnerKind, info.Name, info.UID)
+	_, atomicLB := c.OVNNbClient.(resourceLoadBalancerClient)
 	// Read the subnet annotation before deleting the service, so we can use it as a
 	// fallback to clean up the health-check VIP when no LBHC is found (e.g. the LBHC
 	// was already removed because the service was deleted before the SLR).
 	subnetForVip := ""
 	vpcForSlr := ""
 	if svc, e := c.servicesLister.Services(info.Namespace).Get(name); e == nil {
+		ownerSvc = svc.DeepCopy()
+		setServiceScopedLBOwner(ownerSvc, switchLBRuleLBOwnerKind, info.Name, info.UID)
 		subnetForVip = svc.Annotations[util.LogicalSwitchAnnotation]
 		// Prefer VpcAnnotation (set by the endpoint_slice controller) but fall
 		// back to LogicalRouterAnnotation (set synchronously by the SLR
@@ -248,27 +264,9 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 			return err
 		}
 	}
-
-	// Collect the set of LB names belonging to this SLR's VPC so that we only
-	// touch LBHCs associated with LBs in the correct VPC.  When the VPC is
-	// unknown (e.g. the service was already deleted), vpcLBNames stays nil and
-	// we fall back to the original (unscoped) behaviour.
-	var vpcLBNames set.Set[string]
-	if vpcForSlr != "" {
-		vpc, e := c.vpcsLister.Get(vpcForSlr)
-		switch {
-		case e == nil:
-			vpcLBNames = set.New(
-				vpc.Status.TCPLoadBalancer, vpc.Status.UDPLoadBalancer,
-				vpc.Status.SctpLoadBalancer, vpc.Status.TCPSessionLoadBalancer,
-				vpc.Status.UDPSessionLoadBalancer, vpc.Status.SctpSessionLoadBalancer,
-			)
-			vpcLBNames.Delete("")
-		case k8serrors.IsNotFound(e):
-			klog.Warningf("VPC %s not found for SLR %s, falling back to unscoped deletion", vpcForSlr, info.Name)
-		default:
-			klog.Errorf("failed to get VPC %s for SLR %s: %v, requeueing", vpcForSlr, info.Name, e)
-			return e
+	if !atomicLB {
+		if err := c.deleteLegacyVpcVIPs(vpcForSlr, info.Vips); err != nil {
+			return err
 		}
 	}
 
@@ -296,44 +294,46 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 			return err
 		}
 
-		belongsToThisVpc := false
-		referencedByOtherVpc := false
-		if len(lbs) == 0 && vpcLBNames != nil && subnetForVip != "" {
+		belongsToOwner := false
+		referencedByOtherOwner := false
+		if len(lbs) == 0 && subnetForVip != "" {
 			// Orphaned LBHC: no LB references it anymore (e.g. the service
 			// handler already removed the LB→LBHC reference during concurrent
 			// deletion). Only claim ownership when the LBHC's subnet matches
 			// the SLR's own subnet, preventing cross-VPC mis-deletion.
 			if lbhcSubnet := lbhc.ExternalIDs[util.SwitchLBRuleSubnet]; lbhcSubnet == subnetForVip {
-				belongsToThisVpc = true
+				belongsToOwner = true
 			}
 		}
 		for _, lb := range lbs {
-			if vpcLBNames != nil && !vpcLBNames.Has(lb.Name) {
-				referencedByOtherVpc = true
-				continue // skip LBs belonging to other VPCs
+			if !serviceOwnsScopedLB(ownerSvc, &lb) {
+				referencedByOtherOwner = true
+				continue
 			}
-			belongsToThisVpc = true
+			belongsToOwner = true
 
-			err = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID)
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete load balancer health check %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
-				return err
-			}
+			if !atomicLB {
+				err = c.OVNNbClient.LoadBalancerDeleteHealthCheck(lb.Name, lbhc.UUID)
+				if err != nil && !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete load balancer health check %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
+					return err
+				}
 
-			err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip)
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete ip port mappings %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
-				return err
+				err = c.OVNNbClient.LoadBalancerDeleteIPPortMapping(lb.Name, lbhc.Vip)
+				if err != nil && !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete ip port mappings %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
+					return err
+				}
 			}
 		}
 
 		// Only mark the LBHC for deletion if it is no longer referenced by
 		// any LB.  When other VPCs still reference the same LBHC, we must
 		// keep it alive.
-		if (belongsToThisVpc || vpcLBNames == nil) && !referencedByOtherVpc {
+		if belongsToOwner && !referencedByOtherOwner {
 			lbhcUUIDsToDelete.Insert(lbhc.UUID)
 		}
-		if belongsToThisVpc || vpcLBNames == nil {
+		if belongsToOwner {
 			if vip, ex := lbhc.ExternalIDs[util.SwitchLBRuleSubnet]; ex && vip != "" {
 				vips[vip] = struct{}{}
 			}
@@ -348,13 +348,18 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 		vips[subnetForVip] = struct{}{}
 	}
 
-	if lbhcUUIDsToDelete.Len() > 0 {
+	if !atomicLB && lbhcUUIDsToDelete.Len() > 0 {
 		if err = c.OVNNbClient.DeleteLoadBalancerHealthChecks(
 			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 				return lbhcUUIDsToDelete.Has(lbhc.UUID)
 			},
 		); err != nil && !k8serrors.IsNotFound(err) {
 			klog.Errorf("delete load balancer health checks matched vip %s, err: %v", info.Vips, err)
+			return err
+		}
+	}
+	if atomicLB {
+		if err := c.deleteServiceScopedLoadBalancersWithLegacyVIPs(ownerSvc, vpcForSlr, info.Vips, lbhcUUIDsToDelete.UnsortedList()); err != nil {
 			return err
 		}
 	}
@@ -378,12 +383,18 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 		}
 	}
 
+	if !atomicLB {
+		if err := c.deleteServiceScopedLoadBalancers(ownerSvc); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
 func (c *Controller) handleUpdateSwitchLBRule(info *SwitchLBRuleInfo) error {
 	klog.V(3).Infof("handleUpdateSwitchLBRule %s", info.Name)
-	if info.IsRecreate {
+	if info.IsRecreate && switchLBRuleNamespaceChanged(c, info) {
 		if err := c.handleDelSwitchLBRule(info); err != nil {
 			klog.Errorf("failed to update switchLBRule, %s", err)
 			return err
@@ -397,6 +408,11 @@ func (c *Controller) handleUpdateSwitchLBRule(info *SwitchLBRuleInfo) error {
 	return nil
 }
 
+func switchLBRuleNamespaceChanged(c *Controller, info *SwitchLBRuleInfo) bool {
+	slr, err := c.switchLBRuleLister.Get(info.Name)
+	return err == nil && slr.Spec.Namespace != info.Namespace
+}
+
 func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service) *corev1.Service {
 	var (
 		name      string
@@ -405,7 +421,9 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 		selectors map[string]string
 	)
 
-	selectors = make(map[string]string, 0)
+	if len(slr.Spec.Selector) != 0 {
+		selectors = make(map[string]string, len(slr.Spec.Selector))
+	}
 	for _, s := range slr.Spec.Selector {
 		keyValue := strings.Split(strings.TrimSpace(s), ":")
 		if len(keyValue) != 2 {
@@ -465,6 +483,7 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 
 	// If the user supplies a VPC/subnet for the SLR, propagate it to the service
 	setUserDefinedNetwork(newSvc, slr)
+	setServiceScopedLBOwner(newSvc, switchLBRuleLBOwnerKind, slr.Name, string(slr.UID))
 
 	// Set healthcheck annotation on the service if the setting is provided by the user
 	setHealthCheckAnnotation(newSvc, slr)
@@ -474,20 +493,31 @@ func generateHeadlessService(slr *kubeovnv1.SwitchLBRule, oldSvc *corev1.Service
 
 // setUserDefinedNetwork propagates user-defined VPC/subnet from the SLR to the Service
 func setUserDefinedNetwork(service *corev1.Service, slr *kubeovnv1.SwitchLBRule) {
-	if service == nil || slr == nil || slr.Annotations == nil {
+	if service == nil || slr == nil {
 		return
 	}
 
+	vpc := slr.Annotations[util.LogicalRouterAnnotation]
+	subnet := slr.Annotations[util.LogicalSwitchAnnotation]
+	if service.Annotations == nil && vpc == "" && subnet == "" {
+		return
+	}
 	if service.Annotations == nil {
 		service.Annotations = make(map[string]string)
 	}
 
-	if vpc := slr.Annotations[util.LogicalRouterAnnotation]; vpc != "" {
+	if vpc != "" {
 		service.Annotations[util.LogicalRouterAnnotation] = vpc
+		service.Annotations[util.VpcAnnotation] = vpc
+	} else {
+		delete(service.Annotations, util.LogicalRouterAnnotation)
+		delete(service.Annotations, util.VpcAnnotation)
 	}
 
-	if subnet := slr.Annotations[util.LogicalSwitchAnnotation]; subnet != "" {
+	if subnet != "" {
 		service.Annotations[util.LogicalSwitchAnnotation] = subnet
+	} else {
+		delete(service.Annotations, util.LogicalSwitchAnnotation)
 	}
 }
 

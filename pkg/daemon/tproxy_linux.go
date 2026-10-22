@@ -9,7 +9,6 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/containernetworking/plugins/pkg/ns"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	corev1 "k8s.io/api/core/v1"
@@ -334,55 +333,32 @@ func probePortInNs(podIP string, probePort int32, isTProxyProbe bool, conn net.C
 		return
 	}
 
-	podNS, err := ns.GetNS(podNs.(string))
+	remoteConn, err := goTProxy.DialNamespace(goTProxy.NamespaceSocket, goTProxy.NamespaceRequest{NetNS: podNs.(string), PodIP: podIP, Port: probePort})
 	if err != nil {
-		customVPCPodIPToNs.Delete(podIP)
-		klog.V(3).Infof("netns %s not found", podNs)
+		if isTProxyProbe {
+			customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, probePort), false)
+		}
+		klog.V(3).Infof("failed to dial Pod %s:%d through namespace helper: %v", podIP, probePort, err)
 		return
 	}
-	defer podNS.Close()
+	defer remoteConn.Close()
+	if isTProxyProbe {
+		customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, probePort), true)
+		return
+	}
 
-	_ = ns.WithNetNSPath(podNS.Path(), func(_ ns.NetNS) error {
-		// Packet's src and dst IP are both PodIP in netns
-		localpodTCPAddr := net.TCPAddr{IP: net.ParseIP(podIP)}
-		remotepodTCPAddr := net.TCPAddr{IP: net.ParseIP(podIP), Port: int(probePort)}
-
-		remoteConn, err := goTProxy.DialTCP(&localpodTCPAddr, &remotepodTCPAddr, !isTProxyProbe)
-		if err != nil {
-			if isTProxyProbe {
-				customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, probePort), false)
-			}
-			return nil
+	var streamWait sync.WaitGroup
+	streamConn := func(dst io.Writer, src io.Reader) {
+		if _, err := io.Copy(dst, src); err != nil {
+			klog.Errorf("copy TProxy stream failed: %v", err)
 		}
-
-		if isTProxyProbe {
-			customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, probePort), true)
-			return nil
+		if tcp, ok := dst.(interface{ CloseWrite() error }); ok {
+			_ = tcp.CloseWrite()
 		}
-
-		defer func() {
-			if err := remoteConn.Close(); err != nil {
-				klog.Errorf("remoteConn %v Close err: %v", remoteConn, err)
-			}
-		}()
-
-		var streamWait sync.WaitGroup
-		streamWait.Add(2)
-
-		streamConn := func(dst io.Writer, src io.Reader) {
-			if _, err := io.Copy(dst, src); err != nil {
-				klog.Errorf("copy stream from dst %v to src %v failed err: %v", dst, src, err)
-			}
-
-			streamWait.Done()
-		}
-
-		go streamConn(remoteConn, conn)
-		go streamConn(conn, remoteConn)
-
-		streamWait.Wait()
-		return nil
-	})
+	}
+	streamWait.Go(func() { streamConn(remoteConn, conn) })
+	streamWait.Go(func() { streamConn(conn, remoteConn) })
+	streamWait.Wait()
 }
 
 func getProtocols(protocol string) []string {

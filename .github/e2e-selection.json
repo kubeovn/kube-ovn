@@ -40,9 +40,10 @@
     "pkg/ovsdb/**",
     "pkg/util/**",
     "test/e2e/framework/**",
-    "test/e2e/kubevirt/**",
     "test/e2e/single-replica/**",
     "cmd/cni/**",
+    "cmd/kubectl-ko/**",
+    "pkg/ko/**",
     "cmd/controller/**",
     "cmd/daemon/**",
     "cmd/cmdmain.go",
@@ -51,9 +52,15 @@
   "pathRules": [
     {
       "patterns": ["test/e2e/kube-ovn/**"],
-      "groups": ["core", "service-lb-underlay"],
+      "groups": ["core"],
       "owner": "networking-e2e",
-      "reason": "Kube-OVN conformance and router load balancer suites"
+      "reason": "Kube-OVN conformance suites"
+    },
+    {
+      "patterns": ["test/e2e/kubevirt/**"],
+      "groups": ["kubevirt"],
+      "owner": "networking-e2e",
+      "reason": "KubeVirt virtual machine and live migration suites"
     },
     {
       "patterns": ["test/e2e/k8s-network/**"],
@@ -165,6 +172,11 @@
     }
   ],
   "groups": {
+    "kubevirt": {
+      "jobs": [
+        {"id": "kubevirt-e2e"}
+      ]
+    },
     "core": {
       "jobs": [
         {"id": "k8s-conformance-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"], "mode": ["overlay", "underlay"]}},
@@ -199,8 +211,7 @@
         {"id": "underlay-logical-gateway-installation-test"},
         {"id": "no-ovn-lb-test"},
         {"id": "lb-svc-e2e"},
-        {"id": "kube-ovn-underlay-metallb-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"]}},
-        {"id": "router-lb-rule-e2e"}
+        {"id": "kube-ovn-underlay-metallb-e2e", "matrix": {"ip-family": ["ipv4", "ipv6", "dual"]}}
       ]
     },
     "install-platform": {

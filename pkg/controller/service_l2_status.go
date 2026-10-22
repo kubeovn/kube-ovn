@@ -87,7 +87,7 @@ func (c *Controller) enqueueServiceL2Status(obj any) {
 	if !ok || c.addOrUpdateEndpointSliceQueue == nil {
 		return
 	}
-	c.addOrUpdateEndpointSliceQueue.Add(key)
+	c.enqueueEndpointSliceService(key)
 }
 
 func newMetalLBRESTClient(config *rest.Config) (rest.Interface, error) {
@@ -178,7 +178,7 @@ func (c *Controller) tryStartServiceL2StatusInformer(ctx context.Context) bool {
 }
 
 func (c *Controller) StartServiceL2StatusInformer(ctx context.Context) {
-	if !c.config.EnableLb {
+	if !c.config.EnableOvnLB {
 		return
 	}
 

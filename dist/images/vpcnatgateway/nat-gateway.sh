@@ -33,10 +33,16 @@
 #
 # ============================================================================
 
+# Where the interface configuration is persisted. It lives in the container's
+# writable layer, so a restarted vpc-nat-gw container starts without it and the
+# init command has to write it again. NAT_GW_ENV_FILE only exists so that tests
+# can keep the absolute system path untouched.
+NAT_GW_ENV_FILE=${NAT_GW_ENV_FILE:-/etc/kube-ovn/nat-gateway.env}
+
 # Read interfaces from persistent file
-if [ -f /etc/kube-ovn/nat-gateway.env ]; then
+if [ -f "$NAT_GW_ENV_FILE" ]; then
     # shellcheck disable=SC1091
-    source /etc/kube-ovn/nat-gateway.env
+    source "$NAT_GW_ENV_FILE"
 fi
 # Default interfaces
 VPC_INTERFACE=${VPC_INTERFACE:-"eth0"}
@@ -148,9 +154,9 @@ function init() {
         exit 1
     fi
     # Store interfaces persistently
-    mkdir -p /etc/kube-ovn
-    echo "VPC_INTERFACE=$VPC_INTERFACE" > /etc/kube-ovn/nat-gateway.env
-    echo "EXTERNAL_INTERFACE=$EXTERNAL_INTERFACE" >> /etc/kube-ovn/nat-gateway.env
+    mkdir -p "$(dirname "$NAT_GW_ENV_FILE")"
+    echo "VPC_INTERFACE=$VPC_INTERFACE" > "$NAT_GW_ENV_FILE"
+    echo "EXTERNAL_INTERFACE=$EXTERNAL_INTERFACE" >> "$NAT_GW_ENV_FILE"
 
     # run once is enough
     $iptables_save_cmd | grep DNAT_FILTER && exit 0
@@ -207,6 +213,11 @@ function init() {
     else
         echo "INFO: No IP addresses on $EXTERNAL_INTERFACE, skipping gratuitous ARP (no-IPAM mode or waiting for EIP allocation)"
     fi
+
+    # The controller records this Pod as initialized only after this command succeeds, so the
+    # chains have to exist by then. The chain creation above does not go through exec_cmd, so
+    # without this check a failed iptables call would still end the script with exit code 0.
+    check_inited
 }
 
 
@@ -897,7 +908,8 @@ function burst_mb_to_bytes() {
 # Log debug message only if QOS_DEBUG is enabled
 # Args: message
 function qos_debug() {
-    [ "$QOS_DEBUG" = "true" ] && echo "DEBUG: $*" >&2
+    [ "$QOS_DEBUG" = "true" ] || return 0
+    echo "DEBUG: $*" >&2
 }
 
 # Dump all tc QoS rules on a device for debugging
@@ -973,37 +985,14 @@ function verify_tc_filter_exists() {
     fi
 }
 
-# Verify a tc filter does NOT exist for a specific IP (after deletion)
-# Args: dev, ip (e.g., "192.168.1.1"), match_direction (src/dst)
-# Returns: 0 if NOT found (good), 1 if still exists (bad)
-# Only outputs debug info when QOS_DEBUG=true
-function verify_tc_filter_deleted() {
-    local dev=$1
-    local ip=$2
-    local match_direction=$3
-
-    local ip_escaped
-    ip_escaped=$(escape_for_regex "$ip/32")
-
-    local filter_output
-    filter_output=$(tc -p filter show dev "$dev" parent 1: 2>/dev/null)
-
-    if echo "$filter_output" | grep -qiE "match ip $match_direction $ip_escaped"; then
-        echo "ERROR: Filter for $ip ($match_direction) still exists on $dev after deletion!" >&2
-        return 1
-    else
-        qos_debug "Verified filter for $ip ($match_direction) was deleted from $dev"
-        return 0
-    fi
-}
-
 # ============================================================================
 # End of QoS Debugging and Verification Functions
 # ============================================================================
 
 # Generate a unique classid from IP address for HTB class
 # Uses all 4 octets with weighted sum to minimize collision probability
-# Range: 0x1-0x7ffe (1-32766) - uses hex format for tc compatibility
+# Range: 0x1-0x7ffe (1-32766). The shared default class 1:9999 is
+# hexadecimal 0x9999, so it is outside this range.
 # Note: Same IP will always produce same classid (deterministic)
 # Collision probability is low for typical deployments (<100 EIPs)
 #
@@ -1023,7 +1012,7 @@ function ip_to_classid() {
     # Weighted hash using prime multipliers for better distribution
     # Formula ensures different IPs get different classids in most cases
     local hash=$(( (octets[0] * 251 + octets[1] * 241 + octets[2] * 239 + octets[3] * 233) % 32766 ))
-    # classid range: 0x1-0x7fff (add 1 to avoid 0)
+    # classid range: 0x1-0x7ffe (add 1 to avoid 0)
     printf "0x%x" $((hash + 1))
 }
 
@@ -1042,22 +1031,25 @@ function find_available_classid() {
     # Strip 0x prefix for grep matching
     local classid_no_prefix=${classid_hex#0x}
 
-    # Check if this classid is already in use
     local filter_output
-    filter_output=$(tc -p filter show dev "$dev" parent 1: 2>/dev/null | grep -E "flowid 1:$classid_no_prefix\b" || true)
+    filter_output=$(tc -p filter show dev "$dev" parent 1: 2>/dev/null)
+    local class_pattern="flowid 1:$classid_no_prefix([^0-9a-fA-F]|$)"
 
-    if [ -n "$filter_output" ]; then
-        # Classid is in use, check if it's for the same IP
+    if echo "$filter_output" | grep -qE "$class_pattern"; then
         local target_ip_escaped
         target_ip_escaped=$(escape_for_regex "$target_ip/32")
-        if echo "$filter_output" | grep -qiE "match ip $match_direction $target_ip_escaped"; then
-            # Same IP, safe to reuse classid (this is an update scenario)
+        if echo "$filter_output" | awk -v class_pattern="$class_pattern" -v match_pattern="match ip $match_direction $target_ip_escaped([^0-9./]|$)" '
+            /flowid/ { owns_class = $0 ~ class_pattern }
+            tolower($0) ~ tolower(match_pattern) && owns_class { found = 1 }
+            END { exit !found }
+        '; then
             printf "0x%x" $classid
             return
         fi
 
-        # Collision with different IP - find alternative classid
-        # Try offsets in a different range to avoid further collision
+        # Collision with different IP - find alternative classid.
+        # Ten deterministic probes bound the script latency; widen this to a
+        # preloaded full-range scan only if real gateways exhaust the chain.
         local attempts=0
         while [ $attempts -lt 10 ]; do
             classid=$((classid + 3571))  # Use prime offset for better distribution
@@ -1067,7 +1059,6 @@ function find_available_classid() {
             if [ $classid -lt 1 ]; then
                 classid=1
             fi
-
             local new_classid_hex
             new_classid_hex=$(printf "0x%x" $classid)
             local existing
@@ -1080,43 +1071,71 @@ function find_available_classid() {
             attempts=$((attempts + 1))
         done
 
-        # If all attempts failed, use the original classid anyway (very rare)
-        # The old filter will be replaced
-        echo "WARNING: find_available_classid failed to find available classid after 10 attempts for IP '$target_ip' on dev '$dev'. Using classid 0x$(printf '%x' $classid) which may cause collision." >&2
+        echo "ERROR: no available EIP QoS classid for IP '$target_ip' on dev '$dev'" >&2
+        return 1
     fi
 
     printf "0x%x" $classid
 }
 
 # Delete existing HTB u32 filter and class
-# Args: dev, ip_escaped (regex-escaped IP/32, e.g., "192\.168\.1\.1/32"), match_direction (src/dst)
+# Args: dev, ip_escaped, match_direction, class_range (eip/natgw), priority (optional)
 function delete_htb_filter_and_class() {
     local dev=$1
     local ip_escaped=$2
     local match_direction=$3
+    local class_range=$4
+    local priority=${5:-}
 
-    qos_debug "delete_htb_filter_and_class called: dev=$dev, ip_escaped=$ip_escaped, match_direction=$match_direction"
+    qos_debug "delete_htb_filter_and_class called: dev=$dev, ip_escaped=$ip_escaped, match_direction=$match_direction, class_range=$class_range"
 
     local filter_output
     # -p: use human-readable IP format (192.168.1.1 instead of hex c0a80101)
-    filter_output=$(tc -p filter show dev "$dev" parent 1: 2>/dev/null)
+    if ! filter_output=$(tc -p filter show dev "$dev" parent 1:); then
+        echo "ERROR: failed to list QoS filters on $dev" >&2
+        return 1
+    fi
 
     qos_debug "filter_output length: ${#filter_output}"
 
     # Use -i for case-insensitive match (tc output may use "IP" or "ip" depending on version)
     if echo "$filter_output" | grep -qiE "match ip $match_direction $ip_escaped"; then
         qos_debug "Found matching filter for $ip_escaped on $dev"
-        # Extract filter info: grep -iB2 gets 2 lines before the match line
-        # tc output format is stable: flowid line is typically 1-2 lines before match line
-        # Then we use a second grep to precisely extract the flowid line from context
-        # This two-step approach is simple and reliable across tc versions
-        local filter_info
-        filter_info=$(echo "$filter_output" | grep -iB2 "match ip $match_direction $ip_escaped" | head -3)
-        qos_debug "filter_info: $filter_info"
-        # Only extract from the line containing 'flowid' (the actual filter line, not hash table declaration)
+        # Keep the flowid immediately preceding the matching IP line. A fixed number
+        # of preceding lines is unsafe when multiple filters share the same priority.
+        local match_pattern="match ip $match_direction $ip_escaped([^0-9./]|$)"
+        local class_pattern
+        case "$class_range" in
+            eip) class_pattern='flowid 1:[0-7][0-9a-fA-F]*([^0-9a-fA-F]|$)' ;;
+            natgw) class_pattern='flowid 1:[89a-fA-F][0-9a-fA-F]*([^0-9a-fA-F]|$)' ;;
+            *) echo "ERROR: unknown QoS class range '$class_range'" >&2; return 1 ;;
+        esac
         local flowid_line
-        flowid_line=$(echo "$filter_info" | grep "flowid" | head -1)
+        flowid_line=$(echo "$filter_output" | awk -v pattern="$match_pattern" -v class_pattern="$class_pattern" -v priority="$priority" '
+            /flowid/ {
+                priority_pattern = "pref " priority "([^0-9]|$)"
+                flowid = ($0 ~ class_pattern && (priority == "" || $0 ~ priority_pattern)) ? $0 : ""
+            }
+            tolower($0) ~ tolower(pattern) && flowid != "" { print flowid; exit }
+        ')
         qos_debug "flowid_line: $flowid_line"
+        # tc rewrites some requested priorities before storing them (a configured
+        # priority 0 is stored as 49152), so a filter written before this
+        # constraint may carry no pref matching the rule. Such a filter is only
+        # accepted when it is the sole candidate for this identity, so a filter
+        # belonging to a different rule is never picked up by accident.
+        if [ -z "$flowid_line" ] && [ -n "$priority" ]; then
+            local candidates
+            candidates=$(echo "$filter_output" | awk -v pattern="$match_pattern" -v class_pattern="$class_pattern" '
+                /flowid/ { flowid = ($0 ~ class_pattern) ? $0 : "" }
+                tolower($0) ~ tolower(pattern) && flowid != "" { print flowid }
+            ')
+            if [ "$(printf '%s\n' "$candidates" | grep -c .)" -eq 1 ]; then
+                flowid_line=$candidates
+                qos_debug "Single filter matches this identity without a matching pref: $flowid_line"
+            fi
+        fi
+        [ -n "$flowid_line" ] || return 0
         local old_handle old_prio old_classid
         old_handle=$(echo "$flowid_line" | grep -oE 'fh [0-9a-f:]+' | awk '{print $2}')
         old_prio=$(echo "$flowid_line" | grep -oE 'pref [0-9]+' | awk '{print $2}')
@@ -1124,106 +1143,77 @@ function delete_htb_filter_and_class() {
         # Add 0x prefix so tc class del interprets it as hex (tc accepts 0x prefix)
         old_classid=$(echo "$flowid_line" | grep -oE 'flowid 1:[0-9a-fA-F]+' | sed 's/flowid 1:/0x/')
         qos_debug "Extracted - old_handle=$old_handle, old_prio=$old_prio, old_classid=$old_classid"
-        if [ -n "$old_handle" ] && [ -n "$old_prio" ]; then
-            qos_debug "Deleting filter: tc filter del dev $dev parent 1: prio $old_prio handle $old_handle u32"
-            tc filter del dev "$dev" parent 1: prio $old_prio handle $old_handle u32 2>/dev/null || true
-        else
-            qos_debug "Missing old_handle or old_prio, cannot delete filter"
+        if [ -z "$old_handle" ] || [ -z "$old_prio" ] || [ -z "$old_classid" ]; then
+            echo "ERROR: failed to parse QoS filter identity for $ip_escaped on $dev" >&2
+            return 1
         fi
-        if [ -n "$old_classid" ]; then
-            qos_debug "Deleting class: tc class del dev $dev classid 1:$old_classid"
-            tc class del dev "$dev" classid 1:$old_classid 2>/dev/null || true
-        else
-            qos_debug "Missing old_classid, cannot delete class"
+        qos_debug "Deleting filter: tc filter del dev $dev parent 1: prio $old_prio handle $old_handle u32"
+        if ! tc filter del dev "$dev" parent 1: prio "$old_prio" handle "$old_handle" u32; then
+            echo "ERROR: failed to delete QoS filter for $ip_escaped on $dev" >&2
+            return 1
+        fi
+        qos_debug "Deleting class: tc class del dev $dev classid 1:$old_classid"
+        if ! tc class del dev "$dev" classid 1:"$old_classid" 2>/dev/null; then
+            echo "WARNING: failed to delete orphan QoS class 1:$old_classid on $dev" >&2
         fi
 
-        # Verify deletion was successful
-        # Extract IP from escaped pattern for verification
-        local ip_for_verify
-        ip_for_verify=$(echo "$ip_escaped" | sed 's/\\//g' | sed 's|/32||')
-        if ! verify_tc_filter_deleted "$dev" "$ip_for_verify" "$match_direction"; then
-            echo "WARNING: Filter deletion verification failed for $ip_for_verify on $dev" >&2
-        fi
     else
         qos_debug "No matching filter found for pattern 'match ip $match_direction $ip_escaped' on $dev"
     fi
 }
 
-# Delete existing HTB matchall filter and class (egress with HTB qdisc)
+# Delete existing HTB matchall filter and class by its fixed target classid.
 # Args:
 #   dev: network device name
-#   target_classid: (optional) specific classid to delete, handles orphaned classes
-#
-# Why target_classid is needed:
-#   When QoS policy is updated, the old class may become orphaned if:
-#   1. Filter was deleted but class deletion failed (e.g., classid parsing failed)
-#   2. Filter doesn't exist (deleted by another operation) so grep finds nothing
-#   Without target_classid, orphaned classes cause "RTNETLINK answers: File exists"
-#   error when adding new class with the same classid.
+#   target_classid: classid of the matchall rule to delete
 #
 # Note: tc requires filter to be deleted BEFORE its associated class can be deleted.
-#   This function first deletes the filter (if found), then deletes the class.
+#   This function first deletes the exact filter (if found), then the class.
 function delete_htb_matchall_filter_and_class() {
     local dev=$1
-    local target_classid=${2:-}  # Optional: specific classid to delete (handles orphaned classes)
+    local target_classid=${2:-}
+    if [ -z "$target_classid" ]; then
+        qos_debug "delete_htb_matchall_filter_and_class called without a target classid on $dev; skipping"
+        return
+    fi
 
     local filter_output
-    filter_output=$(tc filter show dev "$dev" parent 1: 2>/dev/null)
+    if ! filter_output=$(tc filter show dev "$dev" parent 1:); then
+        echo "ERROR: failed to list matchall filters on $dev" >&2
+        return 1
+    fi
 
-    if echo "$filter_output" | grep -qw "matchall"; then
-        # Directly grep the matchall filter line that contains 'flowid'
-        # This avoids the issue of grep -B2 picking up unrelated u32 filter lines
-        local flowid_line
-        flowid_line=$(echo "$filter_output" | grep "matchall.*flowid" | head -1)
-        local old_handle old_prio old_classid
+    local target_no_prefix=${target_classid#0x}
+    local flowid_line
+    # Multiple matchall filters can coexist on the same parent, so only the
+    # filter whose flowid is exactly the requested classid may be removed.
+    flowid_line=$(echo "$filter_output" | grep -iE "flowid 1:${target_no_prefix}([^0-9a-fA-F]|$)" | head -1)
+    qos_debug "delete_htb_matchall_filter_and_class: target=$target_classid, flowid_line=$flowid_line"
+    if [ -n "$flowid_line" ]; then
+        local old_handle old_prio
         # matchall filter uses "handle 0xNNNN" format, not "fh" like u32 filters
         old_handle=$(echo "$flowid_line" | grep -oE 'handle 0x[0-9a-fA-F]+' | sed 's/handle //')
         old_prio=$(echo "$flowid_line" | grep -oE 'pref [0-9]+' | awk '{print $2}')
-        # tc filter show outputs classid WITHOUT 0x prefix (e.g., "flowid 1:ff00")
-        # Add 0x prefix so tc class del interprets it as hex (tc accepts 0x prefix)
-        old_classid=$(echo "$flowid_line" | grep -oE 'flowid 1:[0-9a-fA-F]+' | sed 's/flowid 1:/0x/')
-        if [ -n "$old_handle" ] && [ -n "$old_prio" ]; then
-            tc filter del dev "$dev" parent 1: prio "$old_prio" handle "$old_handle" matchall 2>/dev/null || true
+        if [ -z "$old_handle" ] || [ -z "$old_prio" ]; then
+            echo "ERROR: failed to parse matchall filter identity for class $target_classid on $dev" >&2
+            return 1
         fi
-        if [ -n "$old_classid" ]; then
-            tc class del dev "$dev" classid 1:$old_classid 2>/dev/null || true
-        fi
-    fi
-
-    # Also delete the target classid if provided (handles orphaned classes)
-    # This ensures cleanup even if no filter exists pointing to this class
-    if [ -n "$target_classid" ]; then
-        tc class del dev "$dev" classid 1:$target_classid 2>/dev/null || true
-    fi
-}
-
-# Delete HTB filter and class by classid (fallback when IP grep doesn't match)
-# Args: dev, classid_hex (e.g., "0x4586")
-function delete_htb_filter_by_classid() {
-    local dev=$1
-    local classid_hex=$2
-
-    # tc filter show outputs classid WITHOUT 0x prefix (e.g., "flowid 1:4586")
-    # Strip 0x prefix for grep matching
-    local classid_no_prefix=${classid_hex#0x}
-    local filter_by_classid
-    filter_by_classid=$(tc filter show dev "$dev" parent 1: 2>/dev/null | grep -E "flowid 1:$classid_no_prefix\b" || true)
-    if [ -n "$filter_by_classid" ]; then
-        local old_prio old_handle
-        old_prio=$(echo "$filter_by_classid" | grep -oE 'pref [0-9]+' | head -1 | awk '{print $2}')
-        # u32 filters use "fh xxx:yyy" format, matchall filters use "handle 0xNNN" format
-        old_handle=$(echo "$filter_by_classid" | grep -oE 'fh [0-9a-f:]+' | head -1 | awk '{print $2}')
-        # Fallback: if fh format not found, try matchall handle format
-        [ -z "$old_handle" ] && old_handle=$(echo "$filter_by_classid" | grep -oE 'handle 0x[0-9a-fA-F]+' | head -1 | sed 's/handle //')
-        if [ -n "$old_prio" ] && [ -n "$old_handle" ]; then
-            # Try both u32 and matchall since we don't know the filter type
-            tc filter del dev "$dev" parent 1: prio "$old_prio" handle "$old_handle" u32 2>/dev/null || true
-            tc filter del dev "$dev" parent 1: prio "$old_prio" handle "$old_handle" matchall 2>/dev/null || true
+        qos_debug "Deleting matchall filter: tc filter del dev $dev parent 1: prio $old_prio handle $old_handle matchall"
+        if ! tc filter del dev "$dev" parent 1: prio "$old_prio" handle "$old_handle" matchall; then
+            echo "ERROR: failed to delete matchall filter for class $target_classid on $dev" >&2
+            return 1
         fi
     fi
 
-    # Delete class regardless of filter existence
-    tc class del dev "$dev" classid 1:$classid_hex 2>/dev/null || true
+    local class_output
+    if ! class_output=$(tc class show dev "$dev" classid 1:"$target_classid"); then
+        echo "ERROR: failed to list matchall class $target_classid on $dev" >&2
+        return 1
+    fi
+    if [ -n "$class_output" ] && ! tc class del dev "$dev" classid 1:"$target_classid"; then
+        echo "ERROR: failed to delete matchall class $target_classid on $dev" >&2
+        return 1
+    fi
 }
 
 # Get or create the IFB device name for a given interface
@@ -1264,14 +1254,8 @@ function setup_ifb_device() {
     # Setup ingress qdisc on the physical interface to redirect traffic to IFB
     tc qdisc add dev "$dev" ingress 2>/dev/null || true
 
-    # Setup HTB qdisc on IFB device for traffic shaping
-    # Use default class 9999 for unclassified traffic (no rate limit)
-    tc qdisc add dev "$ifb_dev" root handle 1: htb default 9999 2>/dev/null || true
-
-    # Create default class 9999 for unclassified traffic (very high rate = no limit)
-    # Without this class, unclassified traffic would be DROPPED because the default class doesn't exist
-    # Use 10000mbit as "unlimited" rate (effectively no limit for normal network speeds)
-    tc class add dev "$ifb_dev" parent 1: classid 1:9999 htb rate 10000mbit ceil 10000mbit 2>/dev/null || true
+    # The HTB root and the default class 1:9999 on the IFB device are owned by
+    # ensure_qos_root, which every caller runs right after this function.
 
     # Add redirect action from physical interface ingress to IFB
     # Check if redirect filter already exists
@@ -1289,6 +1273,18 @@ function setup_ifb_device() {
     echo "$ifb_dev"
 }
 
+# Reconcile the HTB root qdisc and the default class 1:9999 on a device. Both
+# are shared by every QoS rule on that device, so this only ever creates or
+# refreshes them and never touches a per-rule class.
+# Args: dev
+function ensure_qos_root() {
+    local dev=$1
+    if ! tc qdisc show dev "$dev" | grep -q "htb 1:"; then
+        exec_cmd "tc qdisc replace dev $dev root handle 1: htb default 9999"
+    fi
+    exec_cmd "tc class replace dev $dev parent 1: classid 1:9999 htb rate 10000mbit ceil 10000mbit"
+}
+
 # Delete IFB filter and class for a specific IP
 # Args: ifb_dev, ip_escaped (regex-escaped IP/32), match_direction (src/dst)
 function delete_ifb_filter_and_class() {
@@ -1296,8 +1292,8 @@ function delete_ifb_filter_and_class() {
     local ip_escaped=$2
     local match_direction=$3
 
-    # Reuse the HTB deletion logic since IFB uses HTB
-    delete_htb_filter_and_class "$ifb_dev" "$ip_escaped" "$match_direction"
+    # Reuse the HTB deletion logic since IFB uses HTB.
+    delete_htb_filter_and_class "$ifb_dev" "$ip_escaped" "$match_direction" eip
 }
 
 # EIP-level ingress QoS using IFB + HTB (TCP-friendly, queues instead of drops)
@@ -1333,26 +1329,22 @@ function eip_ingress_qos_add() {
 
         qos_debug "Processing ingress QoS rule - v4ip=$v4ip, priority=$priority, rate=$rate, burst=$burst, dev=$dev"
 
-        # Setup IFB device and get its name
         local ifb_dev
         ifb_dev=$(setup_ifb_device "$dev")
+        ensure_qos_root "$ifb_dev"
         qos_debug "IFB device = $ifb_dev"
 
-        # Delete any existing filter/class for this IP on IFB
+        # Replace cannot update an existing u32 filter on all supported tc versions.
         local v4ip_escaped
         v4ip_escaped=$(escape_for_regex "$v4ip/32")
-        qos_debug "Calling delete_ifb_filter_and_class for ingress"
-        delete_ifb_filter_and_class "$ifb_dev" "$v4ip_escaped" "$matchDirection"
+        delete_ifb_filter_and_class "$ifb_dev" "$v4ip_escaped" "$matchDirection" || return 1
 
         # Generate classid for this IP (reuse the same function as egress)
         local initial_classid
         initial_classid=$(ip_to_classid "$v4ip")
         local classid
-        classid=$(find_available_classid "$ifb_dev" "$initial_classid" "$v4ip" "$matchDirection")
+        classid=$(find_available_classid "$ifb_dev" "$initial_classid" "$v4ip" "$matchDirection") || return 1
         qos_debug "classid for $v4ip = $classid (initial was $initial_classid)"
-
-        # Delete any orphaned class with this classid
-        tc class del dev "$ifb_dev" classid 1:$classid 2>/dev/null || true
 
         # Convert burst from MB to bytes (handles decimal values like 1.5)
         local burst_bytes
@@ -1365,8 +1357,8 @@ function eip_ingress_qos_add() {
         # Create HTB class with rate limiting on IFB device
         # rate: guaranteed bandwidth, ceil: maximum bandwidth (same for hard limit)
         # burst/cburst: use bytes to avoid tc parsing issues with decimal MB values
-        qos_debug "Creating class: tc class add dev $ifb_dev parent 1: classid 1:$classid htb rate ${rate}mbit ceil ${rate}mbit burst ${burst_bytes} cburst ${burst_bytes}"
-        exec_cmd "tc class add dev $ifb_dev parent 1: classid 1:$classid htb rate ${rate}mbit ceil ${rate}mbit burst ${burst_bytes} cburst ${burst_bytes}"
+        qos_debug "Creating class: tc class replace dev $ifb_dev parent 1: classid 1:$classid htb rate ${rate}mbit ceil ${rate}mbit burst ${burst_bytes} cburst ${burst_bytes}"
+        exec_cmd "tc class replace dev $ifb_dev parent 1: classid 1:$classid htb rate ${rate}mbit ceil ${rate}mbit burst ${burst_bytes} cburst ${burst_bytes}"
 
         # Add fq_codel as leaf qdisc for better handling of bursty traffic
         # fq_codel provides:
@@ -1381,8 +1373,8 @@ function eip_ingress_qos_add() {
         exec_cmd "tc qdisc replace dev $ifb_dev parent 1:$classid fq_codel"
 
         # Create filter to classify traffic matching dst IP (ingress to this EIP) to this class
-        qos_debug "Creating filter: tc filter add dev $ifb_dev parent 1: protocol ip prio $priority handle $classid u32 match ip $matchDirection $v4ip/32 flowid 1:$classid"
-        exec_cmd "tc filter add dev $ifb_dev parent 1: protocol ip prio $priority handle $classid u32 match ip $matchDirection $v4ip/32 flowid 1:$classid"
+        qos_debug "Creating filter: tc filter replace dev $ifb_dev parent 1: protocol ip prio $priority handle $classid u32 match ip $matchDirection $v4ip/32 flowid 1:$classid"
+        exec_cmd "tc filter replace dev $ifb_dev parent 1: protocol ip prio $priority handle $classid u32 match ip $matchDirection $v4ip/32 flowid 1:$classid"
 
         # Verify the rules were created correctly
         qos_debug "Verifying ingress QoS rules for $v4ip..."
@@ -1426,31 +1418,20 @@ function eip_egress_qos_add() {
 
         qos_debug "Processing egress QoS rule - v4ip=$v4ip, priority=$priority, rate=$rate, burst=$burst, dev=$dev"
 
-        # Create root HTB qdisc if not exists (default class 9999 for unclassified traffic)
-        tc qdisc add dev $dev root handle 1: htb default 9999 2>/dev/null || true
+        ensure_qos_root "$dev"
 
-        # Create default class 9999 for unclassified traffic (very high rate = no limit)
-        # Without this class, unclassified traffic would be DROPPED because the default class doesn't exist
-        # Use 10000mbit as "unlimited" rate (effectively no limit for normal network speeds)
-        tc class add dev "$dev" parent 1: classid 1:9999 htb rate 10000mbit ceil 10000mbit 2>/dev/null || true
-
-        # Delete any existing filter/class for this IP first (use IP/32 for CIDR match)
+        # Replace cannot update an existing u32 filter on all supported tc versions.
         local v4ip_escaped
         v4ip_escaped=$(escape_for_regex "$v4ip/32")
-        qos_debug "Calling delete_htb_filter_and_class for egress"
-        delete_htb_filter_and_class "$dev" "$v4ip_escaped" "src"
+        delete_htb_filter_and_class "$dev" "$v4ip_escaped" "src" eip || return 1
 
         # ip_to_classid returns classid WITH 0x prefix (e.g., "0x4586")
         # find_available_classid also returns WITH 0x prefix
         local initial_classid
         initial_classid=$(ip_to_classid "$v4ip")
         local classid
-        classid=$(find_available_classid "$dev" "$initial_classid" "$v4ip" "src")
+        classid=$(find_available_classid "$dev" "$initial_classid" "$v4ip" "src") || return 1
         qos_debug "classid for $v4ip = $classid (initial was $initial_classid)"
-
-        # Delete any orphaned class with this classid (safe because find_available_classid
-        # already verified it's either unused or belongs to this IP)
-        tc class del dev $dev classid 1:$classid 2>/dev/null || true
 
         # Convert burst from MB to bytes (handles decimal values like 1.5)
         local burst_bytes
@@ -1463,8 +1444,8 @@ function eip_egress_qos_add() {
         # Create HTB class with rate limiting
         # rate: guaranteed bandwidth, ceil: maximum bandwidth (same for hard limit)
         # burst/cburst: use bytes to avoid tc parsing issues with decimal MB values
-        qos_debug "Creating class: tc class add dev $dev parent 1: classid 1:$classid htb rate ${rate}mbit ceil ${rate}mbit burst ${burst_bytes} cburst ${burst_bytes}"
-        exec_cmd "tc class add dev $dev parent 1: classid 1:$classid htb rate ${rate}mbit ceil ${rate}mbit burst ${burst_bytes} cburst ${burst_bytes}"
+        qos_debug "Creating class: tc class replace dev $dev parent 1: classid 1:$classid htb rate ${rate}mbit ceil ${rate}mbit burst ${burst_bytes} cburst ${burst_bytes}"
+        exec_cmd "tc class replace dev $dev parent 1: classid 1:$classid htb rate ${rate}mbit ceil ${rate}mbit burst ${burst_bytes} cburst ${burst_bytes}"
 
         # Add fq_codel as leaf qdisc for better handling of bursty traffic
         # This provides fair queuing and active queue management for egress traffic
@@ -1473,7 +1454,7 @@ function eip_egress_qos_add() {
 
         # Create filter to classify traffic matching src IP to this class
         # tc u32 match requires CIDR format, so append /32 for single IP
-        exec_cmd "tc filter add dev $dev parent 1: protocol ip prio $priority handle $classid u32 match ip src $v4ip/32 flowid 1:$classid"
+        exec_cmd "tc filter replace dev $dev parent 1: protocol ip prio $priority handle $classid u32 match ip src $v4ip/32 flowid 1:$classid"
 
         # Verify the rules were created correctly
         qos_debug "Verifying egress QoS rules for $v4ip..."
@@ -1517,20 +1498,24 @@ function cidr_to_classid() {
     IFS='.' read -r -a octets <<< "$ip"
     # Use weighted sum with different primes than ip_to_classid
     local hash=$(( (octets[0] * 11 + octets[1] * 13 + octets[2] * 17 + octets[3] * 19) % 32511 ))
-    # Range: 0x8000-0xfeff (32768-65279, avoids collision with matchall range)
+    # Range: 0x8000-0xfeff, excluding shared default class 0x9999.
     local classid=$((hash + 32768))
+    if [ "$classid" -eq $((0x9999)) ]; then
+        classid=$((0xfeff))
+    fi
     printf "0x%x" $classid
 }
 
 # Find an available classid for NatGw-level QoS, handling collision with different CIDR
-# Args: dev, initial_classid (hex format), target_cidr, match_direction (src/dst)
-# Returns: available classid in hex format (may be same as initial if no collision or collision with same CIDR)
+# Args: dev, initial_classid, target_cidr, match_direction, priority
+# Returns: available classid in hex format (may be the initial class for the same rule)
 # Note: This function handles the 0x8000-0xfeff range (NatGw QoS)
 function find_available_classid_for_cidr() {
     local dev=$1
     local classid_hex=$2
     local target_cidr=$3
     local match_direction=$4
+    local priority=$5
 
     # Convert hex to decimal for arithmetic
     local classid=$((classid_hex))
@@ -1538,22 +1523,28 @@ function find_available_classid_for_cidr() {
     # Strip 0x prefix for grep matching
     local classid_no_prefix=${classid_hex#0x}
 
-    # Check if this classid is already in use
     local filter_output
-    filter_output=$(tc -p filter show dev "$dev" parent 1: 2>/dev/null | grep -E "flowid 1:$classid_no_prefix\b" || true)
+    filter_output=$(tc -p filter show dev "$dev" parent 1: 2>/dev/null)
+    local class_pattern="flowid 1:$classid_no_prefix([^0-9a-fA-F]|$)"
 
-    if [ -n "$filter_output" ]; then
-        # Classid is in use, check if it's for the same CIDR
+    if echo "$filter_output" | grep -qE "$class_pattern"; then
         local target_cidr_escaped
         target_cidr_escaped=$(escape_for_regex "$target_cidr")
-        if echo "$filter_output" | grep -qiE "match ip $match_direction $target_cidr_escaped"; then
-            # Same CIDR, safe to reuse classid (this is an update scenario)
+        if echo "$filter_output" | awk -v class_pattern="$class_pattern" -v match_pattern="match ip $match_direction $target_cidr_escaped([^0-9./]|$)" -v priority="$priority" '
+            /flowid/ {
+                same_rule = $0 ~ class_pattern && $0 ~ ("pref " priority "([^0-9]|$)")
+            }
+            tolower($0) ~ tolower(match_pattern) && same_rule { found = 1 }
+            END { exit !found }
+        '; then
             printf "0x%x" $classid
             return
         fi
 
-        # Collision with different CIDR - find alternative classid
-        # Range: 0x8000-0xfeff (32768-65279, avoids matchall range 0xff00-0xfffe)
+        # Collision with different CIDR - find alternative classid.
+        # Range: 0x8000-0xfeff (32768-65279, avoids matchall range 0xff00-0xfffe).
+        # Ten deterministic probes bound the script latency; widen this to a
+        # preloaded full-range scan only if real gateways exhaust the chain.
         local attempts=0
         while [ $attempts -lt 10 ]; do
             classid=$((classid + 3571))  # Use prime offset for better distribution
@@ -1562,6 +1553,9 @@ function find_available_classid_for_cidr() {
             fi
             if [ $classid -lt 32768 ]; then
                 classid=32768
+            fi
+            if [ "$classid" -eq $((0x9999)) ]; then
+                classid=$((classid + 1))
             fi
 
             local new_classid_hex
@@ -1576,9 +1570,8 @@ function find_available_classid_for_cidr() {
             attempts=$((attempts + 1))
         done
 
-        # If all attempts failed, use the original classid anyway (very rare)
-        # The old filter will be replaced
-        echo "WARNING: find_available_classid_for_cidr failed to find available classid after 10 attempts for CIDR '$target_cidr' on dev '$dev'. Using classid 0x$(printf '%x' $classid) which may cause collision." >&2
+        echo "ERROR: no available NAT gateway QoS classid for CIDR '$target_cidr' on dev '$dev'" >&2
+        return 1
     fi
 
     printf "0x%x" $classid
@@ -1622,35 +1615,28 @@ function qos_add() {
             # Ingress: use IFB + HTB for TCP-friendly traffic shaping
             local ifb_dev
             ifb_dev=$(setup_ifb_device "$dev")
+            ensure_qos_root "$ifb_dev"
 
             # cidr_to_classid returns classid WITH 0x prefix (e.g., "0x8000")
             local initial_classid=$(cidr_to_classid "$cidr" "$priority")
             local classid
 
-            # Delete existing rule for this IP/matchall before adding new one
             if [ "$classifierType" == "u32" ]; then
                 local cidr_escaped
                 cidr_escaped=$(escape_for_regex "$cidr")
-                delete_htb_filter_and_class "$ifb_dev" "$cidr_escaped" "$matchDirection"
-
-                # Check for collision and find available classid
-                classid=$(find_available_classid_for_cidr "$ifb_dev" "$initial_classid" "$cidr" "$matchDirection")
+                delete_htb_filter_and_class "$ifb_dev" "$cidr_escaped" "$matchDirection" natgw "$priority" || return 1
+                classid=$(find_available_classid_for_cidr "$ifb_dev" "$initial_classid" "$cidr" "$matchDirection" "$priority") || return 1
             elif [ "$classifierType" == "matchall" ]; then
-                # Pass initial_classid to ensure orphaned classes are cleaned up
-                delete_htb_matchall_filter_and_class "$ifb_dev" "$initial_classid"
-                # matchall uses fixed classid, no collision detection needed
                 classid=$initial_classid
+                delete_htb_matchall_filter_and_class "$ifb_dev" "$classid" || return 1
             fi
-
-            # Delete any orphaned class with this classid
-            tc class del dev "$ifb_dev" classid 1:$classid 2>/dev/null || true
 
             # Convert burst from MB to bytes (handles decimal values like 1.5)
             local burst_bytes
             burst_bytes=$(burst_mb_to_bytes "$burst")
 
             # Create HTB class on IFB
-            exec_cmd "tc class add dev $ifb_dev parent 1: classid 1:$classid htb rate ${rate}mbit ceil ${rate}mbit burst ${burst_bytes} cburst ${burst_bytes}"
+            exec_cmd "tc class replace dev $ifb_dev parent 1: classid 1:$classid htb rate ${rate}mbit ceil ${rate}mbit burst ${burst_bytes} cburst ${burst_bytes}"
 
             # Add fq_codel as leaf qdisc for better handling of bursty traffic
             # Use 'replace' instead of 'add' to make this idempotent
@@ -1658,47 +1644,35 @@ function qos_add() {
 
             # Create filter on IFB
             if [ "$classifierType" == "u32" ]; then
-                exec_cmd "tc filter add dev $ifb_dev parent 1: protocol ip prio $priority handle $classid u32 match $matchType $matchDirection $cidr flowid 1:$classid"
+                exec_cmd "tc filter replace dev $ifb_dev parent 1: protocol ip prio $priority handle $classid u32 match $matchType $matchDirection $cidr flowid 1:$classid"
             elif [ "$classifierType" == "matchall" ]; then
-                exec_cmd "tc filter add dev $ifb_dev parent 1: protocol ip prio $priority handle $classid matchall flowid 1:$classid"
+                exec_cmd "tc filter replace dev $ifb_dev parent 1: protocol ip prio $priority handle $classid matchall flowid 1:$classid"
             fi
 
         elif [ "$qdiscType" == "egress" ]; then
             # Egress: use HTB class (queue packets instead of dropping)
-            tc qdisc add dev $dev root handle 1: htb default 9999 2>/dev/null || true
-
-            # Create default class 9999 for unclassified traffic (very high rate = no limit)
-            # Without this class, unclassified traffic would be DROPPED because the default class doesn't exist
-            tc class add dev "$dev" parent 1: classid 1:9999 htb rate 10000mbit ceil 10000mbit 2>/dev/null || true
+            ensure_qos_root "$dev"
 
             # cidr_to_classid returns classid WITH 0x prefix (e.g., "0x8000")
             local initial_classid=$(cidr_to_classid "$cidr" "$priority")
             local classid
 
-            # Delete existing rule for this IP/matchall before adding new one
             if [ "$classifierType" == "u32" ]; then
                 local cidr_escaped
                 cidr_escaped=$(escape_for_regex "$cidr")
-                delete_htb_filter_and_class "$dev" "$cidr_escaped" "$matchDirection"
-
-                # Check for collision and find available classid
-                classid=$(find_available_classid_for_cidr "$dev" "$initial_classid" "$cidr" "$matchDirection")
+                delete_htb_filter_and_class "$dev" "$cidr_escaped" "$matchDirection" natgw "$priority" || return 1
+                classid=$(find_available_classid_for_cidr "$dev" "$initial_classid" "$cidr" "$matchDirection" "$priority") || return 1
             elif [ "$classifierType" == "matchall" ]; then
-                # Pass initial_classid to ensure orphaned classes are cleaned up
-                delete_htb_matchall_filter_and_class "$dev" "$initial_classid"
-                # matchall uses fixed classid, no collision detection needed
                 classid=$initial_classid
+                delete_htb_matchall_filter_and_class "$dev" "$classid" || return 1
             fi
-
-            # Delete any orphaned class with this classid (must be after filter deletion)
-            tc class del dev "$dev" classid 1:$classid 2>/dev/null || true
 
             # Convert burst from MB to bytes (handles decimal values like 1.5)
             local burst_bytes
             burst_bytes=$(burst_mb_to_bytes "$burst")
 
             # Create HTB class
-            exec_cmd "tc class add dev $dev parent 1: classid 1:$classid htb rate ${rate}mbit ceil ${rate}mbit burst ${burst_bytes} cburst ${burst_bytes}"
+            exec_cmd "tc class replace dev $dev parent 1: classid 1:$classid htb rate ${rate}mbit ceil ${rate}mbit burst ${burst_bytes} cburst ${burst_bytes}"
 
             # Add fq_codel as leaf qdisc for better handling of bursty traffic
             # Use 'replace' instead of 'add' to make this idempotent
@@ -1706,9 +1680,9 @@ function qos_add() {
 
             # Create filter
             if [ "$classifierType" == "u32" ]; then
-                exec_cmd "tc filter add dev $dev parent 1: protocol ip prio $priority handle $classid u32 match $matchType $matchDirection $cidr flowid 1:$classid"
+                exec_cmd "tc filter replace dev $dev parent 1: protocol ip prio $priority handle $classid u32 match $matchType $matchDirection $cidr flowid 1:$classid"
             elif [ "$classifierType" == "matchall" ]; then
-                exec_cmd "tc filter add dev $dev parent 1: protocol ip prio $priority handle $classid matchall flowid 1:$classid"
+                exec_cmd "tc filter replace dev $dev parent 1: protocol ip prio $priority handle $classid matchall flowid 1:$classid"
             fi
         fi
     done
@@ -1759,41 +1733,26 @@ function qos_del() {
                 continue
             fi
 
-            # cidr_to_classid returns classid WITH 0x prefix (e.g., "0x8000")
-            local classid=$(cidr_to_classid "$cidr" "$priority")
-
-            # For u32 filter, find and delete by IP match
             if [ "$classifierType" == "u32" ]; then
                 local cidr_escaped
                 cidr_escaped=$(escape_for_regex "$cidr")
-                delete_htb_filter_and_class "$ifb_dev" "$cidr_escaped" "$matchDirection"
+                delete_htb_filter_and_class "$ifb_dev" "$cidr_escaped" "$matchDirection" natgw "$priority" || return 1
             elif [ "$classifierType" == "matchall" ]; then
-                delete_htb_matchall_filter_and_class "$ifb_dev" "$classid"
+                delete_htb_matchall_filter_and_class "$ifb_dev" "$(cidr_to_classid "$cidr" "$priority")" || return 1
             fi
-
-            # Also try to delete filter by classid (handles case where grep pattern didn't match)
-            delete_htb_filter_by_classid "$ifb_dev" "$classid"
-
         elif [ "$qdiscType" == "egress" ]; then
             # Ensure HTB root qdisc exists
             if ! tc qdisc show dev "$dev" | grep -q "htb 1:"; then
                 continue
             fi
 
-            # cidr_to_classid returns classid WITH 0x prefix (e.g., "0x8000")
-            local classid=$(cidr_to_classid "$cidr" "$priority")
-
-            # For u32 filter, find and delete by IP match (handles collision case)
             if [ "$classifierType" == "u32" ]; then
                 local cidr_escaped
                 cidr_escaped=$(escape_for_regex "$cidr")
-                delete_htb_filter_and_class "$dev" "$cidr_escaped" "$matchDirection"
+                delete_htb_filter_and_class "$dev" "$cidr_escaped" "$matchDirection" natgw "$priority" || return 1
             elif [ "$classifierType" == "matchall" ]; then
-                delete_htb_matchall_filter_and_class "$dev" "$classid"
+                delete_htb_matchall_filter_and_class "$dev" "$(cidr_to_classid "$cidr" "$priority")" || return 1
             fi
-
-            # Also try to delete filter by classid (handles case where grep pattern didn't match)
-            delete_htb_filter_by_classid "$dev" "$classid"
         fi
     done
 }
@@ -1828,17 +1787,10 @@ function eip_ingress_qos_del() {
             continue
         fi
 
-        # ip_to_classid returns classid WITH 0x prefix (e.g., "0x4586")
-        local classid
-        classid=$(ip_to_classid "$v4ip")
-
         # Use helper function to delete HTB filter and class by IP match on IFB
         local v4ip_escaped
         v4ip_escaped=$(escape_for_regex "$v4ip/32")
-        delete_ifb_filter_and_class "$ifb_dev" "$v4ip_escaped" "$matchDirection"
-
-        # Also try to delete filter by classid (handles case where grep pattern didn't match)
-        delete_htb_filter_by_classid "$ifb_dev" "$classid"
+        delete_ifb_filter_and_class "$ifb_dev" "$v4ip_escaped" "$matchDirection" || return 1
     done
 }
 
@@ -1866,17 +1818,10 @@ function eip_egress_qos_del() {
             continue
         fi
 
-        # ip_to_classid returns classid WITH 0x prefix (e.g., "0x4586")
-        local classid
-        classid=$(ip_to_classid "$v4ip")
-
         # Use helper function to delete HTB filter and class by IP match
         local v4ip_escaped
         v4ip_escaped=$(escape_for_regex "$v4ip/32")
-        delete_htb_filter_and_class "$dev" "$v4ip_escaped" "src"
-
-        # Also try to delete filter by classid (handles case where grep pattern didn't match)
-        delete_htb_filter_by_classid "$dev" "$classid"
+        delete_htb_filter_and_class "$dev" "$v4ip_escaped" "src" eip || return 1
     done
 }
 
@@ -1943,6 +1888,10 @@ case $opt in
     get-iptables-version)
         echo "get-iptables-version $*"
         get_iptables_version "$@"
+        ;;
+    check-inited)
+        # Exit status is the answer: 0 when this Pod holds the chains the data plane needs.
+        check_inited
         ;;
     help|--help|-h)
         show_help

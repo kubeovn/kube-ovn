@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
@@ -79,9 +80,10 @@ type Controller struct {
 	serviceCIDRSynced          cache.InformerSynced
 	serviceCIDRInformerFactory informers.SharedInformerFactory
 
-	recorder          record.EventRecorder
-	nodeFailuresMutex sync.Mutex
-	nodeFailures      map[nodeFailureKey]struct{}
+	recorder               record.EventRecorder
+	exGatewayConfigMissing atomic.Bool
+	nodeFailuresMutex      sync.Mutex
+	nodeFailures           map[nodeFailureKey]struct{}
 
 	protocol              string
 	gatewayBackendManager *gatewayBackendManager
@@ -1061,12 +1063,13 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 
 	go wait.Until(c.gcInterfaces, time.Minute, stopCh)
 	go wait.Until(c.reconcileACLSamplingCollectorSet, time.Minute, stopCh)
-	go wait.Until(recompute, 10*time.Minute, stopCh)
+	if c.config.EnableRecompute {
+		go wait.Until(recompute, 10*time.Minute, stopCh)
+	}
 	go wait.Until(rotateLog, 1*time.Hour, stopCh)
 
 	klog.Info("Started workers")
 	go wait.Until(c.loopOvn0Check, 5*time.Second, stopCh)
-	go wait.Until(c.loopOvnExt0Check, 5*time.Second, stopCh)
 	go wait.Until(c.loopTunnelCheck, 5*time.Second, stopCh)
 	go wait.Until(c.runAddOrUpdateProviderNetworkWorker, time.Second, stopCh)
 	go wait.Until(c.runAddOrUpdateServiceWorker, time.Second, stopCh)

@@ -105,24 +105,32 @@ sets make sampling unavailable and leave those objects unchanged.
 
 ## Decode and listen
 
+The image includes a standalone `/kube-ovn/kube-ovn-acl-sample` binary for
+both subcommands. It is built separately from the `kube-ovn` CNI plugin.
+`kubectl ko acl-sample` invokes this binary in the selected Pod.
+
 Decode a decimal or `0x`-prefixed hexadecimal sample metadata value or OVS
 user cookie:
 
 ```bash
-kubectl ko acl-sample decode 0x640abcde000000c8
+kubectl ko acl decode 0x640abcde000000c8
 ```
 
 Listen on one node and decode each received event through the OVN northbound
 leader:
 
 ```bash
-kubectl ko acl-sample listen --node worker-1
+kubectl ko acl listen --node worker-1
 ```
 
 The listener reads the enabled CNI DaemonSet's `localGroupID`, selects a
 running `kube-ovn-cni` Pod on the requested node, and emits one YAML document
 per decoded event. A sample that no longer resolves in NBDB is reported to
 standard error without stopping the listener.
+
+The node listener runs through a dedicated capability-enabled executable in the
+CNI image. The regular `kube-ovn-acl-sample` path remains capability-free so
+that NBDB-side decoding can run safely in the `ovn-central` container.
 
 An OVN local-sampling cookie is encoded as:
 
@@ -150,7 +158,7 @@ uses `policyOwner`, sets `reason: network-policy-default-deny` and
 Linux psample messages include captured packet bytes. The current debug
 command only emits the cookie and decoded policy event, but the node-local
 process still receives packet data from the kernel. Access to
-`kubectl ko acl-sample listen` therefore grants a packet-observation
+`kubectl ko acl listen` therefore grants a packet-observation
 capability and should be limited to authorized operators. Use the lowest
 practical sampling probabilities, protect command output as sensitive data,
 and stop the listener when troubleshooting is complete.

@@ -1429,7 +1429,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 
 		ginkgo.By("Getting gateway MAC from router port " + routerPortName)
 
-		output, err := exec.Command("kubectl", "ko", "nbctl", "--data=bare", "--no-heading", "--columns=mac", "find", "logical_router_port", fmt.Sprintf("name=%s", routerPortName)).CombinedOutput()
+		output, err := exec.Command("kubectl", framework.KubectlKoArgs("ko", "nbctl", "--data=bare", "--no-heading", "--columns=mac", "find", "logical_router_port", fmt.Sprintf("name=%s", routerPortName))...).CombinedOutput()
 		framework.Logf("Command output: %s", string(output))
 
 		if err != nil {

@@ -2260,7 +2260,7 @@ func checkKoOvnTracePolicy(namespace, podName, targetIP, description string, key
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, "kubectl", "ko", "ovn-trace", namespace+"/"+podName, targetIP, "tcp", strconv.Itoa(curlListenPort))
+		cmd := exec.CommandContext(ctx, "kubectl", framework.KubectlKoArgs("ko", "ovn-trace", namespace+"/"+podName, targetIP, "tcp", strconv.Itoa(curlListenPort))...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			framework.Logf("ovn-trace %s failed: %v\n%s", description, err, output)
@@ -2286,7 +2286,7 @@ func checkKoOvnTracePolicyNotMatched(namespace, podName, targetIP, description s
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 
-		cmd := exec.CommandContext(ctx, "kubectl", "ko", "ovn-trace", namespace+"/"+podName, targetIP, "tcp", strconv.Itoa(curlListenPort))
+		cmd := exec.CommandContext(ctx, "kubectl", framework.KubectlKoArgs("ko", "ovn-trace", namespace+"/"+podName, targetIP, "tcp", strconv.Itoa(curlListenPort))...)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			framework.Logf("ovn-trace %s failed: %v\n%s", description, err, output)
@@ -2340,9 +2340,9 @@ func checkU2OFilterOpenFlowExist(clusterName string, pn *apiv1.ProviderNetwork, 
 		for index, gw := range gws {
 			var cmd string
 			if util.CheckProtocol(gw) == apiv1.ProtocolIPv4 {
-				cmd = fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x1000", node.Name(), pn.Name)
+				cmd = fmt.Sprintf("kubectl %s dump-flows br-%s | grep 0x1000", strings.Join(framework.KubectlKoArgs("ko", "ofctl", node.Name()), " "), pn.Name)
 			} else {
-				cmd = fmt.Sprintf("kubectl ko ofctl %s dump-flows br-%s | grep 0x1001", node.Name(), pn.Name)
+				cmd = fmt.Sprintf("kubectl %s dump-flows br-%s | grep 0x1001", strings.Join(framework.KubectlKoArgs("ko", "ofctl", node.Name()), " "), pn.Name)
 			}
 
 			var matchStr string

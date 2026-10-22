@@ -682,6 +682,7 @@ class E2ESelectorTest(unittest.TestCase):
     def testEveryPathMappingHasARegressionCase(self):
         cases = [
             ("test/e2e/kube-ovn/subnet/subnet.go", "core"),
+            ("test/e2e/kubevirt/e2e_test.go", "kubevirt"),
             ("test/e2e/k8s-network/e2e_test.go", "policy"),
             ("test/e2e/connectivity/e2e_test.go", "core"),
             ("test/e2e/cnp-domain/e2e_test.go", "policy"),
@@ -729,6 +730,17 @@ class E2ESelectorTest(unittest.TestCase):
                     plan["full"] or plan["selectedGroups"],
                     f"{path} silently selected smoke only",
                 )
+
+    def testOvnICSpecsAreOrdered(self):
+        source = (repoRoot / "test/e2e/ovn-ic/e2e_test.go").read_text()
+        self.assertIn(
+            'framework.OrderedDescribe("[group:ovn-ic]"',
+            source,
+        )
+        self.assertNotIn(
+            'framework.SerialDescribe("[group:ovn-ic]"',
+            source,
+        )
 
     def testSharedE2EFrameworkPromotesToFull(self):
         plan = self.select(["test/e2e/framework/pod.go"])

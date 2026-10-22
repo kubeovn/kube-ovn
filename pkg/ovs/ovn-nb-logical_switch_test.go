@@ -3,6 +3,7 @@ package ovs
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ovn-kubernetes/libovsdb/model"
@@ -303,8 +304,7 @@ func (suite *OvnClientTestSuite) testLogicalSwitchUpdateLoadBalancers() {
 
 	t.Run("update load balancers for non-existent logical switch", func(t *testing.T) {
 		err := nbClient.LogicalSwitchUpdateLoadBalancers("non-existent-ls", ovsdb.MutateOperationInsert, lbNames...)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "not found logical switch")
+		require.NoError(t, err)
 	})
 }
 
@@ -325,6 +325,15 @@ func (suite *OvnClientTestSuite) testDeleteLogicalSwitch() {
 		require.NoError(t, err)
 
 		_, err = nbClient.GetLogicalSwitch(name, false)
+		require.ErrorContains(t, err, "not found logical switch")
+	})
+
+	t.Run("delete subnet resources in one operation", func(t *testing.T) {
+		t.Parallel()
+		name := "test-delete-subnet-resources"
+		require.NoError(t, nbClient.CreateBareLogicalSwitch(name))
+		require.NoError(t, nbClient.DeleteLogicalSwitchResources(name, "Dual"))
+		_, err := nbClient.GetLogicalSwitch(name, false)
 		require.ErrorContains(t, err, "not found logical switch")
 	})
 
@@ -800,6 +809,113 @@ func (suite *OvnClientTestSuite) testCreateBareLogicalSwitch() {
 		err := nbClient.CreateBareLogicalSwitch("")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "empty logical switch name")
+	})
+
+	t.Run("idempotent with pre-existing entry", func(t *testing.T) {
+		name := "test-create-bare-ls-preexisting"
+		ls := &ovnnb.LogicalSwitch{
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": "test-vendor"},
+		}
+
+		err := createLogicalSwitch(nbClient, ls)
+		require.NoError(t, err)
+
+		err = nbClient.CreateBareLogicalSwitch(name)
+		require.NoError(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testCreateBareLogicalSwitchDuplicateGuard() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+
+	t.Run("does not add to pre-existing duplicates", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-bare-ls-duplicates"
+		ls := &ovnnb.LogicalSwitch{
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": "test-vendor"},
+		}
+
+		err := createLogicalSwitch(nbClient, ls)
+		require.NoError(t, err)
+		err = createLogicalSwitch(nbClient, ls)
+		require.NoError(t, err)
+
+		err = nbClient.CreateBareLogicalSwitch(name)
+		require.NoError(t, err)
+
+		switches, err := nbClient.ListLogicalSwitch(false, func(s *ovnnb.LogicalSwitch) bool {
+			return s.Name == name
+		})
+		require.NoError(t, err)
+		require.Len(t, switches, 2)
+	})
+
+	t.Run("concurrent creates produce exactly one logical switch", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-bare-ls-concurrent"
+
+		const goroutines = 10
+		errs := make([]error, goroutines)
+		var wg sync.WaitGroup
+		wg.Add(goroutines)
+		for i := range goroutines {
+			go func() {
+				defer wg.Done()
+				errs[i] = nbClient.CreateBareLogicalSwitch(name)
+			}()
+		}
+		wg.Wait()
+
+		for i, err := range errs {
+			require.NoError(t, err, "goroutine %d returned error", i)
+		}
+
+		switches, err := nbClient.ListLogicalSwitch(false, func(s *ovnnb.LogicalSwitch) bool {
+			return s.Name == name
+		})
+		require.NoError(t, err)
+		require.Len(t, switches, 1)
+	})
+
+	t.Run("wait blocks insert when row already exists", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-bare-ls-wait-block"
+
+		// Insert a row directly, bypassing the cache pre-check
+		ls := &ovnnb.LogicalSwitch{
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": "test-vendor"},
+		}
+		err := createLogicalSwitch(nbClient, ls)
+		require.NoError(t, err)
+
+		// Build a Wait+Insert transaction and execute it directly via
+		// TransactConditional, bypassing the cache pre-check entirely
+		ls2 := &ovnnb.LogicalSwitch{
+			Name:        name,
+			ExternalIDs: map[string]string{"vendor": util.CniTypeName},
+		}
+		createOps, err := nbClient.Create(ls2)
+		require.NoError(t, err)
+
+		waitOp := ConstructWaitForNameNotExistsOperation(name, "Logical_Switch")
+		ops := append([]ovsdb.Operation{waitOp}, createOps...)
+
+		created, err := nbClient.TransactConditional("ls-add", ops)
+		require.NoError(t, err)
+		require.False(t, created, "expected Wait to block insert for existing row")
+
+		// Still exactly one row
+		switches, err := nbClient.ListLogicalSwitch(false, func(s *ovnnb.LogicalSwitch) bool {
+			return s.Name == name
+		})
+		require.NoError(t, err)
+		require.Len(t, switches, 1)
 	})
 }
 

@@ -10,8 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-
-	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+	"k8s.io/apimachinery/pkg/types"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -131,12 +130,18 @@ func Test_generateRlrHeadlessService(t *testing.T) {
 			require.NotNil(t, svc)
 			assert.Equal(t, tt.svcName, svc.Name)
 			assert.Equal(t, tt.namespace, svc.Namespace)
+			ref := metav1.GetControllerOf(svc)
+			require.NotNil(t, ref)
+			assert.Equal(t, kubeovnv1.SchemeGroupVersion.String(), ref.APIVersion)
+			assert.Equal(t, util.KindRouterLBRule, ref.Kind)
+			assert.Equal(t, tt.rlr.Name, ref.Name)
 
 			if tt.wantVipAnno != "" {
 				assert.Equal(t, tt.wantVipAnno, svc.Annotations[util.RouterLBRuleVipsAnnotation])
 			}
 			if tt.wantRouter != "" {
 				assert.Equal(t, tt.wantRouter, svc.Annotations[util.LogicalRouterAnnotation])
+				assert.Equal(t, tt.wantRouter, svc.Annotations[util.VpcAnnotation])
 			}
 			if len(tt.wantFamilies) > 0 {
 				assert.Equal(t, tt.wantFamilies, svc.Spec.IPFamilies)
@@ -583,7 +588,7 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		assert.Error(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
 	})
 
-	t.Run("happy path creates service and attaches LBs", func(t *testing.T) {
+	t.Run("happy path creates resource-owned service", func(t *testing.T) {
 		rlr := makeRlr("rlr1", "eip1", "vpc1", []kubeovnv1.RouterLBRulePort{
 			{Name: "http", Port: 80, TargetPort: 8080, Protocol: "TCP"},
 		})
@@ -597,10 +602,6 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		fc.mockOvnClient.EXPECT().
-			LogicalRouterUpdateLoadBalancers(gomock.Any(), gomock.Any(), gomock.Any()).
-			Return(nil)
-
 		require.NoError(t, fc.fakeController.handleAddOrUpdateRouterLBRule("rlr1"))
 
 		// Service must exist with the correct VIP and router annotations.
@@ -610,6 +611,10 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, "192.168.1.100", svc.Annotations[util.RouterLBRuleVipsAnnotation])
 		assert.Equal(t, "vpc1", svc.Annotations[util.LogicalRouterAnnotation])
+		ref := metav1.GetControllerOf(svc)
+		require.NotNil(t, ref)
+		assert.Equal(t, util.KindRouterLBRule, ref.Kind)
+		assert.Equal(t, "rlr1", ref.Name)
 		assert.Equal(t, corev1.ClusterIPNone, svc.Spec.ClusterIP)
 
 		// Status must be updated with service reference.
@@ -629,7 +634,7 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 func Test_handleDelRouterLBRule(t *testing.T) {
 	const (
 		testVpc   = "test-vpc"
-		testTCPLB = "test-tcp-lb"
+		testTCPLB = "vpc-test-vpc-tcp-load"
 		testEIP   = "192.168.1.100"
 		testPort  = int32(80)
 		testVip   = "192.168.1.100:80"
@@ -661,6 +666,29 @@ func Test_handleDelRouterLBRule(t *testing.T) {
 		assert.NoError(t, fc.fakeController.handleDelRouterLBRule(makeInfo()))
 	})
 
+	t.Run("service not found recovers VIP from EIP", func(t *testing.T) {
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			OvnEips: []*kubeovnv1.OvnEip{{
+				Name:   "eip1",
+				Status: kubeovnv1.OvnEipStatus{V4Ip: testEIP},
+			}},
+			Vpcs: []*kubeovnv1.Vpc{{
+				Name:   testVpc,
+				Status: kubeovnv1.VpcStatus{TCPLoadBalancer: testTCPLB},
+			}},
+		})
+		require.NoError(t, err)
+		info := makeInfo()
+		info.UID = "rlr-uid"
+		info.OvnEip = "eip1"
+		info.Vpc = testVpc
+		fc.mockOvnClient.EXPECT().LoadBalancerDeleteVip(testTCPLB, testVip, true).Return(nil)
+		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return([]ovnnb.LoadBalancerHealthCheck{}, nil)
+		fc.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).Return(nil)
+
+		assert.NoError(t, fc.fakeController.handleDelRouterLBRule(info))
+	})
+
 	t.Run("service without VIP annotation only deletes the service", func(t *testing.T) {
 		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 			Services: []*corev1.Service{makeSvc(false)},
@@ -684,9 +712,6 @@ func Test_handleDelRouterLBRule(t *testing.T) {
 		})
 		require.NoError(t, err)
 
-		fc.mockOvnClient.EXPECT().
-			LogicalRouterUpdateLoadBalancers(testVpc, ovsdb.MutateOperationDelete, testTCPLB).
-			Return(nil)
 		fc.mockOvnClient.EXPECT().
 			LoadBalancerDeleteVip(testTCPLB, testVip, true).
 			Return(nil)
@@ -765,14 +790,14 @@ func Test_enqueueUpdateRouterLBRule_isRecreate(t *testing.T) {
 			wantIsRecreate: true,
 		},
 		{
-			name: "Vpc change triggers recreate",
+			name: "Vpc change updates the existing load balancer",
 			mutate: func(r *kubeovnv1.RouterLBRule) *kubeovnv1.RouterLBRule {
 				n := r.DeepCopy()
 				n.ResourceVersion = "2"
 				n.Spec.Vpc = "vpc2"
 				return n
 			},
-			wantIsRecreate: true,
+			wantIsRecreate: false,
 		},
 		{
 			name: "Namespace change triggers recreate",
@@ -810,4 +835,71 @@ func Test_enqueueUpdateRouterLBRule_isRecreate(t *testing.T) {
 			assert.Equal(t, tt.wantIsRecreate, info.IsRecreate)
 		})
 	}
+}
+
+func TestHandleUpdateRouterLBRuleClearedEIPDeletesOldService(t *testing.T) {
+	service := &corev1.Service{
+		Name:      "rlr-rlr1",
+		Namespace: metav1.NamespaceDefault,
+		UID:       types.UID("service-uid"),
+	}
+	setServiceScopedLBOwner(service, routerLBRuleLBOwnerKind, "rlr1", "rlr-uid")
+	rule := &kubeovnv1.RouterLBRule{
+		Name: "rlr1", UID: "rlr-uid",
+		Spec: kubeovnv1.RouterLBRuleSpec{
+			Vpc: "vpc1", Namespace: metav1.NamespaceDefault,
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		RouterLBRules: []*kubeovnv1.RouterLBRule{rule},
+		Services:      []*corev1.Service{service},
+	})
+	require.NoError(t, err)
+	fc.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).DoAndReturn(func(filter func(*ovnnb.LoadBalancer) bool) error {
+		matching := &ovnnb.LoadBalancer{ExternalIDs: serviceScopedLBExternalIDs(service, "vpc1", serviceLBExternalTraffic)}
+		if !filter(matching) {
+			t.Fatal("cleanup filter must select the RouterLBRule load balancer")
+		}
+		other := &ovnnb.LoadBalancer{ExternalIDs: map[string]string{
+			serviceLBOwnerExternalID: "other-uid",
+		}}
+		if filter(other) {
+			t.Fatal("cleanup filter must not select another owner's load balancer")
+		}
+		return nil
+	})
+
+	err = fc.fakeController.handleUpdateRouterLBRule(&RouterLBRuleInfo{
+		Name: "rlr1", Namespace: metav1.NamespaceDefault, UID: "rlr-uid", OvnEip: "old-eip",
+		Vpc: "vpc1", Ports: []int32{80}, IsRecreate: true,
+	})
+	require.NoError(t, err)
+	_, err = fc.fakeController.config.KubeClient.CoreV1().Services(metav1.NamespaceDefault).Get(
+		context.Background(), "rlr-rlr1", metav1.GetOptions{},
+	)
+	assert.True(t, k8serrors.IsNotFound(err), "old generated service must be deleted")
+}
+
+func TestHandleUpdateRouterLBRuleDeletedEIPDeletesOldService(t *testing.T) {
+	service := &corev1.Service{Name: "rlr-rlr1", Namespace: metav1.NamespaceDefault}
+	rule := &kubeovnv1.RouterLBRule{
+		Name: "rlr1",
+		Spec: kubeovnv1.RouterLBRuleSpec{OvnEip: "old-eip", Vpc: "vpc1", Namespace: metav1.NamespaceDefault},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		RouterLBRules: []*kubeovnv1.RouterLBRule{rule},
+		Services:      []*corev1.Service{service},
+	})
+	require.NoError(t, err)
+	fc.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).Return(nil)
+
+	err = fc.fakeController.handleUpdateRouterLBRule(&RouterLBRuleInfo{
+		Name: "rlr1", Namespace: metav1.NamespaceDefault, UID: "rlr-uid", OvnEip: "old-eip",
+		Vpc: "vpc1", IsRecreate: true,
+	})
+	require.NoError(t, err)
+	_, err = fc.fakeController.config.KubeClient.CoreV1().Services(metav1.NamespaceDefault).Get(
+		context.Background(), "rlr-rlr1", metav1.GetOptions{},
+	)
+	assert.True(t, k8serrors.IsNotFound(err), "old generated service must be deleted")
 }

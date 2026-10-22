@@ -630,7 +630,7 @@ def parseExecutorRunName(name):
         rf"(?:mode=(automatic|approved) )?"
         rf"groups=({groupPattern}(?:,{groupPattern})*|-) "
         rf"(?:labels=(e2e:(?:full|{groupPattern})(?:,e2e:(?:full|{groupPattern}))*|-) )?"
-        rf"full=([01])",
+        rf"full=([01])(?: base=(?P<baseSHA>[0-9a-f]{{40}}))?",
         name,
     )
     if not match:
@@ -649,6 +649,7 @@ def parseExecutorRunName(name):
         "requestedGroups": groups,
         "controlledLabels": controlledLabels,
         "full": match.group(8) == "1",
+        "baseSHA": match.group("baseSHA"),
     }
 
 
@@ -950,6 +951,7 @@ def latestExecutorRun(
     baseRef,
     catalogRevision=None,
     workflowSHA=None,
+    baseSHA=None,
 ):
     if baseRef != "master" and not re.fullmatch(
         r"release-[A-Za-z0-9._-]+", baseRef or ""
@@ -971,6 +973,7 @@ def latestExecutorRun(
             run.get("head_branch") == executorHeadBranch(metadata)
             and metadata["prNumber"] == prNumber
             and metadata["headSHA"] == headSHA
+            and (baseSHA is None or metadata["baseSHA"] == baseSHA)
         ):
             matchingRuns.append((metadata, run))
     if not matchingRuns:

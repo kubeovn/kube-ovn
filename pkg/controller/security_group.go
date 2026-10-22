@@ -193,19 +193,18 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 	}
 
 	var ingressNeedUpdate, egressNeedUpdate bool
-	var newIngressMd5, newEgressMd5 string
+	newIngressMd5 := hex.EncodeToString(structhash.Md5(sg.Spec.IngressRules, 1))
+	newEgressMd5 := hex.EncodeToString(structhash.Md5(sg.Spec.EgressRules, 1))
 	if force {
 		klog.Infof("force update sg %s", sg.Name)
 		ingressNeedUpdate = true
 		egressNeedUpdate = true
 	} else {
 		// check md5
-		newIngressMd5 = hex.EncodeToString(structhash.Md5(sg.Spec.IngressRules, 1))
 		if !sg.Status.IngressLastSyncSuccess || newIngressMd5 != sg.Status.IngressMd5 {
 			klog.Infof("ingress need update, sg:%s", sg.Name)
 			ingressNeedUpdate = true
 		}
-		newEgressMd5 = hex.EncodeToString(structhash.Md5(sg.Spec.EgressRules, 1))
 		if !sg.Status.EgressLastSyncSuccess || newEgressMd5 != sg.Status.EgressMd5 {
 			klog.Infof("egress need update, sg:%s", sg.Name)
 			egressNeedUpdate = true

@@ -1037,6 +1037,8 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 
 		for _, name := range objects["chain"] {
 			tx.Flush(&knftables.Chain{Family: family.Family, Table: table, Name: name})
+		}
+		for _, name := range objects["chain"] {
 			tx.Delete(&knftables.Chain{Family: family.Family, Table: table, Name: name})
 		}
 		for _, name := range objects["set"] {

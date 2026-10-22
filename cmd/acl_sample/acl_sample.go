@@ -1,4 +1,4 @@
-package acl_sample
+package main
 
 import (
 	"context"
@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	CommandName                   = "kube-ovn-acl-sample"
+	commandName                   = "kube-ovn-acl-sample"
 	defaultOVNTimeout             = 60
 	defaultOVSDBConnectTimeout    = 3
 	defaultOVSDBInactivityTimeout = 10
@@ -48,9 +48,7 @@ func defaultDependencies() dependencies {
 	}
 }
 
-// CmdMain runs the ACL sampling debug command selected through the
-// kube-ovn-acl-sample image symlink.
-func CmdMain() {
+func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	err := run(ctx, os.Args[1:], os.Stdout, os.Stderr, defaultDependencies())
 	stop()
@@ -153,10 +151,10 @@ func printUsage(output io.Writer) error {
 	if _, writeErr := fmt.Fprintln(output, "Usage:"); writeErr != nil {
 		err = errors.Join(err, writeErr)
 	}
-	if _, writeErr := fmt.Fprintf(output, "  %s decode --ovn-nb-addr <address> <cookie-or-metadata>\n", CommandName); writeErr != nil {
+	if _, writeErr := fmt.Fprintf(output, "  %s decode --ovn-nb-addr <address> <cookie-or-metadata>\n", commandName); writeErr != nil {
 		err = errors.Join(err, writeErr)
 	}
-	if _, writeErr := fmt.Fprintf(output, "  %s listen [--group-id <id>]\n", CommandName); writeErr != nil {
+	if _, writeErr := fmt.Fprintf(output, "  %s listen [--group-id <id>]\n", commandName); writeErr != nil {
 		err = errors.Join(err, writeErr)
 	}
 	return err

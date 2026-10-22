@@ -1,4 +1,4 @@
-package acl_sample
+package main
 
 import (
 	"context"

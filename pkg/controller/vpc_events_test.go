@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -91,6 +92,28 @@ func TestHandleDeleteVpcRecordsBlockingSubnetEvent(t *testing.T) {
 		"Warning DeleteFailed failed to delete vpc vpc-1, please delete subnet subnet-1 first",
 		requireRecorderEvent(t, recorder),
 	)
+}
+
+func TestHandleDeleteVpcDeletesU2OOverlayCIDRsAddressSets(t *testing.T) {
+	t.Parallel()
+
+	vpc := &kubeovnv1.Vpc{
+		Name:   "deleted-vpc",
+		Status: kubeovnv1.VpcStatus{Router: "deleted-vpc"},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Vpcs: []*kubeovnv1.Vpc{vpc}})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	ctrl.vpcLastPoliciesMap = xsync.NewMap[string, string]()
+	ctrl.config.ExternalGatewaySwitch = "external"
+
+	fc.mockOvnClient.EXPECT().RemoveLogicalPatchPort("external-deleted-vpc", "deleted-vpc-external").Return(nil)
+	fc.mockOvnClient.EXPECT().DeleteBFDByDstIP("deleted-vpc-external", "").Return(nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalRouter(vpc.Name).Return(nil)
+	v4Name, v6Name := u2oOverlayCIDRsAddressSetNames(vpc.Name)
+	fc.mockOvnClient.EXPECT().DeleteAddressSet(v4Name, v6Name).Return(nil)
+
+	require.NoError(t, ctrl.handleDelVpc(vpc))
 }
 
 func TestHandleAddOrUpdateVpcNatGatewayRecordsFailureEvent(t *testing.T) {

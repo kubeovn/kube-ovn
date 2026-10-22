@@ -66,7 +66,7 @@ func nftableLbSvcQualifies(svc *v1.Service) bool {
 // are enabled. Qualification and cleanup decisions are made in the handler so a
 // Service that stops qualifying still gets its stale rules cleaned up.
 func (c *Controller) enqueueNftableLbService(key string) {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || c.addOrUpdateNftableLbSvcQueue == nil || key == "" {
+	if c.config == nil || !c.config.EnableOvnLB || !c.config.EnableNftableLbSvc || c.addOrUpdateNftableLbSvcQueue == nil || key == "" {
 		return
 	}
 	klog.V(3).Infof("enqueue add/update nftable lb service %s", key)
@@ -81,7 +81,7 @@ func (c *Controller) enqueueNftableLbService(key string) {
 // controller was down; this scan only adds owners that can be discovered from the rules that
 // are still present.
 func (c *Controller) enqueueNftableLbSvcOwnersFromRules() error {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || c.addOrUpdateNftableLbSvcQueue == nil {
+	if c.config == nil || !c.config.EnableOvnLB || !c.config.EnableNftableLbSvc || c.addOrUpdateNftableLbSvcQueue == nil {
 		return nil
 	}
 	rules, err := c.iptablesDnatRulesLister.List(labels.Everything())
@@ -101,7 +101,7 @@ func (c *Controller) enqueueNftableLbSvcOwnersFromRules() error {
 }
 
 func (c *Controller) enqueueNftableLbServicesForPod(pod *v1.Pod) {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || pod == nil || c.endpointSlicesLister == nil {
+	if c.config == nil || !c.config.EnableOvnLB || !c.config.EnableNftableLbSvc || pod == nil || c.endpointSlicesLister == nil {
 		return
 	}
 	slices, err := c.endpointSlicesLister.EndpointSlices(pod.Namespace).List(labels.Everything())
@@ -127,7 +127,7 @@ func (c *Controller) enqueueNftableLbServicesForPod(pod *v1.Pod) {
 }
 
 func (c *Controller) enqueueNftableLbServicesForNatGw(natGwName string) {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || natGwName == "" || c.iptablesEipsLister == nil {
+	if c.config == nil || !c.config.EnableOvnLB || !c.config.EnableNftableLbSvc || natGwName == "" || c.iptablesEipsLister == nil {
 		return
 	}
 	eips, err := c.iptablesEipsLister.List(labels.Everything())
@@ -143,7 +143,7 @@ func (c *Controller) enqueueNftableLbServicesForNatGw(natGwName string) {
 }
 
 func (c *Controller) enqueueNftableLbServicesForEIP(eipName string) {
-	if c.config == nil || !c.config.EnableLb || !c.config.EnableNftableLbSvc || c.svcIndexer == nil || eipName == "" {
+	if c.config == nil || !c.config.EnableOvnLB || !c.config.EnableNftableLbSvc || c.svcIndexer == nil || eipName == "" {
 		return
 	}
 	services, err := c.svcIndexer.ByIndex(IndexServiceByNftableLbEip, eipName)
@@ -443,7 +443,9 @@ func (c *Controller) cleanupNftableLbService(svc *v1.Service, namespace, name st
 // (eip+externalPort+protocol) is owned by another service or a manually-created share rule.
 // A contested identity is resolved deterministically (see chooseNftableLbOwner) so exactly
 // one owner programs it; losing services emit a warning event and requeue to take over once
-// the identity is released. It returns an error only when the underlying list fails.
+// the identity is released. A Service that is being deleted releases the identity right away,
+// so a successor can take it over without waiting for the terminating Service to leave the
+// informer cache. It returns an error only when the underlying list fails.
 func (c *Controller) resolveNftableLbConflicts(svc *v1.Service, key string, desired map[string]*kubeovnv1.IptablesDnatRule) (bool, error) {
 	selfKey := svc.Namespace + "/" + svc.Name
 	eipName := svc.Annotations[util.EipAnnotation]
@@ -474,7 +476,9 @@ func (c *Controller) resolveNftableLbConflicts(svc *v1.Service, key string, desi
 	}
 	for _, obj := range svcObjs {
 		s, ok := obj.(*v1.Service)
-		if !ok || (s.Namespace == svc.Namespace && s.Name == svc.Name) {
+		// The index only holds qualifying Services, so skip just self and Services that are
+		// going away: a terminating owner must not block its successor.
+		if !ok || (s.Namespace == svc.Namespace && s.Name == svc.Name) || !s.DeletionTimestamp.IsZero() {
 			continue
 		}
 		for _, id := range nftableLbSvcIdentities(s, eipName) {

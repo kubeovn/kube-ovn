@@ -17,9 +17,9 @@ env:
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
   KIND_VERSION: v0.33.0
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
-  HELM_VERSION: v4.3.0
+  HELM_VERSION: v4.3.1
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
-  SUBMARINER_VERSION: 0.24.1
+  SUBMARINER_VERSION: 0.24.2
 
 jobs:
   k8s-conformance-e2e:
@@ -82,7 +82,7 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -93,18 +93,34 @@ jobs:
 
       - name: Create kind cluster
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
+        env:
+          E2E_BRANCH: ${{ matrix.branch }}
         run: |
           sudo pip3 install jinjanator j2cli
-          sudo PATH=~/.local/bin:$PATH make kind-init-${{ matrix.ip-family }}
+          workers=1
+          if [[ "$E2E_BRANCH" == "master" ]]; then
+            workers=6
+          elif [[ "$E2E_BRANCH" =~ ^release-([0-9]+)\.([0-9]+)$ ]] &&
+            ((BASH_REMATCH[1] > 1 || (BASH_REMATCH[1] == 1 && BASH_REMATCH[2] >= 17))); then
+            workers=6
+          fi
+          sudo env "PATH=$HOME/.local/bin:$PATH" n_worker="$workers" make kind-init-${{ matrix.ip-family }}
           sudo cp -r /root/.kube/ ~/.kube/
-          sudo chown -R $(id -un). ~/.kube/
+          sudo chown -R "$(id -un)." ~/.kube/
+          if ((workers >= 6)); then
+            zones=(zone-a zone-b zone-c)
+            mapfile -t nodes < <(kubectl get nodes -o name | sort)
+            for i in "${!nodes[@]}"; do
+              kubectl label --overwrite "${nodes[$i]}" topology.kubernetes.io/zone="${zones[$((i % ${#zones[@]}))]}"
+            done
+          fi
 
       - name: Install Kube-OVN
         working-directory: test/e2e/k8s-network/branches/${{ matrix.branch }}
         run: |
           version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
-          docker pull kubeovn/kube-ovn:$version
-          VERSION=$version make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
+          docker pull "kubeovn/kube-ovn:$version"
+          VERSION="$version" make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
       - name: Run E2E
         env:
@@ -174,7 +190,7 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -243,7 +259,7 @@ jobs:
           path: test/e2e/k8s-network/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -325,7 +341,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -407,7 +423,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -469,7 +485,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -526,7 +542,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -585,7 +601,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -664,7 +680,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -744,7 +760,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -823,7 +839,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -883,7 +899,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -965,7 +981,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1061,7 +1077,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1170,7 +1186,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ env.VERSION_TO }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1241,7 +1257,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1324,7 +1340,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1402,7 +1418,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1427,77 +1443,6 @@ jobs:
 
       - name: Run E2E
         run: make ovn-vpc-nat-gw-conformance-e2e
-
-      - name: Check kube ovn pod restarts
-        run: |
-          make check-kube-ovn-pod-restarts
-
-  router-lb-rule-e2e:
-    name: Router LB Rule E2E
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        branch:
-          - master
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version: ${{ env.GO_VERSION || '' }}
-          go-version-file: go.mod
-          check-latest: true
-          cache: false
-
-      - name: Export Go full version
-        run: echo "GO_FULL_VER=$(go env GOVERSION)" >> "$GITHUB_ENV"
-
-      - name: Go cache
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-${{ hashFiles('**/go.sum') }}
-          restore-keys: ${{ runner.os }}-e2e-${{ env.GO_FULL_VER }}-x86-
-
-      - name: Create branch directory
-        run: mkdir -p test/e2e/kube-ovn/branches/${{ matrix.branch }}
-
-      - name: Check out branch
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ matrix.branch }}
-          fetch-depth: 1
-          path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
-
-      - name: Install kind
-        uses: helm/kind-action@v1.15.0
-        with:
-          version: ${{ env.KIND_VERSION }}
-          install_only: true
-
-      - name: Install ginkgo
-        run: go install -v -mod=mod github.com/onsi/ginkgo/v2/ginkgo
-
-      - name: Create kind cluster
-        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
-        run: |
-          sudo pip3 install jinjanator j2cli
-          sudo PATH=~/.local/bin:$PATH make kind-init
-          sudo cp -r /root/.kube/ ~/.kube/
-          sudo chown -R $(id -un). ~/.kube/
-
-      - name: Install Kube-OVN
-        working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
-        run: |
-          version=$(grep -E '^VERSION="v([0-9]+\.){2}[0-9]+"$' dist/images/install.sh | head -n1 | awk -F= '{print $2}' | tr -d '"')
-          docker pull kubeovn/kube-ovn:$version
-          VERSION=$version make kind-install
-
-      - name: Run E2E
-        run: make kube-ovn-rlr-e2e
 
       - name: Check kube ovn pod restarts
         run: |
@@ -1568,7 +1513,7 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1644,17 +1589,17 @@ jobs:
           path: test/e2e/kube-ovn/branches/${{ matrix.branch }}/hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-diagnostics.tar.gz
           if-no-files-found: ignore
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         working-directory: test/e2e/kube-ovn/branches/${{ matrix.branch }}
         run: |
           tenant_kubeconfig="$(./hack/kamaji-e2e.sh kubeconfig)"
           if [ -s "$tenant_kubeconfig" ]; then
-            KUBECONFIG="$tenant_kubeconfig" make kubectl-ko-log
+            KUBECONFIG="$tenant_kubeconfig" bash "$GITHUB_WORKSPACE/.github/scripts/collect-kubectl-ko-log.sh"
             mv kubectl-ko-log.tar.gz hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-ko-log.tar.gz
           fi
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:

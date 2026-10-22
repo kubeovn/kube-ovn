@@ -371,6 +371,8 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 		}
 	})
 
+	registerKubectlKoHA(f, kindNodes)
+
 	framework.DisruptiveIt("ovn db should recover automatically from db file corruption", func() {
 		f.SkipVersionPriorTo(1, 11, "This feature was introduced in v1.11")
 

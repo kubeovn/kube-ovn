@@ -266,3 +266,23 @@ func TestAddPolicyRouteForLocalDNSCacheOnNode_DeletesStalePolicy(t *testing.T) {
 	)
 	require.NoError(t, err)
 }
+
+func TestDeletePolicyRouteForLocalDNSCacheOnNodeKeepsPolicyTakenOverAfterList(t *testing.T) {
+	fc := newFakeController(t)
+	ctrl := fc.fakeController
+
+	nbClient := newInMemoryOVNNbClient(t)
+	require.NoError(t, nbClient.CreateLogicalRouter(ctrl.config.ClusterRouter))
+	match := fmt.Sprintf("ip4.src == $%s && ip4.dst == 169.254.20.10", pgAs("node-gone", 4))
+	orphanIDs := map[string]string{"vendor": util.CniTypeName, "node": "node-gone", "address-family": "4", "isLocalDnsCache": "true"}
+	require.NoError(t, nbClient.AddLogicalRouterPolicy(ctrl.config.ClusterRouter, util.NodeRouterPolicyPriority, match, ovnnb.LogicalRouterPolicyActionReroute, []string{"100.64.0.2"}, nil, orphanIDs))
+
+	// node-b takes the row over between the list and the delete
+	ctrl.OVNNbClient = nbClientRelabelingAfterList{NbClient: nbClient, t: t, newOwner: "node-b"}
+	require.NoError(t, ctrl.deletePolicyRouteForLocalDNSCacheOnNode("node-gone", 4))
+
+	remaining, err := nbClient.GetLogicalRouterPolicy(ctrl.config.ClusterRouter, util.NodeRouterPolicyPriority, match, true)
+	require.NoError(t, err)
+	require.Len(t, remaining, 1, "a local dns policy taken over by a live node after the list must survive")
+	require.Equal(t, "node-b", remaining[0].ExternalIDs["node"])
+}

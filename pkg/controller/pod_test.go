@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	kubescheme "k8s.io/client-go/kubernetes/scheme"
 	k8stesting "k8s.io/client-go/testing"
@@ -61,19 +62,99 @@ func TestEnqueueVpcNatGwFromPod(t *testing.T) {
 	controller.enqueueVpcNatGatewayInit(pod)
 	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len())
 
-	// A restart is not an allocation event, so it carries its own trigger.
-	controller.enqueueVpcNatGatewayRestart(pod)
-	require.Zero(t, controller.addOrUpdateVpcNatGatewayQueue.Len())
-	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{Name: "vpc-nat-gw", RestartCount: 1}}
-	controller.enqueueVpcNatGatewayRestart(pod)
-	require.Equal(t, 1, controller.addOrUpdateVpcNatGatewayQueue.Len())
+	// A restart reuses the idempotent init path.
+	item, shutdown := controller.initVpcNatGatewayQueue.Get()
+	require.False(t, shutdown)
+	controller.initVpcNatGatewayQueue.Done(item)
+
+	// No running container instance is not a restart, and neither is a resync.
+	oldPod := pod.DeepCopy()
+	controller.enqueueVpcNatGatewayRestart(oldPod, pod)
+	require.Zero(t, controller.initVpcNatGatewayQueue.Len())
+
+	// The first running container instance wakes initialization.
+	pod.Status.ContainerStatuses = []corev1.ContainerStatus{{
+		Name: "vpc-nat-gw", ContainerID: "containerd://first", RestartCount: 1,
+		State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+	}}
+	controller.enqueueVpcNatGatewayRestart(oldPod, pod)
+	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len())
+
+	// Resyncing the same instance does nothing. A new ContainerID wakes recovery
+	// even if restart count is unchanged.
+	controller.enqueueVpcNatGatewayRestart(pod, pod.DeepCopy())
+	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len())
+	item, shutdown = controller.initVpcNatGatewayQueue.Get()
+	require.False(t, shutdown)
+	controller.initVpcNatGatewayQueue.Done(item)
+	controller.initVpcNatGatewayQueue.Forget(item)
+
+	restartedPod := pod.DeepCopy()
+	restartedPod.Status.ContainerStatuses[0].ContainerID = "containerd://second"
+	controller.enqueueVpcNatGatewayRestart(pod, restartedPod)
+	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len())
 
 	// A regular Pod triggers nothing.
-	regularPod := &corev1.Pod{Name: "regular", Namespace: metav1.NamespaceSystem}
+	regularPod := &corev1.Pod{
+		Name:      "regular",
+		Namespace: metav1.NamespaceSystem,
+		Status: corev1.PodStatus{
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "vpc-nat-gw", ContainerID: "containerd://regular",
+				State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+			}},
+		},
+	}
 	controller.enqueueVpcNatGatewayInit(regularPod)
-	controller.enqueueVpcNatGatewayRestart(regularPod)
+	controller.enqueueVpcNatGatewayRestart(&corev1.Pod{Name: "regular", Namespace: metav1.NamespaceSystem}, regularPod)
 	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len())
-	require.Equal(t, 1, controller.addOrUpdateVpcNatGatewayQueue.Len())
+	require.Zero(t, controller.addOrUpdateVpcNatGatewayQueue.Len())
+
+	// A gateway Pod that never completed initialization is woken by any of its own updates,
+	// even when its container instance is unchanged: a replacement Pod can be observed
+	// before its init command has run.
+	uninitialized := &corev1.Pod{
+		Name:      util.GenNatGwName("pending-init-gw") + "-0",
+		Namespace: metav1.NamespaceSystem,
+		Labels:    map[string]string{util.VpcNatGatewayLabel: "true"},
+		Annotations: map[string]string{
+			util.VpcNatGatewayAnnotation: "pending-init-gw",
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "vpc-nat-gw", ContainerID: "containerd://running",
+				State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+			}},
+		},
+	}
+	// Drain the key left by the previous case so the assertion cannot be satisfied by dedup.
+	item, shutdown = controller.initVpcNatGatewayQueue.Get()
+	require.False(t, shutdown)
+	controller.initVpcNatGatewayQueue.Done(item)
+	controller.initVpcNatGatewayQueue.Forget(item)
+
+	controller.enqueueVpcNatGatewayRestart(uninitialized.DeepCopy(), uninitialized)
+	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len(), "uninitialized gateway pod must retry init")
+	item, shutdown = controller.initVpcNatGatewayQueue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, "pending-init-gw", item)
+	controller.initVpcNatGatewayQueue.Done(item)
+
+	// Once the init command marked the Pod, further updates of the same instance do nothing.
+	initialized := uninitialized.DeepCopy()
+	initialized.Annotations[util.VpcNatGatewayInitAnnotation] = "true"
+	initialized.Annotations[util.VpcNatGatewayInitInstanceAnnotation] = natGwPodInstanceToken(initialized)
+	require.NotEmpty(t, initialized.Annotations[util.VpcNatGatewayInitInstanceAnnotation])
+	controller.enqueueVpcNatGatewayRestart(initialized.DeepCopy(), initialized)
+	require.Zero(t, controller.initVpcNatGatewayQueue.Len())
+
+	// The mark belongs to the instance that completed init, so a replacement Pod under the same
+	// name (new UID) or a restarted container (new ContainerID) must initialize again.
+	replaced := initialized.DeepCopy()
+	replaced.UID = "replacement-uid"
+	controller.enqueueVpcNatGatewayRestart(initialized.DeepCopy(), replaced)
+	require.Equal(t, 1, controller.initVpcNatGatewayQueue.Len())
 }
 
 func TestCheckIsPodVpcNatGw(t *testing.T) {
@@ -1656,8 +1737,12 @@ func TestHandleDeletePodRetriesOrphanedVMPortIPLookupFailure(t *testing.T) {
 	mockVMIs := kubecli.NewMockVirtualMachineInstanceInterface(mockCtrl)
 	mockVMs := kubecli.NewMockVirtualMachineInterface(mockCtrl)
 	mockKubevirt := kubecli.NewMockKubevirtClient(mockCtrl)
-	mockKubevirt.EXPECT().VirtualMachineInstance(metav1.NamespaceDefault).Return(mockVMIs).Times(2)
-	mockVMIs.EXPECT().Get(gomock.Any(), "test-vm", gomock.Any()).Return(&kubevirtv1.VirtualMachineInstance{}, nil).Times(2)
+	mockKubevirt.EXPECT().VirtualMachineInstance(metav1.NamespaceDefault).Return(mockVMIs).AnyTimes()
+	// the VM is live on this pod, so its deletion still releases the port migrate options
+	liveVMI := &kubevirtv1.VirtualMachineInstance{
+		Status: kubevirtv1.VirtualMachineInstanceStatus{ActivePods: map[types.UID]string{pod.UID: "node1"}},
+	}
+	mockVMIs.EXPECT().Get(gomock.Any(), "test-vm", gomock.Any()).Return(liveVMI, nil).AnyTimes()
 	mockKubevirt.EXPECT().VirtualMachine(metav1.NamespaceDefault).Return(mockVMs).Times(4)
 	vmTemplate := &kubevirtv1.VirtualMachineInstanceTemplateSpec{
 		Spec: kubevirtv1.VirtualMachineInstanceSpec{Networks: []kubevirtv1.Network{{
@@ -2274,7 +2359,6 @@ func TestReconcileRouteSubnetsEIPUsesPerFamilyPolicyMatch(t *testing.T) {
 
 			portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
 			fc.mockOvnClient.EXPECT().ListPortGroups(gomock.Any()).Return(nil, nil).AnyTimes()
-			fc.mockOvnClient.EXPECT().RemovePortFromPortGroups(portName).Return(nil)
 			fc.mockOvnClient.EXPECT().PortGroupAddPorts(gomock.Any(), portName).Return(nil)
 			fc.mockOvnClient.EXPECT().PortGroupRemovePorts(gomock.Any(), portName).Return(nil)
 			if tc.snat {
@@ -2605,5 +2689,118 @@ func assertRecordedPodEvent(t *testing.T, events <-chan *corev1.Event, pod *core
 		}
 	case <-time.After(time.Second):
 		t.Fatal("expected pod event")
+	}
+}
+
+func TestNeedAllocateSubnets(t *testing.T) {
+	nets := []*kubeovnNet{{ProviderName: util.OvnProvider}}
+	allocatedKey := fmt.Sprintf(util.AllocatedAnnotationTemplate, util.OvnProvider)
+	now := metav1.Now()
+
+	t.Run("terminating migration pod does not reallocate", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:                       "virt-launcher-vm",
+			Namespace:                  "ns",
+			DeletionTimestamp:          &now,
+			DeletionGracePeriodSeconds: new(int64(30)),
+			Annotations: map[string]string{
+				kubevirtv1.MigrationJobNameAnnotation: "mig-1",
+				allocatedKey:                          "true",
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Empty(t, needAllocateSubnets(pod, nets))
+	})
+
+	t.Run("live migration pod reallocates", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:      "virt-launcher-vm",
+			Namespace: "ns",
+			Labels: map[string]string{
+				kubevirtv1.MigrationJobLabel: "mig-uid",
+			},
+			Annotations: map[string]string{
+				kubevirtv1.MigrationJobNameAnnotation: "mig-1",
+				allocatedKey:                          "true",
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Equal(t, nets, needAllocateSubnets(pod, nets))
+	})
+
+	t.Run("source migration pod does not reallocate", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:      "virt-launcher-vm-source",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				kubevirtv1.MigrationJobNameAnnotation: "mig-1",
+				allocatedKey:                          "true",
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Empty(t, needAllocateSubnets(pod, nets))
+	})
+
+	t.Run("allocated pod without migration annotation does not reallocate", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:      "pod",
+			Namespace: "ns",
+			Annotations: map[string]string{
+				allocatedKey: "true",
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Empty(t, needAllocateSubnets(pod, nets))
+	})
+
+	t.Run("unallocated live pod allocates", func(t *testing.T) {
+		pod := &corev1.Pod{
+			Name:      "pod",
+			Namespace: "ns",
+			Status:    corev1.PodStatus{Phase: corev1.PodRunning},
+		}
+		require.Equal(t, nets, needAllocateSubnets(pod, nets))
+	})
+}
+
+func TestIsMigrationSourcePod(t *testing.T) {
+	tests := []struct {
+		name    string
+		podName string
+		state   *kubevirtv1.VirtualMachineInstanceMigrationState
+		want    bool
+	}{
+		{
+			name:    "current source pod",
+			podName: "source",
+			state: &kubevirtv1.VirtualMachineInstanceMigrationState{
+				SourcePod: "source",
+				TargetPod: "target",
+			},
+			want: true,
+		},
+		{
+			name:    "current target pod",
+			podName: "target",
+			state: &kubevirtv1.VirtualMachineInstanceMigrationState{
+				SourcePod: "source",
+				TargetPod: "target",
+			},
+		},
+		{
+			name:    "stale state without target pod",
+			podName: "source",
+			state:   &kubevirtv1.VirtualMachineInstanceMigrationState{SourcePod: "source"},
+		},
+		{
+			name:  "missing migration state",
+			state: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, isMigrationSourcePod(tt.podName, tt.state))
+		})
 	}
 }

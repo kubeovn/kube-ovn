@@ -16,7 +16,7 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
-	"kernel.org/pub/linux/libs/security/libcap/cap"
+	libcap "kernel.org/pub/linux/libs/security/libcap/cap"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/manager/signals"
 
@@ -35,7 +35,7 @@ func CmdMain() {
 
 	klog.Info(versions.String())
 
-	currentCaps := cap.GetProc()
+	currentCaps := libcap.GetProc()
 	klog.Infof("current capabilities: %s", currentCaps.String())
 
 	config, err := controller.ParseFlags()

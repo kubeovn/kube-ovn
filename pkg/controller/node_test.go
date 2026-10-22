@@ -506,6 +506,7 @@ func TestCheckAndUpdateNodePortGroup_EmptyPgName(t *testing.T) {
 	// The initialized node should still be processed; the uninitialized node should be skipped.
 	mockNb.EXPECT().PortGroupSetPorts("node.initialized.node", gomock.Any()).Return(nil)
 	mockNb.EXPECT().DeleteAcls("node.initialized.node", portGroupKey, "", nil).Return(nil)
+	mockNb.EXPECT().ListPortGroups(map[string]string{"vendor": util.CniTypeName, serviceProxyFallbackPortGroupKey: "true"}).Return(nil, nil)
 
 	// PortGroupSetPorts should NOT be called for empty pgName
 	mockNb.EXPECT().PortGroupSetPorts("", gomock.Any()).Times(0)
@@ -545,4 +546,29 @@ func TestGetPolicyRouteParams_ClonedExternalIDs(t *testing.T) {
 		"node-2": "10.0.0.2",
 	}, originalExternalIDs)
 	require.Contains(t, policy.ExternalIDs, "node-1")
+}
+
+func TestDeletePolicyRouteForNodeDeletesPoliciesByNodeExternalID(t *testing.T) {
+	t.Parallel()
+
+	// the node's policies are found by owner: IPAM holds no address for the node port
+	fc := newFakeController(t)
+	nodeName := "node-1"
+	policy := &ovnnb.LogicalRouterPolicy{
+		UUID:        "policy-uuid",
+		Priority:    util.NodeRouterPolicyPriority,
+		Match:       "ip4.dst == 10.0.0.9",
+		ExternalIDs: map[string]string{"vendor": util.CniTypeName, "node": nodeName},
+	}
+	fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies(
+		util.DefaultVpc,
+		util.NodeRouterPolicyPriority,
+		map[string]string{"vendor": util.CniTypeName, "node": nodeName},
+		false,
+	).Return([]*ovnnb.LogicalRouterPolicy{policy}, nil)
+	// each listed row is deleted under the ownership guard: another node may take it over after the list
+	fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyIfUnchanged(util.DefaultVpc, policy).Return(true, nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicies(gomock.Any(), gomock.Any(), gomock.Any()).Times(0)
+
+	require.NoError(t, fc.fakeController.deletePolicyRouteForNode(nodeName))
 }

@@ -36,8 +36,12 @@ const (
 	VMAnnotation                 = "ovn.kubernetes.io/virtualmachine"
 	ActivationStrategyAnnotation = "ovn.kubernetes.io/activation_strategy"
 
-	VpcNatGatewayAnnotation                 = "ovn.kubernetes.io/vpc_nat_gw"
-	VpcNatGatewayInitAnnotation             = "ovn.kubernetes.io/vpc_nat_gw_init"
+	VpcNatGatewayAnnotation     = "ovn.kubernetes.io/vpc_nat_gw"
+	VpcNatGatewayInitAnnotation = "ovn.kubernetes.io/vpc_nat_gw_init"
+	// VpcNatGatewayInitInstanceAnnotation records the container instance the init command
+	// completed on, so a replacement instance initializes again.
+	VpcNatGatewayInitInstanceAnnotation = "ovn.kubernetes.io/vpc_nat_gw_init_instance"
+	// Deprecated: container restarts are detected from Pod status.
 	VpcNatGatewayContainerRestartAnnotation = "ovn.kubernetes.io/vpc_nat_gw_container_restarted"
 	VpcNatGatewayActivatedAnnotation        = "ovn.kubernetes.io/vpc_nat_gw_activated"
 	VpcEipsAnnotation                       = "ovn.kubernetes.io/vpc_eips"
@@ -53,6 +57,7 @@ const (
 	VpcNatAnnotation                        = "ovn.kubernetes.io/vpc_nat"
 	OvnEipTypeLabel                         = "ovn.kubernetes.io/ovn_eip_type"
 	EipV4IpLabel                            = "ovn.kubernetes.io/eip_v4_ip"
+	EipUIDLabel                             = "ovn.kubernetes.io/eip_uid"
 	EipV6IpLabel                            = "ovn.kubernetes.io/eip_v6_ip"
 
 	RouterLBRuleVipsAnnotation = "ovn.kubernetes.io/router_lb_vip"
@@ -60,6 +65,7 @@ const (
 	SwitchLBRuleVip            = "switch_lb_vip"
 	KubeHostVMVip              = "kube_host_vm_vip"
 	SwitchLBRuleSubnet         = "switch_lb_subnet"
+	VipAttachSubnetsAnnotation = "ovn.kubernetes.io/vip-last-attach-subnets"
 
 	LogicalRouterAnnotation = "ovn.kubernetes.io/logical_router"
 	VpcAnnotation           = "ovn.kubernetes.io/vpc"
@@ -129,7 +135,6 @@ const (
 	SubnetNameLabel                    = "ovn.kubernetes.io/subnet"
 	ICGatewayLabel                     = "ovn.kubernetes.io/ic-gw"
 	ExGatewayLabel                     = "ovn.kubernetes.io/external-gw"
-	NodeExtGwLabel                     = "ovn.kubernetes.io/node-ext-gw"
 	VpcNatGatewayLabel                 = "ovn.kubernetes.io/vpc-nat-gw"
 	IPReservedLabel                    = "ovn.kubernetes.io/ip_reserved"
 	VpcNatGatewayNameLabel             = "ovn.kubernetes.io/vpc-nat-gw-name"
@@ -139,6 +144,7 @@ const (
 	VpcLbLabel                         = "ovn.kubernetes.io/vpc_lb"
 	VpcDNSNameLabel                    = "ovn.kubernetes.io/vpc-dns"
 	QoSLabel                           = "ovn.kubernetes.io/qos"
+	QoSPolicyUIDLabel                  = "ovn.kubernetes.io/qos_uid"
 	NodeNameLabel                      = "ovn.kubernetes.io/node-name"
 	NetworkPolicyLogAnnotation         = "ovn.kubernetes.io/enable_log"
 	NetworkPolicyEnforcementAnnotation = "ovn.kubernetes.io/network_policy_enforcement"
@@ -162,9 +168,6 @@ const (
 	NetworkTypeStt    = "stt"
 
 	LoNic         = "lo"
-	NodeGwNic     = "ovnext0"
-	NodeGwNs      = "ovnext"
-	NodeGwNsPath  = "/var/run/netns/ovnext"
 	BindMountPath = "/run/netns"
 
 	NodeNic           = "ovn0"
@@ -273,20 +276,22 @@ const (
 	OvnFip      = "ovn"
 	IptablesFip = "iptables"
 
-	GatewayRouterPolicyPriority      = 29000
-	EgressGatewayDropPolicyPriority  = 29090
-	EgressGatewayPolicyPriority      = 29100
-	EgressGatewayLocalPolicyPriority = 29150
-	NatGatewayDropPolicyPriority     = 29190
-	NatGatewayPolicyPriority         = 29200
-	NorthGatewayRoutePolicyPriority  = 29250
-	U2OSubnetPolicyPriority          = 29400
-	OvnICPolicyPriority              = 29500
-	NodeRouterPolicyPriority         = 30000
-	U2OPhysicalGatewayPolicyPriority = 30050
-	U2OSameSubnetPolicyPriority      = 30060
-	NodeLocalDNSPolicyPriority       = 30100
-	SubnetRouterPolicyPriority       = 31000
+	GatewayRouterPolicyPriority         = 29000
+	EgressGatewayDropPolicyPriority     = 29090
+	EgressGatewayPolicyPriority         = 29100
+	EgressGatewayLocalPolicyPriority    = 29150
+	NatGatewayDropPolicyPriority        = 29190
+	NatGatewayPolicyPriority            = 29200
+	NorthGatewayRoutePolicyPriority     = 29250
+	U2OSubnetPolicyPriority             = 29400
+	OvnICPolicyPriority                 = 29500
+	ServiceProxyFallbackReroutePriority = 29800
+	ServiceProxyFallbackDropPriority    = 29900
+	NodeRouterPolicyPriority            = 30000
+	U2OPhysicalGatewayPolicyPriority    = 30050
+	U2OSameSubnetPolicyPriority         = 30060
+	NodeLocalDNSPolicyPriority          = 30100
+	SubnetRouterPolicyPriority          = 31000
 
 	OffloadType = "offload-port"
 	DpdkType    = "dpdk-port"
@@ -396,9 +401,17 @@ const (
 	EnvHostIP       = "HOST_IP"
 	EnvHostIPs      = "HOST_IPS"
 
-	EnvSSLEnabled                 = "ENABLE_SSL"
-	EnvKubeOVNTLSRotationInterval = "KUBE_OVN_TLS_ROTATION_INTERVAL"
-	EnvGatewayName                = "GATEWAY_NAME"
+	// KubeOvnControllerServiceAccountName is the service account only kube-ovn-controller
+	// runs as (see charts/kube-ovn-v2/templates/rbac/ovn-sa.yaml and
+	// controller/controller-deployment.yaml); it is distinct from the "ovn" service
+	// account shared by the webhook, ic-controller and speaker. The validating webhook
+	// uses it to recognize requests from the controller itself.
+	KubeOvnControllerServiceAccountName = "kube-ovn-controller"
+
+	EnvSSLEnabled                  = "ENABLE_SSL"
+	EnvKubeOVNBGPSpeakerConfigFile = "KUBE_OVN_BGP_SPEAKER_CONFIG_FILE"
+	EnvKubeOVNTLSRotationInterval  = "KUBE_OVN_TLS_ROTATION_INTERVAL"
+	EnvGatewayName                 = "GATEWAY_NAME"
 )
 
 const (
@@ -454,6 +467,8 @@ var (
 	KindOvnSnatRule      = ObjectKind[*kubeovnv1.OvnSnatRule]()
 	KindSubnet           = ObjectKind[*kubeovnv1.Subnet]()
 	KindVip              = ObjectKind[*kubeovnv1.Vip]()
+	KindRouterLBRule     = ObjectKind[*kubeovnv1.RouterLBRule]()
+	KindSwitchLBRule     = ObjectKind[*kubeovnv1.SwitchLBRule]()
 	KindVpc              = ObjectKind[*kubeovnv1.Vpc]()
 	KindVpcEgressGateway = ObjectKind[*kubeovnv1.VpcEgressGateway]()
 	KindVpcNatGateway    = ObjectKind[*kubeovnv1.VpcNatGateway]()
