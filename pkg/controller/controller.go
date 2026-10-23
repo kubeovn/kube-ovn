@@ -1218,8 +1218,13 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to set NB_Global option skip_conntrack_ipcidrs")
 	}
 
-	if err := c.OVNNbClient.SetOVNIPSec(c.config.EnableOVNIPSec); err != nil {
-		util.LogFatalAndExit(err, "failed to set NB_Global ipsec")
+	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSecCert {
+		if err := c.InitDefaultOVNIPsecCA(); err != nil {
+			util.LogFatalAndExit(err, "failed to init ovn ipsec CA")
+		}
+	}
+	if err := c.reconcileIPsecCoordination(ctx); err != nil {
+		klog.ErrorS(err, "Initialize IPsec coordination")
 	}
 
 	if err := c.InitOVN(); err != nil {
@@ -1257,16 +1262,29 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
 	}
 
-	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSecCert {
-		if err := c.InitDefaultOVNIPsecCA(); err != nil {
-			util.LogFatalAndExit(err, "failed to init ovn ipsec CA")
-		}
+	c.startKubeOVNTLSManager(ctx)
+	if c.config.EnableOVNIPSec && c.config.CertManagerIPSecCert {
+		go c.watchIPsecCertificateRequests(ctx)
 	}
 
-	c.startKubeOVNTLSManager(ctx)
-
 	// start workers to do all the network operations
+	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSecCert {
+		go wait.UntilWithContext(ctx, func(ctx context.Context) {
+			operationCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+			defer cancel()
+			if err := c.finalizeIPsecCAFormat(operationCtx); err != nil {
+				klog.ErrorS(err, "Finalize IPsec CA migration")
+			}
+		}, 30*time.Second)
+	}
 	c.startWorkers(ctx)
+	go wait.UntilWithContext(ctx, func(ctx context.Context) {
+		operationCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		if err := c.reconcileIPsecCoordination(operationCtx); err != nil {
+			klog.ErrorS(err, "Reconcile IPsec coordination")
+		}
+	}, 15*time.Second)
 
 	c.initResourceOnce()
 	<-ctx.Done()

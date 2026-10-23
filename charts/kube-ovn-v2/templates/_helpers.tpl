@@ -214,11 +214,7 @@ TLS arguments for kube-ovn components that expose HTTPS endpoints.
 
 
 {{- define "kubeovn.runAsUser" -}}
-  {{- if $.Values.features.enableOvnIpsec -}}
-    0
-  {{- else -}}
-    65534
-  {{- end -}}
+  65534
 {{- end -}}
 
 {{- define "kubeovn.imageSpec" -}}
