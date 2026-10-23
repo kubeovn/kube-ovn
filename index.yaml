@@ -2,6 +2,17 @@ apiVersion: v1
 entries:
   kube-ovn:
   - apiVersion: v2
+    appVersion: 1.16.15
+    created: "2026-10-23T01:08:19.985033305Z"
+    description: Helm chart for Kube-OVN
+    digest: 1fb626d5ddc334a22cfe093fe8ccaf5a1243c7f25f2ad0e3dd3a2f3e17de954e
+    kubeVersion: '>= 1.29.0-0'
+    name: kube-ovn
+    type: application
+    urls:
+    - kube-ovn-v1.16.15.tgz
+    version: v1.16.15
+  - apiVersion: v2
     appVersion: 1.16.14
     created: "2026-10-14T13:26:18.358180128Z"
     description: Helm chart for Kube-OVN
@@ -1568,6 +1579,17 @@ entries:
     version: 0.1.0
   kube-ovn-v2:
   - apiVersion: v2
+    appVersion: 1.16.15
+    created: "2026-10-23T01:08:20.268346339Z"
+    description: Helm chart for Kube-OVN
+    digest: 1454b0de704f8816c5f48bc01adb0582b2512087afb678346459c95d661e0d11
+    kubeVersion: '>= 1.29.0-0'
+    name: kube-ovn-v2
+    type: application
+    urls:
+    - kube-ovn-v2-v1.16.15.tgz
+    version: v1.16.15
+  - apiVersion: v2
     appVersion: 1.16.14
     created: "2026-10-14T13:26:18.590763886Z"
     description: Helm chart for Kube-OVN
@@ -2491,4 +2513,4 @@ entries:
     urls:
     - kube-ovn-v2-1.14.0.tgz
     version: 1.14.0
-generated: "2026-10-23T01:01:07.617245425Z"
+generated: "2026-10-23T01:08:20.268919832Z"
