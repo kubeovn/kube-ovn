@@ -1319,7 +1319,12 @@ func (c *Controller) gcChassis() error {
 	if err != nil {
 		return err
 	}
+	liveNodeNames := make(map[string]struct{}, len(nodes))
+	// claimedNodes holds live nodes whose ChassisAnnotation already resolves
+	// to an existing chassis with a matching hostname.
+	claimedNodes := make(map[string]struct{}, len(nodes))
 	for _, node := range nodes {
+		liveNodeNames[node.Name] = struct{}{}
 		chassisName := node.Annotations[util.ChassisAnnotation]
 		if chassisName == "" {
 			// kube-ovn-cni not ready to set chassis annotation
@@ -1329,6 +1334,7 @@ func (c *Controller) gcChassis() error {
 			if hostname == node.Name {
 				// node is alive, matched chassis should be alive
 				delete(chassisNodes, chassisName)
+				claimedNodes[node.Name] = struct{}{}
 				continue
 			}
 			// maybe node name changed, delete chassis
@@ -1340,20 +1346,20 @@ func (c *Controller) gcChassis() error {
 		}
 	}
 
-	liveNodeNames := make(map[string]struct{}, len(nodes))
-	for _, node := range nodes {
-		liveNodeNames[node.Name] = struct{}{}
-	}
-
 	for chassisName, hostname := range chassisNodes {
-		if _, isLiveNode := liveNodeNames[hostname]; isLiveNode {
-			// This chassis's hostname is a current k8s Node, but no node's
-			// ChassisAnnotation claimed it in the loop above - the node is
-			// either not yet annotated or still carries a stale annotation
-			// pointing elsewhere. A genuinely external chassis can never
-			// share a hostname with a k8s Node, so deleting here would risk
-			// removing a live node's chassis mid-convergence. Defer instead;
-			// it's picked up on a later tick once the annotation catches up.
+		_, isLiveNode := liveNodeNames[hostname]
+		_, isClaimed := claimedNodes[hostname]
+		if isLiveNode && !isClaimed {
+			// This chassis's hostname is a current k8s Node that has not yet
+			// claimed any chassis - the node is either not yet annotated or
+			// still carries a stale annotation pointing elsewhere. A
+			// genuinely external chassis can never share a hostname with a
+			// k8s Node, so deleting here would risk removing a live node's
+			// chassis mid-convergence. Defer instead; it's picked up on a
+			// later tick once the annotation catches up.
+			// Once the node has claimed a chassis, any other chassis with
+			// the same hostname is a stale duplicate (ErrOneNodeMultiChassis)
+			// and falls through to deletion below.
 			klog.Infof("defer gc of chassis %s: hostname %s matches a live node pending chassis annotation convergence", chassisName, hostname)
 			continue
 		}

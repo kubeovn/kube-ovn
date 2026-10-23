@@ -1345,6 +1345,102 @@ func TestGcChassisUnderExternalVpcStillGCsTaggedChassis(t *testing.T) {
 	})
 }
 
+// TestGcChassisDeletesStaleDuplicateOfClaimedLiveNode covers a stale chassis
+// left behind after chassis recreation: once a live node's ChassisAnnotation
+// claims one chassis, any other unclaimed chassis with the same hostname is a
+// duplicate (ErrOneNodeMultiChassis) and must be deleted rather than deferred.
+// Deferral only applies while the node has not claimed any chassis.
+func TestGcChassisDeletesStaleDuplicateOfClaimedLiveNode(t *testing.T) {
+	kubeOvnTag := map[string]string{"vendor": util.CniTypeName}
+	claimedNode := &corev1.Node{
+		Name:        "node-1",
+		Annotations: map[string]string{util.ChassisAnnotation: "chassis-current"},
+	}
+
+	tests := []struct {
+		name              string
+		enableExternalVpc bool
+		nodes             []*corev1.Node
+		setup             func(*mockovs.MockSbClient)
+	}{
+		{
+			name:              "tagged stale duplicate is deleted under external vpc",
+			enableExternalVpc: true,
+			nodes:             []*corev1.Node{claimedNode},
+			setup: func(m *mockovs.MockSbClient) {
+				m.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+					{Name: "chassis-current", Hostname: "node-1", ExternalIDs: kubeOvnTag},
+					{Name: "chassis-old", Hostname: "node-1", ExternalIDs: kubeOvnTag},
+				}, nil)
+				m.EXPECT().DeleteChassis("chassis-old").Return(nil)
+			},
+		},
+		{
+			name:              "untagged stale duplicate is self-healed and deleted under external vpc",
+			enableExternalVpc: true,
+			nodes:             []*corev1.Node{claimedNode},
+			setup: func(m *mockovs.MockSbClient) {
+				m.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+					{Name: "chassis-current", Hostname: "node-1", ExternalIDs: kubeOvnTag},
+					{Name: "chassis-old", Hostname: "node-1"},
+				}, nil)
+				m.EXPECT().UpdateChassisTag("chassis-old", "node-1").Return(nil)
+				m.EXPECT().DeleteChassis("chassis-old").Return(nil)
+			},
+		},
+		{
+			name:  "stale duplicate is deleted with external vpc disabled",
+			nodes: []*corev1.Node{claimedNode},
+			setup: func(m *mockovs.MockSbClient) {
+				m.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+					{Name: "chassis-current", Hostname: "node-1"},
+					{Name: "chassis-old", Hostname: "node-1"},
+				}, nil)
+				m.EXPECT().DeleteChassis("chassis-old").Return(nil)
+			},
+		},
+		{
+			name:              "chassis of a node with a dangling annotation is still deferred",
+			enableExternalVpc: true,
+			nodes: []*corev1.Node{{
+				Name:        "node-1",
+				Annotations: map[string]string{util.ChassisAnnotation: "chassis-missing"},
+			}},
+			setup: func(m *mockovs.MockSbClient) {
+				m.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+					{Name: "chassis-new", Hostname: "node-1", ExternalIDs: kubeOvnTag},
+				}, nil)
+				// No DeleteChassis: the node has not claimed any existing
+				// chassis yet, so the hostname match is pending convergence.
+			},
+		},
+		{
+			name:              "multiple chassis of a not-yet-annotated node are all deferred",
+			enableExternalVpc: true,
+			nodes:             []*corev1.Node{{Name: "node-1"}},
+			setup: func(m *mockovs.MockSbClient) {
+				m.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+					{Name: "chassis-a", Hostname: "node-1", ExternalIDs: kubeOvnTag},
+					{Name: "chassis-b", Hostname: "node-1", ExternalIDs: kubeOvnTag},
+				}, nil)
+				// No DeleteChassis: without a claim gc cannot tell which
+				// chassis is current.
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Nodes: tt.nodes})
+			require.NoError(t, err)
+			ctrl := fakeController.fakeController
+			ctrl.config.EnableExternalVpc = tt.enableExternalVpc
+			tt.setup(fakeController.mockOvnSbClient)
+
+			require.NoError(t, ctrl.gcChassis())
+		})
+	}
+}
+
 // TestGcChassisConcurrentReactiveAndPeriodicRunsSerialize exercises the
 // concurrency risk introduced by adding gcChassis to the periodic GC ticker
 // (pkg/controller/controller.go) alongside its pre-existing reactive call
