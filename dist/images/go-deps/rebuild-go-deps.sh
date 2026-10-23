@@ -70,7 +70,7 @@ done
 
 for f in $(ls "$TRIVY_DIR"); do
     f=$(basename $f)
-    if [ -x "$TRIVY_DIR/$f" -a ! -e "$DEPS_DIR/$f" ]; then
+    if [ -f "$TRIVY_DIR/$f" -a -x "$TRIVY_DIR/$f" -a ! -e "$DEPS_DIR/$f" ]; then
         cp "$TRIVY_DIR/$f" "$DEPS_DIR"
     fi
 done

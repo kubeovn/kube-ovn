@@ -205,6 +205,8 @@ ARG CNI_PLUGINS_VERSION=v1.9.1
 ARG KUBECTL_VERSION=v1.35.8
 # renovate: datasource=github-releases depName=gobgp packageName=osrg/gobgp versioning=semver
 ARG GOBGP_VERSION=4.7.0
+# renovate: datasource=github-releases depName=dumb-init packageName=Yelp/dumb-init versioning=semver
+ARG DUMB_INIT_VERSION="1.2.5"
 RUN apk --no-cache add curl jq
 ADD go-deps/download-go-deps.sh /
 RUN sh -x /download-go-deps.sh
@@ -214,7 +216,9 @@ FROM golang:$GO_VERSION-alpine AS go-deps
 RUN apk --no-cache add bash curl jq git
 ADD go-deps/rebuild-go-deps.sh /
 RUN --mount=type=bind,target=/trivy,from=trivy,source=/godeps \
-    bash -x /rebuild-go-deps.sh
+    bash -x /rebuild-go-deps.sh && \
+    cp -R /trivy/licenses /godeps/licenses && \
+    cp /trivy/THIRD_PARTY_NOTICES /godeps/THIRD_PARTY_NOTICES
 
 FROM ubuntu:24.04 AS ubuntu
 
@@ -277,7 +281,10 @@ RUN curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-in
 
 RUN --mount=type=bind,target=/godeps,from=go-deps,source=/godeps \
     cp /godeps/loopback /godeps/portmap /godeps/macvlan ./ && \
-    cp /godeps/kubectl /godeps/gobgp /usr/bin/
+    cp /godeps/kubectl /godeps/gobgp /usr/bin/ && \
+    mkdir -p /usr/share/doc/kube-ovn/third-party && \
+    cp -R /godeps/licenses/. /usr/share/doc/kube-ovn/third-party/ && \
+    cp /godeps/THIRD_PARTY_NOTICES /usr/share/doc/kube-ovn/THIRD_PARTY_NOTICES
 
 ARG DEBUG=false
 
