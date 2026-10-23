@@ -1630,19 +1630,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}, time.Second, ctx.Done())
 
 	if c.config.GCInterval != 0 {
-		go wait.Until(func() {
-			if err := c.markAndCleanLSP(); err != nil {
-				klog.Errorf("gc lsp error: %v", err)
-			}
-			// gcChassis runs here instead of in c.gc()'s gcFunctions so it's
-			// re-evaluated on every tick (e.g. a renamed node's stale
-			// chassis), not just once at startup; wait.Until runs this func
-			// immediately on the first iteration, preserving the previous
-			// run-once-at-startup behavior.
-			if err := c.gcChassis(); err != nil {
-				klog.Errorf("gc chassis error: %v", err)
-			}
-		}, time.Duration(c.config.GCInterval)*time.Second, ctx.Done())
+		go wait.Until(c.periodicGC, time.Duration(c.config.GCInterval)*time.Second, ctx.Done())
 	}
 
 	go wait.Until(func() {

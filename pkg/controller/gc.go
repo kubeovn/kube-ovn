@@ -64,6 +64,21 @@ func (c *Controller) gc() error {
 	return nil
 }
 
+// periodicGC runs the gc passes that are re-evaluated on every GCInterval
+// tick rather than once at startup. gcChassis runs here instead of in
+// c.gc()'s gcFunctions so a renamed node's stale chassis is picked up on the
+// next tick; wait.Until runs this immediately on the first iteration,
+// preserving the previous run-once-at-startup behavior. A failure in one pass
+// does not skip the other.
+func (c *Controller) periodicGC() {
+	if err := c.markAndCleanLSP(); err != nil {
+		klog.Errorf("gc lsp error: %v", err)
+	}
+	if err := c.gcChassis(); err != nil {
+		klog.Errorf("gc chassis error: %v", err)
+	}
+}
+
 func (c *Controller) gcLogicalRouterPort() error {
 	klog.Infof("start to gc logical router port")
 	vpcs, err := c.vpcsLister.List(labels.Everything())

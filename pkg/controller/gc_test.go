@@ -1527,3 +1527,46 @@ func TestGcChassisConcurrentReactiveAndPeriodicRunsSerialize(t *testing.T) {
 	require.NoError(t, errs[1])
 	require.Equal(t, int32(1), atomic.LoadInt32(&maxConcurrent), "gcChassisMu must serialize concurrent gcChassis calls")
 }
+
+// TestPeriodicGC covers the periodic GC tick body: a failure in one gc pass
+// must not skip the other, so a broken lsp gc can't stall chassis gc.
+func TestPeriodicGC(t *testing.T) {
+	errBoom := errors.New("boom")
+
+	tests := []struct {
+		name  string
+		setup func(*mockovs.MockNbClient, *mockovs.MockSbClient)
+	}{
+		{
+			name: "chassis gc still runs after lsp gc fails",
+			setup: func(nb *mockovs.MockNbClient, sb *mockovs.MockSbClient) {
+				nb.EXPECT().ListNormalLogicalSwitchPorts(false, nil).Return(nil, errBoom)
+				sb.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{{Name: "chassis-orphan", Hostname: "gone"}}, nil)
+				sb.EXPECT().DeleteChassis("chassis-orphan").Return(nil)
+			},
+		},
+		{
+			name: "chassis gc error is logged, not propagated",
+			setup: func(nb *mockovs.MockNbClient, sb *mockovs.MockSbClient) {
+				nb.EXPECT().ListNormalLogicalSwitchPorts(false, nil).Return(nil, nil)
+				sb.EXPECT().ListChassis().Return(nil, errBoom)
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{})
+			require.NoError(t, err)
+			ctrl := fakeController.fakeController
+			ctrl.config.EnableKeepVMIP = false
+			ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+			ctrl.virtualIpsLister = kubeovnlisters.NewVipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+			previousLastNoPodLSP := lastNoPodLSP
+			lastNoPodLSP = strset.New()
+			t.Cleanup(func() { lastNoPodLSP = previousLastNoPodLSP })
+			tt.setup(fakeController.mockOvnClient, fakeController.mockOvnSbClient)
+
+			ctrl.periodicGC()
+		})
+	}
+}
