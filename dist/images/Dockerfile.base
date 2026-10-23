@@ -36,7 +36,6 @@ ARG ARCH
 ARG LEGACY
 ARG DEBIAN_FRONTEND=noninteractive
 ARG SRC_DIR='/usr/src'
-ARG OPENBFDD_COMMIT=e35f43ad8d2b3f084e96a84c392528a90d05a287
 
 ADD patches/4228eab1d722087ba795e310eadc9e25c4513ec1.patch $SRC_DIR
 ADD patches/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch $SRC_DIR
@@ -171,6 +170,7 @@ RUN cd /usr/src/ovn && \
     if [ "$ARCH" = "amd64" ] && [ "$LEGACY" != "true" ]; then CONFIGURE_OPTS="--with-ovs-build=/usr/src/ovs/_debian CFLAGS='-O2 -g -msse4.2 -mpopcnt -fPIC'"; fi && \
     OVSDIR=/usr/src/ovs EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
 
+ARG OPENBFDD_COMMIT=e35f43ad8d2b3f084e96a84c392528a90d05a287
 RUN mkdir -p /usr/src/openbfdd && \
     curl -sSf -L --retry 5 "https://github.com/dyninc/OpenBFDD/archive/${OPENBFDD_COMMIT}.tar.gz" | \
     tar -xz -C /usr/src/openbfdd --strip-components=1
