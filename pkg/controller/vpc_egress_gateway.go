@@ -470,6 +470,44 @@ func (c *Controller) updateVpcEgressGatewayStatus(gw *kubeovnv1.VpcEgressGateway
 	return updateGateway, nil
 }
 
+// resolveVpcEgressGatewayInternalProvider determines the provider used for the
+// internal network and, when EnableNonPrimaryCNI is set, resolves the
+// net-attach-def name that should become the pod's default network (eth0).
+func (c *Controller) resolveVpcEgressGatewayInternalProvider(intSubnet *kubeovnv1.Subnet) (string, string, error) {
+	intProvider := util.OvnProvider
+	var internalAttachmentNwName string
+
+	// if EnableNonPrimaryCNI is set, the internal network will be the default network (eth0) and provider is internal network provider and not ovn.
+	if c.config.EnableNonPrimaryCNI {
+		provider := intSubnet.Spec.Provider
+
+		intNadName, intNadNamespace, err := util.ParseInternalSubnetProvider(
+			provider, intSubnet.Name,
+		)
+		if err != nil {
+			klog.Error(err)
+			return "", "", err
+		}
+
+		if _, err := c.netAttachLister.
+			NetworkAttachmentDefinitions(intNadNamespace).
+			Get(intNadName); err != nil {
+			klog.Error(err)
+			return "", "", fmt.Errorf(
+				"failed to get net-attach-def %s/%s for internal subnet %s: %w",
+				intNadNamespace, intNadName, intSubnet.Name, err,
+			)
+		}
+
+		intProvider = provider
+		internalAttachmentNwName = fmt.Sprintf(
+			"%s/%s", intNadNamespace, intNadName,
+		)
+	}
+
+	return intProvider, internalAttachmentNwName, nil
+}
+
 // create or update vpc egress gateway workload
 func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGateway, vpc *kubeovnv1.Vpc, bfdIP, bfdIPv4, bfdIPv6 string) (string, set.Set[string], set.Set[string], *appsv1.Deployment, error) {
 	image := c.config.Image
@@ -518,33 +556,10 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		return "", nil, nil, nil, err
 	}
 
-	intProvider := util.OvnProvider
-	var internalAttachmentNwName string
-
-	// if EnableNonPrimaryCNI is set, the internal network will be the default network (eth0) and provider is internal network provider and not ovn.
-	if c.config.EnableNonPrimaryCNI {
-		provider := intSubnet.Spec.Provider
-
-		intNadName, intNadNamespace, err := util.ParseInternalSubnetProvider(
-			provider, intSubnet.Name,
-		)
-		if err != nil {
-			return "", nil, nil, nil, err
-		}
-
-		if _, err := c.netAttachLister.
-			NetworkAttachmentDefinitions(intNadNamespace).
-			Get(intNadName); err != nil {
-			return "", nil, nil, nil, fmt.Errorf(
-				"failed to get net-attach-def %s/%s for internal subnet %s: %w",
-				intNadNamespace, intNadName, intSubnet.Name, err,
-			)
-		}
-
-		intProvider = provider
-		internalAttachmentNwName = fmt.Sprintf(
-			"%s/%s", intNadNamespace, intNadName,
-		)
+	intProvider, internalAttachmentNwName, err := c.resolveVpcEgressGatewayInternalProvider(intSubnet)
+	if err != nil {
+		klog.Error(err)
+		return "", nil, nil, nil, err
 	}
 
 	extSubnet, err := c.subnetsLister.Get(gw.Spec.ExternalSubnet)
@@ -906,12 +921,12 @@ func setVpcEgressGatewayBandwidthAnnotations(annotations map[string]string, band
 	if ingressMbps > 0 {
 		// The 'ingress' on the VpcEgressGateway CRD refers to traffic entering the VPC from external.
 		// From the gateway pod's perspective, this is egress traffic of the primary network interface.
-		annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)] = strconv.FormatInt(ingressMbps, 10)
+		annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)] = strconv.FormatInt(ingressMbps, 10)
 	}
 	if egressMbps > 0 {
 		// The 'egress' on the VpcEgressGateway CRD refers to traffic leaving the VPC.
 		// From the gateway pod's perspective, this is ingress traffic of the primary network interface.
-		annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)] = strconv.FormatInt(egressMbps, 10)
+		annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)] = strconv.FormatInt(egressMbps, 10)
 	}
 	return nil
 }
@@ -939,11 +954,13 @@ func vpcEgressGatewayLocalPolicyMatches(af int, localPgName, pgName, asName stri
 func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressGateway, af int, lrName, lrpName, bfdIP string, nodeNexthops map[string]set.Set[string], sources set.Set[string]) error {
 	if c.config.EnableNonPrimaryCNI && len(gw.Spec.Selectors) != 0 {
 		// reconcileVpcEgressGatewayOVNRoutes matches pods via the "ovn" provider
-		// but when kube-ovn runs as a non-primary CNI, provider is intenal network, so the selectors will not work as expected.
-		// this is not supported in this version and will be supported in the future.
+		// but when kube-ovn runs as a non-primary CNI, provider is intenal network, so the selectors will not work as expected/return error as not supported
+		// this is not supported in this version and will be supported in the future(document the case).
 		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, "SelectorsNotSupported",
 			"spec.selectors is not supported when kube-ovn runs as a non-primary CNI")
-		return nil
+		err := fmt.Errorf("spec.selectors is not supported when kube-ovn runs as a non-primary CNI")
+		klog.Error(err)
+		return err
 	}
 
 	nextHops := flattenVpcEgressGatewayNexthops(nodeNexthops)

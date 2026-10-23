@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	ktesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -904,7 +905,8 @@ func TestReconcileVpcEgressGatewayOVNRoutesNonPrimaryCNIRejectsSelectors(t *test
 		map[string]set.Set[string]{f.nodeName: set.New("10.16.1.10")},
 		nil,
 	)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "not supported")
 
 	fakeRecorder, ok := f.fc.fakeController.recorder.(*record.FakeRecorder)
 	require.True(t, ok, "expected fake recorder")
@@ -951,6 +953,17 @@ func TestReconcileVpcEgressGatewayWorkloadNonPrimaryCNIAnnotations(t *testing.T)
 	gw.Spec.InternalIPPool = "int-pool"
 	gw.Spec.ExternalIPPool = "ext-pool"
 
+	gw.Spec.Bandwidth = &kubeovnv1.BandwidthLimit{
+		Ingress: &kubeovnv1.BandwidthRate{
+			Type:   intstr.Int,
+			IntVal: 100, // Mbps
+		},
+		Egress: &kubeovnv1.BandwidthRate{
+			Type:   intstr.Int,
+			IntVal: 200, // Mbps
+		},
+	}
+
 	attachmentNetworkName, _, _, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "", "")
 	require.NoError(t, err)
 	require.Equal(t, "default/vswitchexternal", attachmentNetworkName)
@@ -960,4 +973,6 @@ func TestReconcileVpcEgressGatewayWorkloadNonPrimaryCNIAnnotations(t *testing.T)
 	require.Equal(t, intSubnet.Name, deploy.Spec.Template.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, intSubnet.Spec.Provider)])
 	require.Equal(t, "int-pool", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, intSubnet.Spec.Provider)])
 	require.Equal(t, "ext-pool", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)])
+	require.Equal(t, "100", deploy.Spec.Template.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, intSubnet.Spec.Provider)])
+	require.Equal(t, "200", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, intSubnet.Spec.Provider)])
 }
