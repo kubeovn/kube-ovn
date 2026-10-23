@@ -30,7 +30,7 @@ const (
 	SnatAnnotation               = "ovn.kubernetes.io/snat"
 	EipAnnotation                = "ovn.kubernetes.io/eip"
 	FipFinalizer                 = "ovn.kubernetes.io/fip"
-	VipAnnotation                = "ovn.kubernetes.io/vip"
+	VipAnnotation                = "ovn.kubernetes.io/vip" // removed in v1.17, ignored: pod static ip via vip is no longer supported
 	AAPsAnnotation               = "ovn.kubernetes.io/aaps"
 	ChassisAnnotation            = "ovn.kubernetes.io/chassis"
 	VMAnnotation                 = "ovn.kubernetes.io/virtualmachine"
@@ -63,7 +63,6 @@ const (
 	RouterLBRuleVipsAnnotation = "ovn.kubernetes.io/router_lb_vip"
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 	SwitchLBRuleVip            = "switch_lb_vip"
-	KubeHostVMVip              = "kube_host_vm_vip"
 	SwitchLBRuleSubnet         = "switch_lb_subnet"
 	VipAttachSubnetsAnnotation = "ovn.kubernetes.io/vip-last-attach-subnets"
 

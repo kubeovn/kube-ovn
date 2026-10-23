@@ -3,7 +3,6 @@ package controller
 import (
 	"cmp"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -158,11 +157,6 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 		klog.Errorf("failed to create or update vip '%s', %v", vip.Name, err)
 		return err
 	}
-	if vip.Spec.Type == util.KubeHostVMVip {
-		// vm use the vip as its real ip
-		klog.Infof("created host network pod vm ip %s", key)
-		return nil
-	}
 	// Status updates enqueue the same reconciliation. Keep parent updates on
 	// their dedicated queue so the add and status workers cannot create the
 	// same virtual port concurrently.
@@ -222,12 +216,11 @@ func (c *Controller) acquireVipAddress(vip *kubeovnv1.Vip, subnet *kubeovnv1.Sub
 	return v4ip, v6ip, mac, nil
 }
 
-// ensureVipLogicalSwitchPort creates vip's lsp for the types that need one directly
-// addressable on the subnet: switch_lb_rule (routed vip, lsp only for bookkeeping, since
-// the lb DNATs by ip/port and delivery goes through the gateway mac) and kube_host_vm_vip
-// (the lsp is the vm's real nic).
+// ensureVipLogicalSwitchPort creates vip's lsp for switch_lb_rule vips, the only type
+// that needs one directly addressable on the subnet (routed vip, lsp only for bookkeeping,
+// since the lb DNATs by ip/port and delivery goes through the gateway mac).
 func (c *Controller) ensureVipLogicalSwitchPort(vip *kubeovnv1.Vip, subnet *kubeovnv1.Subnet, portName, v4ip, v6ip, mac string, needsMacRepair bool) error {
-	if vip.Spec.Type != util.SwitchLBRuleVip && vip.Spec.Type != util.KubeHostVMVip {
+	if vip.Spec.Type != util.SwitchLBRuleVip {
 		return nil
 	}
 	ipStr := util.GetStringIP(v4ip, v6ip)
@@ -236,7 +229,7 @@ func (c *Controller) ensureVipLogicalSwitchPort(vip *kubeovnv1.Vip, subnet *kube
 		klog.Error(err)
 		return err
 	}
-	if vip.Spec.Type == util.SwitchLBRuleVip && needsMacRepair {
+	if needsMacRepair {
 		// pre-fix switch_lb_rule vips had arp_proxy set on their lsp; it was never
 		// functional and the CreateLogicalSwitchPort update above does not touch the
 		// options column, so it must be cleared explicitly during repair.
@@ -367,11 +360,6 @@ func (c *Controller) handleUpdateVirtualParents(key string) error {
 		}
 		klog.Error(err)
 		return err
-	}
-	if cachedVip.Spec.Type == util.KubeHostVMVip {
-		// vm use the vip as its real ip
-		klog.Infof("created host network pod vm ip %s", key)
-		return nil
 	}
 	// only pods in the same namespace as vip are allowed to use aap
 	if (cachedVip.Status.V4ip == "" && cachedVip.Status.V6ip == "") || cachedVip.Spec.Namespace == "" {
@@ -608,7 +596,6 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 				Finalizers: []string{util.KubeOVNControllerFinalizer},
 				Labels: map[string]string{
 					util.SubnetNameLabel: subnet,
-					util.IPReservedLabel: "",
 				},
 				Spec: kubeovnv1.VipSpec{
 					Namespace:  ns,
@@ -640,7 +627,6 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 			vip.Labels = make(map[string]string)
 		}
 		vip.Labels[util.SubnetNameLabel] = subnet
-		vip.Labels[util.IPReservedLabel] = ""
 
 		if vip.Status.Mac == "" && mac != "" ||
 			vip.Status.V4ip == "" && v4ip != "" ||
@@ -675,75 +661,6 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 	// Trigger subnet status update after CR creation or update
 	c.updateSubnetStatusQueue.AddAfter(subnet, 300*time.Millisecond)
 	return nil
-}
-
-func (c *Controller) podReuseVip(vipName, portName string, keepVIP bool) error {
-	// when pod use static vip, label vip reserved for pod
-	oriVip, err := c.virtualIpsLister.Get(vipName)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	vip := oriVip.DeepCopy()
-	if vip.Labels == nil {
-		vip.Labels = map[string]string{}
-	}
-	var op string
-
-	if vip.Labels[util.IPReservedLabel] != "" {
-		if keepVIP && vip.Labels[util.IPReservedLabel] == portName {
-			return nil
-		}
-		return fmt.Errorf("vip '%s' is in use by pod %s", vip.Name, vip.Labels[util.IPReservedLabel])
-	}
-	op = "replace"
-	vip.Labels[util.IPReservedLabel] = portName
-	patchPayloadTemplate := `[{ "op": "%s", "path": "/metadata/labels", "value": %s }]`
-	raw, _ := json.Marshal(vip.Labels)
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, op, raw)
-	if _, err = c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name, types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
-		klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
-		return err
-	}
-	c.ipam.ReleaseAddressByPod(vipName, vip.Spec.Subnet)
-	return nil
-}
-
-func (c *Controller) releaseVip(key string) (bool, error) {
-	// clean vip label when pod delete
-	oriVip, err := c.virtualIpsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return false, nil
-		}
-		klog.Error(err)
-		return false, err
-	}
-	vip := oriVip.DeepCopy()
-	if vip.Labels[util.IPReservedLabel] == "" {
-		return false, nil
-	}
-	vip.Labels[util.IPReservedLabel] = ""
-	klog.V(3).Infof("clean reserved label from vip %s", key)
-	patchPayloadTemplate := `[{ "op": "replace", "path": "/metadata/labels", "value": %s }]`
-	raw, _ := json.Marshal(vip.Labels)
-	patchPayload := fmt.Sprintf(patchPayloadTemplate, raw)
-	if _, err := c.config.KubeOvnClient.KubeovnV1().Vips().Patch(context.Background(), vip.Name,
-		types.JSONPatchType, []byte(patchPayload), metav1.PatchOptions{}); err != nil {
-		klog.Errorf("failed to patch label for vip '%s', %v", vip.Name, err)
-		return false, err
-	}
-	mac := &vip.Status.Mac
-	if vip.Status.Mac == "" {
-		mac = nil
-	}
-	if _, _, _, err = c.ipam.GetStaticAddress(key, vip.Name, vip.Status.V4ip, mac, vip.Spec.Subnet, false); err != nil {
-		klog.Errorf("failed to recover IPAM from vip CR %s: %v", vip.Name, err)
-	}
-	return true, nil
 }
 
 func (c *Controller) handleAddOrUpdateVipFinalizer(key string) error {

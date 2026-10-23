@@ -512,3 +512,43 @@ func TestHandleAddVirtualIP_SwitchLBRuleRepairNotSilentlySkippedWhenIPAMSubnetUn
 	require.NoError(t, err)
 	require.Equal(t, staleMac, got.Status.Mac)
 }
+
+// switch_lb_rule is the only type with a normal lsp. No other type, including the removed
+// kube_host_vm_vip, gets one; those with a namespace get a virtual lsp from
+// handleUpdateVirtualParents instead.
+func TestEnsureVipLogicalSwitchPortOnlyForSwitchLBRule(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		Name: "subnet-a",
+		Spec: kubeovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24", Provider: util.OvnProvider, Vpc: util.DefaultVpc},
+	}
+	for _, vipType := range []string{"", "kube_host_vm_vip"} {
+		t.Run("type="+vipType, func(t *testing.T) {
+			fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}})
+			require.NoError(t, err)
+			vip := &kubeovnv1.Vip{
+				Name: "vip1",
+				Spec: kubeovnv1.VipSpec{Namespace: "default", Subnet: subnet.Name, Type: vipType},
+			}
+			portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+
+			// no CreateLogicalSwitchPort call is registered on the mock: calling it fails the test
+			require.NoError(t, fc.fakeController.ensureVipLogicalSwitchPort(vip, subnet, portName, "10.0.0.5", "", "00:00:00:00:00:02", false))
+		})
+	}
+
+	t.Run("type=switch_lb_vip", func(t *testing.T) {
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}})
+		require.NoError(t, err)
+		vip := &kubeovnv1.Vip{
+			Name: "vip1",
+			Spec: kubeovnv1.VipSpec{Namespace: "default", Subnet: subnet.Name, Type: util.SwitchLBRuleVip},
+		}
+		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+		fc.mockOvnClient.EXPECT().
+			CreateLogicalSwitchPort(subnet.Name, portName, "10.0.0.5", "00:00:00:00:00:02", vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc).
+			Return(nil)
+		fc.mockOvnClient.EXPECT().RemoveLogicalSwitchPortOption(portName, "arp_proxy").Return(nil)
+
+		require.NoError(t, fc.fakeController.ensureVipLogicalSwitchPort(vip, subnet, portName, "10.0.0.5", "", "00:00:00:00:00:02", true))
+	})
+}

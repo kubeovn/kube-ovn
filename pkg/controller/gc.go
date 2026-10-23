@@ -49,7 +49,6 @@ func (c *Controller) gc() error {
 		c.gcVpcNatGateway,
 		c.gcLogicalRouterPort,
 		c.gcIP,
-		c.gcVip,
 		c.gcLbSvcPods,
 		c.gcVPCDNS,
 		c.gcRouterLBRules,
@@ -299,42 +298,6 @@ func (c *Controller) gcStaleNodeRouterPolicy(owner string, policy *ovnnb.Logical
 	return nil
 }
 
-func (c *Controller) gcVip() error {
-	klog.Infof("start to gc vips")
-	selector, err := util.LabelSelectorNotEmpty(util.IPReservedLabel)
-	if err != nil {
-		klog.Errorf("failed to generate selector for label %s: %v", util.IPReservedLabel, err)
-		return err
-	}
-	vips, err := c.virtualIpsLister.List(selector)
-	if err != nil {
-		klog.Errorf("failed to list vips: %v", err)
-		return err
-	}
-	for _, vip := range vips {
-		portName := vip.Labels[util.IPReservedLabel]
-		portNameSplits := strings.Split(portName, ".")
-		if len(portNameSplits) >= 2 {
-			podName := portNameSplits[0]
-			namespace := portNameSplits[1]
-			_, err := c.podsLister.Pods(namespace).Get(podName)
-			if err != nil {
-				if k8serrors.IsNotFound(err) {
-					if _, err = c.releaseVip(vip.Name); err != nil {
-						klog.Errorf("failed to clean label from vip %s, %v", vip.Name, err)
-						return err
-					}
-					continue
-				}
-				klog.Error(err)
-				return err
-			}
-		}
-	}
-	klog.Infof("finish to gc vips")
-	return nil
-}
-
 func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 	// Check if Subnet exists
 	if _, ok := c.ipam.Subnets[ip.Spec.Subnet]; !ok {
@@ -519,6 +482,8 @@ func (c *Controller) markAndCleanLSP() error {
 		return err
 	}
 	vipsMap := strset.NewWithSize(len(vips))
+	// lsps of vip types kube-ovn no longer manages, reclaimed with an explicit warning
+	unmanagedVipLsps := make(map[string]string, len(vips))
 	for _, vip := range vips {
 		if vip.Spec.Type != "" {
 			subnetName := vip.Spec.Subnet
@@ -534,7 +499,16 @@ func (c *Controller) markAndCleanLSP() error {
 			}
 
 			portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
-			vipsMap.Add(portName)
+			// switch_lb_rule is the only type whose normal lsp kube-ovn creates and keeps in
+			// sync. An aap vip has no normal lsp at all, only a virtual one, which
+			// ListNormalLogicalSwitchPorts never returns. Any other type is a leftover of the
+			// removed kube_host_vm_vip handling: nothing creates or reconciles that lsp
+			// anymore, so gc reclaims it.
+			if vip.Spec.Type == util.SwitchLBRuleVip {
+				vipsMap.Add(portName)
+			} else {
+				unmanagedVipLsps[portName] = vip.Name
+			}
 		}
 	}
 	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
@@ -551,7 +525,7 @@ func (c *Controller) markAndCleanLSP() error {
 			continue
 		}
 		if vipsMap.Has(lsp.Name) {
-			// skip gc lsp for k8s host network vm pod or switch lb rule
+			// skip gc lsp for switch lb rule
 			continue
 		}
 		if !lastNoPodLSP.Has(lsp.Name) {
@@ -559,6 +533,10 @@ func (c *Controller) markAndCleanLSP() error {
 			continue
 		}
 
+		if vipName, ok := unmanagedVipLsps[lsp.Name]; ok {
+			klog.Warningf("gc logical switch port %s of vip %s: its vip type is no longer supported, "+
+				"only switch_lb_vip keeps a logical switch port", lsp.Name, vipName)
+		}
 		klog.Infof("gc logical switch port %s", lsp.Name)
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s: %v", lsp.Name, err)

@@ -20,7 +20,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/selection"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
@@ -170,19 +169,6 @@ func ServiceClusterIPs(svc v1.Service) []string {
 		ips = append(ips, ip)
 	}
 	return ips
-}
-
-func LabelSelectorNotEquals(key, value string) (labels.Selector, error) {
-	requirement, err := labels.NewRequirement(key, selection.NotEquals, []string{value})
-	if err != nil {
-		klog.Errorf("failed to create label requirement: %v", err)
-		return nil, err
-	}
-	return labels.Everything().Add(*requirement), nil
-}
-
-func LabelSelectorNotEmpty(key string) (labels.Selector, error) {
-	return LabelSelectorNotEquals(key, "")
 }
 
 func GetTruncatedUID(uid string) string {
