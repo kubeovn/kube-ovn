@@ -400,7 +400,7 @@ func TestSupervisorStatusRemainsResponsiveDuringPlannedChildRestart(t *testing.T
 		require.True(t, status.Live)
 	case <-time.After(100 * time.Millisecond):
 		close(child.release)
-		<-reconcileDone
+		require.NoError(t, <-reconcileDone)
 		t.Fatal("status blocked during planned child restart")
 	}
 	close(child.release)

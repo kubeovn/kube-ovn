@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"math"
 	"net"
 	"reflect"
@@ -51,7 +50,7 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj any) {
 	oldVpc := oldObj.(*kubeovnv1.Vpc)
 	newVpc := newObj.(*kubeovnv1.Vpc)
 
-	if newVpc.Labels != nil && newVpc.Labels[util.VpcExternalLabel] == "true" {
+	if _, ok := newVpc.Labels[util.VpcExternalLabel]; ok {
 		return
 	}
 
@@ -75,6 +74,14 @@ func (c *Controller) enqueueUpdateVpc(oldObj, newObj any) {
 		key := cache.MetaObjectToName(newVpc).String()
 		klog.Infof("enqueue update vpc %s", key)
 		c.addOrUpdateVpcQueue.Add(key)
+	}
+	if oldVpc.Status.TCPLoadBalancer != newVpc.Status.TCPLoadBalancer ||
+		oldVpc.Status.TCPSessionLoadBalancer != newVpc.Status.TCPSessionLoadBalancer ||
+		oldVpc.Status.UDPLoadBalancer != newVpc.Status.UDPLoadBalancer ||
+		oldVpc.Status.UDPSessionLoadBalancer != newVpc.Status.UDPSessionLoadBalancer ||
+		oldVpc.Status.SctpLoadBalancer != newVpc.Status.SctpLoadBalancer ||
+		oldVpc.Status.SctpSessionLoadBalancer != newVpc.Status.SctpSessionLoadBalancer {
+		c.enqueueVipAttachSubnetsForVpc(newVpc.Name)
 	}
 }
 
@@ -152,6 +159,10 @@ func (c *Controller) handleDelVpc(vpc *kubeovnv1.Vpc) (retErr error) {
 
 	if err := c.deleteVpcRouter(vpc.Status.Router); err != nil {
 		klog.Error(err)
+		return err
+	}
+
+	if err := c.deleteU2OOverlayCIDRsAddressSets(vpc.Name); err != nil {
 		return err
 	}
 
@@ -257,30 +268,6 @@ func (c *Controller) GenVpcLoadBalancer(vpcKey string) *VpcLoadBalancer {
 		SctpLoadBalancer:     fmt.Sprintf("vpc-%s-sctp-load", vpcKey),
 		SctpSessLoadBalancer: fmt.Sprintf("vpc-%s-sctp-sess-load", vpcKey),
 	}
-}
-
-func (c *Controller) addLoadBalancer(vpc string) (*VpcLoadBalancer, error) {
-	vpcLbConfig := c.GenVpcLoadBalancer(vpc)
-	if err := c.initLB(vpcLbConfig.TCPLoadBalancer, string(v1.ProtocolTCP), false); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.TCPSessLoadBalancer, string(v1.ProtocolTCP), true); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.UDPLoadBalancer, string(v1.ProtocolUDP), false); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.UDPSessLoadBalancer, string(v1.ProtocolUDP), true); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.SctpLoadBalancer, string(v1.ProtocolSCTP), false); err != nil {
-		return nil, err
-	}
-	if err := c.initLB(vpcLbConfig.SctpSessLoadBalancer, string(v1.ProtocolSCTP), true); err != nil {
-		return nil, err
-	}
-
-	return vpcLbConfig, nil
 }
 
 func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
@@ -604,19 +591,6 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 	vpc.Status.Router = key
 	vpc.Status.Standby = true
 	vpc.Status.VpcPeerings = newPeers
-	if c.config.EnableLb {
-		vpcLb, err := c.addLoadBalancer(key)
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		vpc.Status.TCPLoadBalancer = vpcLb.TCPLoadBalancer
-		vpc.Status.TCPSessionLoadBalancer = vpcLb.TCPSessLoadBalancer
-		vpc.Status.UDPLoadBalancer = vpcLb.UDPLoadBalancer
-		vpc.Status.UDPSessionLoadBalancer = vpcLb.UDPSessLoadBalancer
-		vpc.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
-		vpc.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
-	}
 	bytes, err := vpc.Status.Bytes()
 	if err != nil {
 		klog.Error(err)
@@ -643,7 +617,6 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 		klog.Error(err)
 		return err
 	}
-	custVpcEnableExternalEcmp := false
 	for _, subnet := range subnets {
 		if subnet.Spec.Vpc == key {
 			// Accelerate subnet update when vpc config is updated.
@@ -651,14 +624,11 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 			if subnet.Status.IsNotReady() {
 				c.addOrUpdateSubnetQueue.Add(subnet.Name)
 			}
-			if vpc.Name != util.DefaultVpc && vpc.Spec.EnableBfd && subnet.Spec.EnableEcmp {
-				custVpcEnableExternalEcmp = true
-			}
 		}
 	}
 
 	if vpc.Spec.EnableExternal || vpc.Status.EnableExternal {
-		if err = c.handleUpdateVpcExternal(cachedVpc, custVpcEnableExternalEcmp, externalSubnetExist, externalSubnetGW); err != nil {
+		if err = c.handleUpdateVpcExternal(cachedVpc, externalSubnetExist, externalSubnetGW); err != nil {
 			klog.Errorf("failed to handle update external subnet for vpc %s, %v", key, err)
 			return err
 		}
@@ -689,90 +659,95 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 	return nil
 }
 
-func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableExternalEcmp, defaultExternalSubnetExist bool, externalSubnetGW string) error {
+func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, defaultExternalSubnetExist bool, externalSubnetGW string) error {
 	if c.config.EnableEipSnat && vpc.Name == util.DefaultVpc {
 		klog.Infof("external_gw handle ovn default external gw %s", vpc.Name)
 		return nil
 	}
 
 	if !vpc.Spec.EnableExternal && !vpc.Status.EnableExternal {
-		// no need to handle external connection
 		return nil
 	}
 
-	// handle any vpc external
-	if vpc.Spec.EnableExternal && !defaultExternalSubnetExist && vpc.Spec.ExtraExternalSubnets == nil {
-		// at least have a external subnet
-		err := fmt.Errorf("failed to get external subnet for enable external vpc %s", vpc.Name)
-		klog.Error(err)
-		return err
-	}
-
-	if !vpc.Spec.EnableExternal && vpc.Status.EnableExternal {
-		// just del all external subnets connection
-		klog.Infof("disconnect default external subnet %s to vpc %s", c.config.ExternalGatewaySwitch, vpc.Name)
-		if err := c.handleDelVpcExternalSubnet(vpc.Name, c.config.ExternalGatewaySwitch); err != nil {
-			klog.Errorf("failed to delete external subnet %s connection for vpc %s, error %v", c.config.ExternalGatewaySwitch, vpc.Name, err)
+	// Compute the desired set of external subnets for this VPC.
+	var desiredSubnets []string
+	if vpc.Spec.EnableExternal {
+		switch {
+		case len(vpc.Spec.ExtraExternalSubnets) > 0:
+			seen := make(map[string]struct{}, len(vpc.Spec.ExtraExternalSubnets))
+			for _, s := range vpc.Spec.ExtraExternalSubnets {
+				if _, ok := seen[s]; !ok {
+					seen[s] = struct{}{}
+					desiredSubnets = append(desiredSubnets, s)
+				}
+			}
+		case defaultExternalSubnetExist:
+			desiredSubnets = []string{c.config.ExternalGatewaySwitch}
+		default:
+			err := fmt.Errorf("failed to get external subnet for enable external vpc %s", vpc.Name)
+			klog.Error(err)
 			return err
 		}
-		for _, subnet := range vpc.Status.ExtraExternalSubnets {
-			klog.Infof("disconnect external subnet %s to vpc %s", subnet, vpc.Name)
-			if err := c.handleDelVpcExternalSubnet(vpc.Name, subnet); err != nil {
-				klog.Errorf("failed to delete external subnet %s connection for vpc %s, error %v", subnet, vpc.Name, err)
+	}
+
+	// Determine actually connected subnets by checking OVN NB for existing LRPs.
+	// Candidates: default subnet + anything previously or currently desired.
+	seen := map[string]struct{}{c.config.ExternalGatewaySwitch: {}}
+	candidates := []string{c.config.ExternalGatewaySwitch}
+	for _, s := range append(vpc.Status.ExtraExternalSubnets, vpc.Spec.ExtraExternalSubnets...) {
+		if _, ok := seen[s]; !ok {
+			seen[s] = struct{}{}
+			candidates = append(candidates, s)
+		}
+	}
+	var actualSubnets []string
+	for _, subnet := range candidates {
+		lrpName := fmt.Sprintf("%s-%s", vpc.Name, subnet)
+		lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, true)
+		if err != nil {
+			klog.Errorf("failed to check lrp %s: %v", lrpName, err)
+			return err
+		}
+		if lrp != nil {
+			actualSubnets = append(actualSubnets, subnet)
+		}
+	}
+
+	// Connect subnets that are desired but not yet connected.
+	for _, subnet := range desiredSubnets {
+		if !slices.Contains(actualSubnets, subnet) {
+			klog.Infof("connect external subnet %s with vpc %s", subnet, vpc.Name)
+			if err := c.handleAddVpcExternalSubnet(vpc.Name, subnet); err != nil {
+				klog.Errorf("failed to add external subnet %s connection for vpc %s: %v", subnet, vpc.Name, err)
 				return err
 			}
 		}
 	}
 
-	if vpc.Spec.EnableExternal {
-		if !vpc.Status.EnableExternal {
-			// just add external connection
-			if vpc.Spec.ExtraExternalSubnets == nil && defaultExternalSubnetExist {
-				// only connect default external subnet
-				klog.Infof("connect default external subnet %s with vpc %s", c.config.ExternalGatewaySwitch, vpc.Name)
-				if err := c.handleAddVpcExternalSubnet(vpc.Name, c.config.ExternalGatewaySwitch); err != nil {
-					klog.Errorf("failed to add external subnet %s connection for vpc %s, error %v", c.config.ExternalGatewaySwitch, vpc.Name, err)
-					return err
-				}
-			}
-
-			// only connect provider network vlan external subnet
-			for _, subnet := range vpc.Spec.ExtraExternalSubnets {
-				klog.Infof("connect external subnet %s with vpc %s", subnet, vpc.Name)
-				if err := c.handleAddVpcExternalSubnet(vpc.Name, subnet); err != nil {
-					klog.Errorf("failed to add external subnet %s connection for vpc %s, error %v", subnet, vpc.Name, err)
-					return err
-				}
+	// Disconnect subnets that are connected but no longer desired.
+	for _, subnet := range actualSubnets {
+		if !slices.Contains(desiredSubnets, subnet) {
+			klog.Infof("disconnect external subnet %s from vpc %s", subnet, vpc.Name)
+			if err := c.handleDelVpcExternalSubnet(vpc.Name, subnet); err != nil {
+				klog.Errorf("failed to delete external subnet %s connection for vpc %s: %v", subnet, vpc.Name, err)
+				return err
 			}
 		}
+	}
 
-		// diff to add
-		for _, subnet := range vpc.Spec.ExtraExternalSubnets {
-			if !slices.Contains(vpc.Status.ExtraExternalSubnets, subnet) {
-				klog.Infof("connect external subnet %s with vpc %s", subnet, vpc.Name)
-				if err := c.handleAddVpcExternalSubnet(vpc.Name, subnet); err != nil {
-					klog.Errorf("failed to add external subnet %s connection for vpc %s, error %v", subnet, vpc.Name, err)
-					return err
-				}
-			}
-		}
-
-		// diff to del
-		for _, subnet := range vpc.Status.ExtraExternalSubnets {
-			if !slices.Contains(vpc.Spec.ExtraExternalSubnets, subnet) {
-				klog.Infof("disconnect external subnet %s to vpc %s", subnet, vpc.Name)
-				if err := c.handleDelVpcExternalSubnet(vpc.Name, subnet); err != nil {
-					klog.Errorf("failed to delete external subnet %s connection for vpc %s, error %v", subnet, vpc.Name, err)
-					return err
-				}
-			}
+	// Reconcile gateway chassis for every desired subnet so that new or removed
+	// external-gateway nodes are reflected in the LRP binding immediately.
+	for _, subnet := range desiredSubnets {
+		if err := c.reconcileVpcExternalSubnetChassis(vpc.Name, subnet); err != nil {
+			klog.Errorf("failed to reconcile chassis for vpc %s subnet %s: %v", vpc.Name, subnet, err)
+			return err
 		}
 	}
 
 	// custom vpc enable bfd
 	if vpc.Spec.EnableBfd && vpc.Name != util.DefaultVpc && defaultExternalSubnetExist {
 		// create bfd between lrp and physical switch gw
-		// bfd status down means current lrp binding chassis node external nic lost external network connectivity
+		// bfd status down means the current LRP binding lost external network connectivity
 		// should switch lrp to another node
 		lrpEipName := fmt.Sprintf("%s-%s", vpc.Name, c.config.ExternalGatewaySwitch)
 		v4ExtGw, _ := util.SplitStringIP(externalSubnetGW)
@@ -780,15 +755,6 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 		if _, err := c.OVNNbClient.CreateBFD(lrpEipName, v4ExtGw, c.config.BfdMinRx, c.config.BfdMinTx, c.config.BfdDetectMult, nil); err != nil {
 			klog.Error(err)
 			return err
-		}
-		// TODO: support multi external nic
-		if custVpcEnableExternalEcmp {
-			klog.Infof("remove normal static ecmp route for vpc %s", vpc.Name)
-			// auto remove normal type static route, if using ecmp based bfd
-			if err := c.reconcileCustomVpcDelNormalStaticRoute(vpc.Name); err != nil {
-				klog.Errorf("failed to reconcile del vpc %q normal static route", vpc.Name)
-				return err
-			}
 		}
 	}
 
@@ -811,16 +777,68 @@ func (c *Controller) handleUpdateVpcExternal(vpc *kubeovnv1.Vpc, custVpcEnableEx
 	return nil
 }
 
+// reconcileVpcExternalSubnetChassis keeps the gateway_chassis list of the LRP
+// connecting vpcName to subnet in sync with the current external-gateway nodes: it adds chassis
+// for newly-labelled nodes, removes chassis for nodes that stopped being gateways, and reconciles
+// their priority order so the active gateway stays spread deterministically across VPCs.
+func (c *Controller) reconcileVpcExternalSubnetChassis(vpcName, subnet string) error {
+	lrpName := fmt.Sprintf("%s-%s", vpcName, subnet)
+
+	gwNodes, err := c.nodesLister.List(externalGatewayNodeSelector)
+	if err != nil {
+		return fmt.Errorf("failed to list external gw nodes: %w", err)
+	}
+
+	desiredChassis := make([]string, 0, len(gwNodes))
+	anyNodeSkipped := false
+	for _, node := range gwNodes {
+		annoChassisName := node.Annotations[util.ChassisAnnotation]
+		if annoChassisName == "" {
+			klog.Warningf("node %s has no chassis annotation, skipping for lrp %s", node.Name, lrpName)
+			anyNodeSkipped = true
+			continue
+		}
+		chassis, err := c.OVNSbClient.GetChassis(annoChassisName, true)
+		if err != nil {
+			return fmt.Errorf("failed to get chassis %s for node %s: %w", annoChassisName, node.Name, err)
+		}
+		if chassis == nil {
+			klog.Warningf("chassis %s for node %s not found in SB, skipping for lrp %s", annoChassisName, node.Name, lrpName)
+			anyNodeSkipped = true
+			continue
+		}
+		desiredChassis = append(desiredChassis, chassis.Name)
+	}
+
+	// Keep the same deterministic ordering as LRP creation (handleAddVpcExternalSubnet) so that
+	// the priority of newly added chassis entries spreads the active gateway node across VPCs
+	// instead of following the unordered node lister output.
+	sort.Slice(desiredChassis, func(i, j int) bool {
+		return util.Sha256Hash([]byte(vpcName+desiredChassis[i])) < util.Sha256Hash([]byte(vpcName+desiredChassis[j]))
+	})
+
+	// Do not remove chassis while a gateway node is temporarily missing its annotation or SB entry.
+	if anyNodeSkipped {
+		if len(desiredChassis) == 0 {
+			return nil
+		}
+		if err := c.OVNNbClient.CreateGatewayChassises(lrpName, desiredChassis...); err != nil {
+			return fmt.Errorf("failed to add gateway chassis for lrp %s: %w", lrpName, err)
+		}
+		return nil
+	}
+
+	if err := c.OVNNbClient.ReconcileGatewayChassises(lrpName, desiredChassis); err != nil {
+		return fmt.Errorf("failed to reconcile gateway chassis for lrp %s: %w", lrpName, err)
+	}
+	return nil
+}
+
 func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, error) {
 	portName := "bfd@" + vpc.Name
 	if vpc.Spec.BFDPort == nil || !vpc.Spec.BFDPort.Enabled {
-		if err := c.OVNNbClient.DeleteLogicalRouterPort(portName); err != nil {
-			err = fmt.Errorf("failed to delete BFD LRP %s: %w", portName, err)
-			klog.Error(err)
-			return portName, nil, err
-		}
-		if err := c.OVNNbClient.DeleteHAChassisGroup(portName); err != nil {
-			err = fmt.Errorf("failed to delete HA chassis group %s: %w", portName, err)
+		if err := c.OVNNbClient.ReconcileBFDLogicalRouterPort(vpc.Name, portName, nil, nil, false); err != nil {
+			err = fmt.Errorf("failed to delete BFD port resources %s: %w", portName, err)
 			klog.Error(err)
 			return portName, nil, err
 		}
@@ -864,23 +882,7 @@ func (c *Controller) reconcileVpcBfdLRP(vpc *kubeovnv1.Vpc) (string, []string, e
 	}
 
 	networks := util.SplitTrimmed(vpc.Spec.BFDPort.IP, ",")
-	if err = c.OVNNbClient.CreateLogicalRouterPort(vpc.Name, portName, "", networks); err != nil {
-		klog.Error(err)
-		return portName, nil, err
-	}
-	if err = c.OVNNbClient.UpdateLogicalRouterPortNetworks(portName, networks); err != nil {
-		klog.Error(err)
-		return portName, nil, err
-	}
-	if err = c.OVNNbClient.UpdateLogicalRouterPortOptions(portName, map[string]string{"bfd-only": "true"}); err != nil {
-		klog.Error(err)
-		return portName, nil, err
-	}
-	if err = c.OVNNbClient.CreateHAChassisGroup(portName, chassisNames, map[string]string{"lrp": portName}); err != nil {
-		klog.Error(err)
-		return portName, nil, err
-	}
-	if err = c.OVNNbClient.SetLogicalRouterPortHAChassisGroup(portName, portName); err != nil {
+	if err = c.OVNNbClient.ReconcileBFDLogicalRouterPort(vpc.Name, portName, networks, chassisNames, true); err != nil {
 		klog.Error(err)
 		return portName, nil, err
 	}
@@ -1308,17 +1310,6 @@ func (c *Controller) getVpcSubnets(vpc *kubeovnv1.Vpc) (subnets []string, defaul
 
 // createVpcRouter create router to connect logical switches in vpc
 func (c *Controller) createVpcRouter(lr string, learnFromARPRequest bool) error {
-	if err := c.OVNNbClient.CreateLogicalRouter(lr); err != nil {
-		klog.Errorf("create logical router %s failed: %v", lr, err)
-		return err
-	}
-
-	vpcRouter, err := c.OVNNbClient.GetLogicalRouter(lr, false)
-	if err != nil {
-		klog.Errorf("get logical router %s failed: %v", lr, err)
-		return err
-	}
-
 	lrOptions := map[string]string{
 		"mac_binding_age_threshold": "300",
 		"dynamic_neigh_routers":     "true",
@@ -1326,12 +1317,9 @@ func (c *Controller) createVpcRouter(lr string, learnFromARPRequest bool) error 
 	if !learnFromARPRequest {
 		lrOptions["always_learn_from_arp_request"] = "false"
 	}
-	if !maps.Equal(vpcRouter.Options, lrOptions) {
-		vpcRouter.Options = lrOptions
-		if err = c.OVNNbClient.UpdateLogicalRouter(vpcRouter, &vpcRouter.Options); err != nil {
-			klog.Errorf("failed to update options of logical router %s: %v", lr, err)
-			return err
-		}
+	if err := c.OVNNbClient.CreateLogicalRouterWithOptions(lr, lrOptions); err != nil {
+		klog.Errorf("create or update logical router %s failed: %v", lr, err)
+		return err
 	}
 
 	return nil
@@ -1389,21 +1377,24 @@ func (c *Controller) handleAddVpcExternalSubnet(key, subnet string) error {
 	for _, gwNode := range gwNodes {
 		annoChassisName := gwNode.Annotations[util.ChassisAnnotation]
 		if annoChassisName == "" {
-			err := fmt.Errorf("node %s has no chassis annotation, kube-ovn-cni not ready", gwNode.Name)
-			klog.Error(err)
-			return err
+			klog.Warningf("node %s has no chassis annotation, kube-ovn-cni not ready, skipping", gwNode.Name)
+			continue
 		}
 		klog.Infof("get node %s chassis: %s", gwNode.Name, annoChassisName)
-		chassis, err := c.OVNSbClient.GetChassis(annoChassisName, false)
+		chassis, err := c.OVNSbClient.GetChassis(annoChassisName, true)
 		if err != nil {
 			klog.Errorf("failed to get node %s chassis: %s, %v", gwNode.Name, annoChassisName, err)
 			return err
+		}
+		if chassis == nil {
+			klog.Warningf("chassis %s for node %s not found in SB, kube-ovn-ovs not ready, skipping", annoChassisName, gwNode.Name)
+			continue
 		}
 		chassises = append(chassises, chassis.Name)
 	}
 
 	if len(chassises) == 0 {
-		err := errors.New("no external gw nodes")
+		err := errors.New("no external gw nodes with ready chassis")
 		klog.Error(err)
 		return err
 	}

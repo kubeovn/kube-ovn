@@ -1,29 +1,16 @@
 name: Build x86 Image
 
-run-name: ${{ github.event_name == 'workflow_dispatch' && format('x86-e2e pr={0} head={1} approval={2} generation={3} mode={4} groups={5} labels={6} full={7}', inputs.prNumber, inputs.headSHA, inputs.approvalGeneration, inputs.dispatchGeneration, inputs.automatic && 'automatic' || 'approved', inputs.requestedGroupNames, inputs.controlledLabelNames, inputs.full && '1' || '0') || '' }}
-
 permissions:
   contents: read
-  packages: read
-
-defaults:
-  run:
-    shell: >-
-      /usr/bin/env -u ACTIONS_RUNTIME_TOKEN -u ACTIONS_RUNTIME_URL -u ACTIONS_RESULTS_URL
-      -u ACTIONS_CACHE_URL -u ACTIONS_ID_TOKEN_REQUEST_TOKEN -u ACTIONS_ID_TOKEN_REQUEST_URL
-      -u LD_PRELOAD -u LD_LIBRARY_PATH -u BASH_ENV -u ENV -u PYTHONPATH -u PYTHONHOME
-      -u NODE_OPTIONS -u PERL5OPT -u RUBYOPT -u GIT_CONFIG_COUNT
-      python3 -c "import os,pathlib,shutil,subprocess,sys,tempfile;
-      realEnv=os.environ['GITHUB_ENV']; shadowDir=tempfile.mkdtemp();
-      os.environ['GITHUB_ENV']=shadowDir+'/env'; os.environ['GITHUB_PATH']=shadowDir+'/path';
-      pathlib.Path(os.environ['GITHUB_ENV']).touch(); pathlib.Path(os.environ['GITHUB_PATH']).touch();
-      result=subprocess.run(['bash','--noprofile','--norc','-e','-o','pipefail',sys.argv[1]],env=os.environ);
-      allowed=('TAG','GO_VERSION','E2E_DIR','VERSION','DEBUG_WRAPPER');
-      lines=[line for line in pathlib.Path(os.environ['GITHUB_ENV']).read_text().splitlines() if line.partition('=')[0] in allowed];
-      open(realEnv,'a').write(('\n'.join(lines)+'\n') if lines else '');
-      shutil.rmtree(shadowDir); sys.exit(result.returncode)" {0}
 
 on:
+  pull_request:
+    branches:
+    - master
+    - release-*
+    paths-ignore:
+    - 'docs/**'
+    - '**.md'
   push:
     branches:
     - master
@@ -31,415 +18,27 @@ on:
     paths-ignore:
     - 'docs/**'
     - '**.md'
-  workflow_dispatch:
-    inputs:
-      prNumber:
-        description: Open pull request number
-        required: true
-        type: number
-      headSHA:
-        description: Exact current pull request HEAD SHA
-        required: true
-        type: string
-      baseSHA:
-        description: Exact trusted pull request base SHA
-        required: true
-        type: string
-      approvalGeneration:
-        description: Durable authorized comment generation
-        required: true
-        type: number
-      automatic:
-        description: Execute automatic smoke or fail-closed full coverage
-        required: true
-        default: false
-        type: boolean
-      dispatchGeneration:
-        description: Unique trusted reducer run generation
-        required: true
-        type: number
-      requestedGroups:
-        description: JSON array of explicitly requested stable groups
-        required: true
-        default: '[]'
-        type: string
-      requestedGroupNames:
-        description: Canonical comma-separated groups, or a single dash
-        required: true
-        default: '-'
-        type: string
-      controlledLabels:
-        description: JSON array of trusted persistent E2E labels
-        required: true
-        default: '[]'
-        type: string
-      controlledLabelNames:
-        description: Canonical comma-separated controlled labels, or a single dash
-        required: true
-        default: '-'
-        type: string
-      full:
-        description: Run the complete x86 E2E suite
-        required: true
-        default: false
-        type: boolean
-      requestKey:
-        description: Dispatcher-generated idempotency key
-        required: true
-        type: string
-      catalogRevision:
-        description: Trusted E2E catalog revision bound by the dispatcher
-        required: true
-        type: string
 
 concurrency:
-  group: ${{ github.event_name == 'workflow_dispatch' && format('{0}-{1}', github.workflow, inputs.requestKey) || format('{0}-{1}', github.workflow, github.ref) }}
+  group: "${{ github.workflow }}-${{ github.ref }}"
   cancel-in-progress: true
 
 env:
-  EXECUTION_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || inputs.headSHA || github.sha }}
-  # The trusted selector validates inputs.headSHA against the live pull request before dispatch.
-  E2E_SOURCE_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.headSHA || github.event.repository.default_branch }}
   # renovate: datasource=github-releases depName=kind packageName=kubernetes-sigs/kind
   KIND_VERSION: v0.33.0
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
-  GOLANGCI_LINT_VERSION: v2.13.2
+  GOLANGCI_LINT_VERSION: v2.15.0
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
-  HELM_VERSION: v4.3.0
+  HELM_VERSION: v4.3.1
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
-  SUBMARINER_VERSION: 0.24.1
+  SUBMARINER_VERSION: 0.24.2
   # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
-  TALOS_VERSION: v1.14.0
+  TALOS_VERSION: v1.14.4
 
 jobs:
-  e2e-selection:
-    name: x86 E2E Selection
-    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    runs-on: ubuntu-24.04
-    env:
-      GH_TOKEN: ${{ github.event_name == 'workflow_dispatch' && github.token || '' }}
-      PYTHONDONTWRITEBYTECODE: "1"
-    outputs:
-      executionJobIds: ${{ steps.outputs.outputs.executionJobIds }}
-      k8sConformanceMatrix: ${{ steps.outputs.outputs.k8sConformanceMatrix || steps.fallbackMatrices.outputs.k8sConformanceMatrix }}
-      kubeOvnConformanceMatrix: ${{ steps.outputs.outputs.kubeOvnConformanceMatrix || steps.fallbackMatrices.outputs.kubeOvnConformanceMatrix }}
-      headSHA: ${{ steps.context.outputs.headSHA }}
-      baseSHA: ${{ steps.context.outputs.baseSHA }}
-      prNumber: ${{ steps.context.outputs.prNumber }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA || github.sha }}
-          persist-credentials: false
-          fetch-depth: 0
-
-      - name: Initialize fail-closed conformance matrices
-        id: fallbackMatrices
-        if: always()
-        run: |
-          matrix='{"include":[{"ip-family":"ipv4","mode":"overlay"},{"ip-family":"ipv4","mode":"underlay"},{"ip-family":"ipv6","mode":"overlay"},{"ip-family":"ipv6","mode":"underlay"},{"ip-family":"dual","mode":"overlay"},{"ip-family":"dual","mode":"underlay"}]}'
-          echo "k8sConformanceMatrix=$matrix" >> "$GITHUB_OUTPUT"
-          echo "kubeOvnConformanceMatrix=$matrix" >> "$GITHUB_OUTPUT"
-
-      - name: Collect trusted selection context
-        id: context
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          INPUT_HEAD_SHA: ${{ inputs.headSHA }}
-          INPUT_BASE_SHA: ${{ inputs.baseSHA }}
-          INPUT_AUTOMATIC: ${{ inputs.automatic }}
-          INPUT_CONTROLLED_LABELS: ${{ inputs.controlledLabels }}
-          INPUT_CONTROLLED_LABEL_NAMES: ${{ inputs.controlledLabelNames }}
-          INPUT_PR_NUMBER: ${{ inputs.prNumber }}
-          INPUT_APPROVAL_GENERATION: ${{ inputs.approvalGeneration }}
-          INPUT_DISPATCH_GENERATION: ${{ inputs.dispatchGeneration }}
-          INPUT_REQUESTED_GROUPS: ${{ inputs.requestedGroups }}
-          INPUT_REQUESTED_GROUP_NAMES: ${{ inputs.requestedGroupNames }}
-          INPUT_CATALOG_REVISION: ${{ inputs.catalogRevision }}
-          INPUT_FULL: ${{ inputs.full }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: |
-          set -euo pipefail
-          printf '{}' > selector-event.json
-          : > changed-paths.txt
-          requestFull=false
-          forceFullReason=''
-          requestedGroups='[]'
-          headSHA="$GITHUB_SHA"
-          baseSHA="$GITHUB_SHA"
-          prNumber=0
-          checkedOutSHA=$(git rev-parse HEAD)
-          if [ "$EVENT_NAME" = workflow_dispatch ] && [ "$checkedOutSHA" != "$INPUT_BASE_SHA" ]; then
-            echo 'trusted selector checkout does not match the approved base revision' >&2
-            exit 1
-          fi
-          if [ "$EVENT_NAME" = pull_request ]; then
-            git diff --name-status --diff-filter=ACDMRT -z -M \
-              "$PR_BASE_SHA...$PR_HEAD_SHA" > changed-name-status.bin
-            python3 - <<'PY'
-          import sys
-          from pathlib import Path
-
-          sys.path.insert(0, "hack")
-          import e2e_selector as e2eSelector
-
-          paths = e2eSelector.changedPathsFromNameStatus(
-              Path("changed-name-status.bin").read_bytes()
-          )
-          Path("changed-paths.txt").write_bytes(
-              b"".join(path.encode("utf-8", errors="surrogateescape") + b"\0" for path in paths)
-          )
-          PY
-            cp "$GITHUB_EVENT_PATH" selector-event.json
-            python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          event = json.loads(Path("selector-event.json").read_text())
-          event["pull_request"]["labels"] = []
-          Path("selector-event.json").write_text(json.dumps(event))
-          PY
-            headSHA="$PR_HEAD_SHA"
-            baseSHA="$PR_BASE_SHA"
-            prNumber="$PR_NUMBER"
-          elif [ "$EVENT_NAME" = workflow_dispatch ]; then
-            gh api "repos/$GITHUB_REPOSITORY/pulls/$INPUT_PR_NUMBER" > pull-request.json
-            baseRef=$(jq -r '.base.ref' pull-request.json)
-            if ! [[ "$baseRef" == master || "$baseRef" =~ ^release-[A-Za-z0-9._-]+$ ]]; then
-              echo 'pull request base branch is outside the supported trusted set' >&2
-              exit 1
-            fi
-            baseSHA=$(gh api \
-              "repos/$GITHUB_REPOSITORY/git/ref/heads/$baseRef" \
-              --jq '.object.sha')
-            jq --arg baseSHA "$baseSHA" '.base.sha = $baseSHA' pull-request.json \
-              > live-pull-request.json
-            mv live-pull-request.json pull-request.json
-            python3 - "$INPUT_HEAD_SHA" "$INPUT_BASE_SHA" "$GITHUB_REF_NAME" "$GITHUB_SHA" \
-              "$INPUT_PR_NUMBER" "$INPUT_APPROVAL_GENERATION" "$INPUT_DISPATCH_GENERATION" <<'PY'
-          import json
-          import os
-          import re
-          import sys
-          from pathlib import Path
-
-          sys.path.insert(0, "hack")
-          import e2e_control as e2eControl
-
-          pullRequest = json.loads(Path("pull-request.json").read_text())
-          if pullRequest.get("state") != "open":
-              raise SystemExit("pull request is not open")
-          if not re.fullmatch(r"[0-9a-f]{40}", sys.argv[1]):
-              raise SystemExit("invalid requested HEAD SHA")
-          if pullRequest["head"]["sha"] != sys.argv[1]:
-              raise SystemExit("pull request HEAD changed; dispatch again")
-          if pullRequest["base"]["sha"] != sys.argv[2]:
-              raise SystemExit("pull request base revision changed; dispatch again")
-          if not e2eControl.isTrustedExecutorRef(
-              sys.argv[3],
-              pullRequest["base"]["ref"],
-              {
-                  "prNumber": int(sys.argv[5]),
-                  "approvalGeneration": int(sys.argv[6]),
-                  "dispatchGeneration": int(sys.argv[7]),
-              },
-          ):
-              raise SystemExit("executor must run from the pull request base branch")
-          if sys.argv[4] != sys.argv[2]:
-              raise SystemExit("executor workflow revision does not match the approved base")
-          controlledLabels = json.loads(os.environ["INPUT_CONTROLLED_LABELS"])
-          if not isinstance(controlledLabels, list) or any(
-              not isinstance(label, str) for label in controlledLabels
-          ):
-              raise SystemExit("controlledLabels must be a JSON array of strings")
-          if os.environ["INPUT_AUTOMATIC"] != "true":
-              controlledLabels = []
-          pullRequest["labels"] = [{"name": label} for label in controlledLabels]
-          Path("selector-event.json").write_text(json.dumps({"pull_request": pullRequest}))
-          PY
-            gh api --paginate --slurp \
-              "repos/$GITHUB_REPOSITORY/pulls/$INPUT_PR_NUMBER/files?per_page=100" > pull-request-files.json
-            python3 - <<'PY'
-          import json
-          from pathlib import Path
-
-          pullRequest = json.loads(Path("pull-request.json").read_text())
-          pages = json.loads(Path("pull-request-files.json").read_text())
-          changedFiles = [changedFile for page in pages for changedFile in page]
-          expectedCount = pullRequest.get("changed_files")
-          if (
-              not isinstance(expectedCount, int)
-              or expectedCount >= 3000
-              or expectedCount != len(changedFiles)
-          ):
-              Path("force-full-reason.txt").write_text(
-                  "pull request file list is incomplete; the full suite is required"
-              )
-          with Path("changed-paths.txt").open("wb") as stream:
-              for changedFile in changedFiles:
-                  for field in ("previous_filename", "filename"):
-                      if field in changedFile:
-                          stream.write(changedFile[field].encode() + b"\0")
-          PY
-            if [ -s force-full-reason.txt ]; then
-              forceFullReason=$(cat force-full-reason.txt)
-            fi
-            python3 - "$INPUT_REQUESTED_GROUPS" "$INPUT_REQUESTED_GROUP_NAMES" "$INPUT_CATALOG_REVISION" "$INPUT_CONTROLLED_LABELS" "$INPUT_CONTROLLED_LABEL_NAMES" "$INPUT_AUTOMATIC" "$INPUT_FULL" <<'PY'
-          import hashlib
-          import json
-          import sys
-          from pathlib import Path
-
-          groups = json.loads(sys.argv[1])
-          if not isinstance(groups, list) or any(not isinstance(group, str) for group in groups):
-              raise SystemExit("requestedGroups must be a JSON array of strings")
-          canonicalGroups = sorted(set(groups))
-          catalog = json.loads(Path(".github/e2e-selection.json").read_text())
-          catalogRevision = hashlib.sha256(
-              json.dumps(catalog, sort_keys=True, separators=(",", ":")).encode()
-          ).hexdigest()
-          if catalogRevision != sys.argv[3]:
-              raise SystemExit("executor catalog revision does not match dispatcher")
-          unknownGroups = sorted(set(canonicalGroups) - set(catalog["groups"]))
-          if unknownGroups:
-              raise SystemExit(f"unknown requested E2E group: {unknownGroups[0]}")
-          canonical = ",".join(canonicalGroups) or "-"
-          if canonical != sys.argv[2]:
-              raise SystemExit("requested group names do not match requestedGroups")
-          labels = json.loads(sys.argv[4])
-          knownLabels = {"e2e:full"} | {f"e2e:{group}" for group in catalog["groups"]}
-          if (
-              not isinstance(labels, list)
-              or any(not isinstance(label, str) for label in labels)
-              or set(labels) - knownLabels
-          ):
-              raise SystemExit("controlledLabels contains an unknown label")
-          canonicalLabels = ",".join(sorted(set(labels))) or "-"
-          if canonicalLabels != sys.argv[5]:
-              raise SystemExit("controlled label names do not match controlledLabels")
-          automatic = sys.argv[6] == "true"
-          if automatic and (canonicalGroups or sys.argv[7] == "true"):
-              raise SystemExit("automatic execution cannot contain an approved request")
-          if not automatic and labels:
-              raise SystemExit("approved execution cannot carry automatic controlled labels")
-          PY
-            headSHA="$INPUT_HEAD_SHA"
-            baseSHA="$INPUT_BASE_SHA"
-            prNumber="$INPUT_PR_NUMBER"
-            requestedGroups="$INPUT_REQUESTED_GROUPS"
-            requestFull="$INPUT_FULL"
-          else
-            forceFullReason='push events always run the full x86 E2E suite'
-          fi
-          echo "headSHA=$headSHA" >> "$GITHUB_OUTPUT"
-          echo "baseSHA=$baseSHA" >> "$GITHUB_OUTPUT"
-          echo "prNumber=$prNumber" >> "$GITHUB_OUTPUT"
-          echo "requestFull=$requestFull" >> "$GITHUB_OUTPUT"
-          echo "forceFullReason=$forceFullReason" >> "$GITHUB_OUTPUT"
-          echo "requestedGroups=$requestedGroups" >> "$GITHUB_OUTPUT"
-
-      - name: Compute the selection plan
-        env:
-          FORCE_FULL_REASON: ${{ steps.context.outputs.forceFullReason }}
-          HEAD_SHA: ${{ steps.context.outputs.headSHA }}
-          REQUESTED_FULL: ${{ steps.context.outputs.requestFull }}
-          REQUESTED_GROUPS: ${{ steps.context.outputs.requestedGroups }}
-        run: |
-          args=(
-            --paths-file changed-paths.txt
-            --event-file selector-event.json
-            --request-groups-json "$REQUESTED_GROUPS"
-            --head-sha "$HEAD_SHA"
-            --base-sha "${{ steps.context.outputs.baseSHA }}"
-            --pr-number "${{ steps.context.outputs.prNumber }}"
-            --force-full-reason "$FORCE_FULL_REASON"
-            --plan-file e2e-selection-plan.json
-            --summary-file e2e-selection-summary.md
-          )
-          if [ "$REQUESTED_FULL" = true ]; then
-            args+=(--request-full)
-          fi
-          python3 hack/e2e_selector.py "${args[@]}"
-
-      - name: Export executor job IDs
-        id: outputs
-        env:
-          EVENT_NAME: ${{ inputs.automatic && 'pull_request' || github.event_name }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          import sys
-          from pathlib import Path
-
-          sys.path.insert(0, "hack")
-          import e2e_selector as e2eSelector
-
-          try:
-              catalog = e2eSelector.loadCatalog(".github/e2e-selection.json")
-          except Exception as error:
-              print(f"failed to reload the E2E catalog: {error}", file=sys.stderr)
-              catalog = None
-          plan = json.loads(Path("e2e-selection-plan.json").read_text())
-          executionPlan = e2eSelector.executionPlan(catalog, plan, os.environ["EVENT_NAME"])
-          e2eSelector.writePlan(
-              executionPlan,
-              e2eSelector.readPaths("changed-paths.txt"),
-              "e2e-selection-plan.json",
-              "e2e-selection-summary.md",
-          )
-          jobIds = sorted({entry["job"] for entry in executionPlan["matrix"]})
-          matrices = {
-              "k8sConformanceMatrix": e2eSelector.jobMatrix(
-                  executionPlan,
-                  "k8s-conformance-e2e",
-              ),
-              "kubeOvnConformanceMatrix": e2eSelector.jobMatrix(
-                  executionPlan,
-                  "kube-ovn-conformance-e2e",
-              ),
-          }
-          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as stream:
-              stream.write("executionJobIds=" + json.dumps(jobIds, separators=(",", ":")) + "\n")
-              for name, matrix in matrices.items():
-                  stream.write(name + "=" + json.dumps(matrix, separators=(",", ":")) + "\n")
-          PY
-          cat e2e-selection-summary.md >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload the selection plan
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: x86-e2e-selection-${{ steps.context.outputs.prNumber }}-${{ steps.context.outputs.headSHA }}-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            changed-paths.txt
-            e2e-selection-plan.json
-            e2e-selection-summary.md
-          retention-days: 30
-
-  e2e-control-validation:
-    name: Validate x86 E2E control modules
-    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
-    permissions:
-      contents: read
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA || github.sha }}
-          persist-credentials: false
-
-      - name: Run control module tests
-        run: python3 -m unittest hack/test_e2e_selector.py hack/test_e2e_control.py
-
   prepare-kind-node-images:
     name: Prepare private Kind node image (${{ matrix.k8s-version }})
-    if: >-
-      (github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]') ||
-      github.event_name == 'push'
-    needs: e2e-selection
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
     permissions:
       contents: read
       packages: read
@@ -473,24 +72,17 @@ jobs:
 
   build-kube-ovn-base:
     name: Build kube-ovn-base
-    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
     runs-on: ubuntu-24.04
     outputs:
       build-base: ${{ steps.check.outputs.build-base }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 2
 
       - id: check
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA || github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.headSHA || github.event.pull_request.head.sha }}
         run: |
-          if [ "$EVENT_NAME" != 'pull_request' ] && [ "$EVENT_NAME" != 'workflow_dispatch' ]; then
+          if [ ${{ github.event_name }} != 'pull_request' ]; then
             exit
           fi
           tmp_dir=`mktemp -d`
@@ -498,15 +90,16 @@ jobs:
           dist/images/Dockerfile.base
           dist/images/OpenBFDD-compile.patch
           dist/images/patches/
+          dist/images/tests/
           dist/images/go-deps/download-go-deps.sh
           dist/images/go-deps/rebuild-go-deps.sh
           EOF
-          if git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -Ff "$tmp_dir/on_changes.txt"; then
+          if git diff --name-only HEAD^ HEAD | grep -Ff "$tmp_dir/on_changes.txt"; then
             echo build-base=1 >> "$GITHUB_OUTPUT"
           fi
           rm -frv "$tmp_dir"
 
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         if: steps.check.outputs.build-base == 1
         with:
           android: true
@@ -539,6 +132,15 @@ jobs:
             make base-amd64
             make base-tar-amd64
 
+      - name: Test OVN router ARP and ND
+        if: steps.check.outputs.build-base == 1 && hashFiles('dist/images/tests/ovn-router-arp-nd.py') != ''
+        run: |
+          docker run --rm --network=none --read-only --tmpfs /tmp \
+            --mount "type=bind,source=$PWD/dist/images/tests/ovn-router-arp-nd.py,target=/ovn-router-arp-nd.py,readonly" \
+            --entrypoint python3 \
+            "kubeovn/kube-ovn-base:$(cat VERSION)-amd64" \
+            -B /ovn-router-arp-nd.py
+
       - name: Upload base images to artifact
         if: steps.check.outputs.build-base == 1
         uses: actions/upload-artifact@v7
@@ -548,24 +150,17 @@ jobs:
 
   build-kube-ovn-dpdk-base:
     name: Build kube-ovn-dpdk-base
-    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
     runs-on: ubuntu-24.04
     outputs:
       build-dpdk-base: ${{ steps.check.outputs.build-dpdk-base }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 2
 
       - id: check
-        env:
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.baseSHA || github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.headSHA || github.event.pull_request.head.sha }}
         run: |
-          if [ "$EVENT_NAME" != 'pull_request' ] && [ "$EVENT_NAME" != 'workflow_dispatch' ]; then
+          if [ ${{ github.event_name }} != 'pull_request' ]; then
             exit
           fi
           tmp_dir=`mktemp -d`
@@ -573,12 +168,12 @@ jobs:
           dist/images/Dockerfile.base-dpdk
           dist/images/patches/
           EOF
-          if git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -Ff "$tmp_dir/on_changes.txt"; then
+          if git diff --name-only HEAD^ HEAD | grep -Ff "$tmp_dir/on_changes.txt"; then
             echo build-dpdk-base=1 >> "$GITHUB_OUTPUT"
           fi
           rm -frv "$tmp_dir"
 
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         if: steps.check.outputs.build-dpdk-base == 1
         with:
           android: true
@@ -608,14 +203,12 @@ jobs:
 
   build-kube-ovn:
     name: Build kube-ovn
-    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
     runs-on: ubuntu-24.04
     needs:
-      - e2e-selection
       - build-kube-ovn-base
       - build-kube-ovn-dpdk-base
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -626,9 +219,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
       - uses: docker/setup-buildx-action@v4
       - uses: actions/setup-go@v7
         id: setup-go
@@ -654,8 +244,20 @@ jobs:
             ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
             ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
 
+      - name: Install OVSDB test server
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openvswitch-common
+          mkdir -p "$RUNNER_TEMP/cni-ovsdb-bin"
+          for binary in ovsdb-tool ovsdb-server; do
+            ln -s "$(command -v "$binary")" "$RUNNER_TEMP/cni-ovsdb-bin/$binary"
+          done
+          echo "OVSDB_CNI_TEST_BIN_DIR=$RUNNER_TEMP/cni-ovsdb-bin" >> "$GITHUB_ENV"
+
       - name: Unit test
-        run: make ut
+        run: |
+          python3 hack/test-ovn-db-mode.py
+          make ut
 
       - uses: shogo82148/actions-goveralls@v1
         continue-on-error: true
@@ -693,8 +295,6 @@ jobs:
 
       - name: Scan base image
         uses: aquasecurity/trivy-action@v0.36.0
-        env:
-          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         with:
           scan-type: image
           scanners: vuln
@@ -802,11 +402,9 @@ jobs:
 
   build-vpc-nat-gateway:
     name: Build vpc-nat-gateway
-    needs: e2e-selection
-    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
     runs-on: ubuntu-24.04
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -817,9 +415,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Build
         run: |
@@ -834,15 +429,10 @@ jobs:
 
   build-e2e-binaries:
     name: Build E2E Binaries
-    needs: e2e-selection
-    if: github.event_name != 'workflow_dispatch' || github.actor == 'github-actions[bot]'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -852,8 +442,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -882,13 +471,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
           lookup-only: true
 
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         if: steps.lookup-go-cache.outputs.cache-hit != 'true'
         with:
           android: true
@@ -900,30 +487,61 @@ jobs:
           swap-storage: false
 
       - name: Go cache
-        # Trusted dispatches use an executor-specific ref, so this cache remains isolated from PRs and branches.
+        # Only default-branch pushes can populate a cache visible to all refs.
         if: >-
           steps.lookup-go-cache.outputs.cache-hit != 'true' &&
-          (github.event_name == 'push' ||
-          (github.event_name == 'workflow_dispatch' && github.actor == 'github-actions[bot]'))
+          github.event_name == 'push' &&
+          github.ref_name == github.event.repository.default_branch
         uses: actions/cache@v6
         with:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - run: make e2e-build
         if: steps.lookup-go-cache.outputs.cache-hit != 'true'
         working-directory: ${{ env.E2E_DIR }}
 
+  netpol-path-filter:
+    name: Network Policy Path Filter
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    outputs:
+      test-netpol: ${{ steps.filter.outputs.kube-ovn-controller }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        id: setup-go
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      - name: Generate path filter
+        run: |
+          filter=".github/path-filters.yaml"
+          cat > $filter <<EOF
+          kube-ovn-controller:
+          - go.mod
+          - go.sum
+          EOF
+
+          sh hack/go-list.sh pkg/controller | while read f; do
+            echo "- $f" | tee -a $filter
+          done
+
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          base: ${{ github.base_ref || github.ref_name }}
+          filters: .github/path-filters.yaml
+          list-files: csv
+
   k8s-conformance-e2e:
     name: Kubernetes Conformance E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'k8s-conformance-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
@@ -931,9 +549,16 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.e2e-selection.outputs.k8sConformanceMatrix) }}
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+        mode:
+          - overlay
+          - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -944,9 +569,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -956,8 +578,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -990,13 +611,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1028,7 +647,12 @@ jobs:
       - name: Create kind cluster
         run: |
           pipx install jinjanator
-          make kind-init-${{ matrix.ip-family }}
+          n_worker=6 make kind-init-${{ matrix.ip-family }}
+          zones=(zone-a zone-b zone-c)
+          mapfile -t nodes < <(kubectl get nodes -o name | sort)
+          for i in "${!nodes[@]}"; do
+            kubectl label --overwrite "${nodes[$i]}" topology.kubernetes.io/zone="${zones[$((i % ${#zones[@]}))]}"
+          done
 
       - name: Install Kube-OVN
         id: install
@@ -1075,13 +699,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -1105,8 +729,7 @@ jobs:
             fi
             sleep 1
           done
-          kubectl ko log ovn
-          kubectl ko log ovs
+          bash .github/scripts/collect-kubectl-ko-log.sh
 
           for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
             echo "Checking if valgrind log file for $daemon exists..."
@@ -1124,15 +747,13 @@ jobs:
 
   acl-sampling-e2e:
     name: ACL Sampling E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'acl-sampling-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -1143,12 +764,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1196,10 +814,10 @@ jobs:
         continue-on-error: true
         run: kubectl get pods -A -o wide > acl-sampling-e2e-pods.txt
 
-      - name: Collect kubectl ko log
+      - name: Collect kubectl ko logs
         if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         continue-on-error: true
-        run: make kubectl-ko-log
+        run: bash .github/scripts/collect-kubectl-ko-log.sh
 
       - name: Upload diagnostics
         if: always() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
@@ -1215,12 +833,14 @@ jobs:
 
   k8s-netpol-e2e:
     name: Kubernetes Network Policy E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'k8s-netpol-e2e')
+    if: |
+      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      (needs.netpol-path-filter.outputs.test-netpol == 1 || contains(github.event.pull_request.labels.*.name, 'network policy'))
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
+      - netpol-path-filter
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     strategy:
@@ -1234,7 +854,7 @@ jobs:
           - standard
           - lax
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -1245,9 +865,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1257,8 +874,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -1291,15 +907,13 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
         env:
           NP_ENFORCEMENT: "${{ matrix.np-enforcement }}"
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1374,13 +988,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz k8s-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -1404,8 +1018,7 @@ jobs:
             fi
             sleep 1
           done
-          kubectl ko log ovn
-          kubectl ko log ovs
+          bash .github/scripts/collect-kubectl-ko-log.sh
 
           for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
             echo "Checking if valgrind log file for $daemon exists..."
@@ -1423,11 +1036,13 @@ jobs:
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'cyclonus-netpol-e2e')
+    if: |
+      always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') &&
+      (needs.netpol-path-filter.outputs.test-netpol == 1 || contains(github.event.pull_request.labels.*.name, 'network policy'))
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
+      - netpol-path-filter
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     strategy:
@@ -1441,7 +1056,7 @@ jobs:
           - standard
           - lax
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -1452,9 +1067,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1464,8 +1076,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -1478,7 +1089,7 @@ jobs:
           fi
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1555,13 +1166,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz cyclonus-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -1585,8 +1196,7 @@ jobs:
             fi
             sleep 1
           done
-          kubectl ko log ovn
-          kubectl ko log ovs
+          bash .github/scripts/collect-kubectl-ko-log.sh
 
           for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
             echo "Checking if valgrind log file for $daemon exists..."
@@ -1604,9 +1214,7 @@ jobs:
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-conformance-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
@@ -1614,9 +1222,16 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.e2e-selection.outputs.kubeOvnConformanceMatrix) }}
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+        mode:
+          - overlay
+          - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -1627,9 +1242,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1639,8 +1251,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -1668,13 +1279,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1719,11 +1328,7 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: ${{ matrix.mode }}
-        run: |
-          make kube-ovn-conformance-e2e
-          make kind-install-multus
-          make kind-install-kubevirt
-          make kube-ovn-kubevirt-e2e
+        run: make kube-ovn-conformance-e2e
 
       - name: Collect k8s events
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
@@ -1757,13 +1362,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -1787,8 +1392,7 @@ jobs:
             fi
             sleep 1
           done
-          kubectl ko log ovn
-          kubectl ko log ovs
+          bash .github/scripts/collect-kubectl-ko-log.sh
 
           for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
             echo "Checking if valgrind log file for $daemon exists..."
@@ -1807,25 +1411,16 @@ jobs:
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
-  kube-ovn-ic-conformance-e2e:
-    name: Kube-OVN IC Conformance E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ic-conformance-e2e')
+  kubevirt-e2e:
+    name: KubeVirt E2E
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        ip-family:
-          - ipv4
-          - ipv6
-          - dual
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -1836,9 +1431,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -1848,8 +1440,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -1877,13 +1468,173 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator
+          make kind-init-ipv4
+
+      - name: Install Kube-OVN
+        id: install
+        run: make kind-install-ipv4
+
+      - name: Install Multus
+        id: install-multus
+        run: make kind-install-multus
+
+      - name: Install KubeVirt
+        id: install-kubevirt
+        run: make kind-install-kubevirt
+
+      - name: Run KubeVirt E2E
+        id: e2e
+        working-directory: ${{ env.E2E_DIR }}
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ipv4
+          E2E_NETWORK_MODE: overlay
+        run: make kube-ovn-kubevirt-e2e
+
+      - name: Collect k8s events
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        run: |
+          kubectl get events -A -o yaml > kubevirt-e2e-events.yaml
+          tar zcf kubevirt-e2e-events.tar.gz kubevirt-e2e-events.yaml
+
+      - name: Upload k8s events
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        with:
+          name: kubevirt-e2e-events
+          path: kubevirt-e2e-events.tar.gz
+
+      - name: Collect apiserver audit logs
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        run: |
+          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
+          tar zcf kubevirt-e2e-audit-log.tar.gz kube-apiserver-audit.log
+
+      - name: Upload apiserver audit logs
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        with:
+          name: kubevirt-e2e-audit-log
+          path: kubevirt-e2e-audit-log.tar.gz
+
+      - name: Check kube ovn pod restarts
+        id: check-restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko logs
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        run: |
+          bash .github/scripts/collect-kubectl-ko-log.sh
+          mv kubectl-ko-log.tar.gz kubevirt-e2e-ko-log.tar.gz
+
+      - name: Upload kubectl ko logs
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.install-multus.conclusion == 'failure' || steps.install-kubevirt.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        with:
+          name: kubevirt-e2e-ko-log
+          path: kubevirt-e2e-ko-log.tar.gz
+
+      - name: Cleanup
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
+
+  kube-ovn-ic-conformance-e2e:
+    name: Kube-OVN IC Conformance E2E
+    needs:
+      - prepare-kind-node-images
+      - build-kube-ovn
+      - build-e2e-binaries
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        ip-family:
+          - ipv4
+          - ipv6
+          - dual
+    timeout-minutes: 30
+    steps:
+      - uses: jlumbroso/free-disk-space@v2.0.0
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
+      - uses: actions/setup-go@v7
+        id: setup-go
+        with:
+          go-version-file: go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1961,18 +1712,18 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
           for cluster in `kind get clusters`; do
             kubectl config use-context kind-$cluster
-            make kubectl-ko-log
+            bash .github/scripts/collect-kubectl-ko-log.sh
             mv kubectl-ko-log.tar.gz kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-$cluster-ko-log.tar.gz
           done
           tar zcvf kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz \
             `kind get clusters | xargs -I {} echo kube-ovn-ic-conformance-e2e-${{ matrix.ip-family }}-{}-ko-log.tar.gz`
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -1981,9 +1732,7 @@ jobs:
 
   multus-conformance-e2e:
     name: Multus Conformance E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'multus-conformance-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
@@ -1997,7 +1746,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2008,9 +1757,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2020,8 +1766,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -2049,13 +1794,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2128,13 +1871,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz multus-conformance-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -2143,9 +1886,7 @@ jobs:
 
   non-primary-cni-e2e:
     name: Non-Primary CNI E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'non-primary-cni-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
@@ -2157,7 +1898,7 @@ jobs:
         ip-family:
           - ipv4
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2168,9 +1909,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2180,8 +1918,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -2214,11 +1951,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2300,13 +2037,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -2315,9 +2052,7 @@ jobs:
 
   bgp-speaker-e2e:
     name: BGP Speaker E2E (${{ matrix.ip-family }})
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'bgp-speaker-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
@@ -2331,7 +2066,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2342,9 +2077,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2354,8 +2086,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -2383,13 +2114,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2438,9 +2167,25 @@ jobs:
         if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
           mkdir -p bgp-speaker-e2e-diagnostics
-          for afi in ipv4 ipv6; do
-            docker exec clab-bgp-router vtysh -c "show bgp $afi unicast summary json" > "bgp-speaker-e2e-diagnostics/frr-summary-$afi.json" || true
-            docker exec clab-bgp-router vtysh -c "show bgp $afi unicast json" > "bgp-speaker-e2e-diagnostics/frr-routes-$afi.json" || true
+          for router in clab-bgp-router clab-bgp-router-1 clab-bgp-router-2; do
+            if ! docker inspect "$router" > /dev/null 2>&1; then
+              continue
+            fi
+            if [ "$router" = clab-bgp-router ]; then
+              prefix=bgp-speaker-e2e-diagnostics/frr
+            else
+              prefix="bgp-speaker-e2e-diagnostics/${router#clab-bgp-}"
+            fi
+            for afi in ipv4 ipv6; do
+              docker exec "$router" vtysh -c "show bgp $afi unicast summary json" > "${prefix}-summary-$afi.json" || true
+              docker exec "$router" vtysh -c "show bgp $afi unicast json" > "${prefix}-routes-$afi.json" || true
+            done
+            docker inspect "$router" > "${prefix}-container-inspect.json" || true
+            docker logs "$router" > "${prefix}-container.log" 2>&1 || true
+            docker exec "$router" sh -c 'ps -ef' > "${prefix}-processes.txt" 2>&1 || true
+            docker exec "$router" vtysh -c 'show bgp summary json' > "${prefix}-summary.json" 2>&1 || true
+            docker exec "$router" vtysh -c 'show running-config' > "${prefix}-running-config.txt" 2>&1 || true
+            docker exec "$router" sh -c 'for file in /var/log/frr/*; do test -f "$file" || continue; echo "===== $file"; cat "$file"; done' > "${prefix}-logs.txt" 2>&1 || true
           done
           kubectl -n kube-system get ds kube-ovn-speaker -o yaml > bgp-speaker-e2e-diagnostics/speaker-daemonset.yaml || true
           kubectl -n kube-system get pods -l app=kube-ovn-speaker -o wide > bgp-speaker-e2e-diagnostics/speaker-pods.txt || true
@@ -2456,17 +2201,18 @@ jobs:
           name: bgp-speaker-e2e-diagnostics-${{ matrix.ip-family }}
           path: bgp-speaker-e2e-diagnostics.tar.gz
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          if make kubectl-ko-log && test -f kubectl-ko-log.tar.gz; then
+          bash .github/scripts/collect-kubectl-ko-log.sh || true
+          if test -f kubectl-ko-log.tar.gz; then
             mv kubectl-ko-log.tar.gz bgp-speaker-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
           else
-            echo "kubectl ko log was unavailable because the BGP test cluster did not become usable." > bgp-speaker-e2e-ko-log-unavailable.txt
+            echo "kubectl ko logs was unavailable because the BGP test cluster did not become usable." > bgp-speaker-e2e-ko-log-unavailable.txt
             tar zcf bgp-speaker-e2e-${{ matrix.ip-family }}-ko-log.tar.gz bgp-speaker-e2e-ko-log-unavailable.txt
           fi
 
-      - name: Upload kubectl ko log
+      - name: Upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.setup.conclusion == 'failure' || steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -2479,9 +2225,7 @@ jobs:
 
   kube-ovn-hosted-ovn-central-e2e:
     name: Kube-OVN Hosted OVN Central E2E (${{ matrix.ip-family }}, ${{ matrix.tenant-control-plane }} control-plane)
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-hosted-ovn-central-e2e')
     needs:
-      - e2e-selection
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
@@ -2509,7 +2253,7 @@ jobs:
             tenant-control-plane: ha
             tenant-control-plane-replicas: 3
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2520,9 +2264,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Remove DNS search domain
         run: |
@@ -2545,13 +2286,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles('go.sum') }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2617,16 +2356,16 @@ jobs:
           path: hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-diagnostics.tar.gz
           if-no-files-found: ignore
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
           tenant_kubeconfig="$(./hack/kamaji-e2e.sh kubeconfig)"
           if [ -s "$tenant_kubeconfig" ]; then
-            KUBECONFIG="$tenant_kubeconfig" make kubectl-ko-log
+            KUBECONFIG="$tenant_kubeconfig" bash .github/scripts/collect-kubectl-ko-log.sh
             mv kubectl-ko-log.tar.gz hcp-e2e-${{ matrix.ip-family }}-${{ matrix.tenant-control-plane }}-ko-log.tar.gz
           fi
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
@@ -2640,9 +2379,7 @@ jobs:
 
   chart-test:
     name: Chart Installation/Uninstallation Test
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'chart-test')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
@@ -2654,7 +2391,7 @@ jobs:
           - "false"
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2665,12 +2402,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2707,13 +2441,13 @@ jobs:
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz chart-test-${{ matrix.ssl }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -2725,15 +2459,13 @@ jobs:
 
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'underlay-logical-gateway-installation-test')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2744,12 +2476,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2784,13 +2513,13 @@ jobs:
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz underlay-logical-gateway-installation-test-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -2802,15 +2531,13 @@ jobs:
 
   no-ovn-lb-test:
     name: Disable OVN LB Test
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'no-ovn-lb-test')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2821,12 +2548,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2863,13 +2587,13 @@ jobs:
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz no-ovn-lb-test-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -2881,15 +2605,13 @@ jobs:
 
   no-np-test:
     name: Disable Network Policy Test
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'no-np-test')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2900,12 +2622,9 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2942,13 +2661,13 @@ jobs:
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz no-np-test-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -2960,9 +2679,7 @@ jobs:
 
   lb-svc-e2e:
     name: LB Service E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'lb-svc-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-vpc-nat-gateway
@@ -2970,7 +2687,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -2981,9 +2698,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -2993,8 +2707,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3022,13 +2735,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3104,13 +2815,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz lb-svc-e2e-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -3119,16 +2830,14 @@ jobs:
 
   webhook-e2e:
     name: Webhook E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'webhook-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -3139,9 +2848,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3151,8 +2857,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3180,13 +2885,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3230,13 +2933,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz webhook-e2e-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -3245,9 +2948,7 @@ jobs:
 
   talos-installation-test:
     name: Talos Installation Test
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'talos-installation-test')
     needs:
-      - e2e-selection
       - build-kube-ovn
     runs-on: larger-runner
     timeout-minutes: 30
@@ -3262,7 +2963,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -3273,9 +2974,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Install talosctl
         run: |
@@ -3323,13 +3021,13 @@ jobs:
         if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
         run: make check-kube-ovn-pod-restarts || make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz talos-installation-test-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -3338,9 +3036,7 @@ jobs:
 
   kube-ovn-cnp-domain-e2e:
     name: Kube-OVN CNP Domain E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-cnp-domain-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
@@ -3354,7 +3050,7 @@ jobs:
         mode:
           - overlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -3365,9 +3061,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3377,8 +3070,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3406,11 +3098,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3484,13 +3176,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-cnp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -3499,9 +3191,7 @@ jobs:
 
   kube-ovn-anp-domain-e2e:
     name: Kube-OVN ANP Domain E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-anp-domain-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
@@ -3515,7 +3205,7 @@ jobs:
         mode:
           - overlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -3526,9 +3216,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3538,8 +3225,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3567,11 +3253,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3645,13 +3331,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-anp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -3660,9 +3346,7 @@ jobs:
 
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'cilium-chaining-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
@@ -3679,7 +3363,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -3690,9 +3374,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
       - uses: azure/setup-helm@v5.0.1
         with:
           version: '${{ env.HELM_VERSION }}'
@@ -3705,8 +3386,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3743,13 +3423,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3821,13 +3499,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz cilium-chaining-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -3839,9 +3517,7 @@ jobs:
 
   kube-ovn-ha-e2e:
     name: Kube-OVN HA E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ha-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
@@ -3861,7 +3537,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -3872,9 +3548,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -3884,8 +3557,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -3913,13 +3585,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3972,13 +3642,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -3990,15 +3660,13 @@ jobs:
 
   kube-ovn-submariner-conformance-e2e:
     name: Kube-OVN Submariner Conformance E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-submariner-conformance-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -4009,9 +3677,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4021,8 +3686,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -4035,7 +3699,7 @@ jobs:
           fi
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4082,13 +3746,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -4100,9 +3764,7 @@ jobs:
 
   vpc-egress-gateway-e2e:
     name: VPC Egress Gateway E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'vpc-egress-gateway-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
@@ -4116,7 +3778,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -4127,9 +3789,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4139,8 +3798,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -4168,13 +3826,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4249,13 +3905,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -4275,8 +3931,7 @@ jobs:
             fi
             sleep 1
           done
-          kubectl ko log ovn
-          kubectl ko log ovs
+          bash .github/scripts/collect-kubectl-ko-log.sh
 
           for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
             echo "Checking if valgrind log file for $daemon exists..."
@@ -4297,9 +3952,7 @@ jobs:
 
   iptables-vpc-nat-gw-conformance-e2e:
     name: Iptables VPC NAT Gateway E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'iptables-vpc-nat-gw-conformance-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-vpc-nat-gateway
@@ -4307,7 +3960,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -4318,9 +3971,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4330,8 +3980,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -4359,13 +4008,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4441,13 +4088,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz iptables-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -4456,16 +4103,14 @@ jobs:
 
   ovn-vpc-nat-gw-conformance-e2e:
     name: OVN VPC NAT Gateway E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'ovn-vpc-nat-gw-conformance-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -4476,9 +4121,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4488,8 +4130,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -4517,13 +4158,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4599,13 +4238,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz ovn-vpc-nat-gw-conformance-e2e-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.vip-e2e.conclusion == 'failure' || steps.vpc-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -4614,16 +4253,14 @@ jobs:
 
   kube-ovn-ipsec-e2e:
     name: OVN IPSEC E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ipsec-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -4634,9 +4271,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4646,8 +4280,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -4675,13 +4308,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4752,13 +4383,13 @@ jobs:
           IGNORABLE_PODS: app=kube-ovn-pinger
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-ipsec-e2e-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -4767,16 +4398,14 @@ jobs:
 
   kube-ovn-ipsec-cert-mgr-e2e:
     name: OVN IPSEC E2E CERT MANAGER
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-ipsec-cert-mgr-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -4787,9 +4416,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4799,8 +4425,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -4828,13 +4453,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4903,13 +4526,13 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-cert-mgr-e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-cert-mgr-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-ipsec-cert-mgr-e2e-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-ipsec-cert-mgr-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
@@ -4918,9 +4541,7 @@ jobs:
 
   kube-ovn-connectivity-test:
     name: Kube-OVN Connectivity E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-connectivity-test')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
@@ -4933,7 +4554,7 @@ jobs:
           - overlay
           - underlay
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -4944,9 +4565,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -4956,8 +4574,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -4985,13 +4602,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -5028,13 +4643,13 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
         run: make kube-ovn-connectivity-e2e
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-connectivity-e2e-${{ matrix.mode }}-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
         with:
@@ -5044,9 +4659,7 @@ jobs:
 
   kube-ovn-underlay-metallb-e2e:
     name: OVN METALLB E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'kube-ovn-underlay-metallb-e2e')
     needs:
-      - e2e-selection
       - prepare-kind-node-images
       - build-kube-ovn
       - build-e2e-binaries
@@ -5060,7 +4673,7 @@ jobs:
           - ipv6
           - dual
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -5071,9 +4684,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Create the default branch directory
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
@@ -5083,8 +4693,7 @@ jobs:
         if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
         uses: actions/checkout@v7
         with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
           path: test/e2e/source
 
@@ -5112,13 +4721,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
+          restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.0
+        uses: helm/kind-action@v1.15.1
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -5188,403 +4795,55 @@ jobs:
         if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
-      - name: kubectl ko log
+      - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
-          make kubectl-ko-log
+          bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-ko-log.tar.gz
 
-      - name: upload kubectl ko log
+      - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
         if: failure() && (steps.install.conclusion == 'failure' || steps.kube-ovn-underlay-metallb-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
           name: kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-ko-log
           path: kube-ovn-underlay-metallb-${{ matrix.ip-family }}-e2e-ko-log.tar.gz
 
-  router-lb-rule-e2e:
-    name: Router LB Rule E2E
-    if: github.event_name != 'pull_request' && contains(fromJSON(needs.e2e-selection.outputs.executionJobIds), 'router-lb-rule-e2e')
-    needs:
-      - e2e-selection
-      - prepare-kind-node-images
-      - build-kube-ovn
-      - build-e2e-binaries
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
-    steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          android: true
-          dotnet: true
-          haskell: true
-          docker-images: false
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
-
-      - name: Create the default branch directory
-        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        run: mkdir -p test/e2e/source
-
-      - name: Check out the default branch
-        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ env.E2E_SOURCE_REF }}
-          persist-credentials: false
-          fetch-depth: 1
-          path: test/e2e/source
-
-      - name: Export E2E directory
-        run: |
-          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
-            echo "E2E_DIR=." >> "$GITHUB_ENV"
-          else
-            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
-          fi
-
-      - uses: actions/setup-go@v7
-        id: setup-go
-        with:
-          go-version-file: go.mod
-          check-latest: true
-          cache: false
-
-      - name: Export Go full version
-        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
-
-      - name: Go cache
-        uses: actions/cache/restore@v6
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-${{ hashFiles(format('{0}/**/go.sum', env.E2E_DIR)) }}
-          restore-keys: |
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
-            ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
-
-      - name: Install kind
-        uses: helm/kind-action@v1.15.0
-        with:
-          version: ${{ env.KIND_VERSION }}
-          install_only: true
-
-      - name: Download kube-ovn image
-        uses: actions/download-artifact@v8
-        with:
-          name: kube-ovn
-
-      - name: Load images
-        run: docker load -i kube-ovn.tar
-
-      - name: Download private Kind node image
-        uses: actions/download-artifact@v8
-        with:
-          name: kind-node-v1.37.0
-
-      - name: Load private Kind node image
-        run: docker load --input kind-node-v1.37.0.tar
-
-      - name: Create kind cluster
-        run: |
-          pipx install jinjanator
-          make kind-init
-
-      - name: Install Kube-OVN
-        id: install
-        run: make kind-install
-
-      - name: Run Router LB Rule E2E
-        id: rlr-e2e
-        working-directory: ${{ env.E2E_DIR }}
-        env:
-          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
-        run: make kube-ovn-rlr-e2e
-
-      - name: Collect k8s events
-        if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure')
-        run: |
-          kubectl get events -A -o yaml > router-lb-rule-e2e-events.yaml
-          tar zcf router-lb-rule-e2e-events.tar.gz router-lb-rule-e2e-events.yaml
-
-      - name: Upload k8s events
-        uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure')
-        with:
-          name: router-lb-rule-e2e-events
-          path: router-lb-rule-e2e-events.tar.gz
-
-      - name: Collect apiserver audit logs
-        if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure')
-        run: |
-          docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
-          tar zcf router-lb-rule-e2e-audit-log.tar.gz kube-apiserver-audit.log
-
-      - name: Upload apiserver audit logs
-        uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure')
-        with:
-          name: router-lb-rule-e2e-audit-log
-          path: router-lb-rule-e2e-audit-log.tar.gz
-
-      - name: Check kube ovn pod restarts
-        id: check-restarts
-        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure')) }}
-        run: make check-kube-ovn-pod-restarts
-
-      - name: kubectl ko log
-        if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
-        run: |
-          make kubectl-ko-log
-          mv kubectl-ko-log.tar.gz router-lb-rule-e2e-ko-log.tar.gz
-
-      - name: upload kubectl ko log
-        uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.rlr-e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
-        with:
-          name: router-lb-rule-e2e-ko-log
-          path: router-lb-rule-e2e-ko-log.tar.gz
-
-  e2e-executor-result:
-    name: x86 E2E Selected Result
-    if: always() && github.event_name != 'pull_request'
-    permissions: {}
-    needs:
-      - e2e-selection
-      - e2e-control-validation
-      - acl-sampling-e2e
-      - bgp-speaker-e2e
-      - chart-test
-      - cilium-chaining-e2e
-      - cyclonus-netpol-e2e
-      - iptables-vpc-nat-gw-conformance-e2e
-      - k8s-conformance-e2e
-      - k8s-netpol-e2e
-      - kube-ovn-anp-domain-e2e
-      - kube-ovn-cnp-domain-e2e
-      - kube-ovn-conformance-e2e
-      - kube-ovn-connectivity-test
-      - kube-ovn-ha-e2e
-      - kube-ovn-hosted-ovn-central-e2e
-      - kube-ovn-ic-conformance-e2e
-      - kube-ovn-ipsec-cert-mgr-e2e
-      - kube-ovn-ipsec-e2e
-      - kube-ovn-submariner-conformance-e2e
-      - kube-ovn-underlay-metallb-e2e
-      - lb-svc-e2e
-      - multus-conformance-e2e
-      - no-np-test
-      - no-ovn-lb-test
-      - non-primary-cni-e2e
-      - ovn-vpc-nat-gw-conformance-e2e
-      - router-lb-rule-e2e
-      - talos-installation-test
-      - underlay-logical-gateway-installation-test
-      - vpc-egress-gateway-e2e
-      - webhook-e2e
-    runs-on: ubuntu-24.04
-    env:
-      NEEDS_JSON: ${{ toJSON(needs) }}
-      SELECTED_JOB_IDS: ${{ needs.e2e-selection.outputs.executionJobIds }}
-    steps:
-      - name: Verify every selected test Job succeeded
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-
-          needs = json.loads(os.environ["NEEDS_JSON"])
-          selectedJobIds = json.loads(os.environ["SELECTED_JOB_IDS"])
-          requiredJobIds = ["e2e-selection", "e2e-control-validation"] + selectedJobIds
-          incomplete = {
-              jobId: needs.get(jobId, {}).get("result", "missing")
-              for jobId in requiredJobIds
-              if needs.get(jobId, {}).get("result") != "success"
-          }
-          if incomplete:
-              raise SystemExit(f"required x86 E2E Jobs did not succeed: {incomplete}")
-          print(f"Verified {len(requiredJobIds)} required x86 E2E Jobs.")
-          PY
-
-  notify-x86-e2e-gate:
-    name: Notify x86 E2E gate of executor completion
-    if: >-
-      always() &&
-      github.event_name == 'workflow_dispatch' &&
-      github.actor == 'github-actions[bot]' &&
-      needs.e2e-executor-result.result != 'skipped'
-    needs:
-      - e2e-executor-result
-    permissions:
-      actions: write
-      contents: read
-    runs-on: ubuntu-24.04
-    env:
-      GH_TOKEN: ${{ github.token }}
-    steps:
-      - name: Dispatch the completed executor to the trusted gate
-        env:
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-          PR_NUMBER: ${{ inputs.prNumber }}
-          HEAD_SHA: ${{ inputs.headSHA }}
-          BASE_SHA: ${{ inputs.baseSHA }}
-          APPROVAL_GENERATION: ${{ inputs.approvalGeneration }}
-          CATALOG_REVISION: ${{ inputs.catalogRevision }}
-          REQUESTED_GROUPS: ${{ inputs.requestedGroups }}
-          CONTROLLED_LABELS: ${{ inputs.controlledLabels }}
-          FULL: ${{ inputs.full }}
-          EXECUTOR_CONCLUSION: ${{ needs.e2e-executor-result.result }}
-          EXECUTOR_RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          executorRunAttempt=$(gh api \
-            "repos/$GITHUB_REPOSITORY/actions/runs/$EXECUTOR_RUN_ID" \
-            --jq '.run_attempt')
-          gh api --method POST \
-            "repos/$GITHUB_REPOSITORY/actions/workflows/x86-e2e-gate.yaml/dispatches" \
-            -f ref="$DEFAULT_BRANCH" \
-            -f "inputs[prNumber]=$PR_NUMBER" \
-            -f "inputs[headSHA]=$HEAD_SHA" \
-            -f "inputs[baseSHA]=$BASE_SHA" \
-            -f "inputs[approvalGeneration]=$APPROVAL_GENERATION" \
-            -f "inputs[catalogRevision]=$CATALOG_REVISION" \
-            -f "inputs[requestedGroups]=$REQUESTED_GROUPS" \
-            -f "inputs[controlledLabels]=$CONTROLLED_LABELS" \
-            -f "inputs[full]=$FULL" \
-            -f 'inputs[recordIntent]=false' \
-            -f 'inputs[baseRefresh]=false' \
-            -f "inputs[executorRunId]=$EXECUTOR_RUN_ID" \
-            -f "inputs[executorRunAttempt]=$executorRunAttempt" \
-            -f "inputs[executorConclusion]=$EXECUTOR_CONCLUSION"
-
-  publish-pr-e2e-checks:
-    name: Publish x86 E2E checks on the pull request
-    if: github.event_name == 'workflow_dispatch'
-    permissions:
-      actions: read
-      statuses: write
-      contents: read
-    needs:
-      - e2e-selection
-    runs-on: ubuntu-24.04
-    timeout-minutes: 360
-    env:
-      GH_TOKEN: ${{ github.token }}
-      PYTHONDONTWRITEBYTECODE: "1"
-      HEAD_SHA: ${{ inputs.headSHA }}
-      PR_NUMBER: ${{ inputs.prNumber }}
-      SELECTED_JOB_IDS: ${{ needs.e2e-selection.outputs.executionJobIds }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ inputs.baseSHA }}
-          persist-credentials: false
-
-      - name: Stream selected executor jobs onto the pull request HEAD
-        env:
-          RUN_ID: ${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          python3 - "$PR_NUMBER" "$HEAD_SHA" "$SELECTED_JOB_IDS" "$GITHUB_REPOSITORY" "$RUN_ID" <<'PY'
-          import json
-          import subprocess
-          import sys
-          import time
-          from pathlib import Path
-
-          sys.path.insert(0, "hack")
-          import e2e_control as e2eControl
-          import e2e_selector as e2eSelector
-
-          prNumber = int(sys.argv[1])
-          headSHA = sys.argv[2]
-          selectedJobIds = json.loads(sys.argv[3])
-          repository = sys.argv[4]
-          runId = sys.argv[5]
-          workflow = Path(".github/workflows/build-x86-image.yaml").read_text()
-          blocks = e2eSelector.workflowJobBlocks(workflow)
-          selectedTitles = [
-              e2eControl.workflowJobTitle(blocks[jobId])
-              for jobId in selectedJobIds
-              if jobId in blocks
-          ]
-          infraTitles = e2eControl.visibleInfrastructureTitles(blocks)
-
-          def load_jobs():
-              pages = json.loads(
-                  subprocess.check_output(
-                      [
-                          "gh",
-                          "api",
-                          "--paginate",
-                          "--slurp",
-                          f"repos/{repository}/actions/runs/{runId}/jobs?per_page=100",
-                      ],
-                      text=True,
-                  )
-              )
-              jobs = []
-              for page in pages:
-                  jobs.extend(page.get("jobs") or [])
-              return jobs
-
-          published = {}
-          for _ in range(720):
-              jobs = load_jobs()
-              for payload in e2eControl.prCheckRunsToPublish(
-                  jobs,
-                  selectedTitles,
-                  headSHA,
-                  prNumber,
-                  detailsURL=f"https://github.com/{repository}/actions/runs/{runId}",
-                  infraTitles=infraTitles,
-              ):
-                  statusPayload = e2eControl.prCommitStatusFromCheckRun(payload)
-                  context = statusPayload["context"]
-                  fingerprint = tuple(statusPayload.items())
-                  if published.get(context) == fingerprint:
-                      continue
-                  subprocess.run(
-                      [
-                          "gh",
-                          "api",
-                          "--method",
-                          "POST",
-                          f"repos/{repository}/statuses/{headSHA}",
-                          "--input",
-                          "-",
-                      ],
-                      input=json.dumps(statusPayload),
-                      text=True,
-                      check=True,
-                  )
-                  published[context] = fingerprint
-                  print(
-                      f"{statusPayload['state']} {statusPayload['context']}",
-                      flush=True,
-                  )
-              if e2eControl.selectedExecutorJobsAreTerminal(jobs, selectedTitles):
-                  print(f"Mirrored {len(published)} pull request E2E checks.", flush=True)
-                  break
-              time.sleep(20)
-          else:
-              raise SystemExit("timed out while mirroring pull request E2E checks")
-          PY
-
   push:
     name: Push Images
     needs:
-      - e2e-executor-result
-    if: github.event_name == 'push' && needs.e2e-executor-result.result == 'success'
+      - k8s-conformance-e2e
+      - acl-sampling-e2e
+      - k8s-netpol-e2e
+      - cyclonus-netpol-e2e
+      - kube-ovn-conformance-e2e
+      - kubevirt-e2e
+      - kube-ovn-ic-conformance-e2e
+      - multus-conformance-e2e
+      - non-primary-cni-e2e
+      - bgp-speaker-e2e
+      - kube-ovn-hosted-ovn-central-e2e
+      - chart-test
+      - underlay-logical-gateway-installation-test
+      - no-ovn-lb-test
+      - no-np-test
+      - lb-svc-e2e
+      - webhook-e2e
+      - talos-installation-test
+      - kube-ovn-cnp-domain-e2e
+      - kube-ovn-anp-domain-e2e
+      - cilium-chaining-e2e
+      - kube-ovn-ha-e2e
+      - vpc-egress-gateway-e2e
+      - iptables-vpc-nat-gw-conformance-e2e
+      - ovn-vpc-nat-gw-conformance-e2e
+      - kube-ovn-ipsec-e2e
+      - kube-ovn-ipsec-cert-mgr-e2e
+      - kube-ovn-connectivity-test
+      - kube-ovn-underlay-metallb-e2e
+    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
     runs-on: ubuntu-24.04
     steps:
-      - uses: jlumbroso/free-disk-space@v1.3.1
+      - uses: jlumbroso/free-disk-space@v2.0.0
         with:
           android: true
           dotnet: true
@@ -5595,9 +4854,6 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ env.EXECUTION_SHA }}
-          persist-credentials: false
 
       - name: Download kube-ovn image
         uses: actions/download-artifact@v8
@@ -5624,8 +4880,6 @@ jobs:
           fi
 
       - name: Security Scan
-        env:
-          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
         run: |
           sudo apt-get install wget apt-transport-https gnupg lsb-release
           wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -

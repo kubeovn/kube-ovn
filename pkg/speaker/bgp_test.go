@@ -61,8 +61,8 @@ func TestReconcileRoutesAddsAndWithdrawsIPv4Routes(t *testing.T) {
 	)
 
 	controller := &Controller{config: &Configuration{
-		RouterID:               net.ParseIP(routerID),
-		NeighborAddresses:      []net.IP{net.ParseIP(neighbor)},
+		RouterID:               IP{IP: net.ParseIP(routerID)},
+		NeighborAddresses:      []IP{{IP: net.ParseIP(neighbor)}},
 		NeighborLocalAddresses: map[string]net.IP{neighbor: net.ParseIP(routerID)},
 		BgpServer:              newTestBgpServer(t, routerID),
 	}}
@@ -92,8 +92,8 @@ func TestReconcileRoutesRefreshesIPv4NextHop(t *testing.T) {
 
 	nextHop := net.ParseIP(initialNextHop)
 	controller := &Controller{config: &Configuration{
-		RouterID:          net.ParseIP(routerID),
-		NeighborAddresses: []net.IP{net.ParseIP(neighbor)},
+		RouterID:          IP{IP: net.ParseIP(routerID)},
+		NeighborAddresses: []IP{{IP: net.ParseIP(neighbor)}},
 		BgpServer:         newTestBgpServer(t, routerID),
 		routeLookup: func(address net.IP) ([]netlink.Route, error) {
 			require.True(t, net.ParseIP(neighbor).Equal(address))
@@ -163,13 +163,13 @@ func TestGetPathRequest(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			controller := &Controller{config: &Configuration{
-				NeighborAddresses:     []net.IP{net.ParseIP(ipv4Neighbor)},
-				NeighborIPv6Addresses: []net.IP{net.ParseIP(ipv6Neighbor)},
+				NeighborAddresses:     []IP{{IP: net.ParseIP(ipv4Neighbor)}},
+				NeighborIPv6Addresses: []IP{{IP: net.ParseIP(ipv6Neighbor)}},
 				NeighborLocalAddresses: map[string]net.IP{
 					ipv4Neighbor: net.ParseIP(ipv4NextHop),
 					ipv6Neighbor: net.ParseIP(ipv6NextHop),
 				},
-				ExtendedNexthop: tt.extendedNexthop,
+				ExtendedNexthop: new(tt.extendedNexthop),
 			}}
 
 			paths, err := controller.getPathRequest(tt.route)
@@ -248,10 +248,10 @@ func TestGetNextHopAttributeReusesInitializedNeighborLocalAddresses(t *testing.T
 		ipv6Neighbor.String(): ipv6StartupAddress,
 	}
 	config := &Configuration{
-		NeighborAddresses:          []net.IP{ipv4Neighbor},
-		NeighborIPv6Addresses:      []net.IP{ipv6Neighbor},
-		AllowedSourceAddresses:     []net.IP{ipv4StartupAddress},
-		AllowedSourceIPv6Addresses: []net.IP{ipv6StartupAddress},
+		NeighborAddresses:          []IP{{IP: ipv4Neighbor}},
+		NeighborIPv6Addresses:      []IP{{IP: ipv6Neighbor}},
+		AllowedSourceAddresses:     []IP{{IP: ipv4StartupAddress}},
+		AllowedSourceIPv6Addresses: []IP{{IP: ipv6StartupAddress}},
 	}
 	require.NoError(t, config.initNeighborLocalAddressesWithRouteLookup(func(address net.IP) ([]netlink.Route, error) {
 		source, ok := routeSources[address.String()]

@@ -60,6 +60,8 @@ const (
 	baselineAdminNetworkPolicyKey = "banp"
 	ippoolKey                     = "ippool"
 	clusterNetworkPolicyKey       = "cnp"
+	u2oOverlayCIDRsKey            = "isU2OOverlayCIDRs"
+	u2oOverlayCIDRsVpcKey         = "vpc"
 )
 
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
@@ -110,7 +112,11 @@ type Controller struct {
 	updateVpcSnatQueue            workqueue.TypedRateLimitingInterface[string]
 	updateVpcSubnetQueue          workqueue.TypedRateLimitingInterface[string]
 	vpcNatGwKeyMutex              keymutex.KeyMutex
-	vpcNatGwExecKeyMutex          keymutex.KeyMutex
+	// qosNatGwKeyMutex is the only QoS data-plane lock. It is keyed by NAT gateway,
+	// never by EIP or QoS policy, because every QoS rule on one gateway shares its
+	// HTB root, IFB device and ingress redirect state.
+	qosNatGwKeyMutex     keymutex.KeyMutex
+	vpcNatGwExecKeyMutex keymutex.KeyMutex
 
 	vpcEgressGatewayLister           kubeovnlister.VpcEgressGatewayLister
 	vpcEgressGatewaySynced           cache.InformerSynced
@@ -261,6 +267,7 @@ type Controller struct {
 	endpointSlicesSynced          cache.InformerSynced
 	epsIndexer                    cache.Indexer
 	addOrUpdateEndpointSliceQueue workqueue.TypedRateLimitingInterface[string]
+	priorityEndpointSliceQueue    workqueue.TypedRateLimitingInterface[string]
 	epKeyMutex                    keymutex.KeyMutex
 	serviceL2StatusMutex          sync.RWMutex
 	serviceL2StatusIndexer        cache.Indexer
@@ -533,6 +540,7 @@ func Run(ctx context.Context, config *Configuration) {
 		updateVpcSnatQueue:               newTypedRateLimitingQueue("UpdateVpcSnat", custCrdRateLimiter),
 		updateVpcSubnetQueue:             newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
 		vpcNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
+		qosNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
 		vpcNatGwExecKeyMutex:             keymutex.NewHashed(numKeyLocks),
 		vpcEgressGatewayLister:           vpcEgressGatewayInformer.Lister(),
 		vpcEgressGatewaySynced:           vpcEgressGatewayInformer.Informer().HasSynced,
@@ -643,6 +651,7 @@ func Run(ctx context.Context, config *Configuration) {
 		endpointSlicesLister:          endpointSliceInformer.Lister(),
 		endpointSlicesSynced:          endpointSliceInformer.Informer().HasSynced,
 		addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
+		priorityEndpointSliceQueue:    newTypedRateLimitingQueue[string]("PriorityUpdateEndpointSlice", nil),
 		epKeyMutex:                    keymutex.NewHashed(numKeyLocks),
 
 		deploymentsLister:  deploymentInformer.Lister(),
@@ -737,9 +746,13 @@ func Run(ctx context.Context, config *Configuration) {
 	} else {
 		go controller.runDisabledACLSamplingCleanup(ctx)
 	}
-	if config.EnableLb {
-		controller.routerLBRuleLister = routerLBRuleInformer.Lister()
-		controller.routerLBRuleSynced = routerLBRuleInformer.Informer().HasSynced
+	controller.routerLBRuleLister = routerLBRuleInformer.Lister()
+	controller.routerLBRuleSynced = routerLBRuleInformer.Informer().HasSynced
+	controller.switchLBRuleLister = switchLBRuleInformer.Lister()
+	controller.switchLBRuleSynced = switchLBRuleInformer.Informer().HasSynced
+	controller.vpcDNSLister = vpcDNSInformer.Lister()
+	controller.vpcDNSSynced = vpcDNSInformer.Informer().HasSynced
+	if config.EnableOvnLB {
 		controller.addRouterLBRuleQueue = newTypedRateLimitingQueue("AddRouterLBRule", custCrdRateLimiter)
 		controller.delRouterLBRuleQueue = newTypedRateLimitingQueue(
 			"DeleteRouterLBRule",
@@ -756,8 +769,6 @@ func Run(ctx context.Context, config *Configuration) {
 			),
 		)
 
-		controller.switchLBRuleLister = switchLBRuleInformer.Lister()
-		controller.switchLBRuleSynced = switchLBRuleInformer.Informer().HasSynced
 		controller.addSwitchLBRuleQueue = newTypedRateLimitingQueue("AddSwitchLBRule", custCrdRateLimiter)
 		controller.delSwitchLBRuleQueue = newTypedRateLimitingQueue(
 			"DeleteSwitchLBRule",
@@ -774,8 +785,6 @@ func Run(ctx context.Context, config *Configuration) {
 			),
 		)
 
-		controller.vpcDNSLister = vpcDNSInformer.Lister()
-		controller.vpcDNSSynced = vpcDNSInformer.Informer().HasSynced
 		controller.addOrUpdateVpcDNSQueue = newTypedRateLimitingQueue("AddOrUpdateVpcDns", custCrdRateLimiter)
 		controller.delVpcDNSQueue = newTypedRateLimitingQueue("DeleteVpcDns", custCrdRateLimiter)
 	}
@@ -877,9 +886,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
 		controller.ovnDnatRuleSynced,
 	}
-	if controller.config.EnableLb {
-		cacheSyncs = append(cacheSyncs, controller.routerLBRuleSynced, controller.switchLBRuleSynced, controller.vpcDNSSynced)
-	}
+	cacheSyncs = append(cacheSyncs, controller.routerLBRuleSynced, controller.switchLBRuleSynced, controller.vpcDNSSynced)
 	if controller.config.EnableNP {
 		cacheSyncs = append(cacheSyncs, controller.npsSynced)
 	}
@@ -1093,7 +1100,7 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add qos policy event handler")
 	}
 
-	if config.EnableLb {
+	if config.EnableOvnLB {
 		if _, err = routerLBRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddRouterLBRule,
 			UpdateFunc: controller.enqueueUpdateRouterLBRule,
@@ -1227,6 +1234,12 @@ func (c *Controller) Run(ctx context.Context) {
 	if err := c.syncFinalizers(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize crd finalizers")
 	}
+	if err := c.syncNatUIDLabels(); err != nil {
+		// References that could not be migrated keep their previous labels and are migrated on
+		// the next start, but the controller must stay up: a single object that a webhook or an
+		// inconsistent spec rejects would otherwise restart the controller in a loop.
+		klog.Errorf("failed to migrate NAT UID labels: %v", err)
+	}
 
 	if err := c.InitIPAM(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ipam")
@@ -1330,6 +1343,7 @@ func (c *Controller) shutdown() {
 	c.updateServiceQueue.ShutDown()
 	c.addOrUpdateNftableLbSvcQueue.ShutDown()
 	c.addOrUpdateEndpointSliceQueue.ShutDown()
+	c.priorityEndpointSliceQueue.ShutDown()
 
 	c.addVlanQueue.ShutDown()
 	c.delVlanQueue.ShutDown()
@@ -1351,7 +1365,7 @@ func (c *Controller) shutdown() {
 	c.addOrUpdateVpcEgressGatewayQueue.ShutDown()
 	c.delVpcEgressGatewayQueue.ShutDown()
 
-	if c.config.EnableLb {
+	if c.config.EnableOvnLB {
 		c.addRouterLBRuleQueue.ShutDown()
 		c.delRouterLBRuleQueue.ShutDown()
 		c.updateRouterLBRuleQueue.ShutDown()
@@ -1527,7 +1541,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}
 	}
 
-	if c.config.EnableLb {
+	if c.config.EnableOvnLB {
 		go wait.Until(runWorker("add service", c.addServiceQueue, c.handleAddService), time.Second, ctx.Done())
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 		go wait.Until(runWorker("delete service", c.deleteServiceQueue, c.handleDeleteService), time.Second, ctx.Done())
@@ -1552,6 +1566,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(func() {
 			c.resyncVpcDNSConfig()
 		}, 5*time.Second, ctx.Done())
+		go wait.Until(runWorker("priority add/update endpoint slice", c.priorityEndpointSliceQueue, c.handleUpdateEndpointSlice), time.Second, ctx.Done())
 	}
 
 	for range c.config.WorkerNum {
@@ -1565,7 +1580,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("update status of ippool", c.updateIPPoolStatusQueue, c.handleUpdateIPPoolStatus), time.Second, ctx.Done())
 		go wait.Until(runWorker("virtual port for subnet", c.syncVirtualPortsQueue, c.syncVirtualPort), time.Second, ctx.Done())
 
-		if c.config.EnableLb {
+		if c.config.EnableOvnLB {
 			go wait.Until(runWorker("update service", c.updateServiceQueue, c.handleUpdateService), time.Second, ctx.Done())
 			go wait.Until(runWorker("add/update endpoint slice", c.addOrUpdateEndpointSliceQueue, c.handleUpdateEndpointSlice), time.Second, ctx.Done())
 		}
@@ -1739,7 +1754,7 @@ func (c *Controller) initResourceOnce() {
 	if err := c.initVpcNatGw(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize vpc nat gateways")
 	}
-	if c.config.EnableLb {
+	if c.config.EnableOvnLB {
 		if err := c.initVpcDNSConfig(); err != nil {
 			util.LogFatalAndExit(err, "failed to initialize vpc-dns")
 		}

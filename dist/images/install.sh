@@ -36,8 +36,10 @@ LS_DNAT_MOD_DL_DST=${LS_DNAT_MOD_DL_DST:-true}
 LS_CT_SKIP_DST_LPORT_IPS=${LS_CT_SKIP_DST_LPORT_IPS:-true}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-false}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
+# Set to false to preserve CNI plugins already installed on the host.
+INSTALL_CNI_PLUGINS=${INSTALL_CNI_PLUGINS:-true}
 ENABLE_LB_SVC=${ENABLE_LB_SVC:-false}
-ENABLE_NFTABLE_LB_SVC=${ENABLE_NFTABLE_LB_SVC:-false}
+ENABLE_NFTABLE_LB_SVC=${ENABLE_NFTABLE_LB_SVC:-true}
 ENABLE_NAT_GW=${ENABLE_NAT_GW:-true}
 ENABLE_KEEP_VM_IP=${ENABLE_KEEP_VM_IP:-true}
 ENABLE_ARP_DETECT_IP_CONFLICT=${ENABLE_ARP_DETECT_IP_CONFLICT:-true}
@@ -61,6 +63,7 @@ IFACE=${IFACE:-}
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_TPROXY=${ENABLE_TPROXY:-false}
+ENABLE_RECOMPUTE=${ENABLE_RECOMPUTE:-false}
 OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
@@ -121,6 +124,10 @@ RUN_AS_USER=65534 # run as nobody
 if [ "$ENABLE_OVN_IPSEC" = "true" -o -n "$DEBUG_WRAPPER" ]; then
   RUN_AS_USER=0
 fi
+
+CNI_SERVER_CAPABILITIES="                - NET_ADMIN
+                - NET_BIND_SERVICE
+                - NET_RAW"
 
 KUBELET_DIR=${KUBELET_DIR:-/var/lib/kubelet}
 LOG_DIR=${LOG_DIR:-/var/log}
@@ -3335,6 +3342,12 @@ spec:
                 type: string
               dhcpV6OptionsUUID:
                 type: string
+              gatewayMAC:
+                description: |-
+                  GatewayMAC is the mac address of the subnet's logical router port, recorded so
+                  the validating webhook can independently verify a switch_lb_rule vip mac repair
+                  (see pkg/webhook/vip.go) without needing access to the controller's in-memory IPAM.
+                type: string
               mcastQuerierIP:
                 type: string
               mcastQuerierMAC:
@@ -4691,6 +4704,11 @@ spec:
                 x-kubernetes-validations:
                 - message: This field is immutable.
                   rule: self == oldSelf
+              priorityClassName:
+                description: |-
+                  Optional PriorityClass name applied to the workload pods.
+                  If not specified, the cluster's default Pod priority applies.
+                type: string
               replicas:
                 default: 1
                 description: workload replicas
@@ -7960,6 +7978,40 @@ subjects:
   - kind: ServiceAccount
     name: ovn
     namespace: kube-system
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kube-ovn-controller
+  namespace: kube-system
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kube-ovn-controller
+roleRef:
+  name: system:ovn
+  kind: ClusterRole
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+  - kind: ServiceAccount
+    name: kube-ovn-controller
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: kube-ovn-controller
+  namespace: kube-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: extension-apiserver-authentication-reader
+subjects:
+  - kind: ServiceAccount
+    name: kube-ovn-controller
+    namespace: kube-system
 EOF
 
 cat <<EOF > kube-ovn-cni-sa.yaml
@@ -8817,6 +8869,60 @@ echo ""
 
 echo "[Step 3/6] Install Kube-OVN"
 
+TPROXY_CONTAINER=""
+TPROXY_SECURITY_CONTEXT=""
+TPROXY_SOCKET_MOUNT=""
+TPROXY_SOCKET_VOLUME=""
+if [[ "$ENABLE_TPROXY" == "true" ]]; then
+  TPROXY_SECURITY_CONTEXT="        fsGroup: 65534"
+  TPROXY_CONTAINER=$(cat <<EOF
+      - name: tproxy
+        image: "$REGISTRY/kube-ovn:$VERSION"
+        imagePullPolicy: $IMAGE_PULL_POLICY
+        command:
+          - /kube-ovn/kube-ovn-tproxy
+        securityContext:
+          runAsUser: 65534
+          runAsNonRoot: true
+          runAsGroup: 0
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+            add:
+              - SYS_ADMIN
+        volumeMounts:
+          - name: tproxy-socket
+            mountPath: /run/kube-ovn-tproxy
+          - name: host-run-ovs
+            mountPath: /run/openvswitch
+            readOnly: true
+          - name: host-ns
+            mountPath: /var/run/netns
+            readOnly: true
+            mountPropagation: HostToContainer
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+EOF
+  )
+  TPROXY_SOCKET_MOUNT=$(cat <<EOF
+          - name: tproxy-socket
+            mountPath: /run/kube-ovn-tproxy
+EOF
+  )
+  TPROXY_SOCKET_VOLUME=$(cat <<EOF
+        - name: tproxy-socket
+          emptyDir: {}
+EOF
+  )
+fi
+
 cat <<EOF > kube-ovn.yaml
 ---
 kind: ConfigMap
@@ -8885,7 +8991,7 @@ spec:
                   app: kube-ovn-controller
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
-      serviceAccountName: ovn
+      serviceAccountName: kube-ovn-controller
       automountServiceAccountToken: true
       hostNetwork: true
       securityContext:
@@ -9088,6 +9194,7 @@ spec:
       hostNetwork: true
       hostPID: true
       securityContext:
+${TPROXY_SECURITY_CONTEXT}
         seccompProfile:
           type: RuntimeDefault
       initContainers:
@@ -9098,6 +9205,7 @@ spec:
           - -xec
           - |
             chmod +t /usr/local/sbin
+            chown -R nobody: /var/log/kube-ovn
             iptables -V
         securityContext:
           allowPrivilegeEscalation: true
@@ -9122,6 +9230,7 @@ spec:
         imagePullPolicy: $IMAGE_PULL_POLICY
         command:
           - /kube-ovn/install-cni.sh
+          - --install-cni-plugins=$INSTALL_CNI_PLUGINS
           - --cni-conf-name=${CNI_CONFIG_PRIORITY}-kube-ovn.conflist
         env:
           - name: POD_IPS
@@ -9164,6 +9273,7 @@ spec:
           - --gateway-netfilter-detect-timeout=$GATEWAY_NETFILTER_DETECT_TIMEOUT
           - --kubelet-dir=$KUBELET_DIR
           - --enable-tproxy=$ENABLE_TPROXY
+          - --enable-recompute=$ENABLE_RECOMPUTE
           - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
           - --secure-serving=${SECURE_SERVING}
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
@@ -9176,16 +9286,13 @@ spec:
           - --acl-sampling-set-id=$ACL_SAMPLING_SET_ID
           - --acl-sampling-local-group-id=$ACL_SAMPLING_LOCAL_GROUP_ID
         securityContext:
-          runAsUser: 0
+          runAsGroup: ${RUN_AS_USER}
+          runAsUser: ${RUN_AS_USER}
           privileged: false
+          allowPrivilegeEscalation: true
           capabilities:
             add:
-              - NET_ADMIN
-              - NET_BIND_SERVICE
-              - NET_RAW
-              - SYS_ADMIN
-              - SYS_NICE
-              - SYS_PTRACE
+${CNI_SERVER_CAPABILITIES}
         env:
           - name: ENABLE_SSL
             value: "$ENABLE_SSL"
@@ -9214,6 +9321,7 @@ spec:
           - name: DBUS_SYSTEM_BUS_ADDRESS
             value: "unix:path=/host/var/run/dbus/system_bus_socket"
         volumeMounts:
+${TPROXY_SOCKET_MOUNT}
           - name: usr-local-sbin
             mountPath: /usr/local/sbin
           - name: host-modules
@@ -9276,9 +9384,11 @@ spec:
             cpu: 1000m
             memory: 1Gi
             ephemeral-storage: 1Gi
+${TPROXY_CONTAINER}
       nodeSelector:
         kubernetes.io/os: "linux"
       volumes:
+${TPROXY_SOCKET_VOLUME}
         - name: usr-local-sbin
           emptyDir: {}
         - name: host-modules
@@ -9893,6 +10003,109 @@ kubectl wait pod --for=condition=Ready -l app=kube-ovn-pinger -n kube-system --t
 echo "-------------------------------"
 echo ""
 
+# Node operations use an independent agent, including install-time diagnostics.
+cat <<EOF > kubectl-ko-node-agent.yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: kubectl-ko-node-agent
+  namespace: kube-system
+  labels:
+    app: kubectl-ko-node-agent
+    component: diagnostics
+spec:
+  selector:
+    matchLabels:
+      app: kubectl-ko-node-agent
+  template:
+    metadata:
+      labels:
+        app: kubectl-ko-node-agent
+        component: diagnostics
+    spec:
+      hostNetwork: true
+      hostPID: true
+      priorityClassName: system-node-critical
+      tolerations:
+        - operator: Exists
+      nodeSelector:
+        kubernetes.io/os: linux
+      automountServiceAccountToken: false
+      containers:
+        - name: agent
+          image: $REGISTRY/kube-ovn:$VERSION
+          imagePullPolicy: $IMAGE_PULL_POLICY
+          command: ["/kube-ovn/kubectl-ko-node-agent"]
+          securityContext:
+            privileged: true
+            runAsUser: 0
+          volumeMounts:
+            - name: host-run-ovn
+              mountPath: /var/run/ovn
+            - name: host-run-ovs
+              mountPath: /var/run/openvswitch
+              mountPropagation: HostToContainer
+            - name: host-netns
+              mountPath: /var/run/netns
+              mountPropagation: HostToContainer
+            - name: host-etc-ovn
+              mountPath: /etc/ovn
+            - name: host-logs-ovn
+              mountPath: /var/log/ovn
+              readOnly: true
+            - name: host-logs-ovs
+              mountPath: /var/log/openvswitch
+              readOnly: true
+            - name: host-logs-kube-ovn
+              mountPath: /var/log/kube-ovn
+              readOnly: true
+            - name: host-cni-conf
+              mountPath: /etc/cni/net.d
+              readOnly: true
+            - name: host-proc
+              mountPath: /host/proc
+              readOnly: true
+      volumes:
+        - name: host-run-ovn
+          hostPath:
+            path: /run/ovn
+            type: DirectoryOrCreate
+        - name: host-run-ovs
+          hostPath:
+            path: /run/openvswitch
+            type: DirectoryOrCreate
+        - name: host-netns
+          hostPath:
+            path: /var/run/netns
+            type: DirectoryOrCreate
+        - name: host-etc-ovn
+          hostPath:
+            path: /etc/origin/ovn
+            type: DirectoryOrCreate
+        - name: host-logs-ovn
+          hostPath:
+            path: $LOG_DIR/ovn
+            type: DirectoryOrCreate
+        - name: host-logs-ovs
+          hostPath:
+            path: $LOG_DIR/openvswitch
+            type: DirectoryOrCreate
+        - name: host-logs-kube-ovn
+          hostPath:
+            path: $LOG_DIR/kube-ovn
+            type: DirectoryOrCreate
+        - name: host-cni-conf
+          hostPath:
+            path: $CNI_CONF_DIR
+            type: DirectoryOrCreate
+        - name: host-proc
+          hostPath:
+            path: /proc
+            type: Directory
+EOF
+kubectl apply -f kubectl-ko-node-agent.yaml
+kubectl rollout status daemonset/kubectl-ko-node-agent -n kube-system --timeout 120s
+
 echo "[Step 5/6] Add kubectl plugin PATH"
 
 if ! sh -c "echo \":$PATH:\" | grep -q \":/usr/local/bin:\""; then
@@ -9903,11 +10116,13 @@ if ! sh -c "echo \":$PATH:\" | grep -q \":/usr/local/bin:\""; then
 fi
 
 echo "[Step 6/6] Run network diagnose"
-kubectl cp kube-system/"$(kubectl -n kube-system get pods -o wide | grep cni | awk '{print $1}' | awk 'NR==1{print}')":/kube-ovn/kubectl-ko /usr/local/bin/kubectl-ko
+KO_AGENT_POD=$(kubectl -n kube-system get pods -l app=kubectl-ko-node-agent --field-selector=status.phase=Running -o jsonpath='{.items[0].metadata.name}')
+: "${KO_AGENT_POD:?No running kubectl-ko-node-agent Pod found}"
+kubectl cp -c agent "kube-system/${KO_AGENT_POD}:/kube-ovn/kubectl-ko" /usr/local/bin/kubectl-ko
 chmod +x /usr/local/bin/kubectl-ko
 # show pod status in kube-system namespace before diagnose
 kubectl get pod -n kube-system -o wide
-kubectl ko diagnose all
+kubectl ko diagnose cluster
 
 echo "-------------------------------"
 echo "

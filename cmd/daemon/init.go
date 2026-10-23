@@ -3,14 +3,14 @@ package main
 import (
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog/v2"
-	"kernel.org/pub/linux/libs/security/libcap/cap"
+	libcap "kernel.org/pub/linux/libs/security/libcap/cap"
 
 	"github.com/kubeovn/kube-ovn/pkg/daemon"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func printCaps() {
-	currentCaps := cap.GetProc()
+	currentCaps := libcap.GetProc()
 	klog.Infof("current capabilities: %s", currentCaps.String())
 }
 

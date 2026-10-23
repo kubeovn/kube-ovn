@@ -65,6 +65,11 @@ spec:
                 fieldRef:
                   apiVersion: v1
                   fieldPath: status.podIP
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: metadata.namespace
             {{- with .Values.validatingWebhook.extraEnv }}
               {{- toYaml . | nindent 12 }}
             {{- end }}

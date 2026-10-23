@@ -234,3 +234,59 @@ require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" dual
 require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" ipv4 ha 3
 require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" ipv6 ha 3
 require_workflow_case "$SCRIPT_DIR/../.github/workflows/scheduled-e2e.yaml" dual ha 3
+
+# Variables and callbacks below are used by the dynamically sourced install function.
+# shellcheck disable=SC2034,SC2329
+test_control_plane_wait() (
+  local rollout_exit_code=$1
+  local MGMT_KIND_NAME=wait-test
+  local HCP_NAMESPACE=wait-test-hcp
+  local JOB_DIR="$TMP_DIR/control-plane-wait-$rollout_exit_code"
+  local CHART_DIR="$SCRIPT_DIR/../charts/kube-ovn"
+  mkdir -p "$JOB_DIR"
+
+  # Exercise the install function without provisioning the management cluster.
+  # shellcheck disable=SC1090
+  source <(sed -n '/^install_control_plane() {$/,/^}$/p' "$SCRIPT")
+
+  cmd_render_mgmt_values() { echo 'installMode: controlPlaneOnly'; }
+  helm() { touch "$JOB_DIR/installed"; }
+  kubectl() {
+    case " $* " in
+      *' create namespace '* | *' apply -f '* ) return 0 ;;
+      *' wait '* )
+        # Helm has created the StatefulSet, but its controller has no Pods yet.
+        echo 'error: no matching resources found' >&2
+        return 1
+        ;;
+      *' rollout status '* )
+        [ -f "$JOB_DIR/installed" ] || return 1
+        [ "$*" = "--context=kind-$MGMT_KIND_NAME -n $HCP_NAMESPACE rollout status statefulset/ovn-central --timeout=300s" ] || return 1
+        echo rollout >> "$JOB_DIR/calls"
+        return "$rollout_exit_code"
+        ;;
+      *) echo "unexpected kubectl call: $*" >&2; return 1 ;;
+    esac
+  }
+  diagnose_mgmt_cluster() { echo diagnostics >> "$JOB_DIR/calls"; }
+  verify_hcp_ovn_services() { echo services >> "$JOB_DIR/calls"; }
+
+  if install_control_plane > "$JOB_DIR/output" 2>&1; then
+    if [ "$rollout_exit_code" -ne 0 ]; then
+      echo 'failed rollout should fail the install' >&2
+      exit 1
+    fi
+    printf 'rollout\nservices\n' > "$JOB_DIR/expected"
+  else
+    if [ "$rollout_exit_code" -eq 0 ]; then
+      cat "$JOB_DIR/output" >&2
+      echo 'install should wait for the StatefulSet when no Pods exist yet' >&2
+      exit 1
+    fi
+    printf 'rollout\ndiagnostics\n' > "$JOB_DIR/expected"
+  fi
+  diff -u "$JOB_DIR/expected" "$JOB_DIR/calls"
+)
+
+test_control_plane_wait 0
+test_control_plane_wait 1

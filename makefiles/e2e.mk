@@ -25,6 +25,33 @@ ifeq ($(shell echo $(E2E_BRANCH) | grep -o ^release-),release-)
 VERSION_NUM = $(subst release-,,$(E2E_BRANCH))
 VER_MAJOR = $(shell echo $(VERSION_NUM) | cut -f1 -d.)
 VER_MINOR = $(shell echo $(VERSION_NUM) | cut -f2 -d.)
+endif
+
+# OVN 26.03 distributed load balancers provide the implementation required by
+# Kubernetes' internalTrafficPolicy=Local network tests. These tests are plain
+# ginkgo.It cases rather than ConformanceIt cases, so include them explicitly
+# for release-1.17 or newer. Match both the service and conntrack
+# test naming variants used by the Kubernetes E2E suite. Service
+# trafficDistribution coverage is also outside ConformanceIt. Select the
+# non-deprecated case names explicitly: these upstream Services use the default
+# ClusterIP type, while deprecated or future NodePort and LoadBalancer cases
+# must not be included.
+ifeq ($(shell test $(VER_MAJOR) -gt 1 -o \( $(VER_MAJOR) -eq 1 -a $(VER_MINOR) -ge 17 \) && echo true),true)
+ifneq ($(E2E_CILIUM_CHAINING),true)
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*[Ii]nternalTrafficPolicy.*Local"
+# Host-network endpoints do not have Kube-OVN logical switch ports and cannot
+# be represented by the distributed LB backend mappings.
+K8S_CONFORMANCE_E2E_SKIP += "sig-network.*[Ii]nternalTrafficPolicy.*Local.*hostNetwork: true"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint in the same zone when using PreferSameZone$$"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic correctly between pods on multiple nodes when using PreferSameZone$$"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint on the same node or fall back to same zone when using PreferSameNode$$"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Traffic Distribution.*should route traffic to an endpoint on the same node when using PreferSameNode and fall back when the endpoint becomes unavailable$$"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*session affinity timeout work for service with type clusterIP"
+K8S_CONFORMANCE_E2E_FOCUS += "sig-network.*Networking.*Granular Checks: Services.*client IP based session affinity"
+endif
+endif
+
+ifeq ($(shell echo $(E2E_BRANCH) | grep -o ^release-),release-)
 ifeq ($(shell test $(VER_MAJOR) -lt 1 -o \( $(VER_MAJOR) -eq 1 -a $(VER_MINOR) -lt 14 \) && echo true),true)
 K8S_CONFORMANCE_E2E_SKIP += "sig-network.*EndpointSlice"
 endif
@@ -152,7 +179,7 @@ kube-ovn-conformance-e2e:
 	E2E_BRANCH=$(E2E_BRANCH) \
 	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
-	$(GINKGO_E2E_RUN_PARALLEL) --timeout=35m --focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)
+	$(GINKGO_E2E_RUN_PARALLEL) --timeout=60m --focus=CNI:Kube-OVN ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-ic-conformance-e2e
 kube-ovn-ic-conformance-e2e:
@@ -396,3 +423,13 @@ kube-ovn-rlr-e2e:
 	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
 	$(GINKGO_E2E_RUN) --timeout=20m \
 		--focus="\[group:rlr\]" ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)
+
+.PHONY: kube-ovn-vpc-external-e2e
+kube-ovn-vpc-external-e2e:
+	$(call kind_load_image,kube-ovn,$(AGNHOST_IMAGE),1)
+	$(GINKGO_E2E_BUILD) ./test/e2e/kube-ovn
+	E2E_BRANCH=$(E2E_BRANCH) \
+	E2E_IP_FAMILY=$(E2E_IP_FAMILY) \
+	E2E_NETWORK_MODE=$(E2E_NETWORK_MODE) \
+	$(GINKGO_E2E_RUN) --timeout=20m \
+		--focus="\[group:vpc-external\]" ./test/e2e/kube-ovn/kube-ovn.test -- $(TEST_BIN_ARGS)

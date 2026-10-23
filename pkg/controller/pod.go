@@ -191,6 +191,7 @@ func isPodStatusPhaseAlive(p *v1.Pod) bool {
 
 func (c *Controller) enqueueAddPod(obj any) {
 	p := obj.(*v1.Pod)
+	c.enqueueVMIMigrationForBoundLauncher(nil, p)
 	c.enqueueNftableLbServicesForPod(p)
 	if p.Spec.HostNetwork {
 		return
@@ -295,8 +296,9 @@ func (c *Controller) enqueueDeletePod(obj any) {
 
 	if c.config.EnableANP {
 		nsLabels := c.getNsLabels(p.Namespace, p.Name)
-		c.updateAnpsByLabelsMatch(nsLabels, p.Labels)
-		c.updateCnpsByLabelsMatch(nsLabels, p.Labels)
+		podLabels := labelsForPodEvent(p.Labels)
+		c.updateAnpsByLabelsMatch(nsLabels, podLabels)
+		c.updateCnpsByLabelsMatch(nsLabels, podLabels)
 	}
 
 	key := cache.MetaObjectToName(p).String()
@@ -308,6 +310,8 @@ func (c *Controller) enqueueDeletePod(obj any) {
 func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
+	c.enqueueVpcNatGatewayRestart(oldPod, newPod)
+	c.enqueueVMIMigrationForBoundLauncher(oldPod, newPod)
 	// Only kube-ovn network annotations can change the backend NIC resolution without an
 	// EndpointSlice update (the k8s endpointslice controller already emits EndpointSlice
 	// updates for readiness, deletion, PodIP and label changes). Re-checking every status
@@ -360,7 +364,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		newNp := c.podMatchNetworkPolicies(newPod)
 		if !maps.Equal(oldPod.Labels, newPod.Labels) {
 			oldNp := c.podMatchNetworkPolicies(oldPod)
-			for _, np := range util.DiffStringSlice(oldNp, newNp) {
+			for _, np := range util.UnionStringSlice(oldNp, newNp) {
 				c.updateNpQueue.Add(np)
 			}
 		}
@@ -368,7 +372,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		for _, podNet := range podNets {
 			oldAllocated := oldPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
 			newAllocated := newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
-			if oldAllocated != newAllocated {
+			oldRouted := oldPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)]
+			newRouted := newPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)]
+			if oldAllocated != newAllocated || oldRouted != newRouted {
 				for _, np := range newNp {
 					klog.V(3).Infof("enqueue update network policy %s for pod %s", np, key)
 					c.updateNpQueue.Add(np)
@@ -380,17 +386,22 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 
 	if c.config.EnableANP {
 		nsLabels := c.getNsLabels(newPod.Namespace, newPod.Name)
+		oldPodLabels := labelsForPodEvent(oldPod.Labels)
+		newPodLabels := labelsForPodEvent(newPod.Labels)
 		if !maps.Equal(oldPod.Labels, newPod.Labels) {
-			c.updateAnpsByLabelsMatch(nsLabels, newPod.Labels)
-			c.updateCnpsByLabelsMatch(nsLabels, newPod.Labels)
+			change := labelChange{nsLabels, nsLabels, oldPodLabels, newPodLabels}
+			c.updateAnpsByLabelsChange(change)
+			c.updateCnpsByLabelsChange(change)
 		}
 
 		for _, podNet := range podNets {
 			oldAllocated := oldPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
 			newAllocated := newPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]
-			if oldAllocated != newAllocated {
-				c.updateAnpsByLabelsMatch(nsLabels, newPod.Labels)
-				c.updateCnpsByLabelsMatch(nsLabels, newPod.Labels)
+			oldRouted := oldPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)]
+			newRouted := newPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)]
+			if oldAllocated != newAllocated || oldRouted != newRouted {
+				c.updateAnpsByLabelsMatch(nsLabels, newPodLabels)
+				c.updateCnpsByLabelsMatch(nsLabels, newPodLabels)
 				break
 			}
 		}
@@ -459,6 +470,14 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 			break
 		}
 	}
+}
+
+// labelsForPodEvent distinguishes an unlabeled pod from a namespace event, which passes nil.
+func labelsForPodEvent(podLabels map[string]string) map[string]string {
+	if podLabels == nil {
+		return map[string]string{}
+	}
+	return podLabels
 }
 
 func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
@@ -550,6 +569,9 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		return nil
 	}
 	needAllocatePodNets := needAllocateSubnets(pod, podNets)
+	if len(needAllocatePodNets) != 0 && c.isCurrentMigrationSourcePod(pod) {
+		needAllocatePodNets = nil
+	}
 	if len(needAllocatePodNets) != 0 {
 		if pod, err = c.reconcileAllocateSubnets(pod, needAllocatePodNets); err != nil {
 			klog.Error(err)
@@ -560,12 +582,6 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 			return nil
 		}
 	}
-
-	// A restarted vpc-nat-gw container loses the state the gateway script keeps in its writable
-	// layer, so the Pod has to be recreated for its init flow to run again. Workload status only
-	// carries replica counts and cannot report a restart, and this is not an allocation event
-	// either, so it needs its own trigger.
-	c.enqueueVpcNatGatewayRestart(pod)
 
 	// Reconcile per-port DHCP options for pods that carry DHCP annotations.
 	// This handles annotation add/change on already-running pods without requiring a pod restart.
@@ -595,6 +611,28 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 		c.recorder.Eventf(pod, v1.EventTypeNormal, "PodNetworkUpdated", "%s", strings.TrimPrefix(strings.Join(details, "; "), "; "))
 	}
 	return nil
+}
+
+// isCurrentMigrationSourcePod reports whether a virt-launcher pod is the source
+// of the migration currently recorded on its VMI. A completed migration target
+// keeps its old migration labels and annotations, so those metadata alone cannot
+// distinguish it from the target of a later migration.
+func (c *Controller) isCurrentMigrationSourcePod(pod *v1.Pod) bool {
+	isVM, vmName := isVMPod(pod)
+	if !isVM || c.config.KubevirtClient == nil || pod.Annotations[kubevirtv1.MigrationJobNameAnnotation] == "" {
+		return false
+	}
+
+	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(pod.Namespace).Get(context.Background(), vmName, metav1.GetOptions{})
+	if err != nil {
+		klog.V(3).Infof("failed to get VMI %s/%s while checking migration source pod: %v", pod.Namespace, vmName, err)
+		return false
+	}
+	return isMigrationSourcePod(pod.Name, vmi.Status.MigrationState)
+}
+
+func isMigrationSourcePod(podName string, state *kubevirtv1.VirtualMachineInstanceMigrationState) bool {
+	return state != nil && state.SourcePod == podName && state.TargetPod != "" && state.TargetPod != podName
 }
 
 // subnetDHCPOptionsUUIDs returns the subnet-level DHCP option UUIDs from the subnet status.
@@ -990,16 +1028,18 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 			}
 		}
 
-		if (!c.config.EnableLb || (subnet.Spec.EnableLb == nil || !*subnet.Spec.EnableLb)) &&
+		if (!c.config.EnableOvnLB || (subnet.Spec.EnableLb == nil || !*subnet.Spec.EnableLb)) &&
 			subnet.Spec.Vpc == c.config.ClusterRouter &&
 			subnet.Spec.U2OInterconnection &&
 			subnet.Spec.Vlan != "" &&
 			!subnet.Spec.LogicalGateway {
 			// remove lsp from other port groups
 			// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-			if err = c.OVNNbClient.RemovePortFromPortGroups(portName, subnetPortGroups...); err != nil {
-				klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
-				return err
+			if len(subnetPortGroups) != 0 {
+				if err := c.OVNNbClient.RemovePortFromPortGroups(portName, subnetPortGroups...); err != nil {
+					klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
+					return err
+				}
 			}
 			// add lsp to the port group
 			if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
@@ -1011,13 +1051,19 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 		if podIP != "" && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc == c.config.ClusterRouter {
 			// remove lsp from other port groups
 			// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-			if err = c.OVNNbClient.RemovePortFromPortGroups(portName, nodePortGroups...); err != nil {
-				klog.Errorf("failed to remove port %s from port groups %v: %v", portName, nodePortGroups, err)
-				return err
+			if len(nodePortGroups) != 0 {
+				if err := c.OVNNbClient.RemovePortFromPortGroups(portName, nodePortGroups...); err != nil {
+					klog.Errorf("failed to remove port %s from port groups %v: %v", portName, nodePortGroups, err)
+					return err
+				}
 			}
 			// add lsp to the port group
 			if err = c.OVNNbClient.PortGroupAddPorts(nodePortGroup, portName); err != nil {
 				klog.Errorf("failed to add port %s to port group %s: %v", portName, nodePortGroup, err)
+				return err
+			}
+			if err := c.syncServiceProxyFallbackPodPort(subnet, node.Name, portName); err != nil {
+				klog.Errorf("failed to update service proxy fallback port groups for port %s: %v", portName, err)
 				return err
 			}
 
@@ -1090,9 +1136,11 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 
 							// remove lsp from other port groups
 							// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-							if err = c.OVNNbClient.RemovePortFromPortGroups(portName, subnetPortGroups...); err != nil {
-								klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
-								return err
+							if len(subnetPortGroups) != 0 {
+								if err := c.OVNNbClient.RemovePortFromPortGroups(portName, subnetPortGroups...); err != nil {
+									klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
+									return err
+								}
 							}
 							if err := c.OVNNbClient.PortGroupAddPorts(pgName, portName); err != nil {
 								klog.Errorf("failed to add port %s to port group %s: %v", portName, pgName, err)
@@ -1281,13 +1329,25 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 	var hasAliveVMSibling bool
 	isVMPod, vmName := isVMPod(pod)
 	if isVMPod && c.config.EnableKeepVMIP {
-		for _, port := range ports {
-			stage = "cleanLogicalSwitchPortMigrateOptions"
-			if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
-				err = fmt.Errorf("failed to clean migrate options for vm lsp %s, %w", port.Name, err)
-				klog.Error(err)
-				return err
+		// Every virt-launcher pod of the VM resolves to the same shared LSPs, so only the pods
+		// the VM is actually live on may unpin them
+		stage = "checkMigrateOptionsOwner"
+		ownsMigrateOptions, err := c.deletedPodOwnsMigrateOptions(pod, vmName)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		if ownsMigrateOptions {
+			for _, port := range ports {
+				stage = "cleanLogicalSwitchPortMigrateOptions"
+				if err := c.OVNNbClient.CleanLogicalSwitchPortMigrateOptions(port.Name); err != nil {
+					err = fmt.Errorf("failed to clean migrate options for vm lsp %s, %w", port.Name, err)
+					klog.Error(err)
+					return err
+				}
 			}
+		} else {
+			klog.Infof("skip cleaning migrate options of vm %s/%s, pod %s is not one the VM is live on", pod.Namespace, vmName, pod.Name)
 		}
 		if pod.DeletionTimestamp != nil {
 			klog.Infof("handle deletion of vm pod %s", podKey)
@@ -1491,18 +1551,6 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				// Trigger subnet status update after IPAM release
 				// This is needed when IP CR is deleted without finalizer (race condition)
 				c.updateSubnetStatusQueue.Add(podNet.Subnet.Name)
-			}
-		}
-		if pod.Annotations[util.VipAnnotation] != "" {
-			stage = "releaseVIP"
-			var vipReleased bool
-			if vipReleased, err = c.releaseVip(pod.Annotations[util.VipAnnotation]); err != nil {
-				klog.Errorf("failed to clean label from vip %s, %v", pod.Annotations[util.VipAnnotation], err)
-				return err
-			}
-			if vipReleased {
-				changed = true
-				released = append(released, "vip="+pod.Annotations[util.VipAnnotation])
 			}
 		}
 	}
@@ -1920,7 +1968,8 @@ func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 	}
 
 	migrate := false
-	if job, ok := pod.Annotations[kubevirtv1.MigrationJobNameAnnotation]; ok {
+	if job, ok := pod.Annotations[kubevirtv1.MigrationJobNameAnnotation]; ok &&
+		pod.DeletionTimestamp.IsZero() && pod.Labels[kubevirtv1.MigrationJobLabel] != "" {
 		klog.Infof("pod %s/%s is in the migration job %s", pod.Namespace, pod.Name, job)
 		migrate = true
 	}
@@ -1942,28 +1991,56 @@ func (c *Controller) enqueueVpcNatGatewayInit(pod *v1.Pod) {
 	}
 }
 
-// enqueueVpcNatGatewayRestart asks the gateway to recreate a Pod whose vpc-nat-gw container has
-// been restarted. Other Pods, and Pods that were not restarted, are ignored.
-func (c *Controller) enqueueVpcNatGatewayRestart(pod *v1.Pod) {
-	isVpcNatGw, vpcGwName := c.checkIsPodVpcNatGw(pod)
-	if !isVpcNatGw || !needRestartNatGatewayPod(pod) {
+// enqueueVpcNatGatewayRestart re-runs gateway initialization when the gateway
+// container starts after a restart, and keeps retrying while a gateway Pod is still
+// missing the mark its init command writes on completion. Initialization is
+// idempotent, and a restarted container is only observable through its ContainerID:
+// a container restart cannot be triggered from a Pod exec, because PID 1 of the
+// container's own namespace ignores the signals such an exec could send.
+func (c *Controller) enqueueVpcNatGatewayRestart(oldPod, newPod *v1.Pod) {
+	// The Pod-only checks run first: this runs on every Pod update in the cluster.
+	if !natGwContainerRestarted(oldPod, newPod) && !natGwPodPendingInit(newPod) {
 		return
 	}
-	klog.Infof("restarting vpc nat gateway %s", vpcGwName)
-	c.addOrUpdateVpcNatGatewayQueue.Add(vpcGwName)
+	isVpcNatGw, vpcGwName := c.checkIsPodVpcNatGw(newPod)
+	if !isVpcNatGw {
+		return
+	}
+	klog.Infof("reinitializing vpc nat gateway %s", vpcGwName)
+	c.initVpcNatGatewayQueue.Add(vpcGwName)
 }
 
-// needRestartNatGatewayPod reports whether the vpc-nat-gw container has been restarted.
-func needRestartNatGatewayPod(pod *v1.Pod) bool {
-	for _, psc := range pod.Status.ContainerStatuses {
-		if psc.Name != "vpc-nat-gw" {
-			continue
-		}
-		if psc.RestartCount > 0 {
-			return true
+// natGwPodPendingInit reports whether a gateway Pod still needs the init command. The label is
+// checked first so that the Pod updates of every other workload in the cluster stop before
+// touching the annotation map. The completion mark is bound to the container instance: a Pod
+// that was recreated under the same name, or whose container restarted in place, carries the
+// mark of an instance that is gone and has to be initialized again.
+func natGwPodPendingInit(pod *v1.Pod) bool {
+	if pod.Labels[util.VpcNatGatewayLabel] != "true" {
+		return false
+	}
+	if pod.Annotations[util.VpcNatGatewayInitAnnotation] != "true" {
+		return true
+	}
+	instanceToken := natGwPodInstanceToken(pod)
+	return instanceToken != "" && pod.Annotations[util.VpcNatGatewayInitInstanceAnnotation] != instanceToken
+}
+
+// natGwContainerRestarted reports whether a new vpc-nat-gw container instance
+// is running. ContainerID comes from the current CRI instance; unlike restart
+// count, it is not reconstructed from previous kubelet status.
+func natGwContainerRestarted(oldPod, newPod *v1.Pod) bool {
+	oldID, newID := natGwContainerID(oldPod), natGwContainerID(newPod)
+	return newID != "" && newID != oldID
+}
+
+func natGwContainerID(pod *v1.Pod) string {
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.Name == "vpc-nat-gw" && status.State.Running != nil {
+			return status.ContainerID
 		}
 	}
-	return false
+	return ""
 }
 
 func (c *Controller) podNeedSync(pod *v1.Pod) (bool, error) {
@@ -2071,6 +2148,12 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 	}
 
 	subnetNames := ns.Annotations[util.LogicalSwitchAnnotation]
+	if subnet, err := c.getRetainedPodDefaultSubnet(pod, subnetNames); err != nil {
+		klog.Error(err)
+		return nil, err
+	} else if subnet != nil {
+		return subnet, nil
+	}
 	for subnetName := range strings.SplitSeq(subnetNames, ",") {
 		if subnetName == "" {
 			err = fmt.Errorf("namespace %s default logical switch is not found", ns.Name)
@@ -2112,6 +2195,37 @@ func (c *Controller) getPodDefaultSubnet(pod *v1.Pod) (*kubeovnv1.Subnet, error)
 		return subnet, nil
 	}
 	return nil, ipam.ErrNoAvailable
+}
+
+// getRetainedPodDefaultSubnet keeps an existing StatefulSet or VM allocation
+// ahead of capacity-based subnet selection. Reusing an address does not require
+// a free address, and newly available subnets must not move an existing workload.
+func (c *Controller) getRetainedPodDefaultSubnet(pod *v1.Pod, subnetNames string) (*kubeovnv1.Subnet, error) {
+	if isStatefulSet, _, _ := isStatefulSetPod(pod); !isStatefulSet {
+		if isVM, _ := isVMPod(pod); !isVM || !c.config.EnableKeepVMIP {
+			return nil, nil
+		}
+	}
+	ipName := ovs.PodNameToPortName(c.getNameByPod(pod), pod.Namespace, util.OvnProvider)
+	ip, err := c.ipsLister.Get(ipName)
+	if k8serrors.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get IP %s for retained pod subnet selection: %w", ipName, err)
+	}
+	// A namespace subnet change still allows the pod to move to its new network.
+	if ip.Spec.Subnet == "" || !slices.Contains(strings.Split(subnetNames, ","), ip.Spec.Subnet) {
+		return nil, nil
+	}
+	subnet, err := c.subnetsLister.Get(ip.Spec.Subnet)
+	if k8serrors.IsNotFound(err) && !pod.DeletionTimestamp.IsZero() {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to get subnet %s for retained IP %s: %w", ip.Spec.Subnet, ipName, err)
+	}
+	return subnet, nil
 }
 
 func (c *Controller) podCanUseExcludeIPs(pod *v1.Pod, subnet *kubeovnv1.Subnet) bool {
@@ -2542,23 +2656,10 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 		return "", "", "", podNet.Subnet, err
 	}
 
-	var checkVMPod bool
 	isStsPod, _, _ := isStatefulSetPod(pod)
-	// if pod has static vip
-	vipName := pod.Annotations[util.VipAnnotation]
-	if vipName != "" {
-		vip, err := c.virtualIpsLister.Get(vipName)
-		if err != nil {
-			klog.Errorf("failed to get static vip '%s', %v", vipName, err)
-			return "", "", "", podNet.Subnet, err
-		}
-		if c.config.EnableKeepVMIP {
-			checkVMPod, _ = isVMPod(pod)
-		}
-		if err = c.podReuseVip(vipName, portName, isStsPod || checkVMPod); err != nil {
-			return "", "", "", podNet.Subnet, err
-		}
-		return vip.Status.V4ip, vip.Status.V6ip, vip.Status.Mac, podNet.Subnet, nil
+	if vipName := pod.Annotations[util.VipAnnotation]; vipName != "" {
+		klog.Warningf("annotation %s=%s was removed in v1.17 and is ignored, pod %s/%s gets its address from ipam, use an ippool or a static ip annotation instead",
+			util.VipAnnotation, vipName, pod.Namespace, pod.Name)
 	}
 
 	var macPointer *string

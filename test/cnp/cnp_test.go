@@ -1,8 +1,8 @@
 package cnp
 
 import (
+	"net/url"
 	"os"
-	"path"
 	"slices"
 	"testing"
 	"time"
@@ -55,7 +55,10 @@ func TestClusterNetworkPolicyConformance(t *testing.T) {
 			t.Fatalf("Failed to get git revision from pseudo version: %v", err)
 		}
 	}
-	manifestsURL := path.Join(NetworkPolicyAPIRepoRaw, gitRef, NetworkPolicyAPIRepoPath)
+	manifestsURL, err := url.JoinPath(NetworkPolicyAPIRepoRaw, gitRef, NetworkPolicyAPIRepoPath)
+	if err != nil {
+		t.Fatalf("Failed to construct manifests URL: %v", err)
+	}
 	t.Logf("Using manifests URL: %s", manifestsURL)
 
 	t.Log("Configuring environment for clusternetworkpolicies conformance tests")

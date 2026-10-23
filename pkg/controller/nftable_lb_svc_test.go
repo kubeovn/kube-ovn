@@ -6,6 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/validation"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
@@ -63,7 +64,7 @@ func TestNftableLbEventHelpersRespectFeatureGate(t *testing.T) {
 	// Feature disabled: pod/EIP/NAT-GW event helpers must be no-ops even when their
 	// listers/indexers are not initialized, so the shared pod/EIP/NAT-GW informer hot paths
 	// do not pay for the nftable LB feature when it is off.
-	c := &Controller{config: &Configuration{EnableLb: true}}
+	c := &Controller{config: &Configuration{EnableOvnLB: true}}
 	require.NotPanics(t, func() {
 		c.enqueueNftableLbServicesForPod(&v1.Pod{Namespace: "ns", Name: "pod"})
 		c.enqueueNftableLbServicesForEIP("eip0")
@@ -85,7 +86,7 @@ func TestEnqueueNftableLbSvcOwnersFromRules(t *testing.T) {
 	}
 
 	c := &Controller{
-		config:                       &Configuration{EnableLb: true, EnableNftableLbSvc: true},
+		config:                       &Configuration{EnableOvnLB: true, EnableNftableLbSvc: true},
 		iptablesDnatRulesLister:      kubeovnlister.NewIptablesDnatRuleLister(indexer),
 		addOrUpdateNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil),
 	}
@@ -434,6 +435,52 @@ func TestResolveNftableLbConflictsWithNoReadyBackends(t *testing.T) {
 	conflicted, err := controller.resolveNftableLbConflicts(loser, "ns/z-loser", map[string]*kubeovnv1.IptablesDnatRule{})
 	require.NoError(t, err)
 	require.True(t, conflicted, "a loser must be detected from Service ports even without ready backends")
+}
+
+func TestResolveNftableLbConflictsIgnoresTerminatingServices(t *testing.T) {
+	t.Parallel()
+
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{
+		IndexServiceByNftableLbEip: indexServiceByNftableLbEip,
+	})
+	newService := func(name string, deleting bool) *v1.Service {
+		svc := &v1.Service{
+			Namespace: "ns",
+			Name:      name,
+			Annotations: map[string]string{
+				util.EipAnnotation: "eip0",
+			},
+			Spec: v1.ServiceSpec{
+				Type:  v1.ServiceTypeLoadBalancer,
+				Ports: []v1.ServicePort{{Port: 80, Protocol: v1.ProtocolTCP}},
+			},
+		}
+		if deleting {
+			now := metav1.Now()
+			svc.DeletionTimestamp = &now
+		}
+		return svc
+	}
+	// The terminating Service sorts first, so it would own the identity and starve the live
+	// Service until the informer cache dropped it.
+	terminating := newService("a-terminating", true)
+	loser := newService("z-loser", false)
+	require.NoError(t, indexer.Add(terminating))
+	require.NoError(t, indexer.Add(loser))
+
+	ruleIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	queue := newTypedRateLimitingQueue[string]("nftable-lb-terminating-test", nil)
+	t.Cleanup(queue.ShutDown)
+	controller := &Controller{
+		svcIndexer:                   indexer,
+		iptablesDnatRulesLister:      kubeovnlister.NewIptablesDnatRuleLister(ruleIndexer),
+		recorder:                     record.NewFakeRecorder(1),
+		addOrUpdateNftableLbSvcQueue: queue,
+	}
+
+	conflicted, err := controller.resolveNftableLbConflicts(loser, "ns/z-loser", map[string]*kubeovnv1.IptablesDnatRule{})
+	require.NoError(t, err)
+	require.False(t, conflicted, "a terminating Service must release the identity to its successor")
 }
 
 func Test_nftableLbDnatSpecEqual(t *testing.T) {

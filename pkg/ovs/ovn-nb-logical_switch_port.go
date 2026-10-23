@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"maps"
 	"slices"
-	"strconv"
 	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/client"
@@ -247,15 +246,28 @@ func (c *OVNNbClient) CreateVirtualLogicalSwitchPorts(lsName string, ips ...stri
 
 // CreateVirtualLogicalSwitchPort create one virtual type logical switch port for allowed-address-pair
 func (c *OVNNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error {
+	if err := c.migrateLegacyVirtualLogicalSwitchPort(lspName, lsName, ip); err != nil {
+		return err
+	}
+
 	exist, err := c.LogicalSwitchPortExists(lspName)
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
 
-	// ignore
 	if exist {
-		return nil
+		lsp, err := c.GetLogicalSwitchPort(lspName, true)
+		if err != nil {
+			klog.Error(err)
+			return err
+		}
+		if lsp == nil {
+			err := fmt.Errorf("logical switch port %s not found", lspName)
+			klog.Error(err)
+			return err
+		}
+		return c.updateVirtualLogicalSwitchPort(lsp, ip)
 	}
 
 	lsp := &ovnnb.LogicalSwitchPort{
@@ -275,9 +287,122 @@ func (c *OVNNbClient) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string)
 
 	if err := c.Transact("lsp-add", op); err != nil {
 		klog.Error(err)
+		// Another worker may have inserted the same named port after the
+		// existence check above. Re-read it and reconcile the desired option so
+		// concurrent create calls are idempotent.
+		lsp, getErr := c.GetLogicalSwitchPort(lspName, true)
+		if getErr == nil && lsp != nil {
+			return c.updateVirtualLogicalSwitchPort(lsp, ip)
+		}
 		return fmt.Errorf("create virtual logical switch port %s for logical switch %s: %w", lspName, lsName, err)
 	}
 
+	return nil
+}
+
+func (c *OVNNbClient) updateVirtualLogicalSwitchPort(lsp *ovnnb.LogicalSwitchPort, ip string) error {
+	if lsp.Options == nil {
+		lsp.Options = make(map[string]string)
+	}
+	if lsp.Options["virtual-ip"] == ip {
+		return nil
+	}
+
+	lsp.Options["virtual-ip"] = ip
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("update virtual logical switch port %s: %w", lsp.Name, err)
+	}
+	return nil
+}
+
+// migrateLegacyVirtualLogicalSwitchPort atomically renames the pre-dual-stack
+// VIP port when the desired port uses the address-family suffix. Older
+// releases used the VIP name itself for both IPv4-only and IPv6-only ports.
+func (c *OVNNbClient) migrateLegacyVirtualLogicalSwitchPort(lspName, lsName, ip string) error {
+	var oldName string
+	for _, suffix := range []string{":ipv4", ":ipv6"} {
+		baseName, ok := strings.CutSuffix(lspName, suffix)
+		if !ok {
+			continue
+		}
+		baseName, ok = strings.CutPrefix(baseName, "vip:")
+		if ok && baseName != "" {
+			oldName = baseName
+			break
+		}
+	}
+	if oldName == "" {
+		return nil
+	}
+
+	legacyLsp, err := c.GetLogicalSwitchPort(oldName, true)
+	if err != nil {
+		return fmt.Errorf("get legacy virtual logical switch port %s: %w", oldName, err)
+	}
+	if legacyLsp == nil || legacyLsp.Type != "virtual" || !slices.ContainsFunc(strings.Split(legacyLsp.Options["virtual-ip"], ","), func(address string) bool {
+		return strings.TrimSpace(address) == ip
+	}) {
+		return nil
+	}
+	if legacySubnet := legacyLsp.ExternalIDs[LogicalSwitchKey]; legacySubnet != "" && legacySubnet != lsName {
+		return nil
+	}
+
+	targetLsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		return fmt.Errorf("get virtual logical switch port %s: %w", lspName, err)
+	}
+
+	var ops []ovsdb.Operation
+	if targetLsp != nil {
+		targetSubnet := targetLsp.ExternalIDs[LogicalSwitchKey]
+		if targetSubnet == "" {
+			targetSubnet = lsName
+		}
+		deleteOps, err := c.DeleteLogicalSwitchPortOp(targetSubnet, targetLsp.UUID)
+		if err != nil {
+			return fmt.Errorf("generate operations for deleting conflicting virtual logical switch port %s: %w", lspName, err)
+		}
+		ops = append(ops, deleteOps...)
+	}
+
+	legacyLsp.Name = lspName
+	updateOps, err := c.Where(&ovnnb.LogicalSwitchPort{UUID: legacyLsp.UUID}).Update(legacyLsp, &legacyLsp.Name)
+	if err != nil {
+		return fmt.Errorf("generate operations for renaming legacy virtual logical switch port %s: %w", oldName, err)
+	}
+	ops = append(ops, updateOps...)
+
+	if err := c.Transact("lsp-vip-migrate", ops); err != nil {
+		return fmt.Errorf("migrate legacy virtual logical switch port %s to %s: %w", oldName, lspName, err)
+	}
+	return nil
+}
+
+// SetVirtualLogicalSwitchPortAddresses updates the addresses advertised by a
+// virtual logical switch port. Virtual ports do not install an ARP responder,
+// so the address can safely participate in the distributed subnet address set.
+func (c *OVNNbClient) SetVirtualLogicalSwitchPortAddresses(lspName, addresses string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
+	}
+	if lsp == nil {
+		err := fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
+	}
+	if len(lsp.Addresses) == 1 && lsp.Addresses[0] == addresses {
+		return nil
+	}
+
+	lsp.Addresses = []string{addresses}
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Addresses); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("set logical switch port %s addresses: %w", lspName, err)
+	}
 	return nil
 }
 
@@ -359,6 +484,37 @@ func (c *OVNNbClient) SetLogicalSwitchPortVirtualParents(lsName, parents string,
 	return nil
 }
 
+// RemoveLogicalSwitchPortOption deletes a stale key from a logical switch
+// port's options column. CreateLogicalSwitchPort's update path only touches
+// Addresses, DHCP options, PortSecurity and ExternalIDs, so an option set by
+// older code (e.g. arp_proxy on pre-fix switch_lb_rule vips) survives that
+// update and must be cleared explicitly.
+func (c *OVNNbClient) RemoveLogicalSwitchPortOption(lspName, option string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
+	}
+	if lsp == nil {
+		err := fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
+	}
+	if lsp.Options == nil {
+		return nil
+	}
+	if _, ok := lsp.Options[option]; !ok {
+		return nil
+	}
+
+	delete(lsp.Options, option)
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("remove option %s from logical switch port %s: %w", option, lspName, err)
+	}
+	return nil
+}
+
 // SetVirtualLogicalSwitchPortVirtualParents updates one virtual type logical switch port virtual-parents for allowed-address-pair
 func (c *OVNNbClient) SetVirtualLogicalSwitchPortVirtualParents(lspName, parents string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, true)
@@ -387,37 +543,6 @@ func (c *OVNNbClient) SetVirtualLogicalSwitchPortVirtualParents(lspName, parents
 	if err := c.Transact("lsp-update", op); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("set logical switch port virtual-parents %w", err)
-	}
-	return nil
-}
-
-func (c *OVNNbClient) SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error {
-	lsp, err := c.GetLogicalSwitchPort(lspName, false)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
-	}
-	if lsp == nil {
-		err = fmt.Errorf("logical switch port %s not found", lspName)
-		klog.Error(err)
-		return err
-	}
-	if lsp.Options == nil {
-		lsp.Options = make(map[string]string)
-	}
-	lsp.Options["arp_proxy"] = strconv.FormatBool(enableArpProxy)
-	if !enableArpProxy {
-		delete(lsp.Options, "arp_proxy")
-	}
-
-	op, err := c.UpdateLogicalSwitchPortOp(lsp, &lsp.Options)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	if err := c.Transact("lsp-update", op); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to set logical switch port option arp_proxy %w", err)
 	}
 	return nil
 }
@@ -1180,8 +1305,16 @@ func (c *OVNNbClient) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName,
 		klog.Infof("logical switch port %s has no options", lspName)
 		return nil
 	}
-	if _, ok := lsp.Options["requested-chassis"]; !ok {
+	requestedChassis, ok := lsp.Options["requested-chassis"]
+	if !ok {
 		klog.Infof("logical switch port %s has no migrator options", lspName)
+		return nil
+	}
+	// Only reset the options set for this very migration: a newer migration of the same VM may
+	// have taken the port over, and resetting it here would strand its target port
+	if expected := fmt.Sprintf("%s,%s", srcNodeName, targetNodeName); requestedChassis != expected {
+		klog.Infof("skip resetting migrator port %s: requested-chassis %q does not belong to the migration from %s to %s",
+			lspName, requestedChassis, srcNodeName, targetNodeName)
 		return nil
 	}
 	if migratedFail {

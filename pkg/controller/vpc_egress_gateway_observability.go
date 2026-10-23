@@ -20,7 +20,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/intstr"
 	utilversion "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -111,11 +110,11 @@ func (c *Controller) supportsRestartableInitContainers() restartableInitContaine
 	probe := &appsv1.Deployment{
 		GenerateName: "kube-ovn-sidecar-capability-probe-", Namespace: namespace,
 		Spec: appsv1.DeploymentSpec{
-			Replicas: ptr.To[int32](0), Selector: &metav1.LabelSelector{MatchLabels: labels},
+			Replicas: new(int32(0)), Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
 				Labels: labels,
 				Spec: corev1.PodSpec{
-					InitContainers: []corev1.Container{{Name: "sidecar", Image: image, RestartPolicy: ptr.To(corev1.ContainerRestartPolicyAlways)}},
+					InitContainers: []corev1.Container{{Name: "sidecar", Image: image, RestartPolicy: new(corev1.ContainerRestartPolicyAlways)}},
 					Containers:     []corev1.Container{{Name: "main", Image: image}},
 				},
 			},
@@ -448,7 +447,7 @@ func addVpcEgressGatewayObserver(podSpec *corev1.PodSpec, image string, config *
 	livenessProbe := &corev1.Probe{Exec: &corev1.ExecAction{Command: []string{"/bin/sh", "-ec", healthCheck}}, PeriodSeconds: 10, FailureThreshold: 3}
 	podSpec.InitContainers = append(podSpec.InitContainers, corev1.Container{
 		Name: vpcEgressObserverContainerName, Image: image, ImagePullPolicy: corev1.PullIfNotPresent,
-		Command: []string{"/bin/sh", "-ec", launcher}, RestartPolicy: ptr.To(corev1.ContainerRestartPolicyAlways), Resources: resources,
+		Command: []string{"/bin/sh", "-ec", launcher}, RestartPolicy: new(corev1.ContainerRestartPolicyAlways), Resources: resources,
 		Env: []corev1.EnvVar{
 			{Name: "POD_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.name"}}},
 			{Name: "NODE_NAME", ValueFrom: &corev1.EnvVarSource{FieldRef: &corev1.ObjectFieldSelector{FieldPath: "spec.nodeName"}}},
@@ -456,7 +455,7 @@ func addVpcEgressGatewayObserver(podSpec *corev1.PodSpec, image string, config *
 		Ports:         []corev1.ContainerPort{{Name: "metrics", ContainerPort: vpcEgressObserverPort}},
 		LivenessProbe: livenessProbe,
 		SecurityContext: &corev1.SecurityContext{
-			RunAsNonRoot: new(true), RunAsUser: ptr.To[int64](65534), RunAsGroup: ptr.To[int64](65534),
+			RunAsNonRoot: new(true), RunAsUser: new(int64(65534)), RunAsGroup: new(int64(65534)),
 			AllowPrivilegeEscalation: new(true), ReadOnlyRootFilesystem: new(true),
 			Capabilities: &corev1.Capabilities{Drop: []corev1.Capability{"ALL"}, Add: []corev1.Capability{"NET_ADMIN"}},
 		},

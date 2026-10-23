@@ -44,7 +44,10 @@ tests:
     asserts:
       - contains:
           path: spec.template.spec.containers[0].securityContext.capabilities.add
-          content: SYS_PTRACE
+          content: NET_ADMIN
+      - contains:
+          path: spec.template.spec.containers[0].securityContext.capabilities.add
+          content: NET_RAW
       - notContains:
           path: spec.template.spec.containers[0].securityContext.capabilities.add
-          content: CAP_SYS_PTRACE
+          content: CAP_NET_ADMIN

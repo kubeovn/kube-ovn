@@ -29,8 +29,9 @@ OVN_CENTRAL_MODE: "cluster"
 
 # installMode controls which slice of the chart this Helm release renders.
 #   full:             all components in one cluster (default, classic install).
-#   controlPlaneOnly: only ovn-central + ovn-nb/ovn-sb/ovn-northd Services and
-#                     their RBAC. Use on the management cluster of a
+#   controlPlaneOnly: ovn-central + ovn-nb/ovn-sb/ovn-northd Services and
+#                     their RBAC, plus the independent diagnostics agent.
+#                     Use on the management cluster of a
 #                     split-cluster deployment that hosts ovn-central.
 #   dataPlaneOnly:    CRDs + kube-ovn-controller + kube-ovn-cni + ovs-ovn +
 #                     pinger and their RBAC. Use on tenant data-plane
@@ -111,7 +112,7 @@ func:
   ENABLE_EXTERNAL_VPC: false
   HW_OFFLOAD: false
   ENABLE_LB_SVC: false
-  ENABLE_NFTABLE_LB_SVC: false
+  ENABLE_NFTABLE_LB_SVC: true
   ENABLE_KEEP_VM_IP: true
   LS_DNAT_MOD_DL_DST: true
   LS_CT_SKIP_DST_LPORT_IPS: true
@@ -121,6 +122,7 @@ func:
   SECURE_SERVING: false
   U2O_INTERCONNECTION: false
   ENABLE_TPROXY: false
+  ENABLE_RECOMPUTE: false
   ENABLE_IC: false
   ENABLE_NAT_GW: true
   ENABLE_OVN_IPSEC: false
@@ -179,6 +181,8 @@ debug:
 
 cni_conf:
   CNI_CONFIG_PRIORITY: "01"
+  # Whether to install the bundled CNI plugins besides kube-ovn.
+  INSTALL_CNI_PLUGINS: true
   CNI_CONF_DIR: "/etc/cni/net.d"
   MOUNT_CNI_CONF_DIR: "/etc/cni/net.d"
   CNI_BIN_DIR: "/opt/cni/bin"

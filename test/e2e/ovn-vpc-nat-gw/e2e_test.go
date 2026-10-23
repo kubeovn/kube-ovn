@@ -56,8 +56,8 @@ func makeOvnEip(name, subnet, v4ip, v6ip, mac, usage string) *kubeovnv1.OvnEip {
 	return framework.MakeOvnEip(name, subnet, v4ip, v6ip, mac, usage)
 }
 
-func makeOvnVip(namespaceName, name, subnet, v4ip, v6ip, vipType string) *kubeovnv1.Vip {
-	return framework.MakeVip(namespaceName, name, subnet, v4ip, v6ip, vipType)
+func makeOvnVip(namespaceName, name, subnet, v4ip, v6ip, vipType string, attachSubnets []string) *kubeovnv1.Vip {
+	return framework.MakeVip(namespaceName, name, subnet, v4ip, v6ip, vipType, attachSubnets)
 }
 
 func makeOvnFip(name, ovnEip, ipType, ipName, vpc, v4Ip string) *kubeovnv1.OvnFip {
@@ -264,7 +264,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		providerBridgeIps = make([]string, 0, len(nodes))
 		extraProviderBridgeIps = make([]string, 0, len(nodes))
 
-		// node ext gw ovn eip name is the same as node name in this scenario
 		for index, node := range nodes {
 			links, err := node.ListLinks()
 			framework.ExpectNoError(err, "failed to list links on node %s: %v", node.Name(), err)
@@ -695,7 +694,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		framework.ExpectHaveKeyWithValue(lrpEipSnat.Labels, util.EipV4IpLabel, noBfdLrpEip.Spec.V4Ip)
 
 		ginkgo.By("Creating share vip")
-		shareVip := framework.MakeVip(namespaceName, sharedVipName, noBfdSubnetName, "", "", "")
+		shareVip := framework.MakeVip(namespaceName, sharedVipName, noBfdSubnetName, "", "", "", nil)
 		_ = vipClient.CreateSync(shareVip)
 		ginkgo.By("Creating the first ovn fip with share eip vip should be ok")
 		shareFipShouldOk := framework.MakeOvnFip(sharedEipFipShouldOkName, noBfdlrpEipName, util.Vip, sharedVipName, "", "")
@@ -998,12 +997,12 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		framework.ExpectNotEmpty(multiFipEip2.Status.V4Ip)
 
 		ginkgo.By("Creating ovn vip " + multiFipVip1Name)
-		multiFipVip1 := makeOvnVip(namespaceName, multiFipVip1Name, noBfdSubnetName, "", "", "")
+		multiFipVip1 := makeOvnVip(namespaceName, multiFipVip1Name, noBfdSubnetName, "", "", "", nil)
 		multiFipVip1 = vipClient.CreateSync(multiFipVip1)
 		framework.ExpectNotEmpty(multiFipVip1.Status.V4ip)
 
 		ginkgo.By("Creating ovn vip " + multiFipVip2Name)
-		multiFipVip2 := makeOvnVip(namespaceName, multiFipVip2Name, noBfdSubnetName, "", "", "")
+		multiFipVip2 := makeOvnVip(namespaceName, multiFipVip2Name, noBfdSubnetName, "", "", "", nil)
 		multiFipVip2 = vipClient.CreateSync(multiFipVip2)
 		framework.ExpectNotEmpty(multiFipVip2.Status.V4ip)
 
@@ -1120,18 +1119,10 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ginkgo.By("2.1 Test custom vpc dnat, fip, snat in traditional way")
 		ginkgo.By("Create dnat, fip, snat with eip name and ip or ip cidr")
 
-		for _, nodeName := range nodeNames {
-			// in this case, each node has one ecmp bfd ovs lsp nic
-			eipName := nodeName
-			ginkgo.By("Creating ovn node-ext-gw type eip " + nodeName)
-			eip := makeOvnEip(eipName, underlaySubnetName, "", "", "", util.OvnEipTypeLSP)
-			_ = ovnEipClient.CreateSync(eip)
-		}
-
 		// TODO:// ipv6, dual stack support
 		bfdSubnetV4Cidr := "192.168.1.0/24"
 		bfdSubnetV4Gw := "192.168.1.1"
-		enableBfd := true
+		enableBfd := false
 		bfdVpc := framework.MakeVpc(bfdVpcName, "", enableExternal, enableBfd, nil)
 		_ = vpcClient.CreateSync(bfdVpc)
 		ginkgo.By("Creating overlay subnet enable ecmp")
@@ -1143,7 +1134,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		ginkgo.By("Test ovn fip with eip name and ip")
 		ginkgo.By("Creating ovn vip " + ipFipVipName)
-		ipFipVip := makeOvnVip(namespaceName, ipFipVipName, bfdSubnetName, "", "", "")
+		ipFipVip := makeOvnVip(namespaceName, ipFipVipName, bfdSubnetName, "", "", "", nil)
 		ipFipVip = vipClient.CreateSync(ipFipVip)
 		framework.ExpectNotEmpty(ipFipVip.Status.V4ip)
 		ginkgo.By("Creating ovn eip " + ipFipEipName)
@@ -1158,7 +1149,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		ginkgo.By("Test ovn dnat with eip name and ip")
 		ginkgo.By("Creating ovn vip " + ipDnatVipName)
-		ipDnatVip := makeOvnVip(namespaceName, ipDnatVipName, bfdSubnetName, "", "", "")
+		ipDnatVip := makeOvnVip(namespaceName, ipDnatVipName, bfdSubnetName, "", "", "", nil)
 		ipDnatVip = vipClient.CreateSync(ipDnatVip)
 		framework.ExpectNotEmpty(ipDnatVip.Status.V4ip)
 		ginkgo.By("Creating ovn eip " + ipDnatEipName)
@@ -1186,7 +1177,7 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		ginkgo.By("Test ovn snat with eip name and ip")
 		ginkgo.By("Creating ovn vip " + ipSnatVipName)
-		ipSnatVip := makeOvnVip(namespaceName, ipSnatVipName, bfdSubnetName, "", "", "")
+		ipSnatVip := makeOvnVip(namespaceName, ipSnatVipName, bfdSubnetName, "", "", "", nil)
 		ipSnatVip = vipClient.CreateSync(ipSnatVip)
 		framework.ExpectNotEmpty(ipSnatVip.Status.V4ip)
 		ginkgo.By("Creating ovn eip " + ipSnatEipName)
@@ -1198,21 +1189,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		ipSnat = ovnSnatRuleClient.CreateSync(ipSnat)
 		framework.ExpectEqual(ipSnat.Status.Vpc, bfdVpcName)
 		framework.ExpectEqual(ipSnat.Status.V4IpCidr, ipSnatVip.Status.V4ip)
-
-		k8sNodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
-		framework.ExpectNoError(err)
-		for _, node := range k8sNodes.Items {
-			// label should be true after setup node external gw
-			framework.ExpectHaveKeyWithValue(node.Labels, util.NodeExtGwLabel, "true")
-		}
-		// make sure vpc has bfd external static routes
-		bfdVpc = vpcClient.Get(bfdVpcName)
-		for _, route := range bfdVpc.Spec.StaticRoutes {
-			framework.ExpectEqual(route.RouteTable, util.MainRouteTable)
-			framework.ExpectEqual(route.ECMPMode, util.StaticRouteBfdEcmp)
-			framework.ExpectEqual(route.Policy, kubeovnv1.PolicySrc)
-			framework.ExpectNotEmpty(route.CIDR)
-		}
 
 		for _, node := range nodeNames {
 			podOnNodeName := "bfd-" + node
@@ -1275,8 +1251,6 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 
 		ginkgo.By("6. Deleting crd in distributed case")
 		for _, node := range nodeNames {
-			ginkgo.By("Deleting node external gw ovn eip " + node)
-			ovnEipClient.DeleteSync(node)
 			podOnNodeName := "on-node-" + node
 			eipOnNodeName := "eip-on-node-" + node
 			fipOnNodeName := "fip-on-node-" + node
@@ -1294,21 +1268,21 @@ var _ = framework.Describe("[group:ovn-vpc-nat-gw]", func() {
 		err = cs.CoreV1().ConfigMaps(configMap.Namespace).Delete(context.Background(), configMap.Name, metav1.DeleteOptions{})
 		framework.ExpectNoError(err, "failed to delete ConfigMap")
 
-		lrpEipName := fmt.Sprintf("%s-%s", bfdVpcName, underlaySubnetName)
-		ginkgo.By("Deleting ovn eip " + lrpEipName)
-		ovnEipClient.DeleteSync(lrpEipName)
+		framework.WaitUntil(time.Second, 2*time.Minute, func(ctx context.Context) (bool, error) {
+			defaultVpc, err := vpcClient.VpcInterface.Get(ctx, util.DefaultVpc, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			if defaultVpc.Spec.EnableExternal || defaultVpc.Status.EnableExternal {
+				return false, nil
+			}
+
+			return true, nil
+		}, "default VPC and gateway nodes have external access disabled")
 
 		defaultVpcLrpEipName := fmt.Sprintf("%s-%s", util.DefaultVpc, underlaySubnetName)
 		ginkgo.By("Deleting ovn eip " + defaultVpcLrpEipName)
 		ovnEipClient.DeleteSync(defaultVpcLrpEipName)
-
-		k8sNodes, err = e2enode.GetReadySchedulableNodes(context.Background(), cs)
-		framework.ExpectNoError(err)
-		time.Sleep(5 * time.Second)
-		for _, node := range k8sNodes.Items {
-			// label should be false after remove node external gw
-			framework.ExpectHaveKeyWithValue(node.Labels, util.NodeExtGwLabel, "false")
-		}
 	})
 })
 

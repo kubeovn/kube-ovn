@@ -61,6 +61,11 @@ func createHandler(csh *cniServerHandler) http.Handler {
 			To(csh.handleDel).
 			Reads(request.CniRequest{}),
 	)
+	ws.Route(
+		ws.POST("/commit").
+			To(csh.handleCommit).
+			Reads(request.CniRequest{}),
+	)
 
 	ws.Filter(requestAndResponseLogger)
 

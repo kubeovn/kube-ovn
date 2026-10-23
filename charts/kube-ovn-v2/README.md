@@ -656,6 +656,24 @@ false
 			<td>Args passed to the kube-ovn-speaker pod.</td>
 		</tr>
 		<tr>
+			<td>bgpSpeaker.configMap</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>The name of the configMap that will be mounted in the kube-ovn-speaker pod. The ConfigMap can provide YAML configuration files for kube-ovn-speaker. To use a specific file, pass its mounted file path via '--config' or set 'KUBE_OVN_BGP_SPEAKER_CONFIG_FILE'.</td>
+		</tr>
+		<tr>
+			<td>bgpSpeaker.configMapMountPath</td>
+			<td>string</td>
+			<td><pre lang="json">
+"/etc/kube-ovn/"
+</pre>
+</td>
+			<td>Directory where the ConfigMap will be mounted in the kube-ovn-speaker pod.</td>
+		</tr>
+		<tr>
 			<td>bgpSpeaker.enabled</td>
 			<td>bool</td>
 			<td><pre lang="json">
@@ -663,15 +681,6 @@ false
 </pre>
 </td>
 			<td>Enable the kube-ovn-speaker.</td>
-		</tr>
-		<tr>
-			<td>bgpSpeaker.extraEnv</td>
-			<td>list</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-			<td>Extra environment variables to be added to kube-ovn-speaker pods.</td>
 		</tr>
 		<tr>
 			<td>bgpSpeaker.labels</td>
@@ -1011,6 +1020,15 @@ false
 			<td>Priority of Kube-OVN within the CNI configuration directory on the node. Should be a string representing a double-digit integer.</td>
 		</tr>
 		<tr>
+			<td>cni.installCNIPlugins</td>
+			<td>bool</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+			<td>Whether to install the bundled CNI plugins besides kube-ovn.</td>
+		</tr>
+		<tr>
 			<td>cni.localConfigFile</td>
 			<td>string</td>
 			<td><pre lang="json">
@@ -1282,6 +1300,7 @@ false
   "enableNetworkPolicies": true,
   "enableOvnInterconnections": false,
   "enableOvnIpsec": false,
+  "enableRecompute": false,
   "enableSecureServing": false,
   "enableTproxy": false,
   "enableU2OInterconnections": false
@@ -1388,6 +1407,15 @@ false
 </pre>
 </td>
 			<td>Enable IPSEC</td>
+		</tr>
+		<tr>
+			<td>features.enableRecompute</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Enable periodic ovn-controller recompute</td>
 		</tr>
 		<tr>
 			<td>features.enableSecureServing</td>
@@ -2016,6 +2044,15 @@ false
 </pre>
 </td>
 			<td>Name of the join subnet once it gets generated in the cluster.</td>
+		</tr>
+		<tr>
+			<td>networking.maxMtu</td>
+			<td>int</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+			<td>Upper bound applied to the auto-detected pod MTU (0 disables the cap). Useful when the underlay uses jumbo frames but pod traffic egresses to a 1500-byte path (e.g. the internet), where the uncapped value would cause fragmentation or PMTUD-dependent blackholes. Ignored when .networking.pods.mtu is set. This applies to custom and default subnets.</td>
 		</tr>
 		<tr>
 			<td>networking.networkType</td>

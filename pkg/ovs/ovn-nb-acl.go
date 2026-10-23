@@ -13,12 +13,12 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/cnp"
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -89,7 +89,7 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string,
 		setNetworkPolicyACLName(acl, npName)
 		if loggingEnabled {
 			acl.Log = true
-			acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
+			acl.Severity = new(ovnnb.ACLSeverityWarning)
 			if loggingEnabled && logRate > 0 {
 				acl.Meter = new(meterName)
 			}
@@ -685,7 +685,7 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 	options := func(acl *ovnnb.ACL) {
 		setACLName(acl, lsName)
 		acl.Log = true
-		acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
+		acl.Severity = new(ovnnb.ACLSeverityWarning)
 	}
 
 	defaultDropACL, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.DefaultDropPriority, allIPMatch.String(), ovnnb.ACLActionDrop, util.NetpolACLTier, options)
@@ -1004,7 +1004,7 @@ func (c *OVNNbClient) buildRoutedDefaultDenyACLs(lsName string, options func(*ov
 	dropOptions := func(acl *ovnnb.ACL) {
 		options(acl)
 		acl.Log = true
-		acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
+		acl.Severity = new(ovnnb.ACLSeverityWarning)
 	}
 
 	acls := make([]*ovnnb.ACL, 0, 8)
@@ -1949,7 +1949,7 @@ func (c *OVNNbClient) UpdateAnpRuleACLOps(pgName, asName, protocol, aclName stri
 		if slices.Contains(logACLActions, aclAction) {
 			acl.Log = true
 			if aclAction == ovnnb.ACLActionDrop {
-				acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
+				acl.Severity = new(ovnnb.ACLSeverityWarning)
 			}
 		}
 	}
@@ -1990,7 +1990,7 @@ func (c *OVNNbClient) UpdateAnpRuleACLOps(pgName, asName, protocol, aclName stri
 }
 
 // UpdateCnpRuleACLOps return operation that creates an ingress/egress ACL
-func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyPort, isIngress bool, tier int) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyProtocol, isIngress bool, tier int) ([]ovsdb.Operation, error) {
 	acls := make([]*ovnnb.ACL, 0, 10)
 
 	options := func(acl *ovnnb.ACL) {
@@ -2009,7 +2009,7 @@ func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName stri
 		if slices.Contains(logACLActions, aclAction) {
 			acl.Log = true
 			if aclAction == ovnnb.ACLActionDrop {
-				acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
+				acl.Severity = new(ovnnb.ACLSeverityWarning)
 			}
 		}
 	}
@@ -2021,7 +2021,10 @@ func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName stri
 		direction = ovnnb.ACLDirectionFromLport
 	}
 
-	matches := newCnpACLMatch(pgName, asName, protocol, direction, rulePorts)
+	matches, err := newCnpACLMatch(pgName, asName, protocol, direction, rulePorts)
+	if err != nil {
+		return nil, err
+	}
 	for _, m := range matches {
 		strPriority := strconv.Itoa(priority)
 		setACL, err := c.newACLWithoutCheck(pgName, direction, strPriority, m, aclAction, tier, options)
@@ -2101,7 +2104,7 @@ func newAnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1al
 	return matches
 }
 
-func newCnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1alpha2.ClusterNetworkPolicyPort) []string {
+func newCnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1alpha2.ClusterNetworkPolicyProtocol) ([]string, error) {
 	ipSuffix := "ip4"
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
@@ -2127,37 +2130,27 @@ func newCnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1al
 		NewACLMatch(ipKey, "==", "$"+asName, ""),
 	)
 	if len(rulePorts) == 0 {
-		return []string{selectIPMatch.String()}
+		return []string{selectIPMatch.String()}, nil
 	}
 
 	matches := make([]string, 0, 10)
-	for _, port := range rulePorts {
-		// Exactly one field must be set.
-		// Do not support NamedPort now
-		switch {
-		case port.PortNumber != nil:
-			protocol := strings.ToLower(string(port.PortNumber.Protocol))
-			protocolKey := protocol + ".dst"
-
-			oneMatch := NewAndACLMatch(
-				selectIPMatch,
-				NewACLMatch(protocolKey, "==", strconv.Itoa(int(port.PortNumber.Port)), ""),
-			)
-			matches = append(matches, oneMatch.String())
-		case port.PortRange != nil:
-			protocol := strings.ToLower(string(port.PortRange.Protocol))
-			protocolKey := protocol + ".dst"
-
-			severalMatch := NewAndACLMatch(
-				selectIPMatch,
-				NewACLMatch(protocolKey, "<=", strconv.Itoa(int(port.PortRange.Start)), strconv.Itoa(int(port.PortRange.End))),
-			)
-			matches = append(matches, severalMatch.String())
-		default:
-			klog.Errorf("failed to check port for cnp ingress rule, pg %s, as %s", pgName, asName)
+	for _, p := range rulePorts {
+		transport, port, err := cnp.ProtocolPort(p)
+		if err != nil {
+			return nil, err
 		}
+		var portMatch ACLMatch
+		switch {
+		case port == nil:
+			portMatch = NewACLMatch(transport, "", "", "")
+		case port.Range == nil:
+			portMatch = NewACLMatch(transport+".dst", "==", strconv.Itoa(int(port.Number)), "")
+		default:
+			portMatch = NewACLMatch(transport+".dst", "<=", strconv.Itoa(int(port.Range.Start)), strconv.Itoa(int(port.Range.End)))
+		}
+		matches = append(matches, NewAndACLMatch(selectIPMatch, portMatch).String())
 	}
-	return matches
+	return matches, nil
 }
 
 func (c *OVNNbClient) MigrateACLTier() error {
@@ -2165,8 +2158,11 @@ func (c *OVNNbClient) MigrateACLTier() error {
 	defer cancel()
 
 	var aclList []ovnnb.ACL
-	if err := c.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool { return acl.Tier == 0 }).List(ctx, &aclList); err != nil {
-		err = fmt.Errorf("failed to list acls with tier 0: %w", err)
+	if err := c.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool {
+		// Skip ACLs that don't belong to kube-ovn, e.g. those managed by OpenStack Neutron
+		return acl.Tier == 0 && acl.ExternalIDs["vendor"] == util.CniTypeName
+	}).List(ctx, &aclList); err != nil {
+		err = fmt.Errorf("failed to list kube-ovn acls with tier 0: %w", err)
 		klog.Error(err)
 		return err
 	}

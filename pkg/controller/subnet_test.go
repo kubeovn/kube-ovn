@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -14,12 +16,34 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ktesting "k8s.io/client-go/testing"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	"github.com/kubeovn/kube-ovn/pkg/internal"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestHandleDeleteLogicalSwitchResources(t *testing.T) {
+	t.Parallel()
+	failure := errors.New("resource deletion failed")
+	for _, deletionErr := range []error{nil, failure} {
+		t.Run(fmt.Sprintf("error=%v", deletionErr), func(t *testing.T) {
+			t.Parallel()
+			fake := newFakeController(t)
+			name := "delete-subnet"
+			fake.mockOvnClient.EXPECT().LogicalSwitchExists(name).Return(true, nil)
+			fake.mockOvnClient.EXPECT().DeleteLogicalSwitchResources(name, kubeovnv1.ProtocolDual).Return(deletionErr)
+			if deletionErr == nil {
+				fake.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(ovs.GetLocalnetName(name)).Return(nil)
+			}
+			require.ErrorIs(t, fake.fakeController.handleDeleteLogicalSwitch(name), deletionErr)
+		})
+	}
+}
 
 func Test_readyToRemoveFinalizer(t *testing.T) {
 	t.Parallel()
@@ -110,6 +134,78 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 	}
 }
 
+func TestEnqueueUpdateSubnetOnDeletionTimestamp(t *testing.T) {
+	deletionTimestamp := metav1.Now()
+	tests := []struct {
+		name           string
+		v4UsingIPs     int64
+		v6UsingIPs     int64
+		alreadyDeleted bool
+		markDeleted    bool
+		updateStatus   bool
+		wantQueued     bool
+	}{
+		{
+			name: "IPv4 deletion timestamp added", v4UsingIPs: 1,
+			markDeleted: true, wantQueued: true,
+		},
+		{
+			name: "IPv6 deletion timestamp added", v6UsingIPs: 1,
+			markDeleted: true, wantQueued: true,
+		},
+		{
+			name: "dual-stack deletion timestamp added", v4UsingIPs: 1, v6UsingIPs: 1,
+			markDeleted: true, wantQueued: true,
+		},
+		{
+			name: "live subnet status-only update", v4UsingIPs: 1,
+			updateStatus: true,
+		},
+		{
+			name: "terminating subnet with IPs in use", v4UsingIPs: 1,
+			alreadyDeleted: true, markDeleted: true, updateStatus: true,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			queue := newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil)
+			t.Cleanup(queue.ShutDown)
+
+			oldSubnet := &kubeovnv1.Subnet{
+				Name: "subnet-a",
+				Status: kubeovnv1.SubnetStatus{
+					V4UsingIPs: internal.NewBigInt(tc.v4UsingIPs),
+					V6UsingIPs: internal.NewBigInt(tc.v6UsingIPs),
+				},
+			}
+			if tc.alreadyDeleted {
+				oldSubnet.DeletionTimestamp = new(deletionTimestamp)
+			}
+			newSubnet := oldSubnet.DeepCopy()
+			if tc.markDeleted {
+				newSubnet.DeletionTimestamp = new(deletionTimestamp)
+			}
+			if tc.updateStatus {
+				newSubnet.Status.V4UsingIPs = internal.NewBigInt(tc.v4UsingIPs + 1)
+			}
+
+			ctrl := &Controller{addOrUpdateSubnetQueue: queue}
+			ctrl.enqueueUpdateSubnet(oldSubnet, newSubnet)
+
+			if !tc.wantQueued {
+				require.Zero(t, queue.Len())
+				return
+			}
+			require.Equal(t, 1, queue.Len())
+			key, shutdown := queue.Get()
+			require.False(t, shutdown)
+			require.Equal(t, oldSubnet.Name, key)
+			queue.Done(key)
+		})
+	}
+}
+
 func TestAddPolicyRouteForU2OInterconn_OverlayOnlyRouting(t *testing.T) {
 	t.Parallel()
 
@@ -147,6 +243,7 @@ func TestAddPolicyRouteForU2OInterconn_OverlayOnlyRouting(t *testing.T) {
 	}
 
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs:    []*kubeovnv1.Vpc{{Name: util.DefaultVpc}},
 		Subnets: []*kubeovnv1.Subnet{subnet, overlaySubnet},
 	})
 	require.NoError(t, err)
@@ -221,6 +318,7 @@ func TestAddPolicyRouteForU2OInterconn_OverlayOnlyRoutingDeletesLegacyPolicies(t
 	}
 
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs:    []*kubeovnv1.Vpc{{Name: util.DefaultVpc}},
 		Subnets: []*kubeovnv1.Subnet{subnet, overlaySubnet},
 	})
 	require.NoError(t, err)
@@ -443,6 +541,7 @@ func TestSyncU2OOverlayCIDRsAddressSet_UpdatesAfterOverlaySubnetDeletion(t *test
 	}
 
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs:    []*kubeovnv1.Vpc{{Name: vpcName}},
 		Subnets: []*kubeovnv1.Subnet{overlayA, overlayB, underlay},
 	})
 	require.NoError(t, err)
@@ -485,6 +584,73 @@ func TestSyncU2OOverlayCIDRsAddressSet_UpdatesAfterOverlaySubnetDeletion(t *test
 	require.NoError(t, err)
 	require.Equal(t, []string{overlayAV4}, v4CIDRs)
 	require.Equal(t, []string{overlayAV6}, v6CIDRs)
+}
+
+func TestSyncU2OOverlayCIDRsAddressSet_DeletesWhenVpcIsGone(t *testing.T) {
+	t.Parallel()
+
+	const vpcName = "deleted-vpc"
+	fc, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+
+	v4Name, v6Name := u2oOverlayCIDRsAddressSetNames(vpcName)
+	fc.mockOvnClient.EXPECT().DeleteAddressSet(v4Name, v6Name).Return(nil)
+
+	v4CIDRs, v6CIDRs, err := fc.fakeController.syncU2OOverlayCIDRsAddressSet(vpcName, "")
+	require.NoError(t, err)
+	require.Empty(t, v4CIDRs)
+	require.Empty(t, v6CIDRs)
+}
+
+func TestSyncU2OOverlayCIDRsAddressSetSerializesPerVPC(t *testing.T) {
+	const vpcName = util.DefaultVpc
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs: []*kubeovnv1.Vpc{{Name: vpcName}},
+		Subnets: []*kubeovnv1.Subnet{{
+			Name: "overlay-a",
+			Spec: kubeovnv1.SubnetSpec{
+				Vpc:       vpcName,
+				CIDRBlock: "10.244.0.0/16,fd00:244::/64",
+			},
+		}},
+	})
+	require.NoError(t, err)
+
+	var active, maxActive atomic.Int32
+	fc.mockOvnClient.EXPECT().
+		CreateAddressSet(gomock.Any(), gomock.Any()).
+		DoAndReturn(func(string, map[string]string) error {
+			current := active.Add(1)
+			for {
+				observed := maxActive.Load()
+				if current <= observed || maxActive.CompareAndSwap(observed, current) {
+					break
+				}
+			}
+			time.Sleep(10 * time.Millisecond)
+			active.Add(-1)
+			return nil
+		}).AnyTimes()
+	fc.mockOvnClient.EXPECT().
+		AddressSetUpdateAddress(gomock.Any(), gomock.Any()).
+		Return(nil).AnyTimes()
+
+	const calls = 8
+	var wg sync.WaitGroup
+	errCh := make(chan error, calls)
+	for range calls {
+		wg.Go(func() {
+			_, _, err := fc.fakeController.syncU2OOverlayCIDRsAddressSet(vpcName, "")
+			errCh <- err
+		})
+	}
+	wg.Wait()
+	close(errCh)
+	for syncErr := range errCh {
+		require.NoError(t, syncErr)
+	}
+
+	require.Equal(t, int32(1), maxActive.Load())
 }
 
 func Test_reconcileVips(t *testing.T) {
@@ -673,7 +839,7 @@ func Test_formatSubnet(t *testing.T) {
 					ExcludeIps:  []string{"192.168.0.1"},
 					Provider:    util.OvnProvider,
 					GatewayType: kubeovnv1.GWDistributedType,
-					EnableLb:    new(ctrl.config.EnableLb),
+					EnableLb:    new(ctrl.config.EnableOvnLB),
 				},
 			},
 		},
@@ -1212,4 +1378,90 @@ func Test_handleMcastQuerierChange(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "delete lsp failed")
 	})
+}
+
+func TestRecordSubnetGatewayMACRetriesAfterFailedPatch(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		Name: "subnet-gw-mac",
+		Spec: kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc, CIDRBlock: "10.20.0.0/24", Gateway: "10.20.0.1"},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
+
+	const routerPortName = "lrp-subnet-gw-mac"
+	const gatewayMAC = "00:00:00:00:00:09"
+	fc.mockOvnClient.EXPECT().GetLogicalRouterPort(routerPortName, true).
+		Return(&ovnnb.LogicalRouterPort{MAC: gatewayMAC}, nil).Times(2)
+
+	patchErr := errors.New("status patch failed")
+	failNext := true
+	ctrl.config.KubeOvnClient.(*kubeovnfake.Clientset).PrependReactor("patch", "subnets", func(action ktesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() != "status" || !failNext {
+			return false, nil, nil
+		}
+		failNext = false
+		return true, nil, patchErr
+	})
+
+	require.ErrorIs(t, ctrl.recordSubnetGatewayMAC(subnet, routerPortName), patchErr)
+	require.Empty(t, subnet.Status.GatewayMAC)
+
+	require.NoError(t, ctrl.recordSubnetGatewayMAC(subnet, routerPortName))
+	require.Equal(t, gatewayMAC, subnet.Status.GatewayMAC)
+
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Subnets().Get(context.Background(), subnet.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, gatewayMAC, got.Status.GatewayMAC)
+}
+
+// Vips are counted by their subnet label only: the ip_reserved label, which used to
+// exclude vips assigned to a pod, no longer has any effect since v1.17.
+func TestCalculateUsingIPsCountsVips(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		Name: "subnet-a",
+		Spec: kubeovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24", Provider: util.OvnProvider},
+	}
+	vips := []*kubeovnv1.Vip{
+		{
+			// created by this controller: no ip_reserved label at all
+			Name:   "aap",
+			Labels: map[string]string{util.SubnetNameLabel: subnet.Name},
+			Spec:   kubeovnv1.VipSpec{Subnet: subnet.Name},
+		},
+		{
+			// upgraded cluster: label kept from v1.16, no longer read by anything
+			Name:   "legacy-free",
+			Labels: map[string]string{util.SubnetNameLabel: subnet.Name, util.IPReservedLabel: ""},
+			Spec:   kubeovnv1.VipSpec{Subnet: subnet.Name},
+		},
+		{
+			// upgraded cluster: still labelled as reserved by a pre-v1.17 pod. It holds an
+			// address of its own once that pod is gone, so it must be counted as well.
+			Name:   "legacy-reserved",
+			Labels: map[string]string{util.SubnetNameLabel: subnet.Name, util.IPReservedLabel: "busybox.default"},
+			Spec:   kubeovnv1.VipSpec{Subnet: subnet.Name},
+		},
+		{
+			Name:   "other-subnet",
+			Labels: map[string]string{util.SubnetNameLabel: "subnet-b"},
+			Spec:   kubeovnv1.VipSpec{Subnet: "subnet-b"},
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		Vips:    vips,
+	})
+	require.NoError(t, err)
+
+	podUsedIPs := []*kubeovnv1.IP{{
+		Name: "busybox.default",
+		Spec: kubeovnv1.IPSpec{Subnet: subnet.Name, IPAddress: "10.0.0.10"},
+	}}
+
+	using, err := fc.fakeController.calculateUsingIPs(subnet, podUsedIPs, nil)
+	require.NoError(t, err)
+	// 1 pod + the 3 vips of subnet-a, the vip of another subnet excluded
+	require.Equal(t, int64(4), using.Int64())
 }
