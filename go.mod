@@ -100,7 +100,7 @@ require (
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cenkalti/hub v1.0.2 // indirect
-	github.com/cenkalti/rpc2 v1.0.5 // indirect
+	github.com/cenkalti/rpc2 v1.0.6 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chai2010/gettext-go v1.0.3 // indirect
 	github.com/container-storage-interface/spec v1.13.0 // indirect
@@ -149,7 +149,7 @@ require (
 	github.com/go-openapi/swag/yamlutils v0.29.1 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
-	github.com/go-playground/validator/v10 v10.30.4 // indirect
+	github.com/go-playground/validator/v10 v10.30.5 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
@@ -289,7 +289,7 @@ replace (
 	github.com/mdlayher/arp => github.com/kubeovn/arp v0.0.0-20260528080449-dad82eb4dedd
 	github.com/openshift/api => github.com/openshift/api v0.0.0-20191219222812-2987a591a72c
 	github.com/openshift/client-go => github.com/openshift/client-go v0.0.0-20210112165513-ebc401615f47
-	github.com/ovn-kubernetes/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20261021101211-281446e8419c
+	github.com/ovn-kubernetes/libovsdb => github.com/kubeovn/libovsdb v0.0.0-20261023064403-f62402e3a660
 	k8s.io/api => k8s.io/api v0.37.1
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.37.1
 	k8s.io/apimachinery => k8s.io/apimachinery v0.37.1
