@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	ktesting "k8s.io/client-go/testing"
@@ -868,4 +869,174 @@ func TestReconcileVpcEgressGatewayWorkloadMutuallyExclusiveIPFields(t *testing.T
 			require.ErrorContains(t, err, tt.wantErr)
 		})
 	}
+}
+
+func TestReconcileVpcEgressGatewayWorkloadNonPrimaryCNIRoutesAnnotation(t *testing.T) {
+	intSubnet := &kubeovnv1.Subnet{
+		Name: "int-subnet",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "172.20.10.0/24",
+			Gateway:   "172.20.10.1",
+			Provider:  "vswitchinternal.default.ovn",
+		},
+	}
+	extSubnet := &kubeovnv1.Subnet{
+		Name: "ext-subnet",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "192.168.0.0/24",
+			Gateway:   "192.168.0.1",
+			Provider:  "vswitchexternal.default.ovn",
+		},
+	}
+	intNad := &nadv1.NetworkAttachmentDefinition{Name: "vswitchinternal", Namespace: "default"}
+	extNad := &nadv1.NetworkAttachmentDefinition{Name: "vswitchexternal", Namespace: "default"}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets:            []*kubeovnv1.Subnet{intSubnet, extSubnet},
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{intNad, extNad},
+	})
+	require.NoError(t, err)
+
+	c := fc.fakeController
+	c.config.EnableNonPrimaryCNI = true
+	gw := newVpcEgressGatewayForWorkloadTest(intSubnet, extSubnet)
+
+	_, _, _, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "10.255.255.255", "")
+	require.NoError(t, err)
+
+	// Step 1: verify routes annotation key exists on internal provider.
+	routesKey := "vswitchinternal.default.ovn.kubernetes.io/routes"
+	routesVal, ok := deploy.Spec.Template.Annotations[routesKey]
+	require.True(t, ok)
+
+	// Step 2: verify routes annotation is populated.
+	require.NotEmpty(t, routesVal)
+
+	// Step 3: verify route payload includes destination and gateway fields.
+	expectedRoutes := `[{"dst":"10.255.255.255/32","gw":"172.20.10.1"}]`
+	require.JSONEq(t, expectedRoutes, routesVal)
+}
+
+func TestReconcileVpcEgressGatewayWorkloadInvalidInternalSubnetProvider(t *testing.T) {
+	intSubnet := &kubeovnv1.Subnet{
+		Name: "int-subnet",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "172.20.10.0/24",
+			Gateway:   "172.20.10.1",
+			Provider:  "invalidprovider",
+		},
+	}
+	extSubnet := &kubeovnv1.Subnet{
+		Name: "ext-subnet",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "192.168.0.0/24",
+			Gateway:   "192.168.0.1",
+			Provider:  "vswitchexternal.default.ovn",
+		},
+	}
+	extNad := &nadv1.NetworkAttachmentDefinition{Name: "vswitchexternal", Namespace: "default"}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets:            []*kubeovnv1.Subnet{intSubnet, extSubnet},
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{extNad},
+	})
+	require.NoError(t, err)
+
+	c := fc.fakeController
+	c.config.EnableNonPrimaryCNI = true
+	gw := newVpcEgressGatewayForWorkloadTest(intSubnet, extSubnet)
+
+	_, _, _, _, err = c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "", "")
+	require.Error(t, err)
+	require.ErrorContains(t, err, "provider")
+}
+
+func TestReconcileVpcEgressGatewayOVNRoutesNonPrimaryCNIRejectsSelectors(t *testing.T) {
+	f := newVegOVNRouteFixture(t)
+	f.fc.fakeController.config.EnableNonPrimaryCNI = true
+	f.gw.Spec.Selectors = []kubeovnv1.VpcEgressGatewaySelector{{
+		PodSelector: &metav1.LabelSelector{
+			MatchLabels: map[string]string{"app": "test"},
+		},
+	}}
+
+	err := f.fc.fakeController.reconcileVpcEgressGatewayOVNRoutes(
+		f.gw,
+		4,
+		f.lrName,
+		f.lrpName,
+		f.bfdIP,
+		map[string]set.Set[string]{f.nodeName: set.New("10.16.1.10")},
+		nil,
+	)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "not supported")
+
+	fakeRecorder, ok := f.fc.fakeController.recorder.(*record.FakeRecorder)
+	require.True(t, ok, "expected fake recorder")
+
+	event := requireRecorderEvent(t, fakeRecorder)
+	require.Contains(t, event, "Warning")
+	require.Contains(t, event, "SelectorsNotSupported")
+}
+
+func TestReconcileVpcEgressGatewayWorkloadNonPrimaryCNIAnnotations(t *testing.T) {
+	intSubnet := &kubeovnv1.Subnet{
+		Name: "int-subnet",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "172.20.10.0/24",
+			Gateway:   "172.20.10.1",
+			Provider:  "vswitchinternal.default.ovn",
+		},
+	}
+	extSubnet := &kubeovnv1.Subnet{
+		Name: "ext-subnet",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "192.168.0.10/24",
+			Gateway:   "192.168.0.1",
+			Provider:  "vswitchexternal.default.ovn",
+		},
+	}
+	intNad := &nadv1.NetworkAttachmentDefinition{Name: "vswitchinternal", Namespace: "default"}
+	extNad := &nadv1.NetworkAttachmentDefinition{Name: "vswitchexternal", Namespace: "default"}
+	ippools := []*kubeovnv1.IPPool{
+		{Name: "int-pool", Spec: kubeovnv1.IPPoolSpec{Subnet: "int-subnet"}},
+		{Name: "ext-pool", Spec: kubeovnv1.IPPoolSpec{Subnet: "ext-subnet"}},
+	}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets:            []*kubeovnv1.Subnet{intSubnet, extSubnet},
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{intNad, extNad},
+		IPPools:            ippools,
+	})
+	require.NoError(t, err)
+	c := fc.fakeController
+	c.config.EnableNonPrimaryCNI = true
+
+	gw := newVpcEgressGatewayForWorkloadTest(intSubnet, extSubnet)
+	gw.Spec.InternalIPPool = "int-pool"
+	gw.Spec.ExternalIPPool = "ext-pool"
+
+	gw.Spec.Bandwidth = &kubeovnv1.BandwidthLimit{
+		Ingress: &kubeovnv1.BandwidthRate{
+			Type:   intstr.Int,
+			IntVal: 100, // Mbps
+		},
+		Egress: &kubeovnv1.BandwidthRate{
+			Type:   intstr.Int,
+			IntVal: 200, // Mbps
+		},
+	}
+
+	attachmentNetworkName, _, _, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "", "")
+	require.NoError(t, err)
+	require.Equal(t, "default/vswitchexternal", attachmentNetworkName)
+
+	require.Equal(t, "default/vswitchinternal", deploy.Spec.Template.Annotations[util.DefaultNetworkAnnotation])
+	require.Equal(t, "default/vswitchexternal", deploy.Spec.Template.Annotations[nadv1.NetworkAttachmentAnnot])
+	require.Equal(t, intSubnet.Name, deploy.Spec.Template.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, intSubnet.Spec.Provider)])
+	require.Equal(t, "int-pool", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, intSubnet.Spec.Provider)])
+	require.Equal(t, "ext-pool", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)])
+	require.Equal(t, "100", deploy.Spec.Template.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, intSubnet.Spec.Provider)])
+	require.Equal(t, "200", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, intSubnet.Spec.Provider)])
 }
