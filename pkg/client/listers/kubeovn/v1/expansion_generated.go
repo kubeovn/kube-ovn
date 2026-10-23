@@ -30,6 +30,14 @@ type DNSNameResolverListerExpansion interface{}
 // EvpnConfLister.
 type EvpnConfListerExpansion interface{}
 
+// ExternalEndpointListerExpansion allows custom methods to be added to
+// ExternalEndpointLister.
+type ExternalEndpointListerExpansion interface{}
+
+// ExternalEndpointNamespaceListerExpansion allows custom methods to be added to
+// ExternalEndpointNamespaceLister.
+type ExternalEndpointNamespaceListerExpansion interface{}
+
 // IPListerExpansion allows custom methods to be added to
 // IPLister.
 type IPListerExpansion interface{}

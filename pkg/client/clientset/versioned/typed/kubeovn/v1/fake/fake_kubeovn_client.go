@@ -40,6 +40,10 @@ func (c *FakeKubeovnV1) EvpnConves() v1.EvpnConfInterface {
 	return newFakeEvpnConves(c)
 }
 
+func (c *FakeKubeovnV1) ExternalEndpoints(namespace string) v1.ExternalEndpointInterface {
+	return newFakeExternalEndpoints(c, namespace)
+}
+
 func (c *FakeKubeovnV1) IPs() v1.IPInterface {
 	return newFakeIPs(c)
 }

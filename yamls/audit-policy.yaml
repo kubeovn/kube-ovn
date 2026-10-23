@@ -83,6 +83,8 @@ rules:
           - switch-lb-rules/status
           - router-lb-rules
           - router-lb-rules/status
+          - external-endpoints
+          - external-endpoints/status
           - qos-policies
           - qos-policies/status
     verbs:

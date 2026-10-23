@@ -101,13 +101,22 @@ func (c *OVNNbClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName,
 		return err
 	}
 
-	var ops []ovsdb.Operation
 	lsp := buildLogicalSwitchPort(lspName, lsName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
+	return c.createOrUpdateLogicalSwitchPort(lsName, lsp, existingLsp)
+}
+
+// createOrUpdateLogicalSwitchPort updates lsp in place when it already exists on
+// lsName, and otherwise (re)creates it on lsName in one transaction.
+// extraUpdateFields are written in addition to the fields every port carries.
+func (c *OVNNbClient) createOrUpdateLogicalSwitchPort(lsName string, lsp, existingLsp *ovnnb.LogicalSwitchPort, extraUpdateFields ...any) error {
+	var ops []ovsdb.Operation
+	var err error
 	if existingLsp != nil {
 		if existingLsp.ExternalIDs[LogicalSwitchKey] == lsName {
-			if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Addresses, &lsp.Dhcpv4Options, &lsp.Dhcpv6Options, &lsp.PortSecurity, &lsp.ExternalIDs); err != nil {
+			fields := append([]any{&lsp.Addresses, &lsp.Dhcpv4Options, &lsp.Dhcpv6Options, &lsp.PortSecurity, &lsp.ExternalIDs}, extraUpdateFields...)
+			if err := c.UpdateLogicalSwitchPort(lsp, fields...); err != nil {
 				klog.Error(err)
-				return fmt.Errorf("failed to update logical switch port %s: %w", lspName, err)
+				return fmt.Errorf("failed to update logical switch port %s: %w", lsp.Name, err)
 			}
 			return nil
 		}
@@ -120,12 +129,12 @@ func (c *OVNNbClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName,
 	createLspOps, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
 	if err != nil {
 		klog.Error(err)
-		return fmt.Errorf("generate operations for creating logical switch port %s: %w", lspName, err)
+		return fmt.Errorf("generate operations for creating logical switch port %s: %w", lsp.Name, err)
 	}
 
 	if err = c.Transact("lsp-add", append(ops, createLspOps...)); err != nil {
 		klog.Error(err)
-		return fmt.Errorf("create logical switch port %s: %w", lspName, err)
+		return fmt.Errorf("create logical switch port %s: %w", lsp.Name, err)
 	}
 
 	return nil
@@ -596,6 +605,33 @@ func (c *OVNNbClient) SetLogicalSwitchPortSecurity(portSecurity bool, lspName, m
 	}
 
 	return nil
+}
+
+// CreateLogicalSwitchPortWithOwner creates or updates a logical switch port like
+// CreateLogicalSwitchPort, and in the same transaction merges ownerExternalIDs into
+// its external_ids and sets options:requested-chassis (or removes it when
+// requestedChassis is empty). Writing everything at once means the port is never
+// visible without its owner, and never claimable by a chassis other than the
+// requested one.
+func (c *OVNNbClient) CreateLogicalSwitchPortWithOwner(lsName, lspName, ip, mac string, portSecurity bool, securityGroups string, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string, ownerExternalIDs map[string]string, requestedChassis string) error {
+	existingLsp, err := c.GetLogicalSwitchPort(lspName, true)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+
+	lsp := buildLogicalSwitchPort(lspName, lsName, ip, mac, "", "", portSecurity, securityGroups, "", enableDHCP, dhcpOptions, vpc)
+	maps.Copy(lsp.ExternalIDs, ownerExternalIDs)
+	lsp.Options = make(map[string]string)
+	if existingLsp != nil {
+		maps.Copy(lsp.Options, existingLsp.Options)
+	}
+	if requestedChassis == "" {
+		delete(lsp.Options, "requested-chassis")
+	} else {
+		lsp.Options["requested-chassis"] = requestedChassis
+	}
+	return c.createOrUpdateLogicalSwitchPort(lsName, lsp, existingLsp, &lsp.Options)
 }
 
 // SetLogicalSwitchPortExternalIDs sets logical switch port external ids
