@@ -36,6 +36,7 @@ ARG ARCH
 ARG LEGACY
 ARG DEBIAN_FRONTEND=noninteractive
 ARG SRC_DIR='/usr/src'
+ARG OPENBFDD_COMMIT=e35f43ad8d2b3f084e96a84c392528a90d05a287
 
 ADD patches/4228eab1d722087ba795e310eadc9e25c4513ec1.patch $SRC_DIR
 ADD patches/54056ea65dc28aa1c4c721a2a34d7913f79f8376.patch $SRC_DIR
@@ -171,7 +172,7 @@ RUN cd /usr/src/ovn && \
     OVSDIR=/usr/src/ovs EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
 
 RUN mkdir -p /usr/src/openbfdd && \
-    curl -sSf -L --retry 5 https://github.com/dyninc/OpenBFDD/archive/e35f43ad8d2b3f084e96a84c392528a90d05a287.tar.gz | \
+    curl -sSf -L --retry 5 "https://github.com/dyninc/OpenBFDD/archive/${OPENBFDD_COMMIT}.tar.gz" | \
     tar -xz -C /usr/src/openbfdd --strip-components=1
 
 ADD OpenBFDD-compile.patch /usr/src/
@@ -190,6 +191,8 @@ RUN cd /usr/src/openbfdd && \
 
 RUN mkdir /packages/ && \
     mv /usr/src/openbfdd/bfdd-beacon /usr/src/openbfdd/bfdd-control /packages/ && \
+    cp /usr/src/openbfdd/LICENSE /packages/openbfdd-LICENSE && \
+    printf 'OpenBFDD %s\n  License: BSD-3-Clause\n  Source: https://github.com/dyninc/OpenBFDD/tree/%s\n  License text: third-party/openbfdd/LICENSE\n' "$OPENBFDD_COMMIT" "$OPENBFDD_COMMIT" > /packages/openbfdd-NOTICE && \
     cp /usr/src/openvswitch-*deb /packages && \
     cp /usr/src/python3-openvswitch*deb /packages && \
     cp /usr/src/ovn-*deb /packages && \
@@ -290,6 +293,10 @@ ARG DEBUG=false
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
     cp /packages/bfdd-beacon /packages/bfdd-control /usr/bin/ && \
+    mkdir -p /usr/share/doc/kube-ovn/third-party/openbfdd && \
+    cp /packages/openbfdd-LICENSE /usr/share/doc/kube-ovn/third-party/openbfdd/LICENSE && \
+    printf '\n' >> /usr/share/doc/kube-ovn/THIRD_PARTY_NOTICES && \
+    cat /packages/openbfdd-NOTICE >> /usr/share/doc/kube-ovn/THIRD_PARTY_NOTICES && \
     cp /packages/ovs-sandbox /usr/bin/ && chmod +x /usr/bin/ovs-sandbox && \
     setcap CAP_NET_BIND_SERVICE+eip /usr/bin/bfdd-beacon && \
     dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb /packages/ovn-*.deb && \
