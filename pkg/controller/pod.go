@@ -2788,29 +2788,63 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 			}
 		}
 
-		var skippedAddrs []string
-		for {
-			ipv4, ipv6, mac, err := c.ipam.GetRandomAddressWithFamily(key, portName, macPointer, podNet.Subnet.Name, "", requestedIPFamily, skippedAddrs, !podNet.AllowLiveMigration)
+		candidateNets := []*kubeovnNet{podNet}
+		canFallback := podNet.IsDefault && podNet.ProviderName == util.OvnProvider && subnetStr == ""
+		if canFallback {
+			ns, err := c.namespacesLister.Get(pod.Namespace)
 			if err != nil {
-				klog.Error(err)
 				return "", "", "", podNet.Subnet, err
 			}
-			ipv4OK, ipv6OK, err := c.validatePodIP(pod.Name, podNet.Subnet.Name, ipv4, ipv6)
-			if err != nil {
-				klog.Error(err)
-				return "", "", "", podNet.Subnet, err
-			}
-			if ipv4OK && ipv6OK {
-				return ipv4, ipv6, mac, podNet.Subnet, nil
-			}
-
-			if !ipv4OK {
-				skippedAddrs = append(skippedAddrs, ipv4)
-			}
-			if !ipv6OK {
-				skippedAddrs = append(skippedAddrs, ipv6)
+			subnetNames := strings.Split(ns.Annotations[util.LogicalSwitchAnnotation], ",")
+			selectedIndex := slices.Index(subnetNames, podNet.Subnet.Name)
+			for _, net := range nsNets {
+				if selectedIndex >= 0 && slices.Index(subnetNames, net.Subnet.Name) > selectedIndex {
+					candidateNets = append(candidateNets, net)
+				}
 			}
 		}
+		for i, candidate := range candidateNets {
+			if i != 0 && (candidate.Subnet.Spec.CIDRBlock == "" || validateRequestedIPFamilyForSubnet(requestedIPFamily, candidate.Subnet) != nil) {
+				continue
+			}
+			var skippedAddrs []string
+			for {
+				ipv4, ipv6, mac, err := c.ipam.GetRandomAddressWithFamily(key, portName, macPointer, candidate.Subnet.Name, "", requestedIPFamily, skippedAddrs, !candidate.AllowLiveMigration)
+				if err != nil {
+					if !canFallback || !errors.Is(err, ipam.ErrNoAvailable) || i == len(candidateNets)-1 {
+						klog.Error(err)
+						return "", "", "", candidate.Subnet, err
+					}
+					if i == 0 {
+						ipCR, getErr := c.ipsLister.Get(portName)
+						if getErr == nil && ipCR.Spec.Subnet == candidate.Subnet.Name {
+							return "", "", "", candidate.Subnet, err
+						}
+						if getErr != nil && !k8serrors.IsNotFound(getErr) {
+							return "", "", "", candidate.Subnet, getErr
+						}
+					}
+					klog.Infof("no available address in subnet %s for pod %s/%s, trying the next namespace subnet", candidate.Subnet.Name, pod.Namespace, pod.Name)
+					break
+				}
+				ipv4OK, ipv6OK, err := c.validatePodIP(pod.Name, candidate.Subnet.Name, ipv4, ipv6)
+				if err != nil {
+					klog.Error(err)
+					return "", "", "", candidate.Subnet, err
+				}
+				if ipv4OK && ipv6OK {
+					return ipv4, ipv6, mac, candidate.Subnet, nil
+				}
+
+				if !ipv4OK {
+					skippedAddrs = append(skippedAddrs, ipv4)
+				}
+				if !ipv6OK {
+					skippedAddrs = append(skippedAddrs, ipv6)
+				}
+			}
+		}
+		return "", "", "", podNet.Subnet, ipam.ErrNoAvailable
 	}
 
 	return c.acquireStaticAddressHelper(pod, podNet, portName, macPointer, ippoolStr, nsNets, isStsPod, key, requestedIPFamily)

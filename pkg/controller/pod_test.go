@@ -669,6 +669,131 @@ func TestAcquireAddressWithSpecifiedSubnet(t *testing.T) {
 	}
 }
 
+func TestAcquireAddressFallsBackWhenNamespaceSubnetIPAMIsExhausted(t *testing.T) {
+	for _, tt := range []struct {
+		name           string
+		annotations    map[string]string
+		exhaustSecond  bool
+		retainIPCR     bool
+		expectedSubnet string
+		expectedErr    error
+	}{
+		{name: "automatic namespace fallback", annotations: map[string]string{}, expectedSubnet: "underlay02"},
+		{name: "explicit subnet", annotations: map[string]string{util.LogicalSwitchAnnotation: "underlay01"}, expectedErr: ipam.ErrNoAvailable},
+		{name: "static IP", annotations: map[string]string{util.IPAddressAnnotation: "10.0.1.2"}, expectedErr: ipam.ErrOutOfRange},
+		{name: "literal IPPool", annotations: map[string]string{util.IPPoolAnnotation: "10.0.1.2"}, expectedErr: ipam.ErrOutOfRange},
+		{name: "all subnets exhausted", annotations: map[string]string{}, exhaustSecond: true, expectedErr: ipam.ErrNoAvailable},
+		{name: "existing IP CR", annotations: map[string]string{}, retainIPCR: true, expectedErr: ipam.ErrNoAvailable},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			subnets := []*kubeovnv1.Subnet{
+				{
+					Name: "underlay01",
+					Spec: kubeovnv1.SubnetSpec{
+						CIDRBlock: "10.0.1.0/29", Protocol: kubeovnv1.ProtocolIPv4,
+						Provider: util.OvnProvider, ExcludeIps: []string{"10.0.1.1"},
+					},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.NewBigInt(1)},
+				},
+				{
+					Name: "underlay02",
+					Spec: kubeovnv1.SubnetSpec{
+						CIDRBlock: "10.0.2.0/29", Protocol: kubeovnv1.ProtocolIPv4,
+						Provider: util.OvnProvider, ExcludeIps: []string{"10.0.2.1"},
+					},
+					Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.NewBigInt(4)},
+				},
+			}
+			ns := &corev1.Namespace{
+				Name: "default", Annotations: map[string]string{util.LogicalSwitchAnnotation: "underlay01,underlay02"},
+			}
+			pod := &corev1.Pod{Name: "test-pod", Namespace: ns.Name, Annotations: tt.annotations}
+			var ips []*kubeovnv1.IP
+			if tt.retainIPCR {
+				ips = []*kubeovnv1.IP{{
+					Name: ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider),
+					Spec: kubeovnv1.IPSpec{Subnet: subnets[0].Name},
+				}}
+			}
+			fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Namespaces: []*corev1.Namespace{ns}, Subnets: subnets, Pods: []*corev1.Pod{pod}, IPs: ips,
+			})
+			require.NoError(t, err)
+			ctrl := fc.fakeController
+			ctrl.ipam = newIPAMForTest(subnets)
+			exhaustKeepIPTestSubnet(t, ctrl, subnets[0].Name)
+			if tt.exhaustSecond {
+				exhaustKeepIPTestSubnet(t, ctrl, subnets[1].Name)
+			}
+
+			nets, err := ctrl.getPodKubeovnNets(pod)
+			require.NoError(t, err)
+			require.Len(t, nets, 1)
+			require.Equal(t, subnets[0].Name, nets[0].Subnet.Name, "stale subnet status selects the exhausted subnet")
+
+			v4, v6, _, selected, err := ctrl.acquireAddress(pod, nets[0])
+			if tt.expectedErr != nil {
+				require.ErrorIs(t, err, tt.expectedErr)
+				for _, address := range ctrl.ipam.GetPodAddress(pod.Namespace + "/" + pod.Name) {
+					require.NotEqual(t, subnets[1].Name, address.Subnet.Name)
+				}
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.expectedSubnet, selected.Name)
+			require.Contains(t, v4, "10.0.2.")
+			require.Empty(t, v6)
+			addresses := ctrl.ipam.GetPodAddress(pod.Namespace + "/" + pod.Name)
+			require.Len(t, addresses, 1)
+			require.Equal(t, selected.Name, addresses[0].Subnet.Name)
+		})
+	}
+}
+
+func TestAcquireAddressFallbackFollowsNamespaceSubnetOrder(t *testing.T) {
+	subnets := make([]*kubeovnv1.Subnet, 0, 3)
+	for i, name := range []string{"underlay01", "underlay02", "underlay03"} {
+		available := int64(4)
+		if i == 0 {
+			available = 0
+		} else if i == 1 {
+			available = 1
+		}
+		subnets = append(subnets, &kubeovnv1.Subnet{
+			Name: name,
+			Spec: kubeovnv1.SubnetSpec{
+				CIDRBlock: fmt.Sprintf("10.0.%d.0/29", i+1),
+				Protocol:  kubeovnv1.ProtocolIPv4,
+				Provider:  util.OvnProvider,
+			},
+			Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.NewBigInt(available)},
+		})
+	}
+	pod := &corev1.Pod{Name: "test-pod", Namespace: "default", Annotations: map[string]string{}}
+	ns := &corev1.Namespace{
+		Name: pod.Namespace, Annotations: map[string]string{util.LogicalSwitchAnnotation: "underlay01,underlay02,underlay03"},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Namespaces: []*corev1.Namespace{ns}, Subnets: subnets, Pods: []*corev1.Pod{pod},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	ctrl.ipam = newIPAMForTest(subnets)
+	exhaustKeepIPTestSubnet(t, ctrl, subnets[1].Name)
+
+	nets, err := ctrl.getPodKubeovnNets(pod)
+	require.NoError(t, err)
+	require.Len(t, nets, 1)
+	require.Equal(t, subnets[1].Name, nets[0].Subnet.Name)
+
+	_, _, _, selected, err := ctrl.acquireAddress(pod, nets[0])
+	require.NoError(t, err)
+	require.Equal(t, subnets[2].Name, selected.Name)
+	addresses := ctrl.ipam.GetPodAddress(pod.Namespace + "/" + pod.Name)
+	require.Len(t, addresses, 1)
+	require.Equal(t, subnets[2].Name, addresses[0].Subnet.Name)
+}
+
 func TestAcquireStaticAddressHelperPerInterfaceIPAMKey(t *testing.T) {
 	// This test verifies that when acquireStaticAddressHelper allocates a static IP
 	// for a per-interface NAD (with NadName, NadNamespace, and InterfaceName all set),
