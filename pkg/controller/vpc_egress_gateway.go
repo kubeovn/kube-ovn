@@ -958,7 +958,7 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		// this is not supported in this version and will be supported in the future(document the case).
 		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, "SelectorsNotSupported",
 			"spec.selectors is not supported when kube-ovn runs as a non-primary CNI")
-		err := fmt.Errorf("spec.selectors is not supported when kube-ovn runs as a non-primary CNI")
+		err := errors.New("spec.selectors is not supported when kube-ovn runs as a non-primary CNI")
 		klog.Error(err)
 		return err
 	}
