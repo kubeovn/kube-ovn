@@ -5,7 +5,7 @@ go 1.27.3
 require (
 	github.com/brianvoe/gofakeit/v7 v7.18.0
 	github.com/cenkalti/backoff/v7 v7.0.1
-	github.com/cert-manager/cert-manager v1.21.2
+	github.com/cert-manager/cert-manager v1.21.3
 	github.com/cnf/structhash v0.0.0-20250313080605-df4c6cc74a9a
 	github.com/containerd/nerdctl/v2 v2.4.1
 	github.com/containernetworking/cni v1.3.1
