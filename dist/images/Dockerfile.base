@@ -170,8 +170,9 @@ RUN cd /usr/src/ovn && \
     if [ "$ARCH" = "amd64" ] && [ "$LEGACY" != "true" ]; then CONFIGURE_OPTS="--with-ovs-build=/usr/src/ovs/_debian CFLAGS='-O2 -g -msse4.2 -mpopcnt -fPIC'"; fi && \
     OVSDIR=/usr/src/ovs EXTRA_CONFIGURE_OPTS=$CONFIGURE_OPTS DEB_BUILD_OPTIONS='parallel=8 nocheck' fakeroot debian/rules binary
 
+ARG OPENBFDD_COMMIT=e35f43ad8d2b3f084e96a84c392528a90d05a287
 RUN mkdir -p /usr/src/openbfdd && \
-    curl -sSf -L --retry 5 https://github.com/dyninc/OpenBFDD/archive/e35f43ad8d2b3f084e96a84c392528a90d05a287.tar.gz | \
+    curl -sSf -L --retry 5 "https://github.com/dyninc/OpenBFDD/archive/${OPENBFDD_COMMIT}.tar.gz" | \
     tar -xz -C /usr/src/openbfdd --strip-components=1
 
 ADD OpenBFDD-compile.patch /usr/src/
@@ -190,6 +191,8 @@ RUN cd /usr/src/openbfdd && \
 
 RUN mkdir /packages/ && \
     mv /usr/src/openbfdd/bfdd-beacon /usr/src/openbfdd/bfdd-control /packages/ && \
+    cp /usr/src/openbfdd/LICENSE /packages/openbfdd-LICENSE && \
+    printf 'OpenBFDD %s\n  License: BSD-3-Clause\n  Source: https://github.com/dyninc/OpenBFDD/tree/%s\n  License text: third-party/openbfdd/LICENSE\n' "$OPENBFDD_COMMIT" "$OPENBFDD_COMMIT" > /packages/openbfdd-NOTICE && \
     cp /usr/src/openvswitch-*deb /packages && \
     cp /usr/src/python3-openvswitch*deb /packages && \
     cp /usr/src/ovn-*deb /packages && \
@@ -205,6 +208,8 @@ ARG CNI_PLUGINS_VERSION=v1.9.1
 ARG KUBECTL_VERSION=v1.35.8
 # renovate: datasource=github-releases depName=gobgp packageName=osrg/gobgp versioning=semver
 ARG GOBGP_VERSION=4.7.0
+# renovate: datasource=github-releases depName=dumb-init packageName=Yelp/dumb-init versioning=semver
+ARG DUMB_INIT_VERSION="1.2.5"
 RUN apk --no-cache add curl jq
 ADD go-deps/download-go-deps.sh /
 RUN sh -x /download-go-deps.sh
@@ -214,7 +219,9 @@ FROM golang:$GO_VERSION-alpine AS go-deps
 RUN apk --no-cache add bash curl jq git
 ADD go-deps/rebuild-go-deps.sh /
 RUN --mount=type=bind,target=/trivy,from=trivy,source=/godeps \
-    bash -x /rebuild-go-deps.sh
+    bash -x /rebuild-go-deps.sh && \
+    cp -R /trivy/licenses /godeps/licenses && \
+    cp /trivy/THIRD_PARTY_NOTICES /godeps/THIRD_PARTY_NOTICES
 
 FROM ubuntu:24.04 AS ubuntu
 
@@ -277,12 +284,19 @@ RUN curl -sSf -L --retry 5 -o /usr/bin/dumb-init https://github.com/Yelp/dumb-in
 
 RUN --mount=type=bind,target=/godeps,from=go-deps,source=/godeps \
     cp /godeps/loopback /godeps/portmap /godeps/macvlan ./ && \
-    cp /godeps/kubectl /godeps/gobgp /usr/bin/
+    cp /godeps/kubectl /godeps/gobgp /usr/bin/ && \
+    mkdir -p /usr/share/doc/kube-ovn/third-party && \
+    cp -R /godeps/licenses/. /usr/share/doc/kube-ovn/third-party/ && \
+    cp /godeps/THIRD_PARTY_NOTICES /usr/share/doc/kube-ovn/THIRD_PARTY_NOTICES
 
 ARG DEBUG=false
 
 RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
     cp /packages/bfdd-beacon /packages/bfdd-control /usr/bin/ && \
+    mkdir -p /usr/share/doc/kube-ovn/third-party/openbfdd && \
+    cp /packages/openbfdd-LICENSE /usr/share/doc/kube-ovn/third-party/openbfdd/LICENSE && \
+    printf '\n' >> /usr/share/doc/kube-ovn/THIRD_PARTY_NOTICES && \
+    cat /packages/openbfdd-NOTICE >> /usr/share/doc/kube-ovn/THIRD_PARTY_NOTICES && \
     cp /packages/ovs-sandbox /usr/bin/ && chmod +x /usr/bin/ovs-sandbox && \
     setcap CAP_NET_BIND_SERVICE+eip /usr/bin/bfdd-beacon && \
     dpkg -i /packages/openvswitch-*.deb /packages/python3-openvswitch*.deb /packages/ovn-*.deb && \
