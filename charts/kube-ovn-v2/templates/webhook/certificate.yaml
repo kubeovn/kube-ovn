@@ -1,4 +1,5 @@
-{{- if .Values.validatingWebhook.enabled }}
+{{- $certificate := .Values.validatingWebhook.certificate | default dict }}
+{{- if and .Values.validatingWebhook.enabled (ne $certificate.create false) }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
