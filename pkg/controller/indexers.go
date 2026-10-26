@@ -12,13 +12,14 @@ import (
 )
 
 const (
-	IndexPodByNode             = "byNodeName"
-	IndexEPSByService          = "byServiceName"
-	IndexDNSNameResolverByName = "byDNSName"
-	IndexIPBySubnet            = "bySubnet"
-	IndexVpcByBFDPort          = "byBFDPort"
-	IndexVpcBFDPortEnabled     = "enabled"
-	IndexServiceByNftableLbEip = "byNftableLbEip"
+	IndexPodByNode              = "byNodeName"
+	IndexEPSByService           = "byServiceName"
+	IndexDNSNameResolverByName  = "byDNSName"
+	IndexIPBySubnet             = "bySubnet"
+	IndexIPByProviderNetworkUID = "byProviderNetworkUID"
+	IndexVpcByBFDPort           = "byBFDPort"
+	IndexVpcBFDPortEnabled      = "enabled"
+	IndexServiceByNftableLbEip  = "byNftableLbEip"
 )
 
 func indexPodByNode(obj any) ([]string, error) {
@@ -84,6 +85,23 @@ func indexIPBySubnet(obj any) ([]string, error) {
 	return subnets, nil
 }
 
+// indexIPByProviderNetworkUID indexes bridge allocations by their ProviderNetwork
+// owner UID, including allocations that have not yet been published in status.
+func indexIPByProviderNetworkUID(obj any) ([]string, error) {
+	ip, ok := obj.(*kubeovnv1.IP)
+	if !ok || ip.Spec.PodType != util.KindProviderNetwork {
+		return nil, nil
+	}
+	var uids []string
+	for _, owner := range ip.OwnerReferences {
+		if owner.APIVersion == kubeovnv1.SchemeGroupVersion.String() && owner.Kind == util.KindProviderNetwork && owner.UID != "" &&
+			!slices.Contains(uids, string(owner.UID)) {
+			uids = append(uids, string(owner.UID))
+		}
+	}
+	return uids, nil
+}
+
 // indexServiceByNftableLbEip indexes a nftable-lb-svc LoadBalancer Service by the EIP it
 // references, so the conflict resolver can find competing services in O(matched).
 func indexServiceByNftableLbEip(obj any) ([]string, error) {
@@ -107,7 +125,10 @@ func (c *Controller) setupIndexers(vpcInformer, podInformer, epsInformer, ipInfo
 	if err := epsInformer.AddIndexers(cache.Indexers{IndexEPSByService: indexEPSByService}); err != nil {
 		return err
 	}
-	if err := ipInformer.AddIndexers(cache.Indexers{IndexIPBySubnet: indexIPBySubnet}); err != nil {
+	if err := ipInformer.AddIndexers(cache.Indexers{
+		IndexIPBySubnet:             indexIPBySubnet,
+		IndexIPByProviderNetworkUID: indexIPByProviderNetworkUID,
+	}); err != nil {
 		return err
 	}
 	if err := svcInformer.AddIndexers(cache.Indexers{IndexServiceByNftableLbEip: indexServiceByNftableLbEip}); err != nil {

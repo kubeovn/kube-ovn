@@ -229,6 +229,18 @@ func (c *Controller) removeProviderNetworkFinalizer(expected *kubeovnv1.Provider
 	if pn.UID != expected.UID || pn.DeletionTimestamp.IsZero() || len(pn.Status.VlanSubinterfaceAddresses) != 0 {
 		return fmt.Errorf("provider network %s changed before finalizer removal", expected.Name)
 	}
+	// The informer may not have observed a recently created allocation yet.
+	// Confirm that none remain before letting the owner disappear.
+	ips, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for i := range ips.Items {
+		ip := &ips.Items[i]
+		if providerNetworkOwnsNodeIP(pn, ip.Spec.NodeName, ip) {
+			return fmt.Errorf("waiting for provider network IP %s to be deleted", ip.Name)
+		}
+	}
 	controllerutil.RemoveFinalizer(pn, util.ProviderNetworkCleanupFinalizer)
 	_, err = pns.Update(ctx, pn, metav1.UpdateOptions{})
 	return err

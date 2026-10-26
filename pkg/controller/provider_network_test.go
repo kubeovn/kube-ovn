@@ -455,6 +455,34 @@ func providerNetworkAddressTestObjects() (*kubeovnv1.ProviderNetwork, *corev1.No
 	return pn, node, ip
 }
 
+func TestProviderNetworkAddressDiscoveryUsesOwnerIndex(t *testing.T) {
+	pn, node, ip := providerNetworkAddressTestObjects()
+	pn.Status.VlanSubinterfaceAddresses = nil // Discovery must not depend on persisted status.
+	other := ip.DeepCopy()
+	other.Name = "pn.other.other-node"
+	other.Spec.NodeName = "other-node"
+	other.OwnerReferences[0].UID = "previous-provider-uid"
+	podIP := &kubeovnv1.IP{
+		ObjectMeta: metav1.ObjectMeta{Name: "pod.default"},
+		Spec:       kubeovnv1.IPSpec{PodName: "pod", Namespace: "default", IPAddress: "192.0.2.4"},
+	}
+	spoofed := ip.DeepCopy()
+	spoofed.Name, spoofed.Spec.NodeName = "pn.spoofed.node", "spoofed-node"
+	spoofed.OwnerReferences[0].Name = "other-provider"
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		ProviderNetworks: []*kubeovnv1.ProviderNetwork{pn}, IPs: []*kubeovnv1.IP{ip, other, podIP, spoofed},
+	})
+	require.NoError(t, err)
+	client := fc.fakeController.config.KubeOvnClient.(*kubeovnfake.Clientset)
+	client.ClearActions()
+	addresses, err := fc.fakeController.providerNetworkAddresses(pn)
+	require.NoError(t, err)
+	require.Equal(t, map[string]kubeovnv1.ProviderNetworkNodeAddress{
+		node.Name: *providerNetworkNodeAddress(ip, kubeovnv1.ProviderNetworkAddressAllocated),
+	}, addresses)
+	require.Empty(t, client.Actions(), "discovery must use the owner index without API requests")
+}
+
 func TestProviderNetworkAddressUsesIPCR(t *testing.T) {
 	for _, withStatus := range []bool{false, true} {
 		t.Run(fmt.Sprint("withStatus=", withStatus), func(t *testing.T) {

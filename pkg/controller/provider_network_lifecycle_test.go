@@ -10,8 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -125,6 +127,25 @@ func TestDeletingProviderNetworkWaitsForAddressCleanup(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, pn.Status.VlanSubinterfaceAddresses)
 	require.NotContains(t, pn.Finalizers, util.ProviderNetworkCleanupFinalizer)
+}
+
+func TestProviderNetworkFinalizerWaitsForUncachedIP(t *testing.T) {
+	pn, _, ip := providerNetworkAddressTestObjects()
+	pn.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+	pn.Status.VlanSubinterfaceAddresses = nil
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		ProviderNetworks: []*kubeovnv1.ProviderNetwork{pn}, IPs: []*kubeovnv1.IP{ip},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	// Simulate an allocation that the API has persisted but the informer has not observed.
+	ctrl.ipIndexer = cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{IndexIPByProviderNetworkUID: indexIPByProviderNetworkUID})
+	ctrl.ipsLister = kubeovnlisters.NewIPLister(ctrl.ipIndexer)
+	ctrl.syncProviderNetworkStatus(pn, nil, nil)
+	stored, err := ctrl.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Get(context.Background(), pn.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Contains(t, stored.Finalizers, util.ProviderNetworkCleanupFinalizer)
+	require.Empty(t, stored.Status.VlanSubinterfaceAddresses)
 }
 
 func TestProviderNetworkCleanupPhaseUsesDaemonAcknowledgement(t *testing.T) {

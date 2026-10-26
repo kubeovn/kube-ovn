@@ -5,6 +5,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -142,6 +143,88 @@ func TestIndexIPBySubnet(t *testing.T) {
 				t.Fatalf("indexIPBySubnet() = %v, want %v", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestIndexIPByProviderNetworkUID(t *testing.T) {
+	owner := metav1.OwnerReference{
+		APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: util.KindProviderNetwork, Name: "provider", UID: "provider-uid",
+	}
+	ownedIP := func(owners ...metav1.OwnerReference) *kubeovnv1.IP {
+		return &kubeovnv1.IP{
+			ObjectMeta: metav1.ObjectMeta{OwnerReferences: owners},
+			Spec:       kubeovnv1.IPSpec{PodType: util.KindProviderNetwork},
+		}
+	}
+	wrongKind, wrongAPI, emptyUID, otherOwner := owner, owner, owner, owner
+	wrongKind.Kind = util.KindNode
+	wrongAPI.APIVersion = "v1"
+	emptyUID.UID = ""
+	otherOwner.Name, otherOwner.UID = "other-provider", "other-uid"
+	for _, tt := range []struct {
+		name string
+		obj  any
+		want []string
+	}{
+		{name: "owned allocation without labels", obj: ownedIP(owner), want: []string{"provider-uid"}},
+		{name: "duplicate owner", obj: ownedIP(owner, owner), want: []string{"provider-uid"}},
+		{name: "multiple owners", obj: ownedIP(owner, otherOwner), want: []string{"provider-uid", "other-uid"}},
+		{name: "no owner", obj: ownedIP()},
+		{name: "wrong kind", obj: ownedIP(wrongKind)},
+		{name: "wrong API version", obj: ownedIP(wrongAPI)},
+		{name: "empty UID", obj: ownedIP(emptyUID)},
+		{name: "non-allocation IP", obj: &kubeovnv1.IP{ObjectMeta: metav1.ObjectMeta{OwnerReferences: []metav1.OwnerReference{owner}}}},
+		{name: "non-IP object", obj: &v1.Pod{}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := indexIPByProviderNetworkUID(tt.obj)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !equalStringSlice(got, tt.want) {
+				t.Fatalf("indexIPByProviderNetworkUID() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIndexIPByProviderNetworkUIDTracksOwnerChanges(t *testing.T) {
+	idx := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{IndexIPByProviderNetworkUID: indexIPByProviderNetworkUID})
+	ip := &kubeovnv1.IP{
+		ObjectMeta: metav1.ObjectMeta{Name: "ip", OwnerReferences: []metav1.OwnerReference{{
+			APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: util.KindProviderNetwork, Name: "provider", UID: "old-uid",
+		}}},
+		Spec: kubeovnv1.IPSpec{PodType: util.KindProviderNetwork},
+	}
+	if err := idx.Add(ip); err != nil {
+		t.Fatalf("add IP: %v", err)
+	}
+	updated := ip.DeepCopy()
+	updated.OwnerReferences[0].UID = "new-uid"
+	if err := idx.Update(updated); err != nil {
+		t.Fatalf("update IP: %v", err)
+	}
+	for _, tt := range []struct {
+		uid  string
+		want int
+	}{{"old-uid", 0}, {"new-uid", 1}} {
+		got, err := idx.ByIndex(IndexIPByProviderNetworkUID, tt.uid)
+		if err != nil {
+			t.Fatalf("ByIndex: %v", err)
+		}
+		if len(got) != tt.want {
+			t.Fatalf("expected %d IPs for %s, got %d", tt.want, tt.uid, len(got))
+		}
+	}
+	if err := idx.Delete(updated); err != nil {
+		t.Fatalf("delete IP: %v", err)
+	}
+	got, err := idx.ByIndex(IndexIPByProviderNetworkUID, "new-uid")
+	if err != nil {
+		t.Fatalf("ByIndex: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("deleted IP still exists in the owner index")
 	}
 }
 

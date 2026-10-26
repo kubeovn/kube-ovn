@@ -22,12 +22,10 @@ func providerNetworkNodeAddress(ip *kubeovnv1.IP, phase kubeovnv1.ProviderNetwor
 	}
 }
 
-// Discover IPs even when an earlier status update failed. Status is only authoritative
-// for cleanup acknowledgements, which must match the exact IP resource UID.
+// Discover IPs from the informer cache even when an earlier status update failed.
+// Status is only authoritative for cleanup acknowledgements, which must match the exact IP resource UID.
 func (c *Controller) providerNetworkAddresses(pn *kubeovnv1.ProviderNetwork) (map[string]kubeovnv1.ProviderNetworkNodeAddress, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-	ips, err := c.config.KubeOvnClient.KubeovnV1().IPs().List(ctx, metav1.ListOptions{})
+	ips, err := c.ipIndexer.ByIndex(IndexIPByProviderNetworkUID, string(pn.UID))
 	if err != nil {
 		return nil, err
 	}
@@ -35,8 +33,8 @@ func (c *Controller) providerNetworkAddresses(pn *kubeovnv1.ProviderNetwork) (ma
 	for _, address := range pn.Status.VlanSubinterfaceAddresses {
 		addresses[address.Node] = address
 	}
-	for i := range ips.Items {
-		ip := &ips.Items[i]
+	for _, obj := range ips {
+		ip := obj.(*kubeovnv1.IP)
 		if providerNetworkOwnsNodeIP(pn, ip.Spec.NodeName, ip) {
 			addresses[ip.Spec.NodeName] = *providerNetworkNodeAddress(ip, kubeovnv1.ProviderNetworkAddressAllocated)
 		}
