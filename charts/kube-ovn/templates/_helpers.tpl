@@ -346,9 +346,5 @@ Otherwise, auto-detect based on the currently deployed DaemonSet.
 {{- end -}}
 
 {{- define "kubeovn.runAsUser" -}}
-  {{- if $.Values.func.ENABLE_OVN_IPSEC -}}
-    0
-  {{- else -}}
-    65534
-  {{- end -}}
+  65534
 {{- end -}}

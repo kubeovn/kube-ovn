@@ -1,0 +1,111 @@
+--- a/controller/encaps.c
++++ b/controller/encaps.c
+@@ -202,6 +202,32 @@
+     return ret;
+ }
+
++/* The node owner installs independent guards before publishing this lease.
++ * Mark every OVN-created tunnel output, even paths without IKE peer identity.
++ * Such paths remain blocked while armed; this does not add IPsec support. */
++static void
++add_protection_options(struct smap *options,
++                       const struct ovsrec_open_vswitch_table *ovs_table,
++                       bool ipsec)
++{
++    const struct ovsrec_open_vswitch *cfg =
++        ovsrec_open_vswitch_table_first(ovs_table);
++    if (!cfg) {
++        return;
++    }
++    unsigned int mark = smap_get_uint(&cfg->external_ids,
++                                      "ovn-ipsec-protection-mark", 0);
++    unsigned int reqid = smap_get_uint(&cfg->external_ids,
++                                       "ovn-ipsec-protection-reqid", 0);
++    if (mark && reqid) {
++        smap_add_format(options, "egress_pkt_mark", "%u", mark);
++        if (ipsec) {
++            smap_add_format(options, "ipsec_mark_out", "%u/0xffffffff", mark);
++            smap_add_format(options, "ipsec_reqid", "%u", reqid);
++        }
++    }
++}
++
+ static void
+ tunnel_add(struct tunnel_ctx *tc,
+            const struct sbrec_sb_global *sbg,
+@@ -260,6 +286,9 @@
+         }
+     }
+
++    /* Retain the mark through the coordinated SB enable/disable window. */
++    add_protection_options(&options, ovs_table, sbg->ipsec);
++
+     /* Add auth info if ipsec is enabled. */
+     if (sbg->ipsec) {
+         smap_add(&options, "remote_name", chassis_rec->name);
+@@ -518,6 +547,7 @@
+     smap_add(&options, "local_ip", "flow");
+     smap_add(&options, "remote_ip", "flow");
+     smap_add(&options, "key", "flow");
++    add_protection_options(&options, tc->ovs_table, false);
+
+     struct sset vxlan_ports;
+     sset_from_delimited_string(&vxlan_ports, evpn_vxlan_ports, ",");
+@@ -559,6 +589,12 @@
+             ovsrec_port_set_external_ids(port, &id);
+
+             ovsrec_port_set_interfaces(port, &iface, 1);
++        } else {
++            /* Existing EVPN ports must observe lease changes too. */
++            smap_replace(&options, "dst_port", vxlan_port);
++            if (!smap_equal(&port->interfaces[0]->options, &options)) {
++                ovsrec_interface_set_options(port->interfaces[0], &options);
++            }
+         }
+
+         free(name);
+@@ -605,11 +641,7 @@
+         }
+     }
+
+-    if (existing_port) {
+-        return;
+-    }
+-
+-    /* Create flow-based tunnel port. */
++    /* Reconcile options on existing ports as well as newly created ports. */
+     struct smap options = SMAP_INITIALIZER(&options);
+     smap_add(&options, "remote_ip", "flow");
+     smap_add(&options, "local_ip", "flow");
+@@ -643,6 +675,23 @@
+         if (encap_df) {
+             smap_add(&options, "df_default", encap_df);
+         }
++    }
++
++    add_protection_options(&options, ovs_table, false);
++    if (existing_port) {
++        if (existing_port->n_interfaces == 1 &&
++            !strcmp(existing_port->interfaces[0]->type, tunnel_type)) {
++            if (!smap_equal(&existing_port->interfaces[0]->options, &options)) {
++                ovsrec_interface_set_options(existing_port->interfaces[0],
++                                             &options);
++            }
++        } else {
++            static struct vlog_rate_limit rl = VLOG_RATE_LIMIT_INIT(1, 1);
++            VLOG_WARN_RL(&rl, "Incompatible flow-based tunnel port: %s",
++                         port_name);
++        }
++        smap_destroy(&options);
++        return;
+     }
+
+     /* Create interface. */
+--- a/controller/ovn-controller.c
++++ b/controller/ovn-controller.c
+@@ -8495,4 +8495,5 @@
+         case 'V':
+             ovs_print_version(OFP15_VERSION, OFP15_VERSION);
++            printf("IPsec output protection version 1\n");
+             printf("SB DB Schema %s\n", sbrec_get_db_version());
+             exit(EXIT_SUCCESS);
