@@ -231,8 +231,9 @@ type Controller struct {
 	updateOvnDnatRuleQueue workqueue.TypedRateLimitingInterface[string]
 	delOvnDnatRuleQueue    workqueue.TypedRateLimitingInterface[string]
 
-	providerNetworksLister kubeovnlister.ProviderNetworkLister
-	providerNetworkSynced  cache.InformerSynced
+	providerNetworksLister    kubeovnlister.ProviderNetworkLister
+	providerNetworkSynced     cache.InformerSynced
+	providerNetworkPendingIPs sync.Map // map[providerNetworkReservationKey]kubeovnv1.ProviderNetworkNodeAddress
 
 	vlansLister     kubeovnlister.VlanLister
 	vlanSynced      cache.InformerSynced
