@@ -484,37 +484,6 @@ func (c *OVNNbClient) SetLogicalSwitchPortVirtualParents(lsName, parents string,
 	return nil
 }
 
-// RemoveLogicalSwitchPortOption deletes a stale key from a logical switch
-// port's options column. CreateLogicalSwitchPort's update path only touches
-// Addresses, DHCP options, PortSecurity and ExternalIDs, so an option set by
-// older code (e.g. arp_proxy on pre-fix switch_lb_rule vips) survives that
-// update and must be cleared explicitly.
-func (c *OVNNbClient) RemoveLogicalSwitchPortOption(lspName, option string) error {
-	lsp, err := c.GetLogicalSwitchPort(lspName, true)
-	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
-	}
-	if lsp == nil {
-		err := fmt.Errorf("logical switch port %s not found", lspName)
-		klog.Error(err)
-		return err
-	}
-	if lsp.Options == nil {
-		return nil
-	}
-	if _, ok := lsp.Options[option]; !ok {
-		return nil
-	}
-
-	delete(lsp.Options, option)
-	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
-		klog.Error(err)
-		return fmt.Errorf("remove option %s from logical switch port %s: %w", option, lspName, err)
-	}
-	return nil
-}
-
 // SetVirtualLogicalSwitchPortVirtualParents updates one virtual type logical switch port virtual-parents for allowed-address-pair
 func (c *OVNNbClient) SetVirtualLogicalSwitchPortVirtualParents(lspName, parents string) error {
 	lsp, err := c.GetLogicalSwitchPort(lspName, true)
@@ -543,6 +512,49 @@ func (c *OVNNbClient) SetVirtualLogicalSwitchPortVirtualParents(lspName, parents
 	if err := c.Transact("lsp-update", op); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("set logical switch port virtual-parents %w", err)
+	}
+	return nil
+}
+
+// SetLogicalSwitchPortArpProxy sets the arp_proxy option of a router type logical switch port.
+// OVN answers ARP/ND requests for the given addresses with the MAC of the peer logical router port.
+// An empty address list removes the option.
+func (c *OVNNbClient) SetLogicalSwitchPortArpProxy(lspName string, proxyIPs []string) error {
+	lsp, err := c.GetLogicalSwitchPort(lspName, false)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("get logical switch port %s: %w", lspName, err)
+	}
+	if lsp == nil {
+		err = fmt.Errorf("logical switch port %s not found", lspName)
+		klog.Error(err)
+		return err
+	}
+
+	arpProxy := strings.Join(proxyIPs, " ")
+	if lsp.Options["arp_proxy"] == arpProxy {
+		return nil
+	}
+
+	options := maps.Clone(lsp.Options)
+	if options == nil {
+		options = make(map[string]string)
+	}
+	if arpProxy == "" {
+		delete(options, "arp_proxy")
+	} else {
+		options["arp_proxy"] = arpProxy
+	}
+	lsp.Options = options
+
+	op, err := c.UpdateLogicalSwitchPortOp(lsp, &lsp.Options)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if err := c.Transact("lsp-update", op); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to set logical switch port option arp_proxy %w", err)
 	}
 	return nil
 }
