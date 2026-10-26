@@ -55,6 +55,12 @@ type ProviderNetworkSpec struct {
 	ExchangeLinkName bool `json:"exchangeLinkName,omitempty"`
 	// Automatically create VLAN subinterfaces
 	AutoCreateVlanSubinterfaces bool `json:"autoCreateVlanSubinterfaces,omitempty"`
+	// Name of an existing Subnet used to allocate a unique IP address for the OVS bridge
+	// on each node using defaultInterface. Effective only when autoCreateVlanSubinterfaces
+	// is true and defaultInterface is a VLAN subinterface (for example, eth0.100).
+	// Does not apply to nodes assigned through customInterfaces; no IP is allocated for them.
+	// When omitted, no IP address is allocated or assigned by this feature.
+	DefaultInterfaceSubnet string `json:"defaultInterfaceSubnet,omitempty"`
 	// Enable automatic detection and preservation of VLAN interfaces
 	PreserveVlanInterfaces bool `json:"preserveVlanInterfaces,omitempty"`
 	// Optional explicit list of VLAN interface names to preserve (e.g., eth0.10, bond0.20)
@@ -67,6 +73,34 @@ type ProviderNetworkCondition struct {
 	// Node name
 	Node      string `json:"node"`
 	Condition `json:",inline"`
+}
+
+type ProviderNetworkAddressPhase string
+
+const (
+	ProviderNetworkAddressAllocated        ProviderNetworkAddressPhase = "Allocated"
+	ProviderNetworkAddressCleanupPending   ProviderNetworkAddressPhase = "CleanupPending"
+	ProviderNetworkAddressCleanupSucceeded ProviderNetworkAddressPhase = "CleanupSucceeded"
+)
+
+type ProviderNetworkNodeAddress struct {
+	// Node name
+	Node string `json:"node"`
+	// Subnet used for the allocation
+	Subnet string `json:"subnet"`
+	// Allocated IPv4 and/or IPv6 address
+	IPAddress string `json:"ipAddress"`
+	// Name of the IP resource backing this allocation
+	IPName string `json:"ipName,omitempty"`
+	// UID of the IP resource; cleanup acknowledgements apply only to this allocation
+	IPUID string `json:"ipUID,omitempty"`
+	// Lifecycle phase of the allocation, managed by the controller
+	// +kubebuilder:validation:Enum=Allocated;CleanupPending;CleanupSucceeded
+	Phase ProviderNetworkAddressPhase `json:"phase,omitempty"`
+	// UID of the allocation whose cleanup was confirmed by the node daemon
+	CleanupAcknowledgedIPUID string `json:"cleanupAcknowledgedIPUID,omitempty"`
+	// Last cleanup error reported by the node daemon, if any
+	Message string `json:"message,omitempty"`
 }
 
 type ProviderNetworkStatus struct {
@@ -85,6 +119,9 @@ type ProviderNetworkStatus struct {
 	// +optional
 	// VLANs in use by this provider network
 	Vlans []string `json:"vlans,omitempty"`
+
+	// Addresses allocated for node VLAN subinterface bridges
+	VlanSubinterfaceAddresses []ProviderNetworkNodeAddress `json:"vlanSubinterfaceAddresses,omitempty"`
 
 	// Conditions represents the latest state of the object
 	// +optional

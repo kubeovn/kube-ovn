@@ -1821,6 +1821,83 @@ func waitIPv6AddressPreferred(interfaceName string, maxRetry int, retryInterval 
 	return ret, nil
 }
 
+func (c *Controller) configureProviderNetworkVlanSubinterfaceAddress(pn *kubeovnv1.ProviderNetwork, node *corev1.Node) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	desiredAddresses := ""
+
+	if pn.Spec.DefaultInterfaceSubnet != "" && pn.Spec.AutoCreateVlanSubinterfaces &&
+		strings.Contains(pn.Spec.DefaultInterface, ".") && util.ProviderNetworkUsesDefaultInterface(pn, node.Name) {
+		var allocation *kubeovnv1.ProviderNetworkNodeAddress
+		for i := range pn.Status.VlanSubinterfaceAddresses {
+			if pn.Status.VlanSubinterfaceAddresses[i].Node == node.Name {
+				allocation = &pn.Status.VlanSubinterfaceAddresses[i]
+				break
+			}
+		}
+		if allocation == nil || allocation.Phase != kubeovnv1.ProviderNetworkAddressAllocated {
+			return fmt.Errorf("VLAN subinterface address for node %s has not been allocated yet", node.Name)
+		}
+		// Recheck the live status under the local provider-network mutex. A stale
+		// informer event must not reapply an address after cleanup was acknowledged.
+		currentPN, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Get(ctx, pn.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		active := false
+		if currentPN.UID == pn.UID && currentPN.DeletionTimestamp.IsZero() {
+			for _, current := range currentPN.Status.VlanSubinterfaceAddresses {
+				if current == *allocation && current.Phase == kubeovnv1.ProviderNetworkAddressAllocated {
+					active = true
+				}
+			}
+		}
+		if !active {
+			return fmt.Errorf("provider network allocation for node %s is no longer active", node.Name)
+		}
+		// Do not reapply an allocation whose IP CR is being deleted.
+		allocationIP, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(ctx, allocation.IPName, metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to get provider network IP for node %s: %w", node.Name, err)
+		}
+		if !allocationIP.DeletionTimestamp.IsZero() {
+			return fmt.Errorf("provider network IP %s is being deleted", allocationIP.Name)
+		}
+		if allocation.IPUID == "" || string(allocationIP.UID) != allocation.IPUID ||
+			allocationIP.Spec.PodType != util.KindProviderNetwork || allocationIP.Spec.NodeName != node.Name ||
+			allocationIP.Spec.IPAddress != allocation.IPAddress || allocationIP.Spec.Subnet != allocation.Subnet {
+			return fmt.Errorf("provider network IP %s does not match the node allocation", allocationIP.Name)
+		}
+
+		subnet, err := c.subnetsLister.Get(allocation.Subnet)
+		if err != nil {
+			return fmt.Errorf("failed to get VLAN subinterface subnet %s: %w", allocation.Subnet, err)
+		}
+		desiredAddresses, err = util.GetIPAddrWithMask(allocation.IPAddress, subnet.Spec.CIDRBlock)
+		if err != nil {
+			return fmt.Errorf("failed to apply subnet mask to VLAN subinterface address %s: %w", allocation.IPAddress, err)
+		}
+	}
+
+	if desiredAddresses == "" {
+		return nil
+	}
+	mappings, err := getOvnMappings("ovn-bridge-mappings")
+	if err != nil {
+		return fmt.Errorf("failed to get bridge mapping for provider network %s: %w", pn.Name, err)
+	}
+	bridgeName := mappings[pn.Name]
+	if bridgeName == "" {
+		return fmt.Errorf("bridge mapping for provider network %s is empty", pn.Name)
+	}
+	bridge, err := netlink.LinkByName(bridgeName)
+	if err != nil {
+		return fmt.Errorf("failed to get provider network bridge %s: %w", bridgeName, err)
+	}
+
+	return configureProviderNetworkVlanAddresses(bridge, desiredAddresses)
+}
+
 func (c *Controller) createVlanSubinterfaces(vlanInterfaces []string, baseInterface, providerName string) error {
 	if baseInterface == "" {
 		return errors.New("base interface is empty")

@@ -29,6 +29,8 @@ type ProviderNetworkStatusApplyConfiguration struct {
 	NotReadyNodes []string `json:"notReadyNodes,omitempty"`
 	// VLANs in use by this provider network
 	Vlans []string `json:"vlans,omitempty"`
+	// Addresses allocated for node VLAN subinterface bridges
+	VlanSubinterfaceAddresses []ProviderNetworkNodeAddressApplyConfiguration `json:"vlanSubinterfaceAddresses,omitempty"`
 	// Conditions represents the latest state of the object
 	// Conditions of nodes in the provider network
 	Conditions []ProviderNetworkConditionApplyConfiguration `json:"conditions,omitempty"`
@@ -74,6 +76,19 @@ func (b *ProviderNetworkStatusApplyConfiguration) WithNotReadyNodes(values ...st
 func (b *ProviderNetworkStatusApplyConfiguration) WithVlans(values ...string) *ProviderNetworkStatusApplyConfiguration {
 	for i := range values {
 		b.Vlans = append(b.Vlans, values[i])
+	}
+	return b
+}
+
+// WithVlanSubinterfaceAddresses adds the given value to the VlanSubinterfaceAddresses field in the declarative configuration
+// and returns the receiver, so that objects can be build by chaining "With" function invocations.
+// If called multiple times, values provided by each call will be appended to the VlanSubinterfaceAddresses field.
+func (b *ProviderNetworkStatusApplyConfiguration) WithVlanSubinterfaceAddresses(values ...*ProviderNetworkNodeAddressApplyConfiguration) *ProviderNetworkStatusApplyConfiguration {
+	for i := range values {
+		if values[i] == nil {
+			panic("nil value passed to WithVlanSubinterfaceAddresses")
+		}
+		b.VlanSubinterfaceAddresses = append(b.VlanSubinterfaceAddresses, *values[i])
 	}
 	return b
 }

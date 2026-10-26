@@ -24,6 +24,12 @@ rules:
       - list
       - watch
   - apiGroups:
+      - "kubeovn.io"
+    resources:
+      - provider-networks/status
+    verbs:
+      - update
+  - apiGroups:
       - ""
       - "kubeovn.io"
     resources:

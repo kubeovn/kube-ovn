@@ -13,8 +13,9 @@ import (
 const (
 	CniTypeName = "kube-ovn"
 
-	DeprecatedFinalizerName    = "kube-ovn-controller"
-	KubeOVNControllerFinalizer = "kubeovn.io/kube-ovn-controller"
+	DeprecatedFinalizerName         = "kube-ovn-controller"
+	KubeOVNControllerFinalizer      = "kubeovn.io/kube-ovn-controller"
+	ProviderNetworkCleanupFinalizer = "kubeovn.io/provider-network-cleanup"
 
 	AllocatedAnnotation          = "ovn.kubernetes.io/allocated"
 	ServiceCIDRHashAnnotation    = "ovn.kubernetes.io/service-cidr-hash"
@@ -458,6 +459,7 @@ var (
 	KindCronJob     = ObjectKind[*batchv1.CronJob]()
 
 	KindIP               = ObjectKind[*kubeovnv1.IP]()
+	KindProviderNetwork  = ObjectKind[*kubeovnv1.ProviderNetwork]()
 	KindIptablesEIP      = ObjectKind[*kubeovnv1.IptablesEIP]()
 	KindIptablesDnatRule = ObjectKind[*kubeovnv1.IptablesDnatRule]()
 	KindIptablesSnatRule = ObjectKind[*kubeovnv1.IptablesSnatRule]()

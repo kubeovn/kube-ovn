@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -10,7 +11,10 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
 	corelisters "k8s.io/client-go/listers/core/v1"
+	clienttesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
@@ -69,6 +73,116 @@ func requireNoProviderNetworkEvent(t *testing.T, recorder *record.FakeRecorder) 
 		t.Fatalf("unexpected provider network event: %s", event)
 	default:
 	}
+}
+
+func TestFinishProviderNetworkInitReadiness(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		needsIP    bool
+		patchFails bool
+	}{
+		{name: "missing allocation clears stale readiness", needsIP: true},
+		{name: "patch failure preserves initialization error", needsIP: true, patchFails: true},
+		{name: "successful initialization keeps readiness"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pn := &kubeovnv1.ProviderNetwork{
+				Name: "provider",
+				Spec: kubeovnv1.ProviderNetworkSpec{
+					DefaultInterface: "eth0.100", DefaultInterfaceSubnet: "underlay",
+					AutoCreateVlanSubinterfaces: tt.needsIP,
+				},
+			}
+			node := providerNetworkReadyNode("node-1", pn.Name, pn.Spec.DefaultInterface, "1500")
+			node.Labels["unrelated"] = "keep"
+			node.Labels[fmt.Sprintf(util.ProviderNetworkReadyTemplate, "other-provider")] = "true"
+			node.Labels[fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pn.Name)] = "true"
+			originalNode := node.DeepCopy()
+			pod := &corev1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "cni", Namespace: "kube-system"}}
+			client := fake.NewSimpleClientset(node.DeepCopy(), pod)
+			podIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+			require.NoError(t, podIndexer.Add(pod))
+			controller := &Controller{
+				config:     &Configuration{KubeClient: client, PodName: pod.Name, PodNamespace: pod.Namespace},
+				podsLister: corelisters.NewPodLister(podIndexer),
+			}
+			if tt.patchFails {
+				client.PrependReactor("patch", "nodes", func(clienttesting.Action) (bool, runtime.Object, error) {
+					return true, nil, errors.New("node patch unavailable")
+				})
+			}
+			patch := util.KVPatch{
+				fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,
+				fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
+				fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name):       nil,
+				fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name):   nil,
+				fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pn.Name):   nil,
+			}
+			err := controller.finishProviderNetworkInit(pn, node, pn.Spec.DefaultInterface, 1500, false, patch)
+			if tt.needsIP {
+				require.EqualError(t, err, "VLAN subinterface address for node node-1 has not been allocated yet")
+			} else {
+				require.NoError(t, err)
+			}
+			stored, getErr := client.CoreV1().Nodes().Get(context.Background(), node.Name, metav1.GetOptions{})
+			require.NoError(t, getErr)
+			readyLabel := fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)
+			if tt.needsIP && !tt.patchFails {
+				for _, template := range []string{util.ProviderNetworkReadyTemplate, util.ProviderNetworkInterfaceTemplate,
+					util.ProviderNetworkMtuTemplate, util.ProviderNetworkVlanIntTemplate} {
+					require.NotContains(t, stored.Labels, fmt.Sprintf(template, pn.Name))
+				}
+			} else {
+				require.Equal(t, "true", stored.Labels[readyLabel])
+			}
+			require.Equal(t, "keep", stored.Labels["unrelated"])
+			require.Equal(t, "true", stored.Labels[fmt.Sprintf(util.ProviderNetworkReadyTemplate, "other-provider")])
+			require.Equal(t, originalNode, node, "informer-backed node must not be mutated")
+			storedPod, getErr := client.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+			require.NoError(t, getErr)
+			if tt.needsIP {
+				require.Equal(t, err.Error(), storedPod.Annotations[fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, pn.Name)])
+			}
+			nodePatches := 0
+			for _, action := range client.Actions() {
+				if action.GetVerb() == "patch" && action.GetResource().Resource == "nodes" {
+					nodePatches++
+				}
+			}
+			require.Equal(t, 1, nodePatches, "successful sync must not reset readiness before setting it")
+		})
+	}
+}
+
+func TestDefaultInterfaceSubnetDoesNotApplyToCustomInterfaces(t *testing.T) {
+	for _, nic := range []string{"eth1.200", "eth0.100"} {
+		t.Run(nic, func(t *testing.T) {
+			pn := &kubeovnv1.ProviderNetwork{
+				Spec: kubeovnv1.ProviderNetworkSpec{
+					DefaultInterface:            "eth0.100",
+					AutoCreateVlanSubinterfaces: true,
+					DefaultInterfaceSubnet:      "underlay",
+					CustomInterfaces:            []kubeovnv1.CustomInterface{{Interface: nic, Nodes: []string{"node-1"}}},
+				},
+			}
+			node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}}
+			// No allocation, API access, or netlink operations are needed for a custom interface.
+			require.NoError(t, (&Controller{}).configureProviderNetworkVlanSubinterfaceAddress(pn, node))
+		})
+	}
+}
+
+func TestConfigureProviderNetworkVlanSubinterfaceAddressWaitsForAllocation(t *testing.T) {
+	pn := &kubeovnv1.ProviderNetwork{
+		Spec: kubeovnv1.ProviderNetworkSpec{
+			DefaultInterface:            "eth0.100",
+			AutoCreateVlanSubinterfaces: true,
+			DefaultInterfaceSubnet:      "underlay",
+		},
+	}
+
+	err := (&Controller{}).configureProviderNetworkVlanSubinterfaceAddress(pn, &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-1"}})
+	require.EqualError(t, err, "VLAN subinterface address for node node-1 has not been allocated yet")
 }
 
 func TestHandleAddOrUpdateProviderNetworkRecordsValidationFailureEvent(t *testing.T) {

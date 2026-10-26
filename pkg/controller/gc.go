@@ -298,9 +298,48 @@ func (c *Controller) gcStaleNodeRouterPolicy(owner string, policy *ovnnb.Logical
 	return nil
 }
 
+func (c *Controller) checkProviderNetworkIPOwnerExists(ip *kubeovnv1.IP, owner metav1.OwnerReference) (bool, error) {
+	if owner.APIVersion != kubeovnv1.SchemeGroupVersion.String() {
+		return false, nil
+	}
+	pn, err := c.providerNetworksLister.Get(owner.Name)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	if owner.UID != pn.UID || ip.Spec.Subnet != pn.Spec.DefaultInterfaceSubnet ||
+		!pn.Spec.AutoCreateVlanSubinterfaces || ip.Name != util.ProviderNetworkAddressName(pn.Name, ip.Spec.NodeName) {
+		return false, nil
+	}
+
+	node, err := c.nodesLister.Get(ip.Spec.NodeName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return false, nil
+		}
+		return false, err
+	}
+	excluded, err := util.IsNodeExcludedFromProviderNetwork(node, pn)
+	if err != nil {
+		return false, err
+	}
+	return !excluded && util.ProviderNetworkUsesDefaultInterface(pn, node.Name) && strings.Contains(pn.Spec.DefaultInterface, "."), nil
+}
+
 func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 	// Check if Subnet exists
 	if _, ok := c.ipam.Subnets[ip.Spec.Subnet]; !ok {
+		return false, nil
+	}
+
+	if ip.Spec.PodType == util.KindProviderNetwork {
+		for _, owner := range ip.GetOwnerReferences() {
+			if owner.Kind == util.KindProviderNetwork {
+				return c.checkProviderNetworkIPOwnerExists(ip, owner)
+			}
+		}
 		return false, nil
 	}
 

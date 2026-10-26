@@ -1901,6 +1901,14 @@ spec:
                 maxLength: 15
                 pattern: ^[^/\s]+$
                 type: string
+              defaultInterfaceSubnet:
+                description: |-
+                  Name of an existing Subnet used to allocate a unique IP address for the OVS bridge
+                  on each node using defaultInterface. Effective only when autoCreateVlanSubinterfaces
+                  is true and defaultInterface is a VLAN subinterface (for example, eth0.100).
+                  Does not apply to nodes assigned through customInterfaces; no IP is allocated for them.
+                  When omitted, no IP address is allocated or assigned by this feature.
+                type: string
               exchangeLinkName:
                 description: Exchange link name between host and container
                 type: boolean
@@ -2023,6 +2031,44 @@ spec:
                 description: Nodes that are ready
                 items:
                   type: string
+                type: array
+              vlanSubinterfaceAddresses:
+                description: Addresses allocated for node VLAN subinterface bridges
+                items:
+                  properties:
+                    cleanupAcknowledgedIPUID:
+                      description: UID of the allocation whose cleanup was confirmed
+                        by the node daemon
+                      type: string
+                    ipAddress:
+                      description: Allocated IPv4 and/or IPv6 address
+                      type: string
+                    ipName:
+                      description: Name of the IP resource backing this allocation
+                      type: string
+                    ipUID:
+                      description: UID of the IP resource; cleanup acknowledgements
+                        apply only to this allocation
+                      type: string
+                    message:
+                      description: Last cleanup error reported by the node daemon,
+                        if any
+                      type: string
+                    node:
+                      description: Node name
+                      type: string
+                    phase:
+                      description: Lifecycle phase of the allocation, managed by the
+                        controller
+                      enum:
+                      - Allocated
+                      - CleanupPending
+                      - CleanupSucceeded
+                      type: string
+                    subnet:
+                      description: Subnet used for the allocation
+                      type: string
+                  type: object
                 type: array
               vlans:
                 description: VLANs in use by this provider network

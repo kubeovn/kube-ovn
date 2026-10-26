@@ -14,6 +14,7 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -157,7 +158,7 @@ func TestCleanProviderNetworkPatchIncludesVlanIntLabel(t *testing.T) {
 	fakeClient := fake.NewSimpleClientset(node)
 
 	c := &Controller{
-		config: &Configuration{KubeClient: fakeClient},
+		config: &Configuration{KubeClient: fakeClient, KubeOvnClient: kubeovnfake.NewSimpleClientset()},
 	}
 	pn := &kubeovnv1.ProviderNetwork{
 		Name: pnName,
@@ -207,7 +208,7 @@ func TestCleanProviderNetworkLabelConsistency(t *testing.T) {
 	node := &v1.Node{Name: "node1", Labels: labels}
 	fakeClient := fake.NewSimpleClientset(node)
 
-	c := &Controller{config: &Configuration{KubeClient: fakeClient}}
+	c := &Controller{config: &Configuration{KubeClient: fakeClient, KubeOvnClient: kubeovnfake.NewSimpleClientset()}}
 	pn := &kubeovnv1.ProviderNetwork{
 		Name: pnName,
 		Spec: kubeovnv1.ProviderNetworkSpec{DefaultInterface: "eth0"},

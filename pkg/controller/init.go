@@ -463,11 +463,22 @@ func (c *Controller) InitIPAM() error {
 	}
 
 	for _, ip := range ips {
+		if ip.Spec.PodType == util.KindProviderNetwork {
+			// Terminating allocations remain reserved until the node acknowledges cleanup.
+			if _, _, _, err = c.ipam.GetStaticAddress(ip.Name, ip.Name, ip.Spec.IPAddress, &ip.Spec.MacAddress, ip.Spec.Subnet, true); err != nil {
+				return fmt.Errorf("failed to init IPAM from provider network IP CR %s: %w", ip.Name, err)
+			}
+			if !ip.DeletionTimestamp.IsZero() {
+				c.updateIPQueue.Add(ip.Name)
+			}
+			continue
+		}
 		if !ip.DeletionTimestamp.IsZero() {
 			klog.Infof("enqueue update for removing finalizer to delete ip %s", ip.Name)
 			c.updateIPQueue.Add(ip.Name)
 			continue
 		}
+
 		// recover sts and kubevirt vm ip, other ip recover in later pod loop
 		if ip.Spec.PodType != util.KindStatefulSet &&
 			ip.Spec.PodType != util.KindVirtualMachine {

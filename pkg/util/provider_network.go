@@ -11,6 +11,16 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
+// ProviderNetworkUsesDefaultInterface reports whether a node has no custom interface assignment.
+func ProviderNetworkUsesDefaultInterface(pn *kubeovnv1.ProviderNetwork, node string) bool {
+	for _, customInterface := range pn.Spec.CustomInterfaces {
+		if slices.Contains(customInterface.Nodes, node) {
+			return false
+		}
+	}
+	return true
+}
+
 // NodeMatchesSelector checks if a node matches the given label selector
 func NodeMatchesSelector(node *v1.Node, selector *metav1.LabelSelector) (bool, error) {
 	if selector == nil {

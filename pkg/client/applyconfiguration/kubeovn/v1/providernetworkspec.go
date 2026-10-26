@@ -37,6 +37,12 @@ type ProviderNetworkSpecApplyConfiguration struct {
 	ExchangeLinkName *bool `json:"exchangeLinkName,omitempty"`
 	// Automatically create VLAN subinterfaces
 	AutoCreateVlanSubinterfaces *bool `json:"autoCreateVlanSubinterfaces,omitempty"`
+	// Name of an existing Subnet used to allocate a unique IP address for the OVS bridge
+	// on each node using defaultInterface. Effective only when autoCreateVlanSubinterfaces
+	// is true and defaultInterface is a VLAN subinterface (for example, eth0.100).
+	// Does not apply to nodes assigned through customInterfaces; no IP is allocated for them.
+	// When omitted, no IP address is allocated or assigned by this feature.
+	DefaultInterfaceSubnet *string `json:"defaultInterfaceSubnet,omitempty"`
 	// Enable automatic detection and preservation of VLAN interfaces
 	PreserveVlanInterfaces *bool `json:"preserveVlanInterfaces,omitempty"`
 	// Optional explicit list of VLAN interface names to preserve (e.g., eth0.10, bond0.20)
@@ -101,6 +107,14 @@ func (b *ProviderNetworkSpecApplyConfiguration) WithExchangeLinkName(value bool)
 // If called multiple times, the AutoCreateVlanSubinterfaces field is set to the value of the last call.
 func (b *ProviderNetworkSpecApplyConfiguration) WithAutoCreateVlanSubinterfaces(value bool) *ProviderNetworkSpecApplyConfiguration {
 	b.AutoCreateVlanSubinterfaces = &value
+	return b
+}
+
+// WithDefaultInterfaceSubnet sets the DefaultInterfaceSubnet field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the DefaultInterfaceSubnet field is set to the value of the last call.
+func (b *ProviderNetworkSpecApplyConfiguration) WithDefaultInterfaceSubnet(value string) *ProviderNetworkSpecApplyConfiguration {
+	b.DefaultInterfaceSubnet = &value
 	return b
 }
 

@@ -132,6 +132,8 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &kubeovnv1.ProviderNetworkApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("ProviderNetworkCondition"):
 		return &kubeovnv1.ProviderNetworkConditionApplyConfiguration{}
+	case v1.SchemeGroupVersion.WithKind("ProviderNetworkNodeAddress"):
+		return &kubeovnv1.ProviderNetworkNodeAddressApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("ProviderNetworkSpec"):
 		return &kubeovnv1.ProviderNetworkSpecApplyConfiguration{}
 	case v1.SchemeGroupVersion.WithKind("ProviderNetworkStatus"):

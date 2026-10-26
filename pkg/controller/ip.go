@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -272,6 +273,8 @@ func (c *Controller) handleAddReservedIP(key string) (err error) {
 }
 
 func (c *Controller) handleUpdateIP(key string) (err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	cachedIP, err := c.ipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -287,6 +290,24 @@ func (c *Controller) handleUpdateIP(key string) (err error) {
 	}()
 	if !cachedIP.DeletionTimestamp.IsZero() {
 		klog.Infof("handle deleting ip %s", cachedIP.Name)
+		if cachedIP.Spec.PodType == util.KindProviderNetwork {
+			// Never release a replacement allocation under the same IPAM NIC name
+			// based on a stale terminating object from the informer cache.
+			currentIP, err := c.config.KubeOvnClient.KubeovnV1().IPs().Get(ctx, cachedIP.Name, metav1.GetOptions{})
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if currentIP.UID != cachedIP.UID || currentIP.DeletionTimestamp.IsZero() {
+				return nil
+			}
+			cachedIP = currentIP
+			if err := c.providerNetworkIPCleanupComplete(cachedIP); err != nil {
+				return err
+			}
+		}
 		subnet, err := c.subnetsLister.Get(cachedIP.Spec.Subnet)
 		if err != nil {
 			if !k8serrors.IsNotFound(err) {
@@ -332,9 +353,11 @@ func (c *Controller) handleUpdateIP(key string) (err error) {
 			}
 		}
 		podKey := fmt.Sprintf("%s/%s", cachedIP.Spec.Namespace, cachedIP.Spec.PodName)
-		if cachedIP.Spec.Namespace == "" && portName == util.NodeLspName(cachedIP.Spec.NodeName) {
-			// a node address is allocated under its port name, not a pod key: releasing it under
-			// another key frees the address but leaves the node's entry behind with a nil address
+		if cachedIP.Spec.PodType == util.KindProviderNetwork ||
+			(cachedIP.Spec.Namespace == "" && portName == util.NodeLspName(cachedIP.Spec.NodeName)) {
+			// Node and provider network addresses are allocated under their port names,
+			// not pod keys. Releasing an address under another key frees the address but
+			// leaves the owner's entry behind with a nil address.
 			podKey = portName
 		}
 		klog.Infof("ip cr %s release ipam pod key %s from subnet %s", cachedIP.Name, podKey, cachedIP.Spec.Subnet)
@@ -370,6 +393,8 @@ func (c *Controller) syncIPFinalizer(cl client.Client) error {
 }
 
 func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	if len(cachedIP.GetFinalizers()) == 0 {
 		return nil
 	}
@@ -381,7 +406,7 @@ func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP) error {
 		klog.Errorf("failed to generate patch payload for ip %s, %v", cachedIP.Name, err)
 		return err
 	}
-	if _, err := c.config.KubeOvnClient.KubeovnV1().IPs().Patch(context.Background(), cachedIP.Name,
+	if _, err := c.config.KubeOvnClient.KubeovnV1().IPs().Patch(ctx, cachedIP.Name,
 		types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -441,6 +466,8 @@ func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string
 }
 
 func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 	// `ipCRName`: pod or vm IP name must set ip CR name when creating ip CR
 	var key, ipName string
 	var owner *metav1.OwnerReference
@@ -451,6 +478,18 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 	} else {
 		// node IP, u2o IP or mcast querier IP
 		switch {
+		case podType == util.KindProviderNetwork:
+			pn, err := c.providerNetworksLister.Get(podName)
+			if err != nil {
+				return fmt.Errorf("failed to get provider network %s: %w", podName, err)
+			}
+			ipName = util.ProviderNetworkAddressName(pn.Name, nodeName)
+			owner = &metav1.OwnerReference{
+				APIVersion: kubeovnv1.SchemeGroupVersion.String(),
+				Kind:       util.KindProviderNetwork,
+				Name:       pn.Name,
+				UID:        pn.UID,
+			}
 		case subnetName == c.config.NodeSwitch:
 			node, err := c.nodesLister.Get(nodeName)
 			if err != nil {
@@ -487,7 +526,12 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 
 	var err error
 	var ipCR *kubeovnv1.IP
-	ipCR, err = c.ipsLister.Get(ipName)
+	if podType == util.KindProviderNetwork {
+		// Allocation reconciliation must not recreate or overwrite a CR based on a stale cache.
+		ipCR, err = c.config.KubeOvnClient.KubeovnV1().IPs().Get(ctx, ipName, metav1.GetOptions{})
+	} else {
+		ipCR, err = c.ipsLister.Get(ipName)
+	}
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			err := fmt.Errorf("failed to get ip CR %s: %w", ipName, err)
@@ -496,6 +540,10 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		}
 		// the returned pointer is not nil if the CR does not exist
 		ipCR = nil
+	}
+	if ipCR != nil && podType == util.KindProviderNetwork {
+		// Existing provider network IPs are authoritative and must be reconciled, not overwritten.
+		return fmt.Errorf("provider network IP %s already exists; retry allocation reconciliation", ipName)
 	}
 	if ipCR != nil && !ipCR.DeletionTimestamp.IsZero() {
 		// this ip is being deleted, no need to update
@@ -511,7 +559,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 				util.SubnetNameLabel: subnetName,
 				util.NodeNameLabel:   nodeName,
 				subnetName:           "",
-				util.IPReservedLabel: "false", // ip create with pod or node, ip not reserved
+				util.IPReservedLabel: "false", // pod, node, subnet-owned, and provider network IPs use owner-aware lifecycle
 			},
 			Finalizers: []string{util.KubeOVNControllerFinalizer},
 			Spec: kubeovnv1.IPSpec{
@@ -532,7 +580,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		if owner != nil {
 			ipCR.OwnerReferences = []metav1.OwnerReference{*owner}
 		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), ipCR, metav1.CreateOptions{}); err != nil {
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(ctx, ipCR, metav1.CreateOptions{}); err != nil {
 			errMsg := fmt.Errorf("failed to create ip CR %s: %w", ipName, err)
 			klog.Error(errMsg)
 			return errMsg
@@ -556,8 +604,8 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 			}
 		}
 		if owner != nil {
-			// currently we only set owner for node IP, u2o IP and mcast querier ip,
-			// so it's ok to overwrite it here
+			// Node, provider network, U2O, and multicast querier IPs have dedicated owners,
+			// so it is safe to overwrite owner references here.
 			newIPCR.OwnerReferences = []metav1.OwnerReference{*owner}
 		}
 		newIPCR.Spec.PodName = key
@@ -578,7 +626,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		}
 		controllerutil.AddFinalizer(newIPCR, util.KubeOVNControllerFinalizer)
 
-		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{}); err != nil {
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(ctx, newIPCR, metav1.UpdateOptions{}); err != nil {
 			err := fmt.Errorf("failed to update ip CR %s: %w", ipName, err)
 			klog.Error(err)
 			return err

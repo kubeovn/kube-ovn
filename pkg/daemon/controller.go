@@ -76,6 +76,7 @@ type Controller struct {
 
 	recorder               record.EventRecorder
 	exGatewayConfigMissing atomic.Bool
+	providerNetworkMutex   sync.Mutex
 	nodeFailuresMutex      sync.Mutex
 	nodeFailures           map[nodeFailureKey]struct{}
 
@@ -414,6 +415,14 @@ func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
 		return err
 	}
 
+	skipInitialization, err := c.processProviderNetworkAddressCleanup(pn, node)
+	if err != nil {
+		return err
+	}
+	if skipInitialization {
+		return nil
+	}
+
 	// Skip initialization if the provider network is being deleted.
 	// Without this check, a requeue from a previous error could trigger re-init
 	// during deletion, adding the NIC as a port to a dying bridge. This creates
@@ -458,6 +467,9 @@ func providerNetworkNic(pn *kubeovnv1.ProviderNetwork, nodeName string) string {
 // initProviderNetwork configures the provider network on the local node.
 // node must not be mutated; it is backed by the shared informer cache.
 func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
+	c.providerNetworkMutex.Lock()
+	defer c.providerNetworkMutex.Unlock()
+
 	nic := providerNetworkNic(pn, node.Name)
 
 	patch := util.KVPatch{
@@ -557,14 +569,28 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 		c.recordProviderNetworkErr(pn.Name, err.Error())
 		return err
 	}
+	return c.finishProviderNetworkInit(pn, node, nic, mtu, len(vlanInterfaceMap) > 0, patch)
+}
+
+// Finish initialization separately so IP configuration failures follow the same
+// readiness cleanup as bridge initialization failures.
+func (c *Controller) finishProviderNetworkInit(pn *kubeovnv1.ProviderNetwork, node *v1.Node, nic string, mtu int, hasVlanInterfaces bool, patch util.KVPatch) error {
+	if err := c.configureProviderNetworkVlanSubinterfaceAddress(pn, node); err != nil {
+		delete(patch, fmt.Sprintf(util.ProviderNetworkExcludeTemplate, pn.Name))
+		if patchErr := util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); patchErr != nil {
+			klog.Errorf("failed to clear readiness labels of node %s: %v", node.Name, patchErr)
+		}
+		c.recordProviderNetworkErr(pn.Name, err.Error())
+		return err
+	}
 
 	patch[fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)] = "true"
 	patch[fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name)] = nic
 	patch[fmt.Sprintf(util.ProviderNetworkMtuTemplate, pn.Name)] = strconv.Itoa(mtu)
-	if len(vlanInterfaceMap) > 0 {
+	if hasVlanInterfaces {
 		patch[fmt.Sprintf(util.ProviderNetworkVlanIntTemplate, pn.Name)] = "true"
 	}
-	if err = util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
+	if err := util.PatchLabels(c.config.KubeClient.CoreV1().Nodes(), node.Name, patch); err != nil {
 		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
 	}
@@ -596,6 +622,9 @@ func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
 // cleanProviderNetwork tears down the provider network from the local node.
 // node must not be mutated; it is backed by the shared informer cache.
 func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1.Node) error {
+	c.providerNetworkMutex.Lock()
+	defer c.providerNetworkMutex.Unlock()
+
 	patch := util.KVPatch{
 		fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name):     nil,
 		fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, pn.Name): nil,
@@ -608,14 +637,27 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 		return err
 	}
 
+	if err := c.cleanupProviderNetworkVlanSubinterfaceAddress(pn, node); err != nil {
+		return err
+	}
 	if err := c.ovsCleanProviderNetwork(pn.Name, providerNetworkNic(pn, node.Name), pn.Spec.VlanInterfaces); err != nil {
 		return err
 	}
-
 	return c.cleanupAutoCreatedVlanInterfaces(pn.Name, "", nil)
 }
 
 func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) error {
+	c.providerNetworkMutex.Lock()
+	defer c.providerNetworkMutex.Unlock()
+
+	node, err := c.nodesLister.Get(c.config.NodeName)
+	if err != nil {
+		klog.Error(err)
+		return err
+	}
+	if err := c.cleanupProviderNetworkVlanSubinterfaceAddress(pn, node); err != nil {
+		return err
+	}
 	if err := c.ovsCleanProviderNetwork(pn.Name, providerNetworkNic(pn, c.config.NodeName), pn.Spec.VlanInterfaces); err != nil {
 		klog.Error(err)
 		return err
@@ -624,15 +666,6 @@ func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) 
 	if err := c.cleanupAutoCreatedVlanInterfaces(pn.Name, "", nil); err != nil {
 		klog.Errorf("Failed to cleanup auto-created VLAN interfaces for provider %s: %v", pn.Name, err)
 		return err
-	}
-
-	node, err := c.nodesLister.Get(c.config.NodeName)
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	if len(node.Labels) == 0 {
-		return nil
 	}
 
 	patch := util.KVPatch{
@@ -646,7 +679,6 @@ func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) 
 		klog.Errorf("failed to patch labels of node %s: %v", node.Name, err)
 		return err
 	}
-
 	return nil
 }
 
