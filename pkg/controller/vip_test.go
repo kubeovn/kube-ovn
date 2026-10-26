@@ -2,6 +2,7 @@ package controller
 
 import (
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -742,21 +743,29 @@ func TestHandleUpdateVirtualIP_StaticSwitchLBVipSetsProxyBeforeStatus(t *testing
 	ctrl := fc.fakeController
 	mockOvnClient := fc.mockOvnClient
 
-	// the proxy is set while the vip is not ready yet: the status still has no address
-	mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("test-subnet-test-router", []string{"10.0.0.60"}).
-		DoAndReturn(func(string, []string) error {
-			got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
-			require.NoError(t, err)
-			require.Empty(t, got.Status.V4ip)
+	// The lister keeps the snapshot without status for the whole handler, as an informer that has
+	// not caught up does. Every write of the proxy has to hold the address of the vip.
+	var proxies [][]string
+	statusEmptyAtFirstWrite := false
+	mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("test-subnet-test-router", gomock.Any()).
+		DoAndReturn(func(_ string, ips []string) error {
+			if len(proxies) == 0 {
+				got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
+				require.NoError(t, err)
+				statusEmptyAtFirstWrite = got.Status.V4ip == ""
+			}
+			proxies = append(proxies, slices.Clone(ips))
 			return nil
-		})
-	// whatever follows the status write, e.g. the reconciliation of the type, may repeat the sync
-	mockOvnClient.EXPECT().LogicalSwitchPortExists(gomock.Any()).Return(true, nil).AnyTimes()
-	mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+		}).MinTimes(1)
 	mockOvnClient.EXPECT().DeleteLogicalSwitchPort(gomock.Any()).Return(nil).AnyTimes()
 
 	require.NoError(t, ctrl.handleUpdateVirtualIP(vip.Name))
 
+	// the proxy is set while the vip is not ready yet: its status has no address
+	require.True(t, statusEmptyAtFirstWrite)
+	for _, proxy := range proxies {
+		require.Equal(t, []string{"10.0.0.60"}, proxy)
+	}
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, vip.Spec.V4ip, got.Status.V4ip)

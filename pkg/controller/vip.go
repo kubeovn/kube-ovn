@@ -272,7 +272,7 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 		if vip.Spec.Type == util.SwitchLBRuleVip {
 			// A static vip reaches here with its ips in the spec only. Like in the add path, the router
 			// port has to answer for them before the status makes the vip ready.
-			if err = c.reconcileSwitchLBVipPort(vip, vip.Spec.V4ip, vip.Spec.V6ip); err != nil {
+			if err = c.reconcileSwitchLBVipPort(vip); err != nil {
 				return err
 			}
 		}
@@ -384,8 +384,9 @@ func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 }
 
 // reconcileSwitchLBVipPort makes the subnet router port answer ARP/ND for the vip and
-// removes the logical switch port that older versions created for it. extraIPs are addresses
-// of the vip that are not in the lister yet.
+// removes the logical switch port that older versions created for it. The addresses of the vip
+// itself are always part of the proxy, the lister may still hold a snapshot without them;
+// extraIPs are further addresses it has just been allocated.
 func (c *Controller) reconcileSwitchLBVipPort(vip *kubeovnv1.Vip, extraIPs ...string) error {
 	subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
 	if err != nil {
@@ -394,7 +395,8 @@ func (c *Controller) reconcileSwitchLBVipPort(vip *kubeovnv1.Vip, extraIPs ...st
 	}
 	// The proxy must be in place before the stale port is removed, otherwise
 	// there is a window in which nobody answers ARP for the vip.
-	if err := c.syncSwitchLBVipArpProxy(subnet.Name, extraIPs...); err != nil {
+	vipIPs := append(slices.Clone(extraIPs), vip.Spec.V4ip, vip.Spec.V6ip, vip.Status.V4ip, vip.Status.V6ip)
+	if err := c.syncSwitchLBVipArpProxy(subnet.Name, vipIPs...); err != nil {
 		return err
 	}
 	return c.deleteStaleVipLsp(vip, subnet)
