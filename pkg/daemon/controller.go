@@ -705,6 +705,27 @@ func (c *Controller) enqueueAddSubnet(obj any) {
 
 func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 	c.subnetQueue.Add(&subnetEvent{oldObj: oldObj, newObj: newObj})
+	oldSubnet := oldObj.(*kubeovnv1.Subnet)
+	newSubnet := newObj.(*kubeovnv1.Subnet)
+	if oldSubnet.Spec.CIDRBlock != newSubnet.Spec.CIDRBlock {
+		c.enqueueProviderNetworksForSubnet(newSubnet.Name)
+	}
+}
+
+func (c *Controller) enqueueProviderNetworksForSubnet(subnet string) {
+	pns, err := c.providerNetworksLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list provider networks for subnet %s: %v", subnet, err)
+		return
+	}
+	for _, pn := range pns {
+		if pn.Spec.DefaultInterfaceSubnet == subnet || slices.ContainsFunc(pn.Status.VlanSubinterfaceAddresses, func(address kubeovnv1.ProviderNetworkNodeAddress) bool {
+			return address.Node == c.config.NodeName && address.Subnet == subnet
+		}) {
+			klog.V(3).Infof("enqueue provider network %s after CIDR change of subnet %s", pn.Name, subnet)
+			c.addOrUpdateProviderNetworkQueue.Add(pn.Name)
+		}
+	}
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj any) {

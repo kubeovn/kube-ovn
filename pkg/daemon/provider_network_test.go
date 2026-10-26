@@ -75,6 +75,77 @@ func requireNoProviderNetworkEvent(t *testing.T, recorder *record.FakeRecorder) 
 	}
 }
 
+func TestEnqueueUpdateSubnetReconcilesProviderNetworks(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		oldCIDR     string
+		newCIDR     string
+		wantEnqueue bool
+	}{
+		{name: "IPv4 prefix changed", oldCIDR: "192.0.2.0/24", newCIDR: "192.0.2.0/25", wantEnqueue: true},
+		{name: "IPv6 prefix changed", oldCIDR: "2001:db8::/64", newCIDR: "2001:db8::/80", wantEnqueue: true},
+		{name: "dual-stack prefix changed", oldCIDR: "192.0.2.0/24,2001:db8::/64", newCIDR: "192.0.2.0/25,2001:db8::/80", wantEnqueue: true},
+		{name: "CIDR unchanged", oldCIDR: "192.0.2.0/24", newCIDR: "192.0.2.0/24"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+			for _, pn := range []*kubeovnv1.ProviderNetwork{
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "default-interface"},
+					Spec:       kubeovnv1.ProviderNetworkSpec{DefaultInterfaceSubnet: "underlay"},
+					Status:     kubeovnv1.ProviderNetworkStatus{VlanSubinterfaceAddresses: []kubeovnv1.ProviderNetworkNodeAddress{{Node: "node-1", Subnet: "underlay"}}},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "local-allocation"},
+					Spec:       kubeovnv1.ProviderNetworkSpec{DefaultInterfaceSubnet: "other-subnet"},
+					Status:     kubeovnv1.ProviderNetworkStatus{VlanSubinterfaceAddresses: []kubeovnv1.ProviderNetworkNodeAddress{{Node: "node-1", Subnet: "underlay"}}},
+				},
+				{
+					ObjectMeta: metav1.ObjectMeta{Name: "remote-allocation"},
+					Status:     kubeovnv1.ProviderNetworkStatus{VlanSubinterfaceAddresses: []kubeovnv1.ProviderNetworkNodeAddress{{Node: "node-2", Subnet: "underlay"}}},
+				},
+				{ObjectMeta: metav1.ObjectMeta{Name: "unrelated"}, Spec: kubeovnv1.ProviderNetworkSpec{DefaultInterfaceSubnet: "other-subnet"}},
+			} {
+				require.NoError(t, indexer.Add(pn))
+			}
+			ctrl := &Controller{
+				config:                          &Configuration{NodeName: "node-1"},
+				providerNetworksLister:          kubeovnlisters.NewProviderNetworkLister(indexer),
+				addOrUpdateProviderNetworkQueue: newTypedRateLimitingQueue[string]("test-provider-network", nil),
+				subnetQueue:                     newTypedRateLimitingQueue[*subnetEvent]("test-subnet", nil),
+			}
+			t.Cleanup(ctrl.addOrUpdateProviderNetworkQueue.ShutDown)
+			t.Cleanup(ctrl.subnetQueue.ShutDown)
+			oldSubnet := &kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{Name: "underlay"},
+				Spec:       kubeovnv1.SubnetSpec{CIDRBlock: tt.oldCIDR},
+			}
+			newSubnet := oldSubnet.DeepCopy()
+			newSubnet.Spec.CIDRBlock = tt.newCIDR
+			newSubnet.Labels = map[string]string{"updated": "true"} // Non-CIDR changes alone must not enqueue provider networks.
+			ctrl.enqueueUpdateSubnet(oldSubnet, newSubnet)
+			require.Equal(t, 1, ctrl.subnetQueue.Len(), "existing subnet processing must be preserved")
+			event, shutdown := ctrl.subnetQueue.Get()
+			require.False(t, shutdown)
+			require.Same(t, oldSubnet, event.oldObj)
+			require.Same(t, newSubnet, event.newObj)
+			ctrl.subnetQueue.Done(event)
+			var enqueued []string
+			for ctrl.addOrUpdateProviderNetworkQueue.Len() > 0 {
+				name, shutdown := ctrl.addOrUpdateProviderNetworkQueue.Get()
+				require.False(t, shutdown)
+				enqueued = append(enqueued, name)
+				ctrl.addOrUpdateProviderNetworkQueue.Done(name)
+			}
+			if tt.wantEnqueue {
+				require.ElementsMatch(t, []string{"default-interface", "local-allocation"}, enqueued)
+			} else {
+				require.Empty(t, enqueued)
+			}
+		})
+	}
+}
+
 func TestFinishProviderNetworkInitReadiness(t *testing.T) {
 	for _, tt := range []struct {
 		name       string
