@@ -131,6 +131,11 @@ func (c *Controller) reconcileProviderNetworkNodeAddress(pn *kubeovnv1.ProviderN
 		return nil, fmt.Errorf("failed to allocate address for node %s from subnet %s: %w", node, pn.Spec.DefaultInterfaceSubnet, err)
 	}
 	address := util.GetStringIP(v4IP, v6IP)
+	if address == "" {
+		// A MAC-only allocation cannot configure a bridge IP and must not leave a reservation.
+		c.ipam.ReleaseAddressByNic(name, name, pn.Spec.DefaultInterfaceSubnet)
+		return nil, fmt.Errorf("subnet %s did not allocate an IP address for node %s: MAC-only subnets are not supported", pn.Spec.DefaultInterfaceSubnet, node)
+	}
 	if err := c.createOrUpdateIPCR("", pn.Name, address, mac, pn.Spec.DefaultInterfaceSubnet, "", node, util.KindProviderNetwork); err != nil {
 		// Keep the reservation on an ambiguous API failure.
 		return nil, err

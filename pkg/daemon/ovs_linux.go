@@ -1838,6 +1838,9 @@ func (c *Controller) configureProviderNetworkVlanSubinterfaceAddress(pn *kubeovn
 		if allocation == nil || allocation.Phase != kubeovnv1.ProviderNetworkAddressAllocated {
 			return fmt.Errorf("VLAN subinterface address for node %s has not been allocated yet", node.Name)
 		}
+		if allocation.IPAddress == "" {
+			return fmt.Errorf("VLAN subinterface allocation for node %s has an empty IP address", node.Name)
+		}
 		// Recheck the live status under the local provider-network mutex. A stale
 		// informer event must not reapply an address after cleanup was acknowledged.
 		currentPN, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Get(ctx, pn.Name, metav1.GetOptions{})
@@ -1872,6 +1875,9 @@ func (c *Controller) configureProviderNetworkVlanSubinterfaceAddress(pn *kubeovn
 		subnet, err := c.subnetsLister.Get(allocation.Subnet)
 		if err != nil {
 			return fmt.Errorf("failed to get VLAN subinterface subnet %s: %w", allocation.Subnet, err)
+		}
+		if err := util.CheckCidrs(subnet.Spec.CIDRBlock); err != nil {
+			return fmt.Errorf("invalid CIDR %q for VLAN subinterface subnet %s: %w", subnet.Spec.CIDRBlock, subnet.Name, err)
 		}
 		desiredAddresses, err = util.GetIPAddrWithMask(allocation.IPAddress, subnet.Spec.CIDRBlock)
 		if err != nil {

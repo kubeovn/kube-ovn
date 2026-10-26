@@ -74,6 +74,31 @@ func TestProviderNetworkIPDeletionRequiresCleanup(t *testing.T) {
 	}
 }
 
+func TestProviderNetworkRejectsMACOnlyAllocation(t *testing.T) {
+	pn, node, _ := providerNetworkAddressTestObjects()
+	pn.Status.VlanSubinterfaceAddresses = nil
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: pn.Spec.DefaultInterfaceSubnet},
+		Spec:       kubeovnv1.SubnetSpec{Provider: "external"},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		ProviderNetworks: []*kubeovnv1.ProviderNetwork{pn}, Subnets: []*kubeovnv1.Subnet{subnet},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnet.Name, "", "", nil))
+	for range 2 {
+		_, err := ctrl.reconcileProviderNetworkNodeAddresses(pn, []*corev1.Node{node})
+		require.ErrorContains(t, err, "MAC-only subnets are not supported")
+		require.Empty(t, pn.Status.VlanSubinterfaceAddresses)
+		ips, err := ctrl.config.KubeOvnClient.KubeovnV1().IPs().List(context.Background(), metav1.ListOptions{})
+		require.NoError(t, err)
+		require.Empty(t, ips.Items, "IP-less allocations must not create IP CRs")
+		require.Empty(t, ctrl.ipam.Subnets[subnet.Name].NicToMac, "failed allocation must release its MAC")
+		require.Empty(t, ctrl.ipam.Subnets[subnet.Name].PodToNicList)
+	}
+}
+
 func TestReconcileProviderNetworkNodeAddresses(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
 		ObjectMeta: metav1.ObjectMeta{Name: "underlay"},

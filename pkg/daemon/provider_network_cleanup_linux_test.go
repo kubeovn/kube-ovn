@@ -11,9 +11,12 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	clienttesting "k8s.io/client-go/testing"
+	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
+	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func newProviderNetworkCleanupClient(t *testing.T, pn *kubeovnv1.ProviderNetwork) *kubeovnfake.Clientset {
@@ -148,6 +151,48 @@ func TestProviderNetworkCleanupWithoutStatusFailsClosed(t *testing.T) {
 	ctrl := &Controller{config: &Configuration{NodeName: "node", KubeOvnClient: client}}
 	err := ctrl.cleanupProviderNetworkVlanSubinterfaceAddress(pn, &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node"}})
 	require.ErrorIs(t, err, apiErr)
+}
+
+func TestProviderNetworkRejectsEmptyAddressAndInvalidCIDR(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		ip        string
+		cidr      string
+		wantError string
+	}{
+		{name: "MAC-only allocation", wantError: "empty IP address"},
+		{name: "empty address", cidr: "192.0.2.0/24", wantError: "empty IP address"},
+		{name: "MAC-only subnet", ip: "192.0.2.2", wantError: `invalid CIDR ""`},
+		{name: "malformed CIDR", ip: "192.0.2.2", cidr: "not-a-cidr", wantError: "invalid CIDR"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pn := providerNetworkCleanupTestObject()
+			allocation := &pn.Status.VlanSubinterfaceAddresses[0]
+			allocation.Phase = kubeovnv1.ProviderNetworkAddressAllocated
+			allocation.IPAddress = tt.ip
+			client := newProviderNetworkCleanupClient(t, pn)
+			_, err := client.KubeovnV1().IPs().Create(context.Background(), &kubeovnv1.IP{
+				ObjectMeta: metav1.ObjectMeta{Name: allocation.IPName, UID: "ip-uid"},
+				Spec: kubeovnv1.IPSpec{
+					NodeName: allocation.Node, Subnet: allocation.Subnet, IPAddress: tt.ip, PodType: util.KindProviderNetwork,
+				},
+			}, metav1.CreateOptions{})
+			require.NoError(t, err)
+			subnetIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+			require.NoError(t, subnetIndexer.Add(&kubeovnv1.Subnet{
+				ObjectMeta: metav1.ObjectMeta{Name: allocation.Subnet},
+				Spec:       kubeovnv1.SubnetSpec{CIDRBlock: tt.cidr},
+			}))
+			ctrl := &Controller{
+				config:        &Configuration{NodeName: allocation.Node, KubeOvnClient: client},
+				subnetsLister: kubeovnlisters.NewSubnetLister(subnetIndexer),
+			}
+			require.NotPanics(t, func() {
+				err = ctrl.configureProviderNetworkVlanSubinterfaceAddress(pn, &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: allocation.Node}})
+			})
+			require.ErrorContains(t, err, tt.wantError)
+		})
+	}
 }
 
 func TestProviderNetworkStaleAllocationIsNotReapplied(t *testing.T) {
