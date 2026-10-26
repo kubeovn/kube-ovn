@@ -269,6 +269,13 @@ func (c *Controller) handleUpdateVirtualIP(key string) error {
 	}
 	// should update
 	if vip.Status.Mac == "" {
+		if vip.Spec.Type == util.SwitchLBRuleVip {
+			// A static vip reaches here with its ips in the spec only. Like in the add path, the router
+			// port has to answer for them before the status makes the vip ready.
+			if err = c.reconcileSwitchLBVipPort(vip, vip.Spec.V4ip, vip.Spec.V6ip); err != nil {
+				return err
+			}
+		}
 		if err = c.createOrUpdateVipCR(key, vip.Spec.Namespace, vip.Spec.Subnet,
 			vip.Spec.V4ip, vip.Spec.V6ip, vip.Spec.MacAddress, false); err != nil {
 			klog.Error(err)

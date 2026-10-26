@@ -476,9 +476,41 @@ func (c *Controller) markAndCleanLSP() error {
 	}
 	ipMap.Add(vmLsps...)
 
-	// vips own no normal lsp: an aap vip only has a virtual one, which
-	// ListNormalLogicalSwitchPorts never returns, and the lsp that older versions created for
-	// a switch_lb_vip is removed by reconcileSwitchLBVipPort.
+	vips, err := c.virtualIpsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list virtual ip, %v", err)
+		return err
+	}
+	vipsMap := strset.NewWithSize(len(vips))
+	// lsps of vip types kube-ovn no longer manages, reclaimed with an explicit warning
+	unmanagedVipLsps := make(map[string]string, len(vips))
+	for _, vip := range vips {
+		if vip.Spec.Type != "" {
+			subnetName := vip.Spec.Subnet
+			if subnetName == "" {
+				klog.Errorf("failed to gc vip '%s', subnet should be set", vip.Name)
+				continue
+			}
+
+			subnet, err := c.subnetsLister.Get(subnetName)
+			if err != nil {
+				klog.Errorf("failed to get subnet %s: %v", subnetName, err)
+				continue
+			}
+
+			portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
+			// switch_lb_rule is the only type whose normal lsp kube-ovn creates and keeps in
+			// sync. An aap vip has no normal lsp at all, only a virtual one, which
+			// ListNormalLogicalSwitchPorts never returns. Any other type is a leftover of the
+			// removed kube_host_vm_vip handling: nothing creates or reconciles that lsp
+			// anymore, so gc reclaims it.
+			if vip.Spec.Type == util.SwitchLBRuleVip {
+				vipsMap.Add(portName)
+			} else {
+				unmanagedVipLsps[portName] = vip.Name
+			}
+		}
+	}
 	lsps, err := c.OVNNbClient.ListNormalLogicalSwitchPorts(c.config.EnableExternalVpc, nil)
 	if err != nil {
 		klog.Errorf("failed to list logical switch port, %v", err)
@@ -492,11 +524,19 @@ func (c *Controller) markAndCleanLSP() error {
 		if ipMap.Has(lsp.Name) {
 			continue
 		}
+		if vipsMap.Has(lsp.Name) {
+			// skip gc lsp for switch lb rule
+			continue
+		}
 		if !lastNoPodLSP.Has(lsp.Name) {
 			noPodLSP.Add(lsp.Name)
 			continue
 		}
 
+		if vipName, ok := unmanagedVipLsps[lsp.Name]; ok {
+			klog.Warningf("gc logical switch port %s of vip %s: its vip type is no longer supported, "+
+				"only switch_lb_vip keeps a logical switch port", lsp.Name, vipName)
+		}
 		klog.Infof("gc logical switch port %s", lsp.Name)
 		if err := c.OVNNbClient.DeleteLogicalSwitchPort(lsp.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s: %v", lsp.Name, err)

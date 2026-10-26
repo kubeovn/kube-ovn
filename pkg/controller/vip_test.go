@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -703,4 +704,75 @@ func TestEnqueueUpdateVirtualIPOnSwitchLBVipStatusChange(t *testing.T) {
 		ctrl.enqueueUpdateVirtualIP(oldVip, newVip)
 		require.Zero(t, queue.Len())
 	})
+}
+
+func newStaticSwitchLBVipUpdateTest(t *testing.T) (*fakeController, *kubeovnv1.Vip) {
+	t.Helper()
+	subnet := &kubeovnv1.Subnet{
+		Name: "test-subnet",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/24",
+			Gateway:   "10.0.0.1",
+			Protocol:  kubeovnv1.ProtocolIPv4,
+			Provider:  util.OvnProvider,
+			Vpc:       "test-vpc",
+		},
+	}
+	// a static vip allowed by the webhook: its ip is only in the spec, nothing is assigned yet
+	vip := &kubeovnv1.Vip{
+		Name: "static-switch-lb-vip",
+		Spec: kubeovnv1.VipSpec{
+			Namespace: "default",
+			Subnet:    subnet.Name,
+			Type:      util.SwitchLBRuleVip,
+			V4ip:      "10.0.0.60",
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		Vips:    []*kubeovnv1.Vip{vip},
+		Vpcs:    []*kubeovnv1.Vpc{{Name: subnet.Spec.Vpc, Status: kubeovnv1.VpcStatus{Router: "test-router"}}},
+	})
+	require.NoError(t, err)
+	return fc, vip
+}
+
+func TestHandleUpdateVirtualIP_StaticSwitchLBVipSetsProxyBeforeStatus(t *testing.T) {
+	fc, vip := newStaticSwitchLBVipUpdateTest(t)
+	ctrl := fc.fakeController
+	mockOvnClient := fc.mockOvnClient
+
+	// the proxy is set while the vip is not ready yet: the status still has no address
+	mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("test-subnet-test-router", []string{"10.0.0.60"}).
+		DoAndReturn(func(string, []string) error {
+			got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Empty(t, got.Status.V4ip)
+			return nil
+		})
+	// whatever follows the status write, e.g. the reconciliation of the type, may repeat the sync
+	mockOvnClient.EXPECT().LogicalSwitchPortExists(gomock.Any()).Return(true, nil).AnyTimes()
+	mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy(gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+	mockOvnClient.EXPECT().DeleteLogicalSwitchPort(gomock.Any()).Return(nil).AnyTimes()
+
+	require.NoError(t, ctrl.handleUpdateVirtualIP(vip.Name))
+
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, vip.Spec.V4ip, got.Status.V4ip)
+}
+
+func TestHandleUpdateVirtualIP_StaticSwitchLBVipStaysNotReadyWhenProxyFails(t *testing.T) {
+	fc, vip := newStaticSwitchLBVipUpdateTest(t)
+	ctrl := fc.fakeController
+
+	fc.mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("test-subnet-test-router", []string{"10.0.0.60"}).
+		Return(errors.New("ovn failure"))
+
+	require.Error(t, ctrl.handleUpdateVirtualIP(vip.Name))
+
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Empty(t, got.Status.V4ip, "a vip must not turn ready while its router port proxy is missing")
+	require.Empty(t, got.Finalizers)
 }
