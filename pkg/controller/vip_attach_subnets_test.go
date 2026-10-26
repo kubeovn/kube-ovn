@@ -411,6 +411,8 @@ func Test_handleUpdateVirtualIPTypeChangeDetachesAttachSubnets(t *testing.T) {
 		LogicalSwitchUpdateLoadBalancers("target", ovsdb.MutateOperationDelete, "tcp-lb").
 		Return(nil)
 	fc.mockOvnClient.EXPECT().LogicalSwitchPortExists("home-vpc1").Return(false, nil)
+	// a legacy lsp left from the former type is removed as well
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(gomock.Any()).Return(nil)
 
 	require.NoError(t, fc.fakeController.handleUpdateVirtualIP(vip.Name))
 }
@@ -521,6 +523,8 @@ func TestVipTypeChangeDetachesScopedLoadBalancer(t *testing.T) {
 	lbName := serviceScopedExternalLBName(svc, corev1.ProtocolTCP, vip.Spec.V4ip)
 	fc.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("target", ovsdb.MutateOperationDelete, lbName).Return(nil)
 	fc.mockOvnClient.EXPECT().LogicalSwitchPortExists("home-vpc1").Return(false, nil)
+	// a legacy lsp left from the former type is removed as well
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(gomock.Any()).Return(nil)
 
 	require.NoError(t, ctrl.handleUpdateVirtualIP(vip.Name))
 	updated, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})

@@ -45,6 +45,13 @@ func (c *Controller) enqueueUpdateVirtualIP(oldObj, newObj any) {
 		klog.Infof("enqueue update vip %s", key)
 		c.updateVirtualIPQueue.Add(key)
 	}
+	if newVip.Spec.Type == util.SwitchLBRuleVip &&
+		(oldVip.Status.V4ip != newVip.Status.V4ip || oldVip.Status.V6ip != newVip.Status.V6ip) {
+		// The add path sets the arp_proxy from a lister that may lag behind the vips just written.
+		// Once a status reaches the lister, rebuild the complete list so no address stays dropped.
+		klog.Infof("enqueue update vip %s for status ip change", key)
+		c.updateVirtualIPQueue.Add(key)
+	}
 	if !slices.Equal(oldVip.Spec.Selector, newVip.Spec.Selector) ||
 		oldVip.Status.Mac != newVip.Status.Mac ||
 		oldVip.Status.V4ip != newVip.Status.V4ip ||
@@ -156,7 +163,8 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 	if vip.Spec.Type == util.SwitchLBRuleVip {
 		// The vip is ready as soon as its status holds the addresses, so the router port has to
 		// answer for them before that. The lister does not know the vip yet, pass its addresses.
-		if err := c.syncSwitchLBVipArpProxy(subnet.Name, v4ip, v6ip); err != nil {
+		// A vip repaired from a stale mac still has its old lsp, which is removed here as well.
+		if err := c.reconcileSwitchLBVipPort(vip, v4ip, v6ip); err != nil {
 			return err
 		}
 	}
@@ -328,8 +336,8 @@ func (c *Controller) reconcileVipType(vip *kubeovnv1.Vip) error {
 			return err
 		}
 	} else if vip.Status.Type == util.SwitchLBRuleVip {
-		// The webhook rejects changing the type of an assigned vip, so no lsp of the old type is
-		// left to clean up here.
+		// The webhook rejects changing the type of an assigned vip, but legacy objects and updates
+		// that bypass it can still leave the old lsp behind.
 		if err := c.detachAllVipAttachSubnets(vip); err != nil {
 			return err
 		}
@@ -339,6 +347,12 @@ func (c *Controller) reconcileVipType(vip *kubeovnv1.Vip) error {
 		if err := c.syncSwitchLBVipArpProxy(vip.Spec.Subnet); err != nil {
 			return err
 		}
+		subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
+		if err != nil {
+			klog.Errorf("failed to get subnet %s for vip %s: %v", vip.Spec.Subnet, vip.Name, err)
+			return err
+		}
+		return c.deleteStaleVipLsp(vip, subnet)
 	}
 	return nil
 }
@@ -363,8 +377,9 @@ func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 }
 
 // reconcileSwitchLBVipPort makes the subnet router port answer ARP/ND for the vip and
-// removes the logical switch port that older versions created for it.
-func (c *Controller) reconcileSwitchLBVipPort(vip *kubeovnv1.Vip) error {
+// removes the logical switch port that older versions created for it. extraIPs are addresses
+// of the vip that are not in the lister yet.
+func (c *Controller) reconcileSwitchLBVipPort(vip *kubeovnv1.Vip, extraIPs ...string) error {
 	subnet, err := c.subnetsLister.Get(vip.Spec.Subnet)
 	if err != nil {
 		klog.Errorf("failed to get subnet %s for vip %s: %v", vip.Spec.Subnet, vip.Name, err)
@@ -372,9 +387,14 @@ func (c *Controller) reconcileSwitchLBVipPort(vip *kubeovnv1.Vip) error {
 	}
 	// The proxy must be in place before the stale port is removed, otherwise
 	// there is a window in which nobody answers ARP for the vip.
-	if err := c.syncSwitchLBVipArpProxy(subnet.Name); err != nil {
+	if err := c.syncSwitchLBVipArpProxy(subnet.Name, extraIPs...); err != nil {
 		return err
 	}
+	return c.deleteStaleVipLsp(vip, subnet)
+}
+
+// deleteStaleVipLsp removes the lsp that older versions created for a switch_lb_vip vip.
+func (c *Controller) deleteStaleVipLsp(vip *kubeovnv1.Vip, subnet *kubeovnv1.Subnet) error {
 	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
 	if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
 		return fmt.Errorf("failed to delete stale lsp %s of vip %s: %w", portName, vip.Name, err)

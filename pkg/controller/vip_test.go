@@ -324,7 +324,11 @@ func TestHandleAddVirtualIP_SwitchLBRuleCreatesNoLsp(t *testing.T) {
 	// The vip gets no lsp and its IPAM-assigned mac is only recorded in the CR. The subnet
 	// router port answers ARP for it, see syncSwitchLBVipArpProxy, and must do so before the
 	// vip turns ready: the proxy is set from the address that is not in the lister yet.
-	fc.mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("test-subnet-test-router", []string{"10.0.0.50"}).Return(nil)
+	// the legacy lsp is only removed after the proxy is in place
+	gomock.InOrder(
+		fc.mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("test-subnet-test-router", []string{"10.0.0.50"}).Return(nil),
+		fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)).Return(nil),
+	)
 	require.NoError(t, ctrl.handleAddVirtualIP(vip.Name))
 
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
@@ -386,7 +390,11 @@ func TestHandleAddVirtualIP_SwitchLBRuleRepairsStaleGatewayMac(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, ctrl.ipam.RecordGatewayMAC(subnet.Name, gatewayMac))
 
-	fc.mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("test-subnet-repair-test-router", []string{"10.0.1.50"}).Return(nil)
+	// the repaired vip keeps its legacy lsp with the colliding mac until it is removed here
+	gomock.InOrder(
+		fc.mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("test-subnet-repair-test-router", []string{"10.0.1.50"}).Return(nil),
+		fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)).Return(nil),
+	)
 	require.NoError(t, ctrl.handleAddVirtualIP(vip.Name))
 
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
@@ -641,4 +649,58 @@ func TestHandleDeletingVipSyncsArpProxyBeforeRemovingFinalizer(t *testing.T) {
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Empty(t, got.Finalizers)
+}
+
+func TestSyncSwitchLBVipArpProxyKeepsVipsMissingFromStaleLister(t *testing.T) {
+	const subnetName = "foo-subnet"
+	subnet := &kubeovnv1.Subnet{
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
+	}
+	// vip a has been written to the api server, but its status has not reached the lister yet
+	staleA := switchLBVip("a", subnetName, "", "")
+	fakeController := newSwitchLBVipTestController(t, subnet, staleA)
+	fakeController.mockOvnClient.EXPECT().
+		SetLogicalSwitchPortArpProxy("foo-subnet-foo-router", []string{"10.0.1.3"}).
+		Return(nil)
+	require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName, "10.0.1.3"))
+
+	// the status event of a reaches the lister: the rebuilt list holds both addresses again
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(switchLBVip("a", subnetName, "10.0.1.2", "")))
+	require.NoError(t, indexer.Add(switchLBVip("b", subnetName, "10.0.1.3", "")))
+	fakeController.fakeController.virtualIpsLister = kubeovnlisters.NewVipLister(indexer)
+	fakeController.mockOvnClient.EXPECT().
+		SetLogicalSwitchPortArpProxy("foo-subnet-foo-router", []string{"10.0.1.2", "10.0.1.3"}).
+		Return(nil)
+	require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName))
+}
+
+func TestEnqueueUpdateVirtualIPOnSwitchLBVipStatusChange(t *testing.T) {
+	queue := newTypedRateLimitingQueue[string]("UpdateVirtualIP", nil)
+	defer queue.ShutDown()
+	parentsQueue := newTypedRateLimitingQueue[string]("UpdateVirtualParents", nil)
+	defer parentsQueue.ShutDown()
+	ctrl := &Controller{updateVirtualIPQueue: queue, updateVirtualParentsQueue: parentsQueue}
+
+	t.Run("switch lb vip", func(t *testing.T) {
+		oldVip := &kubeovnv1.Vip{Name: "lb-vip", Spec: kubeovnv1.VipSpec{Type: util.SwitchLBRuleVip, V4ip: "10.0.1.2"}}
+		newVip := oldVip.DeepCopy()
+		newVip.Status.V4ip = "10.0.1.2"
+
+		ctrl.enqueueUpdateVirtualIP(oldVip, newVip)
+		require.Equal(t, 1, queue.Len())
+		key, _ := queue.Get()
+		require.Equal(t, "lb-vip", key)
+		queue.Done(key)
+	})
+
+	t.Run("other vip", func(t *testing.T) {
+		oldVip := &kubeovnv1.Vip{Name: "plain-vip", Spec: kubeovnv1.VipSpec{V4ip: "10.0.1.3"}}
+		newVip := oldVip.DeepCopy()
+		newVip.Status.V4ip = "10.0.1.3"
+
+		ctrl.enqueueUpdateVirtualIP(oldVip, newVip)
+		require.Zero(t, queue.Len())
+	})
 }
