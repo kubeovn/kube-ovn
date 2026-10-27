@@ -526,12 +526,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 
 	var err error
 	var ipCR *kubeovnv1.IP
-	if podType == util.KindProviderNetwork {
-		// Allocation reconciliation must not recreate or overwrite a CR based on a stale cache.
-		ipCR, err = c.config.KubeOvnClient.KubeovnV1().IPs().Get(ctx, ipName, metav1.GetOptions{})
-	} else {
-		ipCR, err = c.ipsLister.Get(ipName)
-	}
+	ipCR, err = c.ipsLister.Get(ipName)
 	if err != nil {
 		if !k8serrors.IsNotFound(err) {
 			err := fmt.Errorf("failed to get ip CR %s: %w", ipName, err)
@@ -543,7 +538,7 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 	}
 	if ipCR != nil && podType == util.KindProviderNetwork {
 		// Existing provider network IPs are authoritative and must be reconciled, not overwritten.
-		return fmt.Errorf("provider network IP %s already exists; retry allocation reconciliation", ipName)
+		return fmt.Errorf("provider network IP %s already exists", ipName)
 	}
 	if ipCR != nil && !ipCR.DeletionTimestamp.IsZero() {
 		// this ip is being deleted, no need to update

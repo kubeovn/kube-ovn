@@ -422,7 +422,7 @@ func TestCreateOrUpdateProviderNetworkIPCRUsesLocalTimeout(t *testing.T) {
 	fc.fakeController.config.KubeOvnClient = client
 	err = fc.fakeController.createOrUpdateIPCR("", pn.Name, ip.Spec.IPAddress, ip.Spec.MacAddress, ip.Spec.Subnet, "", node.Name, util.KindProviderNetwork)
 	require.ErrorIs(t, err, apiErr)
-	require.Equal(t, []string{http.MethodGet, http.MethodPost}, methods)
+	require.Equal(t, []string{http.MethodPost}, methods)
 }
 
 func providerNetworkAddressTestObjects() (*kubeovnv1.ProviderNetwork, *corev1.Node, *kubeovnv1.IP) {
@@ -514,6 +514,10 @@ func TestProviderNetworkAddressRecreatesMissingIPCR(t *testing.T) {
 	// Delete through the API without updating the informer cache.
 	ips := ctrl.config.KubeOvnClient.KubeovnV1().IPs()
 	require.NoError(t, ips.Delete(context.Background(), ip.Name, metav1.DeleteOptions{}))
+	_, err = ctrl.reconcileProviderNetworkNodeAddresses(pn, []*corev1.Node{node})
+	require.ErrorContains(t, err, "already exists")
+	// Once the cache observes deletion, reconciliation can recreate the CR.
+	require.NoError(t, ctrl.ipIndexer.Delete(ip))
 	_, err = ctrl.reconcileProviderNetworkNodeAddresses(pn, []*corev1.Node{node})
 	require.NoError(t, err)
 	restored, err := ips.Get(context.Background(), ip.Name, metav1.GetOptions{})
