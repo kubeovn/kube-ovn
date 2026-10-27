@@ -952,15 +952,30 @@ func vpcEgressGatewayLocalPolicyMatches(af int, localPgName, pgName, asName stri
 }
 
 func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressGateway, af int, lrName, lrpName, bfdIP string, nodeNexthops map[string]set.Set[string], sources set.Set[string]) error {
-	if c.config.EnableNonPrimaryCNI && len(gw.Spec.Selectors) != 0 {
-		// reconcileVpcEgressGatewayOVNRoutes matches pods via the "ovn" provider
-		// but when kube-ovn runs as a non-primary CNI, provider is intenal network, so the selectors will not work as expected/return error as not supported
-		// this is not supported in this version and will be supported in the future(document the case).
-		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, "SelectorsNotSupported",
-			"spec.selectors is not supported when kube-ovn runs as a non-primary CNI")
-		err := errors.New("spec.selectors is not supported when kube-ovn runs as a non-primary CNI")
-		klog.Error(err)
-		return err
+	// reconcileVpcEgressGatewayOVNRoutes matches pods via the "ovn" provider
+	// port naming, but when kube-ovn runs as a non-primary CNI, pods are
+	// attached via an internal network provider instead, so pod selectors
+	// cannot be resolved to the right ports. This is not supported in this
+	// version (will be supported in the future).
+	//
+	// IMPORTANT: we must NOT return before the rest of this function runs.
+	// `sources` is derived purely from spec.policies (subnets/ipBlocks) and
+	// is already correctly recomputed on every reconcile independent of
+	// whether selectors are usable. If we bailed out here, a gateway that
+	// previously forwarded subnet A's traffic via policies and then had its
+	// spec changed to use (unsupported) selectors would keep A's CIDR in
+	// the OVN address set and its reroute LR policy active forever, even
+	// though the gateway reports NotReady. Instead, we disable only the
+	// selector/port-group derived portion below and let address-set / LR
+	// policy / BFD reconciliation converge using `sources`, returning the
+	// unsupported error only after that convergence has completed.
+	selectorsRequested := len(gw.Spec.Selectors) > 0
+	selectorsUnsupported := c.config.EnableNonPrimaryCNI && selectorsRequested
+	var deferredErr error
+	if selectorsUnsupported {
+		deferredErr = errors.New("spec.selectors is not supported when kube-ovn runs as a non-primary CNI")
+		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, "SelectorsNotSupported", deferredErr.Error())
+		klog.Error(deferredErr)
 	}
 
 	nextHops := flattenVpcEgressGatewayNexthops(nodeNexthops)
@@ -971,10 +986,17 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		"af":                           strconv.Itoa(af),
 	}
 
-	// reconcile OVN port group
+	// reconcile OVN port group. When selectors are requested but unsupported,
+	// treat them as absent so stale selector-derived ports don't linger and
+	// so that matching below falls back to address-set-only (subnet/policy
+	// derived) sources.
 	var err error
 	ports := set.New[string]()
-	for _, selector := range gw.Spec.Selectors {
+	activeSelectors := gw.Spec.Selectors
+	if selectorsUnsupported {
+		activeSelectors = nil
+	}
+	for _, selector := range activeSelectors {
 		sel := labels.Everything()
 		if selector.NamespaceSelector != nil {
 			if sel, err = metav1.LabelSelectorAsSelector(selector.NamespaceSelector); err != nil {
@@ -1022,7 +1044,11 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	// subnet-only gateways, the port-group address-set name is backed by an empty
 	// standalone address set below because no Port Group selector exists.
 	includePortGroup := true
-	hasSelectors := len(gw.Spec.Selectors) > 0
+	// hasSelectors reflects whether selector-derived state should actually be
+	// populated: when selectors are requested but unsupported (non-primary
+	// CNI), we fall back to subnet/policy-only matching so OVN state
+	// converges correctly instead of retaining stale selector-based state.
+	hasSelectors := activeSelectors != nil && len(activeSelectors) > 0
 	if hasSelectors {
 		if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
 			err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
@@ -1218,7 +1244,11 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		return err
 	}
 
-	return nil
+	// Surface the unsupported-selectors condition only now that OVN state
+	// (address set, port group, LR policies, BFD sessions) has converged to
+	// reflect the current spec.policies-derived sources. This avoids leaving
+	// stale forwarding state active from before the transition to selectors.
+	return deferredErr
 }
 
 func localGatewayPolicyBFDSessions(bfdMap map[string]string, nextHops set.Set[string]) set.Set[string] {

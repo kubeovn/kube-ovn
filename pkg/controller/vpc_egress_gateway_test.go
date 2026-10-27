@@ -888,27 +888,80 @@ func TestReconcileVpcEgressGatewayWorkloadInvalidInternalSubnetProvider(t *testi
 }
 
 func TestReconcileVpcEgressGatewayOVNRoutesNonPrimaryCNIRejectsSelectors(t *testing.T) {
-	f := newVegOVNRouteFixture(t)
-	f.fc.fakeController.config.EnableNonPrimaryCNI = true
-	f.gw.Spec.Selectors = []kubeovnv1.VpcEgressGatewaySelector{{
-		PodSelector: &metav1.LabelSelector{
-			MatchLabels: map[string]string{"app": "test"},
-		},
-	}}
+	// Regression coverage for: a non-primary-CNI gateway that previously
+	// forwarded a subnet's traffic via spec.policies (i.e. `sources`
+	// contained the subnet CIDR in the OVN address set, with an active
+	// reroute LR policy) has its spec switched to (unsupported, in this
+	// mode) selectors, with the subnet removed from policies at the same
+	// time. The reconcile must still converge the address set / port group
+	// / LR policy / BFD state to the new (selector-less) reality -- clearing
+	// the stale subnet entry and its reroute policy -- and only then return
+	// the "selectors not supported" error, instead of bailing out up front
+	// and leaving the old forwarding state silently active.
+	fakeController := newFakeController(t)
+	controller := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	controller.config.EnableNonPrimaryCNI = true
 
-	err := f.fc.fakeController.reconcileVpcEgressGatewayOVNRoutes(
-		f.gw,
-		4,
-		f.lrName,
-		f.lrpName,
-		f.bfdIP,
-		map[string]set.Set[string]{f.nodeName: set.New("10.16.1.10")},
-		nil,
+	gw := &kubeovnv1.VpcEgressGateway{
+		Name: "veg", Namespace: "default",
+		Spec: kubeovnv1.VpcEgressGatewaySpec{
+			BFD: kubeovnv1.VpcEgressGatewayBFDConfig{Enabled: true},
+			Selectors: []kubeovnv1.VpcEgressGatewaySelector{{
+				PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "test"}},
+			}},
+		},
+	}
+	externalIDs := map[string]string{
+		ovs.ExternalIDVendor:           util.CniTypeName,
+		ovs.ExternalIDVpcEgressGateway: "default/veg",
+		"af":                           "4",
+	}
+	pgName := vegPortGroupName("default/veg")
+	asName := vegAddressSetName("default/veg", 4)
+	compatAsName := vegPortGroupAddressSetName("default/veg", 4)
+	asMatch := "ip4.src == $" + asName
+	compatMatch := "ip4.src == $" + compatAsName
+
+	// Selectors are unsupported in this mode, so they must be treated as
+	// absent: no port group is (re)created for them (any stale one from a
+	// prior reconcile is deleted instead), while the subnet/ipBlock-derived
+	// `sources` (already correctly recomputed by the caller from the
+	// *current* spec.policies, which no longer include the removed subnet)
+	// must still be pushed into the address set.
+	mockOvnClient.EXPECT().DeletePortGroup(pgName).Return(nil)
+	mockOvnClient.EXPECT().CreateAddressSet(asName, externalIDs).Return(nil)
+	mockOvnClient.EXPECT().AddressSetUpdateAddress(asName).Return(nil) // no sources left: stale subnet entry is cleared
+	mockOvnClient.EXPECT().CreateAddressSet(compatAsName, externalIDs).Return(nil)
+	mockOvnClient.EXPECT().AddressSetUpdateAddress(compatAsName).Return(nil)
+	mockOvnClient.EXPECT().FindBFD(externalIDs).Return(nil, nil)
+	mockOvnClient.EXPECT().DeleteLogicalRouterPolicies("tenant", util.EgressGatewayLocalPolicyPriority, externalIDs).Return(nil)
+	mockOvnClient.EXPECT().ListLogicalRouterPolicies("tenant", util.EgressGatewayPolicyPriority, externalIDs, false).Return(nil, nil)
+	mockOvnClient.EXPECT().ListLogicalRouterPolicies("tenant", util.EgressGatewayDropPolicyPriority, externalIDs, false).Return(nil, nil)
+	mockOvnClient.EXPECT().AddLogicalRouterPolicy(
+		"tenant", util.EgressGatewayDropPolicyPriority, asMatch, ovnnb.LogicalRouterPolicyActionDrop,
+		nil, nil, externalIDs,
+	).Return(nil)
+	mockOvnClient.EXPECT().AddLogicalRouterPolicy(
+		"tenant", util.EgressGatewayDropPolicyPriority, compatMatch, ovnnb.LogicalRouterPolicyActionDrop,
+		nil, nil, externalIDs,
+	).Return(nil)
+
+	// No active nodes/nexthops and an empty `sources` set models the
+	// gateway's state right after the subnet was dropped from
+	// spec.policies in the same update that introduced the selectors.
+	err := controller.reconcileVpcEgressGatewayOVNRoutes(
+		gw, 4, "tenant", "tenant-public", "", nil, set.New[string](),
 	)
+
+	// The unsupported-selectors error must still surface...
 	require.Error(t, err)
 	require.ErrorContains(t, err, "not supported")
 
-	fakeRecorder, ok := f.fc.fakeController.recorder.(*record.FakeRecorder)
+	// ...but only after the above convergence calls were made: the mock
+	// client's expectations assert that no stale port group or address set
+	// entry for the previously-forwarded subnet survives the reconcile.
+	fakeRecorder, ok := controller.recorder.(*record.FakeRecorder)
 	require.True(t, ok, "expected fake recorder")
 
 	event := requireRecorderEvent(t, fakeRecorder)
