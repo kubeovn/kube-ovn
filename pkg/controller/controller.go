@@ -85,6 +85,7 @@ type Controller struct {
 	podsLister             v1.PodLister
 	podsSynced             cache.InformerSynced
 	podIndexer             cache.Indexer
+	policySelectorCache    policySelectorCache
 	addOrUpdatePodQueue    workqueue.TypedRateLimitingInterface[string]
 	deletePodQueue         workqueue.TypedRateLimitingInterface[string]
 	deletingPodObjMap      *xsync.Map[string, *corev1.Pod]
