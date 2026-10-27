@@ -161,7 +161,8 @@ func TestPolicySelectorCacheInvalidatesOnNetworkAttachmentInformerEvents(t *test
 
 	nadClient := controller.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(metav1.NamespaceDefault)
 	nad := &nadv1.NetworkAttachmentDefinition{
-		ObjectMeta: metav1.ObjectMeta{Name: "policy-cache", Namespace: metav1.NamespaceDefault},
+		Name:      "policy-cache",
+		Namespace: metav1.NamespaceDefault,
 	}
 
 	assertInvalidated := func(name string, mutate func() error) {
