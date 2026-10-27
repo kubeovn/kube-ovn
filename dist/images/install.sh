@@ -834,9 +834,25 @@ spec:
                 description: EnableAddressSet to work with policy-based routing and
                   ACL
                 type: boolean
+              ipCount:
+                description: |-
+                  Number of addresses to pick automatically from the subnet's free addresses,
+                  per IP family (a dual-stack subnet yields ipCount IPv4 plus ipCount IPv6 addresses).
+                  The picked addresses are recorded in status.ips and stay stable; increasing the
+                  value appends addresses, decreasing it releases the most recently added ones first.
+                  Mutually exclusive with ips.
+                  An ippool carves a small set of addresses out of a subnet; needing more than a few
+                  dozen is better served by a dedicated subnet, or by spelling out ranges in ips.
+                  This bound must stay in sync with maxIPPoolIPCount in the controller, which still
+                  guards pools created before the limit was introduced.
+                format: int32
+                maximum: 32
+                minimum: 1
+                type: integer
               ips:
-                description: IP addresses or ranges in the pool (IPv4/IPv6 addresses
-                  or CIDR ranges)
+                description: |-
+                  IP addresses or ranges in the pool (IPv4/IPv6 addresses or CIDR ranges).
+                  Mutually exclusive with ipCount.
                 items:
                   type: string
                 type: array
@@ -849,9 +865,11 @@ spec:
                 description: Subnet name for the IP pool. This field is immutable.
                 type: string
             required:
-            - ips
             - subnet
             type: object
+            x-kubernetes-validations:
+            - message: exactly one of spec.ips and spec.ipCount must be set
+              rule: has(self.ips) != has(self.ipCount)
           status:
             properties:
               conditions:
@@ -890,6 +908,15 @@ spec:
                       description: Type of condition.
                       type: string
                   type: object
+                type: array
+              ips:
+                description: |-
+                  IP addresses the pool currently consists of, in allocation order.
+                  Maintained by the controller for pools using spec.ipCount, and cleared when the
+                  pool leaves that mode, so the recorded selection is never mistaken for the
+                  members of a pool that lists spec.ips.
+                items:
+                  type: string
                 type: array
               v4AvailableIPRange:
                 description: Available IPv4 address range

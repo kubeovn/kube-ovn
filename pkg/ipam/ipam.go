@@ -22,6 +22,9 @@ var (
 	ErrNoSubnet        = errors.New("NoSubnet")
 	ErrInvalidCIDR     = errors.New("CIDRInvalid")
 	ErrInvalidIPFamily = errors.New("InvalidIPFamily")
+	// ErrSelectionChanged rejects committing an ippool selection that is no longer
+	// reproducible, see Subnet.ActivateIPPoolIPs
+	ErrSelectionChanged = errors.New("SelectionChanged")
 )
 
 type IPAM struct {
@@ -531,6 +534,32 @@ func (ipam *IPAM) AddOrUpdateIPPool(subnet, ippool string, ips []string) error {
 	}
 
 	return s.AddOrUpdateIPPool(ippool, ips)
+}
+
+// SelectIPPoolIPs picks the addresses of a named pool by per-family counts without
+// committing them, see Subnet.SelectIPPoolIPs.
+func (ipam *IPAM) SelectIPPoolIPs(subnet, name string, keep []string, v4Count, v6Count int) ([]string, []string, error) {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+
+	s := ipam.Subnets[subnet]
+	if s == nil {
+		return nil, nil, fmt.Errorf("subnet %s does not exist in IPAM", subnet)
+	}
+	return s.SelectIPPoolIPs(name, keep, v4Count, v6Count)
+}
+
+// ActivateIPPoolIPs verifies and commits a membership previously picked by
+// SelectIPPoolIPs, see Subnet.ActivateIPPoolIPs.
+func (ipam *IPAM) ActivateIPPoolIPs(subnet, name string, selected []string, v4Count, v6Count int) error {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+
+	s := ipam.Subnets[subnet]
+	if s == nil {
+		return fmt.Errorf("subnet %s does not exist in IPAM", subnet)
+	}
+	return s.ActivateIPPoolIPs(name, selected, v4Count, v6Count)
 }
 
 func (ipam *IPAM) RemoveIPPool(subnet, ippool string) {
