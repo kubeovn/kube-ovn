@@ -815,16 +815,16 @@ func hasEgressRule(np *netv1.NetworkPolicy) bool {
 	return np.Spec.Egress != nil
 }
 
-func policyLabelSelectorCacheKey(selector *metav1.LabelSelector) string {
+func policyLabelSelectorCacheKey(selector *metav1.LabelSelector) (string, error) {
 	if selector == nil {
-		return "nil"
+		return "nil", nil
 	}
 
 	parsed, err := metav1.LabelSelectorAsSelector(selector)
 	if err != nil {
-		return fmt.Sprintf("invalid:%#v", *selector)
+		return "", fmt.Errorf("invalid label selector: %w", err)
 	}
-	return "value:" + parsed.String()
+	return "value:" + parsed.String(), nil
 }
 
 func policyIPBlockCacheKey(block *netv1.IPBlock) string {
@@ -834,12 +834,20 @@ func policyIPBlockCacheKey(block *netv1.IPBlock) string {
 	return fmt.Sprintf("value:%#v", *block)
 }
 
-func policyNetworkPolicyPeerCacheKey(peer netv1.NetworkPolicyPeer) string {
+func policyNetworkPolicyPeerCacheKey(peer netv1.NetworkPolicyPeer) (string, error) {
+	podSelector, err := policyLabelSelectorCacheKey(peer.PodSelector)
+	if err != nil {
+		return "", fmt.Errorf("invalid pod selector: %w", err)
+	}
+	namespaceSelector, err := policyLabelSelectorCacheKey(peer.NamespaceSelector)
+	if err != nil {
+		return "", fmt.Errorf("invalid namespace selector: %w", err)
+	}
 	return strings.Join([]string{
-		policyLabelSelectorCacheKey(peer.PodSelector),
-		policyLabelSelectorCacheKey(peer.NamespaceSelector),
+		podSelector,
+		namespaceSelector,
 		policyIPBlockCacheKey(peer.IPBlock),
-	}, "\x00")
+	}, "\x00"), nil
 }
 
 func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, npp netv1.NetworkPolicyPeer, providers set.Set[string]) ([]string, []string, error) {
@@ -848,8 +856,12 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 	if providers != nil {
 		providerKey = strings.Join(providers.SortedList(), ",")
 	}
-	cacheKey := fmt.Sprintf("%s\x00%s\x00%s\x00%s", namespace, protocol, policyNetworkPolicyPeerCacheKey(npp), providerKey)
-	if selected, except, ok := c.getPolicyAddressCache(cacheKey); ok {
+	peerKey, err := policyNetworkPolicyPeerCacheKey(npp)
+	if err != nil {
+		return nil, nil, err
+	}
+	cacheKey := fmt.Sprintf("%s\x00%s\x00%s\x00%s", namespace, protocol, peerKey, providerKey)
+	if selected, except, ok := c.getPolicyAddressCache(cacheKey, generation); ok {
 		return selected, except, nil
 	}
 
@@ -888,7 +900,10 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 	if npp.PodSelector == nil {
 		sel = labels.Everything()
 	} else {
-		sel, _ = metav1.LabelSelectorAsSelector(npp.PodSelector)
+		sel, err = metav1.LabelSelectorAsSelector(npp.PodSelector)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error creating pod label selector, %w", err)
+		}
 	}
 
 	for _, ns := range selectedNs {

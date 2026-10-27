@@ -24,24 +24,24 @@ func TestPolicySelectorCacheClonesResultsAndInvalidatesByGeneration(t *testing.T
 	selected[0] = "10.0.0.3"
 	except[0] = "10.0.0.4"
 
-	gotSelected, gotExcept, ok := controller.getPolicyAddressCache("peer")
+	gotSelected, gotExcept, ok := controller.getPolicyAddressCache("peer", generation)
 	require.True(t, ok)
 	require.Equal(t, []string{"10.0.0.1"}, gotSelected)
 	require.Equal(t, []string{"10.0.0.2"}, gotExcept)
 
 	gotSelected[0] = "192.0.2.1"
 	gotExcept[0] = "192.0.2.2"
-	gotSelected, gotExcept, ok = controller.getPolicyAddressCache("peer")
+	gotSelected, gotExcept, ok = controller.getPolicyAddressCache("peer", generation)
 	require.True(t, ok)
 	require.Equal(t, []string{"10.0.0.1"}, gotSelected)
 	require.Equal(t, []string{"10.0.0.2"}, gotExcept)
 
 	controller.invalidatePolicySelectorCache()
-	_, _, ok = controller.getPolicyAddressCache("peer")
+	_, _, ok = controller.getPolicyAddressCache("peer", generation)
 	require.False(t, ok)
 
 	controller.setPolicyAddressCache("stale", []string{"10.0.0.5"}, nil, generation)
-	_, _, ok = controller.getPolicyAddressCache("stale")
+	_, _, ok = controller.getPolicyAddressCache("stale", generation)
 	require.False(t, ok)
 }
 
@@ -55,7 +55,7 @@ func TestPolicySelectorCacheClonesPodScanResults(t *testing.T) {
 	controller.setPolicyPodScanCache("selectors", ports, v4, v6, generation)
 	ports[0], v4[0], v6[0] = "changed", "changed", "changed"
 
-	gotPorts, gotV4, gotV6, ok := controller.getPolicyPodScanCache("selectors")
+	gotPorts, gotV4, gotV6, ok := controller.getPolicyPodScanCache("selectors", generation)
 	require.True(t, ok)
 	require.Equal(t, []string{"pod.default.ovn"}, gotPorts)
 	require.Equal(t, []string{"10.0.0.1"}, gotV4)
@@ -122,4 +122,46 @@ func TestFetchPolicySelectedAddressesUsesCacheUntilPodEvent(t *testing.T) {
 	addresses, _, err = controller.fetchPolicySelectedAddresses(metav1.NamespaceDefault, kubeovnv1.ProtocolIPv4, peer, nil)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"10.0.0.1", "10.0.0.2"}, addresses)
+}
+
+func TestPolicySelectorCacheInvalidatesOnPodAndNetworkAttachmentEvents(t *testing.T) {
+	controller := &Controller{}
+
+	generation := controller.policySelectorCacheGeneration()
+	controller.setPolicyAddressCache("pod", []string{"10.0.0.1"}, nil, generation)
+	controller.enqueueAddPod(&corev1.Pod{Spec: corev1.PodSpec{HostNetwork: true}})
+	_, _, ok := controller.getPolicyAddressCache("pod", generation)
+	require.False(t, ok)
+
+	for _, event := range []struct {
+		name string
+		hand func()
+	}{
+		{name: "add", hand: func() { controller.enqueueAddNetworkAttachment(nil) }},
+		{name: "update", hand: func() { controller.enqueueUpdateNetworkAttachment(nil, nil) }},
+		{name: "delete", hand: func() { controller.enqueueDeleteNetworkAttachment(nil) }},
+	} {
+		t.Run(event.name, func(t *testing.T) {
+			generation := controller.policySelectorCacheGeneration()
+			controller.setPolicyAddressCache(event.name, []string{"10.0.0.1"}, nil, generation)
+			event.hand()
+			_, _, ok := controller.getPolicyAddressCache(event.name, generation)
+			require.False(t, ok)
+		})
+	}
+}
+
+func TestPolicySelectorCacheRejectsInvalidLabelSelector(t *testing.T) {
+	selector := &metav1.LabelSelector{MatchLabels: map[string]string{"invalid key": "value"}}
+	_, err := policyLabelSelectorCacheKey(selector)
+	require.Error(t, err)
+
+	peer := netv1.NetworkPolicyPeer{PodSelector: selector}
+	_, _, err = (&Controller{}).fetchPolicySelectedAddresses(
+		metav1.NamespaceDefault,
+		kubeovnv1.ProtocolIPv4,
+		peer,
+		nil,
+	)
+	require.Error(t, err)
 }

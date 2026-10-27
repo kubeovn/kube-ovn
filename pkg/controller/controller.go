@@ -794,6 +794,14 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
 	}
 
+	if _, err = netAttachInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddNetworkAttachment,
+		UpdateFunc: controller.enqueueUpdateNetworkAttachment,
+		DeleteFunc: controller.enqueueDeleteNetworkAttachment,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add network attachment event handler")
+	}
+
 	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    controller.enqueueAddPod,
 		DeleteFunc: controller.enqueueDeletePod,

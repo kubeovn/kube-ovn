@@ -610,7 +610,7 @@ func (c *Controller) fetchSelectedPods(anpSubject *v1alpha1.AdminNetworkPolicySu
 func (c *Controller) fetchPods(nsSelector, podSelector labels.Selector) ([]string, []string, []string, error) {
 	generation := c.policySelectorCacheGeneration()
 	cacheKey := nsSelector.String() + "\x00" + podSelector.String()
-	if ports, v4Addresses, v6Addresses, ok := c.getPolicyPodScanCache(cacheKey); ok {
+	if ports, v4Addresses, v6Addresses, ok := c.getPolicyPodScanCache(cacheKey, generation); ok {
 		return ports, v4Addresses, v6Addresses, nil
 	}
 
