@@ -106,9 +106,12 @@ RUN apt update && apt upgrade -y && apt install ca-certificates python3 libunwin
         libcharon-extauth-plugins libstrongswan-extra-plugins libstrongswan-standard-plugins \
         python3-pip build-essential libssl-dev libibverbs-dev libnuma-dev libpcap-dev -y --no-install-recommends && \
         rm -rf /var/lib/apt/lists/* && \
-        rm -rf /etc/localtime
+        rm -rf /etc/localtime && \
+        rm -f /usr/bin/pebble && \
+        rm -rf /var/lib/pebble
 
-RUN test ! -e /usr/bin/tcpdump && test ! -e /usr/bin/ncat && test ! -e /usr/bin/nc
+RUN test ! -e /usr/bin/tcpdump && test ! -e /usr/bin/ncat && test ! -e /usr/bin/nc && \
+    test ! -e /usr/bin/pebble && test ! -e /var/lib/pebble
 
 RUN pip3 install meson ninja pyelftools
 
