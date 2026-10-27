@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
@@ -21,7 +22,7 @@ func vipAttachTestSubnet(name, vpc string) *kubeovnv1.Subnet {
 }
 
 func vipAttachTestVpc(name, tcpLB string) *kubeovnv1.Vpc {
-	return &kubeovnv1.Vpc{Name: name, Status: kubeovnv1.VpcStatus{TCPLoadBalancer: tcpLB}}
+	return &kubeovnv1.Vpc{Name: name, Status: kubeovnv1.VpcStatus{Router: name, TCPLoadBalancer: tcpLB}}
 }
 
 func vipAttachTestVip(name, subnet string, attach []string, annotations map[string]string) *kubeovnv1.Vip {
@@ -309,7 +310,7 @@ func Test_reconcileVipAttachSubnetsDoesNotDetachSharedSubnet(t *testing.T) {
 	}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Subnets: []*kubeovnv1.Subnet{vipAttachTestSubnet("home", "vpc1"), vipAttachTestSubnet("shared", "vpc1")},
-		Vpcs:    []*kubeovnv1.Vpc{{Name: "vpc1", Status: kubeovnv1.VpcStatus{TCPLoadBalancer: "tcp-lb"}}},
+		Vpcs:    []*kubeovnv1.Vpc{{Name: "vpc1", Status: kubeovnv1.VpcStatus{Router: "vpc1", TCPLoadBalancer: "tcp-lb"}}},
 	})
 	require.NoError(t, err)
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
@@ -328,13 +329,15 @@ func Test_handleAddVirtualIPRetriesAttachAfterStatusAllocation(t *testing.T) {
 	}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Subnets: []*kubeovnv1.Subnet{{Name: "home", Spec: kubeovnv1.SubnetSpec{Vpc: "vpc1"}}},
-		Vpcs:    []*kubeovnv1.Vpc{{Name: "vpc1", Status: kubeovnv1.VpcStatus{TCPLoadBalancer: "tcp-lb"}}},
+		Vpcs:    []*kubeovnv1.Vpc{{Name: "vpc1", Status: kubeovnv1.VpcStatus{Router: "vpc1", TCPLoadBalancer: "tcp-lb"}}},
 	})
 	require.NoError(t, err)
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	require.NoError(t, indexer.Add(vip))
 	fc.fakeController.virtualIpsLister = kubeovnlisters.NewVipLister(indexer)
 	fc.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("target", ovsdb.MutateOperationInsert, "tcp-lb").Return(nil)
+	fc.mockOvnClient.EXPECT().LogicalSwitchPortExists("home-vpc1").Return(false, nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(gomock.Any()).Return(nil)
 	require.NoError(t, fc.fakeController.handleAddVirtualIP(vip.Name))
 }
 
@@ -361,6 +364,8 @@ func Test_handleUpdateVirtualIPTypeChangeDetachesAttachSubnets(t *testing.T) {
 	fc.mockOvnClient.EXPECT().
 		LogicalSwitchUpdateLoadBalancers("target", ovsdb.MutateOperationDelete, "tcp-lb").
 		Return(nil)
+	fc.mockOvnClient.EXPECT().LogicalSwitchPortExists("home-vpc1").Return(false, nil)
+	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(gomock.Any()).Return(nil)
 
 	require.NoError(t, fc.fakeController.handleUpdateVirtualIP(vip.Name))
 }
