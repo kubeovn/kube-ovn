@@ -87,6 +87,7 @@ type Controller struct {
 
 	podsLister             v1.PodLister
 	podsSynced             cache.InformerSynced
+	policySelectorCache    policySelectorCache
 	addOrUpdatePodQueue    workqueue.TypedRateLimitingInterface[string]
 	deletePodQueue         workqueue.TypedRateLimitingInterface[string]
 	deletingPodObjMap      *xsync.Map[string, *corev1.Pod]
@@ -743,6 +744,10 @@ func Run(ctx context.Context, config *Configuration) {
 
 	defer controller.shutdown()
 	klog.Info("Starting OVN controller")
+
+	if err = controller.addNetworkAttachmentEventHandler(netAttachInformer.Informer()); err != nil {
+		util.LogFatalAndExit(err, "failed to add network attachment event handler")
+	}
 
 	// Start and sync NAD informer first, as many resources depend on NAD cache
 	// NAD CRD is optional, so we check if it exists before starting the informer
