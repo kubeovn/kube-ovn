@@ -1046,10 +1046,10 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	includePortGroup := true
 	// hasSelectors reflects whether selector-derived state should actually be
 	// populated: when selectors are requested but unsupported (non-primary
-	// CNI), we fall back to subnet/policy-only matching so OVN state
-	// converges correctly instead of retaining stale selector-based state.
-	//lint:ignore S1009 activeSelectors specifically made nil for non-primary CNI case, so this is not a redundant check
-	hasSelectors := activeSelectors != nil && len(activeSelectors) > 0
+	// CNI), activeSelectors is forced to nil above, so this naturally
+	// evaluates to false and OVN state falls back to subnet/policy-only
+	// matching instead of retaining stale selector-based state.
+	hasSelectors := len(activeSelectors) > 0
 	if hasSelectors {
 		if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
 			err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
