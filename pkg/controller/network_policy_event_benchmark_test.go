@@ -1,0 +1,222 @@
+package controller
+
+import (
+	"fmt"
+	"testing"
+
+	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
+	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+)
+
+const (
+	benchmarkPolicyLabelCount = 16
+	benchmarkNamespace        = "benchmark"
+)
+
+func benchmarkSelector(key, value string) metav1.LabelSelector {
+	return metav1.LabelSelector{MatchLabels: map[string]string{key: value}}
+}
+
+func benchmarkNetworkPolicies(count int) []networkingv1.NetworkPolicy {
+	policies := make([]networkingv1.NetworkPolicy, count)
+	for i := range policies {
+		podSelector := benchmarkSelector("app", fmt.Sprintf("app-%d", i%benchmarkPolicyLabelCount))
+		namespaceSelector := benchmarkSelector("tenant", fmt.Sprintf("tenant-%d", i%benchmarkPolicyLabelCount))
+		policies[i] = networkingv1.NetworkPolicy{
+			Namespace: benchmarkNamespace,
+			Spec: networkingv1.NetworkPolicySpec{
+				PodSelector: podSelector,
+				Ingress: []networkingv1.NetworkPolicyIngressRule{{From: []networkingv1.NetworkPolicyPeer{{
+					PodSelector:       &podSelector,
+					NamespaceSelector: &namespaceSelector,
+				}}}},
+				Egress: []networkingv1.NetworkPolicyEgressRule{{To: []networkingv1.NetworkPolicyPeer{{
+					PodSelector:       &podSelector,
+					NamespaceSelector: &namespaceSelector,
+				}}}},
+			},
+		}
+	}
+	return policies
+}
+
+func benchmarkANPRules(count int) ([]v1alpha1.AdminNetworkPolicyIngressRule, []v1alpha1.AdminNetworkPolicyEgressRule) {
+	ingress := make([]v1alpha1.AdminNetworkPolicyIngressRule, count)
+	egress := make([]v1alpha1.AdminNetworkPolicyEgressRule, count)
+	for i := range count {
+		namespacedPod := v1alpha1.NamespacedPod{
+			NamespaceSelector: benchmarkSelector("tenant", fmt.Sprintf("tenant-%d", i%benchmarkPolicyLabelCount)),
+			PodSelector:       benchmarkSelector("app", fmt.Sprintf("app-%d", i%benchmarkPolicyLabelCount)),
+		}
+		ingress[i] = v1alpha1.AdminNetworkPolicyIngressRule{
+			Name: fmt.Sprintf("ingress-%d", i),
+			From: []v1alpha1.AdminNetworkPolicyIngressPeer{{Pods: &namespacedPod}},
+		}
+		egress[i] = v1alpha1.AdminNetworkPolicyEgressRule{
+			Name: fmt.Sprintf("egress-%d", i),
+			To:   []v1alpha1.AdminNetworkPolicyEgressPeer{{Pods: &namespacedPod}},
+		}
+	}
+	return ingress, egress
+}
+
+func benchmarkBANPRules(count int) ([]v1alpha1.BaselineAdminNetworkPolicyIngressRule, []v1alpha1.BaselineAdminNetworkPolicyEgressRule) {
+	ingress := make([]v1alpha1.BaselineAdminNetworkPolicyIngressRule, count)
+	egress := make([]v1alpha1.BaselineAdminNetworkPolicyEgressRule, count)
+	for i := range count {
+		namespacedPod := v1alpha1.NamespacedPod{
+			NamespaceSelector: benchmarkSelector("tenant", fmt.Sprintf("tenant-%d", i%benchmarkPolicyLabelCount)),
+			PodSelector:       benchmarkSelector("app", fmt.Sprintf("app-%d", i%benchmarkPolicyLabelCount)),
+		}
+		ingress[i] = v1alpha1.BaselineAdminNetworkPolicyIngressRule{
+			Name: fmt.Sprintf("ingress-%d", i),
+			From: []v1alpha1.AdminNetworkPolicyIngressPeer{{Pods: &namespacedPod}},
+		}
+		egress[i] = v1alpha1.BaselineAdminNetworkPolicyEgressRule{
+			Name: fmt.Sprintf("egress-%d", i),
+			To:   []v1alpha1.BaselineAdminNetworkPolicyEgressPeer{{Pods: &namespacedPod}},
+		}
+	}
+	return ingress, egress
+}
+
+func benchmarkCNPRules(count int) ([]v1alpha2.ClusterNetworkPolicyIngressRule, []v1alpha2.ClusterNetworkPolicyEgressRule) {
+	ingress := make([]v1alpha2.ClusterNetworkPolicyIngressRule, count)
+	egress := make([]v1alpha2.ClusterNetworkPolicyEgressRule, count)
+	for i := range count {
+		namespacedPod := v1alpha2.NamespacedPod{
+			NamespaceSelector: benchmarkSelector("tenant", fmt.Sprintf("tenant-%d", i%benchmarkPolicyLabelCount)),
+			PodSelector:       benchmarkSelector("app", fmt.Sprintf("app-%d", i%benchmarkPolicyLabelCount)),
+		}
+		ingress[i] = v1alpha2.ClusterNetworkPolicyIngressRule{
+			Name: fmt.Sprintf("ingress-%d", i),
+			From: []v1alpha2.ClusterNetworkPolicyIngressPeer{{Pods: &namespacedPod}},
+		}
+		egress[i] = v1alpha2.ClusterNetworkPolicyEgressRule{
+			Name: fmt.Sprintf("egress-%d", i),
+			To:   []v1alpha2.ClusterNetworkPolicyEgressPeer{{Pods: &namespacedPod}},
+		}
+	}
+	return ingress, egress
+}
+
+func benchmarkPodLabelChange() labelChange {
+	labels := map[string]string{"tenant": "tenant-0"}
+	return labelChange{
+		oldNsLabels:  labels,
+		newNsLabels:  labels,
+		oldPodLabels: map[string]string{"app": "app-0"},
+		newPodLabels: map[string]string{"app": "app-1"},
+	}
+}
+
+func benchmarkNamespaceLabelChange() labelChange {
+	return labelChange{
+		oldNsLabels:  map[string]string{"tenant": "tenant-0"},
+		newNsLabels:  map[string]string{"tenant": "tenant-1"},
+		oldPodLabels: nil,
+		newPodLabels: nil,
+	}
+}
+
+func BenchmarkNetworkPolicyPodEventFanout(b *testing.B) {
+	oldPod := &corev1.Pod{Namespace: benchmarkNamespace, Labels: map[string]string{"app": "app-0"}}
+	newPod := oldPod.DeepCopy()
+	newPod.Labels = map[string]string{"app": "app-1"}
+	namespace := &corev1.Namespace{Name: benchmarkNamespace, Labels: map[string]string{"tenant": "tenant-0"}}
+
+	for _, count := range []int{100, 1000} {
+		b.Run(fmt.Sprintf("policies-%d", count), func(b *testing.B) {
+			policies := benchmarkNetworkPolicies(count)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				for i := range policies {
+					_ = isPodMatchNetworkPolicy(oldPod, namespace, &policies[i], benchmarkNamespace)
+					_ = isPodMatchNetworkPolicy(newPod, namespace, &policies[i], benchmarkNamespace)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkNetworkPolicyNamespaceEventFanout(b *testing.B) {
+	oldNamespace := &corev1.Namespace{Name: benchmarkNamespace, Labels: map[string]string{"tenant": "tenant-0"}}
+	newNamespace := oldNamespace.DeepCopy()
+	newNamespace.Labels = map[string]string{"tenant": "tenant-1"}
+	for _, count := range []int{100, 1000} {
+		b.Run(fmt.Sprintf("policies-%d", count), func(b *testing.B) {
+			policies := benchmarkNetworkPolicies(count)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				for i := range policies {
+					_ = isNamespaceMatchNetworkPolicy(oldNamespace, &policies[i])
+					_ = isNamespaceMatchNetworkPolicy(newNamespace, &policies[i])
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkAdminNetworkPolicyRuleFanout measures selector change matching for
+// one policy containing many rules.
+func BenchmarkAdminNetworkPolicyRuleFanout(b *testing.B) {
+	changes := [...]labelChange{benchmarkPodLabelChange(), benchmarkNamespaceLabelChange()}
+	// ANP/BANP/CNP keep changed rule names in fixed-size arrays, so these
+	// benchmarks stay within the API's per-object rule limit.
+	for _, count := range []int{10, 100} {
+		b.Run(fmt.Sprintf("rules-%d", count), func(b *testing.B) {
+			ingress, egress := benchmarkANPRules(count)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				for _, change := range changes {
+					_, _ = isLabelsMatchAnpRulePeersForChange(ingress, egress, change)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkBaselineAdminNetworkPolicyRuleFanout measures selector change
+// matching for one baseline policy containing many rules.
+func BenchmarkBaselineAdminNetworkPolicyRuleFanout(b *testing.B) {
+	changes := [...]labelChange{benchmarkPodLabelChange(), benchmarkNamespaceLabelChange()}
+	for _, count := range []int{10, 100} {
+		b.Run(fmt.Sprintf("rules-%d", count), func(b *testing.B) {
+			ingress, egress := benchmarkBANPRules(count)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				for _, change := range changes {
+					_, _ = isLabelsMatchBanpRulePeersForChange(ingress, egress, change)
+				}
+			}
+		})
+	}
+}
+
+// BenchmarkClusterNetworkPolicyRuleFanout measures selector change matching
+// for one cluster policy containing many rules.
+func BenchmarkClusterNetworkPolicyRuleFanout(b *testing.B) {
+	changes := [...]labelChange{benchmarkPodLabelChange(), benchmarkNamespaceLabelChange()}
+	for _, count := range []int{10, 25} {
+		b.Run(fmt.Sprintf("rules-%d", count), func(b *testing.B) {
+			ingress, egress := benchmarkCNPRules(count)
+			b.ReportAllocs()
+			b.ResetTimer()
+			for b.Loop() {
+				for _, change := range changes {
+					for i := range ingress {
+						_ = doCnpLabelsMatchForChange(ingress[i].From[0].Namespaces, ingress[i].From[0].Pods, change)
+						_ = doCnpLabelsMatchForChange(egress[i].To[0].Namespaces, egress[i].To[0].Pods, change)
+					}
+				}
+			}
+		})
+	}
+}
