@@ -618,7 +618,7 @@ func (c *Controller) fetchPods(nsSelector, podSelector labels.Selector) ([]strin
 			return ports, v4Addresses, v6Addresses, nil
 		}
 	}
-	return nil, nil, nil, fmt.Errorf("policy selector cache invalidated during pod scan")
+	return nil, nil, nil, errors.New("policy selector cache invalidated during pod scan")
 }
 
 func (c *Controller) fetchPodsOnce(nsSelector, podSelector labels.Selector, generation uint64) ([]string, []string, []string, error) {

@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -863,7 +864,7 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 			return selectedAddresses, exceptAddresses, nil
 		}
 	}
-	return nil, nil, fmt.Errorf("policy selector cache invalidated during address scan")
+	return nil, nil, errors.New("policy selector cache invalidated during address scan")
 }
 
 func (c *Controller) fetchPolicySelectedAddressesOnce(namespace, protocol string, npp netv1.NetworkPolicyPeer, providers set.Set[string], generation uint64) ([]string, []string, error) {
