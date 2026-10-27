@@ -8,3 +8,4 @@ Please visit:
 Repository feature notes:
 
 - [Experimental NetworkPolicy ACL sampling](acl-sampling.md)
+- [Services served by a VPC NAT gateway (nft share DNAT)](vpc-nat-gateway-service.md)

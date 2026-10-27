@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -53,6 +54,17 @@ func TestSyncNatUIDLabels(t *testing.T) {
 	require.Equal(t, "eip-uid", gotFip.Labels[util.EipUIDLabel])
 }
 
+// runningNatGwPod returns a running instance of the gateway, which is what makes the data plane
+// paths actually reach the Pod instead of being skipped as "no data plane left".
+func runningNatGwPod(gwName string) *corev1.Pod {
+	return &corev1.Pod{
+		Name:      util.GenNatGwName(gwName) + "-0",
+		Namespace: metav1.NamespaceSystem,
+		Labels:    map[string]string{"app": util.GenNatGwName(gwName), util.VpcNatGatewayLabel: "true"},
+		Status:    corev1.PodStatus{Phase: corev1.PodRunning},
+	}
+}
+
 func TestFipRebindPreservesEipClaim(t *testing.T) {
 	oldEnabled := vpcNatEnabled
 	vpcNatEnabled = "true"
@@ -87,6 +99,10 @@ func TestFipRebindPreservesEipClaim(t *testing.T) {
 		return fip.Labels[util.EipUIDLabel]
 	}
 
+	// The gateway of the first fixture still exists, so its rules must be removed before the claim
+	// may move: the cleanup fails for want of a running instance and the old claim stays. The
+	// second fixture's gateway is gone, so there is nothing to clean up and the claim moves to the
+	// generation whose rules are about to be created.
 	t.Run("old claim remains when old rule cleanup fails", func(t *testing.T) {
 		c := setup(t, newFip("gw"))
 		require.Error(t, c.handleUpdateIptablesFip("fip"))
@@ -382,25 +398,53 @@ func TestSyncNatUIDLabelsIsIdempotentAndBestEffort(t *testing.T) {
 	require.Equal(t, 1, updates)
 }
 
-func TestNatGwDeleted(t *testing.T) {
+func TestNatGwNoDataPlane(t *testing.T) {
 	t.Parallel()
 
-	t.Run("gateway CRD exists returns false", func(t *testing.T) {
+	t.Run("a running instance holds a data plane", func(t *testing.T) {
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			VpcNatGateways: []*kubeovnv1.VpcNatGateway{fakeGw("test-gw")},
+			Pods:           []*corev1.Pod{runningNatGwPod("test-gw")},
+		})
+		require.NoError(t, err)
+		gone, err := fc.fakeController.natGwNoDataPlane("test-gw")
+		require.NoError(t, err)
+		require.False(t, gone)
+	})
+
+	// The rules live in the gateway container's writable layer, so cleanup must not wait for an
+	// instance that is not there: a replacement starts empty and is programmed from live CRs.
+	t.Run("a gateway without a running instance holds none", func(t *testing.T) {
 		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 			VpcNatGateways: []*kubeovnv1.VpcNatGateway{fakeGw("test-gw")},
 		})
 		require.NoError(t, err)
-		deleted, err := fc.fakeController.natGwDeleted("test-gw")
+		gone, err := fc.fakeController.natGwNoDataPlane("test-gw")
 		require.NoError(t, err)
-		require.False(t, deleted)
+		require.True(t, gone)
 	})
 
-	t.Run("gateway CRD missing returns true", func(t *testing.T) {
+	t.Run("a terminating gateway holds none", func(t *testing.T) {
+		gw := fakeGw("test-gw")
+		now := metav1.Now()
+		gw.DeletionTimestamp = &now
+		gw.Finalizers = []string{util.KubeOVNControllerFinalizer}
+		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+			VpcNatGateways: []*kubeovnv1.VpcNatGateway{gw},
+			Pods:           []*corev1.Pod{runningNatGwPod("test-gw")},
+		})
+		require.NoError(t, err)
+		gone, err := fc.fakeController.natGwNoDataPlane("test-gw")
+		require.NoError(t, err)
+		require.True(t, gone)
+	})
+
+	t.Run("a missing gateway holds none", func(t *testing.T) {
 		fc, err := newFakeControllerWithOptions(t, nil)
 		require.NoError(t, err)
-		deleted, err := fc.fakeController.natGwDeleted("missing-gw")
+		gone, err := fc.fakeController.natGwNoDataPlane("missing-gw")
 		require.NoError(t, err)
-		require.True(t, deleted)
+		require.True(t, gone)
 	})
 }
 
@@ -415,17 +459,17 @@ func TestDeleteEipInPod_NatGwGone(t *testing.T) {
 	require.NoError(t, err, "should skip cleanup when gateway CRD is gone")
 }
 
-// TestDeleteEipInPod_NatGwExistsPodMissing verifies that deleteEipInPod returns
-// an error (triggering a reconcile retry) when the VpcNatGateway CRD exists but
-// its pod is not yet available (e.g., being recreated).
-func TestDeleteEipInPod_NatGwExistsPodMissing(t *testing.T) {
+// TestDeleteEipInPod_NatGwNoRunningInstance verifies that deleteEipInPod retries while the gateway
+// exists but has no running instance: the instance that replaces it must not come back with the
+// rule still programmed.
+func TestDeleteEipInPod_NatGwNoRunningInstance(t *testing.T) {
 	t.Parallel()
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		VpcNatGateways: []*kubeovnv1.VpcNatGateway{fakeGw("test-gw")},
 	})
 	require.NoError(t, err)
 	err = fc.fakeController.deleteEipInPod("test-gw", "10.0.0.1/24", "kube-system")
-	require.Error(t, err, "should return error to retry when pod is temporarily absent")
+	require.Error(t, err, "should retry while the gateway exists but has no running instance")
 }
 
 // TestDelEipQoSInPod_NatGwGone verifies cleanup is skipped when gateway is gone.
@@ -437,16 +481,16 @@ func TestDelEipQoSInPod_NatGwGone(t *testing.T) {
 	require.NoError(t, err, "should skip cleanup when gateway CRD is gone")
 }
 
-// TestDelEipQoSInPod_NatGwExistsPodMissing verifies that an error is returned
-// when the gateway CRD exists but the pod is not ready.
-func TestDelEipQoSInPod_NatGwExistsPodMissing(t *testing.T) {
+// TestDelEipQoSInPod_NatGwNoRunningInstance verifies that the cleanup is retried while the gateway
+// exists but has no running instance.
+func TestDelEipQoSInPod_NatGwNoRunningInstance(t *testing.T) {
 	t.Parallel()
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		VpcNatGateways: []*kubeovnv1.VpcNatGateway{fakeGw("test-gw")},
 	})
 	require.NoError(t, err)
 	err = fc.fakeController.delEipQoSInPod("test-gw", "10.0.0.1", "kube-system", kubeovnv1.QoSDirectionEgress)
-	require.Error(t, err, "should return error to retry when pod is temporarily absent")
+	require.Error(t, err, "should retry while the gateway exists but has no running instance")
 }
 
 // TestEnqueueAddIptablesEip verifies that on the add path a terminating EIP is routed to the

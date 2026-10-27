@@ -221,7 +221,6 @@ func (c *Controller) enqueueAddPod(obj any) {
 	c.invalidatePolicySelectorCache()
 	p := obj.(*v1.Pod)
 	c.enqueueVMIMigrationForBoundLauncher(nil, p)
-	c.enqueueNftableLbServicesForPod(p)
 	if p.Spec.HostNetwork {
 		return
 	}
@@ -312,7 +311,6 @@ func (c *Controller) enqueueDeletePod(obj any) {
 		return
 	}
 
-	c.enqueueNftableLbServicesForPod(p)
 	if p.Spec.HostNetwork {
 		return
 	}
@@ -349,13 +347,6 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	newPod := newObj.(*v1.Pod)
 	c.enqueueVpcNatGatewayRestart(oldPod, newPod)
 	c.enqueueVMIMigrationForBoundLauncher(oldPod, newPod)
-	// Only kube-ovn network annotations can change the backend NIC resolution without an
-	// EndpointSlice update (the k8s endpointslice controller already emits EndpointSlice
-	// updates for readiness, deletion, PodIP and label changes). Re-checking every status
-	// update would scan EndpointSlices for container/phase churn that cannot affect rules.
-	if !maps.Equal(oldPod.Annotations, newPod.Annotations) {
-		c.enqueueNftableLbServicesForPod(newPod)
-	}
 
 	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
 	c.enqueueStaticEndpointUpdateInNamespace(oldPod.Namespace)
