@@ -94,7 +94,7 @@ func TestFetchPolicySelectedAddressesUsesCacheUntilPodEvent(t *testing.T) {
 	secondPod := firstPod.DeepCopy()
 	secondPod.Name = "second"
 	secondPod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider)] = "10.0.0.2"
-	require.NoError(t, controller.podIndexer.Add(secondPod))
+	require.NoError(t, fake.fakeInformers.podInformer.Informer().GetIndexer().Add(secondPod))
 
 	equivalentPeer := netv1.NetworkPolicyPeer{PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "selected"}}}
 	addresses, _, err = controller.fetchPolicySelectedAddresses(metav1.NamespaceDefault, kubeovnv1.ProtocolIPv4, equivalentPeer, nil)
