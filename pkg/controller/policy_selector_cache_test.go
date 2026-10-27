@@ -96,9 +96,27 @@ func TestFetchPolicySelectedAddressesUsesCacheUntilPodEvent(t *testing.T) {
 	secondPod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider)] = "10.0.0.2"
 	require.NoError(t, controller.podIndexer.Add(secondPod))
 
-	addresses, _, err = controller.fetchPolicySelectedAddresses(metav1.NamespaceDefault, kubeovnv1.ProtocolIPv4, peer, nil)
+	equivalentPeer := netv1.NetworkPolicyPeer{PodSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "selected"}}}
+	addresses, _, err = controller.fetchPolicySelectedAddresses(metav1.NamespaceDefault, kubeovnv1.ProtocolIPv4, equivalentPeer, nil)
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.0.0.1"}, addresses)
+
+	addresses, _, err = controller.fetchPolicySelectedAddresses(
+		metav1.NamespaceDefault,
+		kubeovnv1.ProtocolIPv4,
+		peer,
+		set.New(util.OvnProvider),
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"10.0.0.1", "10.0.0.2"}, addresses)
+	addresses, _, err = controller.fetchPolicySelectedAddresses(
+		metav1.NamespaceDefault,
+		kubeovnv1.ProtocolIPv4,
+		peer,
+		set.New("other.default.ovn"),
+	)
+	require.NoError(t, err)
+	require.Empty(t, addresses)
 
 	controller.invalidatePolicySelectorCache()
 	addresses, _, err = controller.fetchPolicySelectedAddresses(metav1.NamespaceDefault, kubeovnv1.ProtocolIPv4, peer, nil)
