@@ -3,6 +3,7 @@ module github.com/kubeovn/kube-ovn
 go 1.27.3
 
 require (
+	cel.dev/cel-go v0.32.0
 	github.com/brianvoe/gofakeit/v7 v7.18.0
 	github.com/cenkalti/backoff/v7 v7.0.1
 	github.com/cert-manager/cert-manager v1.21.3
@@ -16,7 +17,6 @@ require (
 	github.com/go-logr/logr v1.4.4
 	github.com/go-logr/stdr v1.2.2
 	github.com/go-logr/zapr v1.3.0
-	github.com/google/cel-go v0.31.0
 	github.com/google/gopacket v1.1.19
 	github.com/k8snetworkplumbingwg/network-attachment-definition-client v1.7.7
 	github.com/k8snetworkplumbingwg/sriovnet v1.3.0
@@ -159,6 +159,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/cadvisor/lib v0.60.5 // indirect
+	github.com/google/cel-go v0.31.0 // indirect
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/nftables v0.3.0 // indirect

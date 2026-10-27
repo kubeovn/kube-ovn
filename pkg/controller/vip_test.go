@@ -1,7 +1,10 @@
 package controller
 
 import (
+	"errors"
+	"slices"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
@@ -286,7 +289,7 @@ func TestHandleUpdateVirtualParentsSkipsAddressesWithoutMAC(t *testing.T) {
 	require.NoError(t, ctrl.handleUpdateVirtualParents(vipName))
 }
 
-func TestHandleAddVirtualIP_SwitchLBRuleUsesOwnMac(t *testing.T) {
+func TestHandleAddVirtualIP_SwitchLBRuleCreatesNoLsp(t *testing.T) {
 	t.Parallel()
 
 	subnet := &kubeovnv1.Subnet{
@@ -312,7 +315,7 @@ func TestHandleAddVirtualIP_SwitchLBRuleUsesOwnMac(t *testing.T) {
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Subnets: []*kubeovnv1.Subnet{subnet},
 		Vips:    []*kubeovnv1.Vip{vip},
-		Vpcs:    []*kubeovnv1.Vpc{{Name: subnet.Spec.Vpc}},
+		Vpcs:    []*kubeovnv1.Vpc{{Name: subnet.Spec.Vpc, Status: kubeovnv1.VpcStatus{Router: "test-router"}}},
 	})
 	require.NoError(t, err)
 	ctrl := fc.fakeController
@@ -320,25 +323,20 @@ func TestHandleAddVirtualIP_SwitchLBRuleUsesOwnMac(t *testing.T) {
 	const gatewayMac = "00:00:00:00:00:01"
 	require.NoError(t, ctrl.ipam.RecordGatewayMAC(subnet.Name, gatewayMac))
 
-	portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
-
-	// GetLogicalRouterPort must never be called: the VIP's own IPAM-assigned mac is used
-	// directly, it must never be replaced with the subnet gateway's mac.
-	var lspMac string
-	fc.mockOvnClient.EXPECT().
-		CreateLogicalSwitchPort(subnet.Name, portName, vip.Spec.V4ip, gomock.Not(gatewayMac), vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc).
-		DoAndReturn(func(_, _, _, mac, _, _ string, _ bool, _, _ string, _ bool, _ *ovs.DHCPOptionsUUIDs, _ string) error {
-			lspMac = mac
-			return nil
-		})
-
+	// The vip gets no lsp and its IPAM-assigned mac is only recorded in the CR. The subnet
+	// router port answers ARP for it, see syncSwitchLBVipArpProxy, and must do so before the
+	// vip turns ready: the proxy is set from the address that is not in the lister yet.
+	// the legacy lsp is only removed after the proxy is in place
+	gomock.InOrder(
+		fc.mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("test-subnet-test-router", []string{"10.0.0.50"}).Return(nil),
+		fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)).Return(nil),
+	)
 	require.NoError(t, ctrl.handleAddVirtualIP(vip.Name))
 
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.NotEmpty(t, got.Status.Mac)
 	require.NotEqual(t, gatewayMac, got.Status.Mac)
-	require.Equal(t, got.Status.Mac, lspMac)
 }
 
 // TestHandleAddVirtualIP_SwitchLBRuleRepairsStaleGatewayMac covers vips created before
@@ -380,7 +378,7 @@ func TestHandleAddVirtualIP_SwitchLBRuleRepairsStaleGatewayMac(t *testing.T) {
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Subnets: []*kubeovnv1.Subnet{subnet},
 		Vips:    []*kubeovnv1.Vip{vip},
-		Vpcs:    []*kubeovnv1.Vpc{{Name: subnet.Spec.Vpc}},
+		Vpcs:    []*kubeovnv1.Vpc{{Name: subnet.Spec.Vpc, Status: kubeovnv1.VpcStatus{Router: "test-router"}}},
 	})
 	require.NoError(t, err)
 	ctrl := fc.fakeController
@@ -394,25 +392,17 @@ func TestHandleAddVirtualIP_SwitchLBRuleRepairsStaleGatewayMac(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, ctrl.ipam.RecordGatewayMAC(subnet.Name, gatewayMac))
 
-	var lspMac string
-	fc.mockOvnClient.EXPECT().
-		CreateLogicalSwitchPort(subnet.Name, portName, vip.Status.V4ip, gomock.Not(gatewayMac), vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc).
-		DoAndReturn(func(_, _, _, mac, _, _ string, _ bool, _, _ string, _ bool, _ *ovs.DHCPOptionsUUIDs, _ string) error {
-			lspMac = mac
-			return nil
-		})
-	// The repaired lsp may still carry the stale, never functional arp_proxy option
-	// from before the own-mac fix; it must be cleared explicitly since
-	// CreateLogicalSwitchPort's update path does not touch the options column.
-	fc.mockOvnClient.EXPECT().RemoveLogicalSwitchPortOption(portName, "arp_proxy").Return(nil)
-
+	// the repaired vip keeps its legacy lsp with the colliding mac until it is removed here
+	gomock.InOrder(
+		fc.mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("test-subnet-repair-test-router", []string{"10.0.1.50"}).Return(nil),
+		fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)).Return(nil),
+	)
 	require.NoError(t, ctrl.handleAddVirtualIP(vip.Name))
 
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, vip.Status.V4ip, got.Status.V4ip)
 	require.NotEqual(t, gatewayMac, got.Status.Mac)
-	require.Equal(t, got.Status.Mac, lspMac)
 	// Virtual parent (re)creation for the repaired vip is deferred to the dedicated queue.
 	require.Equal(t, 1, ctrl.updateVirtualParentsQueue.Len())
 }
@@ -513,42 +503,285 @@ func TestHandleAddVirtualIP_SwitchLBRuleRepairNotSilentlySkippedWhenIPAMSubnetUn
 	require.Equal(t, staleMac, got.Status.Mac)
 }
 
-// switch_lb_rule is the only type with a normal lsp. No other type, including the removed
-// kube_host_vm_vip, gets one; those with a namespace get a virtual lsp from
-// handleUpdateVirtualParents instead.
-func TestEnsureVipLogicalSwitchPortOnlyForSwitchLBRule(t *testing.T) {
-	subnet := &kubeovnv1.Subnet{
-		Name: "subnet-a",
-		Spec: kubeovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24", Provider: util.OvnProvider, Vpc: util.DefaultVpc},
-	}
-	for _, vipType := range []string{"", "kube_host_vm_vip"} {
-		t.Run("type="+vipType, func(t *testing.T) {
-			fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}})
-			require.NoError(t, err)
-			vip := &kubeovnv1.Vip{
-				Name: "vip1",
-				Spec: kubeovnv1.VipSpec{Namespace: "default", Subnet: subnet.Name, Type: vipType},
-			}
-			portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
-
-			// no CreateLogicalSwitchPort call is registered on the mock: calling it fails the test
-			require.NoError(t, fc.fakeController.ensureVipLogicalSwitchPort(vip, subnet, portName, "10.0.0.5", "", "00:00:00:00:00:02", false))
-		})
-	}
-
-	t.Run("type=switch_lb_vip", func(t *testing.T) {
-		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}})
-		require.NoError(t, err)
-		vip := &kubeovnv1.Vip{
-			Name: "vip1",
-			Spec: kubeovnv1.VipSpec{Namespace: "default", Subnet: subnet.Name, Type: util.SwitchLBRuleVip},
-		}
-		portName := ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)
-		fc.mockOvnClient.EXPECT().
-			CreateLogicalSwitchPort(subnet.Name, portName, "10.0.0.5", "00:00:00:00:00:02", vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc).
-			Return(nil)
-		fc.mockOvnClient.EXPECT().RemoveLogicalSwitchPortOption(portName, "arp_proxy").Return(nil)
-
-		require.NoError(t, fc.fakeController.ensureVipLogicalSwitchPort(vip, subnet, portName, "10.0.0.5", "", "00:00:00:00:00:02", true))
+func newSwitchLBVipTestController(t *testing.T, subnet *kubeovnv1.Subnet, vips ...*kubeovnv1.Vip) *fakeController {
+	t.Helper()
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		// the router name differs from the vpc name on purpose: the router port is named after the router
+		Vpcs: []*kubeovnv1.Vpc{{Name: subnet.Spec.Vpc, Status: kubeovnv1.VpcStatus{Router: "foo-router"}}},
 	})
+	require.NoError(t, err)
+	vipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	for _, vip := range vips {
+		require.NoError(t, vipIndexer.Add(vip))
+	}
+	fakeController.fakeController.virtualIpsLister = kubeovnlisters.NewVipLister(vipIndexer)
+	return fakeController
+}
+
+func switchLBVip(name, subnet, v4ip, v6ip string) *kubeovnv1.Vip {
+	return &kubeovnv1.Vip{
+		Name:   name,
+		Spec:   kubeovnv1.VipSpec{Namespace: "ns", Subnet: subnet, Type: util.SwitchLBRuleVip},
+		Status: kubeovnv1.VipStatus{V4ip: v4ip, V6ip: v6ip, Mac: "00:00:00:00:00:01"},
+	}
+}
+
+func TestSyncSwitchLBVipArpProxyCollectsSwitchLBVipsOfSubnet(t *testing.T) {
+	const subnetName = "foo-subnet"
+	subnet := &kubeovnv1.Subnet{
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
+	}
+	deleting := switchLBVip("deleting", subnetName, "10.0.1.9", "")
+	deleting.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+	otherType := switchLBVip("other-type", subnetName, "10.0.1.8", "")
+	otherType.Spec.Type = ""
+
+	fakeController := newSwitchLBVipTestController(t, subnet,
+		switchLBVip("b", subnetName, "10.0.1.3", "fd00::3"),
+		switchLBVip("a", subnetName, "10.0.1.2", ""),
+		switchLBVip("other-subnet", "bar-subnet", "10.0.2.2", ""),
+		deleting,
+		otherType,
+	)
+	fakeController.mockOvnClient.EXPECT().
+		SetLogicalSwitchPortArpProxy("foo-subnet-foo-router", []string{"10.0.1.2", "10.0.1.3", "fd00::3"}).
+		Return(nil)
+
+	require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName))
+}
+
+func TestSyncSwitchLBVipArpProxyClearsOptionWithoutVips(t *testing.T) {
+	const subnetName = "foo-subnet"
+	subnet := &kubeovnv1.Subnet{
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
+	}
+	fakeController := newSwitchLBVipTestController(t, subnet)
+	mockOvnClient := fakeController.mockOvnClient
+
+	t.Run("router port exists", func(t *testing.T) {
+		mockOvnClient.EXPECT().LogicalSwitchPortExists("foo-subnet-foo-router").Return(true, nil)
+		mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("foo-subnet-foo-router", []string(nil)).Return(nil)
+		require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName))
+	})
+
+	t.Run("router port does not exist", func(t *testing.T) {
+		mockOvnClient.EXPECT().LogicalSwitchPortExists("foo-subnet-foo-router").Return(false, nil)
+		require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName))
+	})
+}
+
+func TestReconcileSwitchLBVipPortSetsProxyBeforeDeletingStalePort(t *testing.T) {
+	const subnetName = "foo-subnet"
+	subnet := &kubeovnv1.Subnet{
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
+	}
+	vip := switchLBVip("a", subnetName, "10.0.1.2", "")
+	fakeController := newSwitchLBVipTestController(t, subnet, vip)
+	mockOvnClient := fakeController.mockOvnClient
+
+	gomock.InOrder(
+		mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("foo-subnet-foo-router", []string{"10.0.1.2"}).Return(nil),
+		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(ovs.PodNameToPortName(vip.Name, vip.Spec.Namespace, subnet.Spec.Provider)).Return(nil),
+	)
+
+	require.NoError(t, fakeController.fakeController.reconcileSwitchLBVipPort(vip))
+}
+
+func TestSyncSwitchLBVipArpProxyFailsOnMissingVpc(t *testing.T) {
+	const subnetName = "foo-subnet"
+	subnet := &kubeovnv1.Subnet{
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Vpc: "gone-vpc"},
+	}
+	vip := switchLBVip("a", subnetName, "10.0.1.2", "")
+	fakeController := newSwitchLBVipTestController(t, subnet, vip)
+	fakeController.fakeController.vpcsLister = kubeovnlisters.NewVpcLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+
+	require.Error(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName))
+	// the stale lsp must stay: DeleteLogicalSwitchPort has no expectation, so a call fails the test
+	require.Error(t, fakeController.fakeController.reconcileSwitchLBVipPort(vip))
+}
+
+func TestSyncSwitchLBVipArpProxyIncludesExtraIPs(t *testing.T) {
+	const subnetName = "foo-subnet"
+	subnet := &kubeovnv1.Subnet{
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
+	}
+	fakeController := newSwitchLBVipTestController(t, subnet, switchLBVip("a", subnetName, "10.0.1.2", ""))
+	// 10.0.1.2 is already known by the lister and must not be listed twice
+	fakeController.mockOvnClient.EXPECT().
+		SetLogicalSwitchPortArpProxy("foo-subnet-foo-router", []string{"10.0.1.2", "10.0.1.3", "fd00::3"}).
+		Return(nil)
+
+	require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName, "fd00::3", "10.0.1.3", "", "10.0.1.2"))
+}
+
+func TestHandleDeletingVipSyncsArpProxyBeforeRemovingFinalizer(t *testing.T) {
+	const subnetName = "foo-subnet"
+	subnet := &kubeovnv1.Subnet{
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider, Vpc: "foo-vpc"},
+	}
+	vip := switchLBVip("a", subnetName, "10.0.1.2", "")
+	vip.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+	vip.Finalizers = []string{util.KubeOVNControllerFinalizer}
+	fakeController := newSwitchLBVipTestController(t, subnet, vip)
+	ctrl := fakeController.fakeController
+	ctrl.updateSubnetStatusQueue = newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil)
+	defer ctrl.updateSubnetStatusQueue.ShutDown()
+	_, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Create(t.Context(), vip.DeepCopy(), metav1.CreateOptions{})
+	require.NoError(t, err)
+	mockOvnClient := fakeController.mockOvnClient
+
+	// the deleting vip is not collected any more, so its address is dropped from the router port
+	mockOvnClient.EXPECT().DeleteLogicalSwitchPort(gomock.Any()).Return(nil).AnyTimes()
+	gomock.InOrder(
+		mockOvnClient.EXPECT().LogicalSwitchPortExists("foo-subnet-foo-router").Return(true, nil),
+		mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("foo-subnet-foo-router", []string(nil)).Return(nil),
+	)
+	mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
+
+	require.NoError(t, ctrl.handleDeletingVip(vip.Name, vip))
+
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Empty(t, got.Finalizers)
+}
+
+func TestSyncSwitchLBVipArpProxyKeepsVipsMissingFromStaleLister(t *testing.T) {
+	const subnetName = "foo-subnet"
+	subnet := &kubeovnv1.Subnet{
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Vpc: "foo-vpc"},
+	}
+	// vip a has been written to the api server, but its status has not reached the lister yet
+	staleA := switchLBVip("a", subnetName, "", "")
+	fakeController := newSwitchLBVipTestController(t, subnet, staleA)
+	fakeController.mockOvnClient.EXPECT().
+		SetLogicalSwitchPortArpProxy("foo-subnet-foo-router", []string{"10.0.1.3"}).
+		Return(nil)
+	require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName, "10.0.1.3"))
+
+	// the status event of a reaches the lister: the rebuilt list holds both addresses again
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(switchLBVip("a", subnetName, "10.0.1.2", "")))
+	require.NoError(t, indexer.Add(switchLBVip("b", subnetName, "10.0.1.3", "")))
+	fakeController.fakeController.virtualIpsLister = kubeovnlisters.NewVipLister(indexer)
+	fakeController.mockOvnClient.EXPECT().
+		SetLogicalSwitchPortArpProxy("foo-subnet-foo-router", []string{"10.0.1.2", "10.0.1.3"}).
+		Return(nil)
+	require.NoError(t, fakeController.fakeController.syncSwitchLBVipArpProxy(subnetName))
+}
+
+func TestEnqueueUpdateVirtualIPOnSwitchLBVipStatusChange(t *testing.T) {
+	queue := newTypedRateLimitingQueue[string]("UpdateVirtualIP", nil)
+	defer queue.ShutDown()
+	parentsQueue := newTypedRateLimitingQueue[string]("UpdateVirtualParents", nil)
+	defer parentsQueue.ShutDown()
+	ctrl := &Controller{updateVirtualIPQueue: queue, updateVirtualParentsQueue: parentsQueue}
+
+	t.Run("switch lb vip", func(t *testing.T) {
+		oldVip := &kubeovnv1.Vip{Name: "lb-vip", Spec: kubeovnv1.VipSpec{Type: util.SwitchLBRuleVip, V4ip: "10.0.1.2"}}
+		newVip := oldVip.DeepCopy()
+		newVip.Status.V4ip = "10.0.1.2"
+
+		ctrl.enqueueUpdateVirtualIP(oldVip, newVip)
+		require.Equal(t, 1, queue.Len())
+		key, _ := queue.Get()
+		require.Equal(t, "lb-vip", key)
+		queue.Done(key)
+	})
+
+	t.Run("other vip", func(t *testing.T) {
+		oldVip := &kubeovnv1.Vip{Name: "plain-vip", Spec: kubeovnv1.VipSpec{V4ip: "10.0.1.3"}}
+		newVip := oldVip.DeepCopy()
+		newVip.Status.V4ip = "10.0.1.3"
+
+		ctrl.enqueueUpdateVirtualIP(oldVip, newVip)
+		require.Zero(t, queue.Len())
+	})
+}
+
+func newStaticSwitchLBVipUpdateTest(t *testing.T) (*fakeController, *kubeovnv1.Vip) {
+	t.Helper()
+	subnet := &kubeovnv1.Subnet{
+		Name: "test-subnet",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/24",
+			Gateway:   "10.0.0.1",
+			Protocol:  kubeovnv1.ProtocolIPv4,
+			Provider:  util.OvnProvider,
+			Vpc:       "test-vpc",
+		},
+	}
+	// a static vip allowed by the webhook: its ip is only in the spec, nothing is assigned yet
+	vip := &kubeovnv1.Vip{
+		Name: "static-switch-lb-vip",
+		Spec: kubeovnv1.VipSpec{
+			Namespace: "default",
+			Subnet:    subnet.Name,
+			Type:      util.SwitchLBRuleVip,
+			V4ip:      "10.0.0.60",
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		Vips:    []*kubeovnv1.Vip{vip},
+		Vpcs:    []*kubeovnv1.Vpc{{Name: subnet.Spec.Vpc, Status: kubeovnv1.VpcStatus{Router: "test-router"}}},
+	})
+	require.NoError(t, err)
+	return fc, vip
+}
+
+func TestHandleUpdateVirtualIP_StaticSwitchLBVipSetsProxyBeforeStatus(t *testing.T) {
+	fc, vip := newStaticSwitchLBVipUpdateTest(t)
+	ctrl := fc.fakeController
+	mockOvnClient := fc.mockOvnClient
+
+	// The lister keeps the snapshot without status for the whole handler, as an informer that has
+	// not caught up does. Every write of the proxy has to hold the address of the vip.
+	var proxies [][]string
+	statusEmptyAtFirstWrite := false
+	mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("test-subnet-test-router", gomock.Any()).
+		DoAndReturn(func(_ string, ips []string) error {
+			if len(proxies) == 0 {
+				got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
+				require.NoError(t, err)
+				statusEmptyAtFirstWrite = got.Status.V4ip == ""
+			}
+			proxies = append(proxies, slices.Clone(ips))
+			return nil
+		}).MinTimes(1)
+	mockOvnClient.EXPECT().DeleteLogicalSwitchPort(gomock.Any()).Return(nil).AnyTimes()
+
+	require.NoError(t, ctrl.handleUpdateVirtualIP(vip.Name))
+
+	// the proxy is set while the vip is not ready yet: its status has no address
+	require.True(t, statusEmptyAtFirstWrite)
+	for _, proxy := range proxies {
+		require.Equal(t, []string{"10.0.0.60"}, proxy)
+	}
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, vip.Spec.V4ip, got.Status.V4ip)
+}
+
+func TestHandleUpdateVirtualIP_StaticSwitchLBVipStaysNotReadyWhenProxyFails(t *testing.T) {
+	fc, vip := newStaticSwitchLBVipUpdateTest(t)
+	ctrl := fc.fakeController
+
+	fc.mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy("test-subnet-test-router", []string{"10.0.0.60"}).
+		Return(errors.New("ovn failure"))
+
+	require.Error(t, ctrl.handleUpdateVirtualIP(vip.Name))
+
+	got, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), vip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Empty(t, got.Status.V4ip, "a vip must not turn ready while its router port proxy is missing")
+	require.Empty(t, got.Finalizers)
 }
