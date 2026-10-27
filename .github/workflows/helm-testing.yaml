@@ -36,7 +36,7 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v5.0.1
 
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-python@v7.1.0
         with:
           python-version: '3.x'
           check-latest: true
@@ -48,6 +48,7 @@ jobs:
         run: |
           python3 hack/test-tproxy-container.py
           python3 hack/test-kubectl-ko-chart.py
+          python3 hack/test-ipsec-container.py
           ct lint --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn-v2/ct.yaml
           # Lint the legacy chart separately; it is intentionally not installed in the shared Kind cluster.
           ct lint --target-branch ${{ github.event.repository.default_branch }} --config charts/kube-ovn/ct.yaml

@@ -194,6 +194,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 		}
 	}
 	klog.Infof("UpdateNp, related subnets protocols %s", protocolSet.String())
+	klog.V(5).InfoS("Network policy selected ports", "policy", key, "portGroup", pgName, "ports", ports, "protocols", protocolSet.String(), "spec", np.Spec)
 
 	if err = c.OVNNbClient.PortGroupSetPorts(pgName, ports); err != nil {
 		klog.Errorf("failed to set ports of port group %s to %v: %v", pgName, ports, err)
@@ -822,7 +823,44 @@ func hasEgressRule(np *netv1.NetworkPolicy) bool {
 	return np.Spec.Egress != nil
 }
 
+func policyLabelSelectorCacheKey(selector *metav1.LabelSelector) string {
+	if selector == nil {
+		return "nil"
+	}
+
+	parsed, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		return fmt.Sprintf("invalid:%#v", *selector)
+	}
+	return "value:" + parsed.String()
+}
+
+func policyIPBlockCacheKey(block *netv1.IPBlock) string {
+	if block == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("value:%#v", *block)
+}
+
+func policyNetworkPolicyPeerCacheKey(peer netv1.NetworkPolicyPeer) string {
+	return strings.Join([]string{
+		policyLabelSelectorCacheKey(peer.PodSelector),
+		policyLabelSelectorCacheKey(peer.NamespaceSelector),
+		policyIPBlockCacheKey(peer.IPBlock),
+	}, "\x00")
+}
+
 func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, npp netv1.NetworkPolicyPeer, providers set.Set[string]) ([]string, []string, error) {
+	generation := c.policySelectorCacheGeneration()
+	providerKey := "all"
+	if providers != nil {
+		providerKey = strings.Join(providers.SortedList(), ",")
+	}
+	cacheKey := fmt.Sprintf("%s\x00%s\x00%s\x00%s", namespace, protocol, policyNetworkPolicyPeerCacheKey(npp), providerKey)
+	if selected, except, ok := c.getPolicyAddressCache(cacheKey); ok {
+		return selected, except, nil
+	}
+
 	selectedAddresses := []string{}
 	exceptAddresses := []string{}
 
@@ -893,6 +931,7 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 			}
 		}
 	}
+	c.setPolicyAddressCache(cacheKey, selectedAddresses, exceptAddresses, generation)
 	return selectedAddresses, exceptAddresses, nil
 }
 

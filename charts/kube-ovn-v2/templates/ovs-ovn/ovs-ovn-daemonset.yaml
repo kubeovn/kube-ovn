@@ -72,6 +72,8 @@ spec:
             - |
               chmod +t /usr/local/sbin
               chown -R nobody: /var/run/ovn /var/log/ovn /etc/openvswitch /var/run/openvswitch /var/log/openvswitch
+              chown 0:65534 /run/kube-ovn-ipsec-protection
+              chmod 0750 /run/kube-ovn-ipsec-protection
               iptables -V
               {{- if not .Values.ovsOvn.disableModulesManagement }}
               /usr/share/openvswitch/scripts/ovs-ctl load-kmod
@@ -99,6 +101,8 @@ spec:
               name: host-run-ovn
             - mountPath: /etc/openvswitch
               name: host-config-openvswitch
+            - mountPath: /run/kube-ovn-ipsec-protection
+              name: ipsec-protection
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
             - mountPath: /var/log/openvswitch
@@ -110,6 +114,7 @@ spec:
           command: ["/kube-ovn/start-ovs.sh"]
           securityContext:
             runAsUser: {{ include "kubeovn.runAsUser" . }}
+            runAsGroup: 65534
             privileged: false
             capabilities:
               add:
@@ -119,6 +124,8 @@ spec:
                 - SYS_NICE
                 - SYS_ADMIN
           env:
+            - name: ENABLE_OVN_IPSEC
+              value: "{{ .Values.features.enableOvnIpsec }}"
             - name: ENABLE_SSL
               value: "{{ .Values.networking.enableSsl }}"
             - name: POD_IP
@@ -160,6 +167,9 @@ spec:
               name: usr-local-sbin
             - mountPath: /lib/modules
               name: host-modules
+              readOnly: true
+            - mountPath: /run/kube-ovn-ipsec-protection
+              name: ipsec-protection
               readOnly: true
             - mountPath: /var/run/openvswitch
               name: host-run-ovs
@@ -205,6 +215,10 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       volumes:
+        - name: ipsec-protection
+          hostPath:
+            path: /run/kube-ovn-ipsec-protection
+            type: DirectoryOrCreate
         - name: usr-local-sbin
           emptyDir: {}
         - name: host-modules

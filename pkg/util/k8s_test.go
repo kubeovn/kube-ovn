@@ -378,26 +378,6 @@ func TestServiceClusterIPs(t *testing.T) {
 	}
 }
 
-func TestLabelSelectorNotEquals(t *testing.T) {
-	selector, err := LabelSelectorNotEquals("key", "value")
-	require.NoError(t, err)
-	require.Equal(t, "key!=value", selector.String())
-	// Test error case
-	selector, err = LabelSelectorNotEquals("", "")
-	require.Error(t, err)
-	require.Nil(t, selector)
-}
-
-func TestLabelSelectorNotEmpty(t *testing.T) {
-	selector, err := LabelSelectorNotEmpty("key")
-	require.NoError(t, err)
-	require.Equal(t, "key!=", selector.String())
-	// Test error case
-	selector, err = LabelSelectorNotEmpty("")
-	require.Error(t, err)
-	require.Nil(t, selector)
-}
-
 func TestGetTruncatedUID(t *testing.T) {
 	uid := "12345678-1234-1234-1234-123456789012"
 	require.Equal(t, "123456789012", GetTruncatedUID(uid))

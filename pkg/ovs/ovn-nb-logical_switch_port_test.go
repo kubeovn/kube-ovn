@@ -638,55 +638,6 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortVirtualParents() {
 	})
 }
 
-func (suite *OvnClientTestSuite) testRemoveLogicalSwitchPortOption() {
-	t := suite.T()
-	t.Parallel()
-
-	nbClient := suite.ovnNBClient
-
-	lsName := "test-remove-lsp-option-ls"
-	lspName := "test-remove-lsp-option-lsp"
-	mac := "00:00:00:AB:B4:66"
-
-	err := nbClient.CreateBareLogicalSwitch(lsName)
-	require.NoError(t, err)
-
-	err = nbClient.CreateLogicalSwitchPort(lsName, lspName, "", mac, "", "", false, "", "", false, nil, "")
-	require.NoError(t, err)
-
-	// simulate a pre-fix switch_lb_rule vip whose lsp carries the stale, never
-	// functional arp_proxy option
-	lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
-	require.NoError(t, err)
-	lsp.Options = map[string]string{"arp_proxy": "true"}
-	err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
-	require.NoError(t, err)
-
-	t.Run("remove existing option", func(t *testing.T) {
-		err := nbClient.RemoveLogicalSwitchPortOption(lspName, "arp_proxy")
-		require.NoError(t, err)
-
-		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
-		require.NoError(t, err)
-		require.NotContains(t, lsp.Options, "arp_proxy")
-	})
-
-	t.Run("no-op when option already absent", func(t *testing.T) {
-		err := nbClient.RemoveLogicalSwitchPortOption(lspName, "arp_proxy")
-		require.NoError(t, err)
-	})
-
-	t.Run("errors when port does not exist", func(t *testing.T) {
-		err := nbClient.RemoveLogicalSwitchPortOption("test-remove-lsp-option-nonexistent", "arp_proxy")
-		require.Error(t, err)
-	})
-
-	t.Run("get error propagates", func(t *testing.T) {
-		err := nbClient.RemoveLogicalSwitchPortOption("", "arp_proxy")
-		require.Error(t, err)
-	})
-}
-
 func (suite *OvnClientTestSuite) testSetVirtualLogicalSwitchPortVirtualParents() {
 	t := suite.T()
 	t.Parallel()
@@ -769,6 +720,64 @@ func (suite *OvnClientTestSuite) testSetVirtualLogicalSwitchPortVirtualParents()
 
 	t.Run("fail nb client should log err", func(t *testing.T) {
 		err = failedNbClient.SetVirtualLogicalSwitchPortVirtualParents(lspName, "virt-parents-ls-2,virt-parents-ls-3")
+		require.Error(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testSetLogicalSwitchPortArpProxy() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	failedNbClient := suite.failedOvnNBClient
+	lsName := "test-set-lsp-arp-proxy-ls"
+	lrName := "test-set-lsp-arp-proxy-lr"
+	// the router type port created together with the switch
+	lspName := lsName + "-" + lrName
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+	err = nbClient.CreateLogicalSwitch(lsName, lrName, "10.244.0.0/24", "10.244.0.1", util.GenerateMac(), true, false)
+	require.NoError(t, err)
+
+	t.Run("set arp_proxy option", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortArpProxy(lspName, []string{"10.244.0.2", "fd00::2"})
+		require.NoError(t, err)
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, "10.244.0.2 fd00::2", lsp.Options["arp_proxy"])
+		// other options must be preserved
+		require.NotEmpty(t, lsp.Options["router-port"])
+	})
+
+	t.Run("setting the same addresses is a no-op", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortArpProxy(lspName, []string{"10.244.0.2", "fd00::2"})
+		require.NoError(t, err)
+	})
+
+	t.Run("replace arp_proxy option", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortArpProxy(lspName, []string{"10.244.0.3"})
+		require.NoError(t, err)
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, "10.244.0.3", lsp.Options["arp_proxy"])
+	})
+
+	t.Run("clear arp_proxy option", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortArpProxy(lspName, nil)
+		require.NoError(t, err)
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.NotContains(t, lsp.Options, "arp_proxy")
+		require.NotEmpty(t, lsp.Options["router-port"])
+	})
+
+	t.Run("should print err log when logical switch port does not exist", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortArpProxy("test-nonexistent-lsp", []string{"10.244.0.2"})
+		require.Error(t, err)
+	})
+
+	t.Run("fail nb client should log err", func(t *testing.T) {
+		err = failedNbClient.SetLogicalSwitchPortArpProxy(lspName, []string{"10.244.0.2"})
 		require.Error(t, err)
 	})
 }

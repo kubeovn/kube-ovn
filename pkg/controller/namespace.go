@@ -17,6 +17,7 @@ import (
 )
 
 func (c *Controller) enqueueAddNamespace(obj any) {
+	c.invalidatePolicySelectorCache()
 	if c.config.EnableNP {
 		for _, np := range c.namespaceMatchNetworkPolicies(obj.(*v1.Namespace)) {
 			c.updateNpQueue.Add(np)
@@ -28,6 +29,7 @@ func (c *Controller) enqueueAddNamespace(obj any) {
 }
 
 func (c *Controller) enqueueDeleteNamespace(obj any) {
+	c.invalidatePolicySelectorCache()
 	var ns *v1.Namespace
 	switch t := obj.(type) {
 	case *v1.Namespace:
@@ -56,6 +58,7 @@ func (c *Controller) enqueueDeleteNamespace(obj any) {
 }
 
 func (c *Controller) enqueueUpdateNamespace(oldObj, newObj any) {
+	c.invalidatePolicySelectorCache()
 	oldNs := oldObj.(*v1.Namespace)
 	newNs := newObj.(*v1.Namespace)
 	if oldNs.ResourceVersion == newNs.ResourceVersion {

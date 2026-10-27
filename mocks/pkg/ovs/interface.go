@@ -188,6 +188,21 @@ func (m *MockNBGlobal) EXPECT() *MockNBGlobalMockRecorder {
 	return m.recorder
 }
 
+// GetIPsecGlobal mocks base method.
+func (m *MockNBGlobal) GetIPsecGlobal(arg0 context.Context) (*ovs.IPsecGlobalState, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIPsecGlobal", arg0)
+	ret0, _ := ret[0].(*ovs.IPsecGlobalState)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIPsecGlobal indicates an expected call of GetIPsecGlobal.
+func (mr *MockNBGlobalMockRecorder) GetIPsecGlobal(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIPsecGlobal", reflect.TypeOf((*MockNBGlobal)(nil).GetIPsecGlobal), arg0)
+}
+
 // GetNbGlobal mocks base method.
 func (m *MockNBGlobal) GetNbGlobal() (*ovnnb.NBGlobal, error) {
 	m.ctrl.T.Helper()
@@ -1523,20 +1538,6 @@ func (mr *MockLogicalSwitchPortMockRecorder) ReconcilePortDHCPOptions(lsName, po
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcilePortDHCPOptions", reflect.TypeOf((*MockLogicalSwitchPort)(nil).ReconcilePortDHCPOptions), lsName, portName, subnetDHCP, cidrBlock, gateway, v4Options, v6Options, mtu)
 }
 
-// RemoveLogicalSwitchPortOption mocks base method.
-func (m *MockLogicalSwitchPort) RemoveLogicalSwitchPortOption(lspName, option string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RemoveLogicalSwitchPortOption", lspName, option)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// RemoveLogicalSwitchPortOption indicates an expected call of RemoveLogicalSwitchPortOption.
-func (mr *MockLogicalSwitchPortMockRecorder) RemoveLogicalSwitchPortOption(lspName, option any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveLogicalSwitchPortOption", reflect.TypeOf((*MockLogicalSwitchPort)(nil).RemoveLogicalSwitchPortOption), lspName, option)
-}
-
 // ResetLogicalSwitchPortMigrateOptions mocks base method.
 func (m *MockLogicalSwitchPort) ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName string, migratedFail bool) error {
 	m.ctrl.T.Helper()
@@ -1563,6 +1564,20 @@ func (m *MockLogicalSwitchPort) SetLogicalSwitchPortActivationStrategy(lspName, 
 func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortActivationStrategy(lspName, chassis any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortActivationStrategy", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortActivationStrategy), lspName, chassis)
+}
+
+// SetLogicalSwitchPortArpProxy mocks base method.
+func (m *MockLogicalSwitchPort) SetLogicalSwitchPortArpProxy(lspName string, proxyIPs []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortArpProxy", lspName, proxyIPs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortArpProxy indicates an expected call of SetLogicalSwitchPortArpProxy.
+func (mr *MockLogicalSwitchPortMockRecorder) SetLogicalSwitchPortArpProxy(lspName, proxyIPs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortArpProxy", reflect.TypeOf((*MockLogicalSwitchPort)(nil).SetLogicalSwitchPortArpProxy), lspName, proxyIPs)
 }
 
 // SetLogicalSwitchPortDHCPOptions mocks base method.
@@ -4993,6 +5008,21 @@ func (mr *MockNbClientMockRecorder) GetHAChassisGroup(name, ignoreNotFound any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetHAChassisGroup", reflect.TypeOf((*MockNbClient)(nil).GetHAChassisGroup), name, ignoreNotFound)
 }
 
+// GetIPsecGlobal mocks base method.
+func (m *MockNbClient) GetIPsecGlobal(arg0 context.Context) (*ovs.IPsecGlobalState, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIPsecGlobal", arg0)
+	ret0, _ := ret[0].(*ovs.IPsecGlobalState)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIPsecGlobal indicates an expected call of GetIPsecGlobal.
+func (mr *MockNbClientMockRecorder) GetIPsecGlobal(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIPsecGlobal", reflect.TypeOf((*MockNbClient)(nil).GetIPsecGlobal), arg0)
+}
+
 // GetLoadBalancer mocks base method.
 func (m *MockNbClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnnb.LoadBalancer, error) {
 	m.ctrl.T.Helper()
@@ -6034,20 +6064,6 @@ func (mr *MockNbClientMockRecorder) RemoveLogicalPatchPort(lspName, lrpName any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveLogicalPatchPort", reflect.TypeOf((*MockNbClient)(nil).RemoveLogicalPatchPort), lspName, lrpName)
 }
 
-// RemoveLogicalSwitchPortOption mocks base method.
-func (m *MockNbClient) RemoveLogicalSwitchPortOption(lspName, option string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RemoveLogicalSwitchPortOption", lspName, option)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// RemoveLogicalSwitchPortOption indicates an expected call of RemoveLogicalSwitchPortOption.
-func (mr *MockNbClientMockRecorder) RemoveLogicalSwitchPortOption(lspName, option any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveLogicalSwitchPortOption", reflect.TypeOf((*MockNbClient)(nil).RemoveLogicalSwitchPortOption), lspName, option)
-}
-
 // RemovePortFromPortGroups mocks base method.
 func (m *MockNbClient) RemovePortFromPortGroups(portName string, portGroupNames ...string) error {
 	m.ctrl.T.Helper()
@@ -6305,6 +6321,20 @@ func (m *MockNbClient) SetLogicalSwitchPortActivationStrategy(lspName, chassis s
 func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortActivationStrategy(lspName, chassis any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortActivationStrategy", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortActivationStrategy), lspName, chassis)
+}
+
+// SetLogicalSwitchPortArpProxy mocks base method.
+func (m *MockNbClient) SetLogicalSwitchPortArpProxy(lspName string, proxyIPs []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SetLogicalSwitchPortArpProxy", lspName, proxyIPs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SetLogicalSwitchPortArpProxy indicates an expected call of SetLogicalSwitchPortArpProxy.
+func (mr *MockNbClientMockRecorder) SetLogicalSwitchPortArpProxy(lspName, proxyIPs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetLogicalSwitchPortArpProxy", reflect.TypeOf((*MockNbClient)(nil).SetLogicalSwitchPortArpProxy), lspName, proxyIPs)
 }
 
 // SetLogicalSwitchPortDHCPOptions mocks base method.
@@ -7051,6 +7081,21 @@ func (m *MockSbClient) GetEntityInfo(entity any) error {
 func (mr *MockSbClientMockRecorder) GetEntityInfo(entity any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEntityInfo", reflect.TypeOf((*MockSbClient)(nil).GetEntityInfo), entity)
+}
+
+// GetIPsecGlobal mocks base method.
+func (m *MockSbClient) GetIPsecGlobal(arg0 context.Context) (*ovs.IPsecGlobalState, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetIPsecGlobal", arg0)
+	ret0, _ := ret[0].(*ovs.IPsecGlobalState)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetIPsecGlobal indicates an expected call of GetIPsecGlobal.
+func (mr *MockSbClientMockRecorder) GetIPsecGlobal(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetIPsecGlobal", reflect.TypeOf((*MockSbClient)(nil).GetIPsecGlobal), arg0)
 }
 
 // GetKubeOvnChassises mocks base method.

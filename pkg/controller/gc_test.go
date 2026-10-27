@@ -913,3 +913,90 @@ func TestGcNodeKeepsPolicyAdoptedBySameNameReplacement(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, remaining, 1, "the policy of a same-name replacement node must survive gc")
 }
+
+func TestMarkAndCleanLSPReclaimsOnlyUnmanagedVipLSPs(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		Name: "subnet-a",
+		Spec: kubeovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24", Provider: util.OvnProvider},
+	}
+	// switch_lb_rule is the only type whose normal lsp kube-ovn still creates and reconciles
+	slr := &kubeovnv1.Vip{
+		Name: "slr",
+		Spec: kubeovnv1.VipSpec{Type: util.SwitchLBRuleVip, Subnet: subnet.Name, Namespace: "default"},
+	}
+	// leftover of the removed kube_host_vm_vip handling: nothing manages its lsp anymore
+	legacy := &kubeovnv1.Vip{
+		Name: "legacy",
+		Spec: kubeovnv1.VipSpec{Type: "kube_host_vm_vip", Subnet: subnet.Name, Namespace: "default"},
+	}
+	// an aap vip only has a virtual lsp, which ListNormalLogicalSwitchPorts never returns
+	aap := &kubeovnv1.Vip{
+		Name: "aap",
+		Spec: kubeovnv1.VipSpec{Subnet: subnet.Name, Namespace: "default"},
+	}
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		Vips:    []*kubeovnv1.Vip{slr, legacy, aap},
+	})
+	require.NoError(t, err)
+
+	ctrl := fakeController.fakeController
+	ctrl.config.EnableKeepVMIP = false
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+
+	slrLsp := ovs.PodNameToPortName(slr.Name, slr.Spec.Namespace, util.OvnProvider)
+	legacyLsp := ovs.PodNameToPortName(legacy.Name, legacy.Spec.Namespace, util.OvnProvider)
+
+	// second gc round: both lsps were already seen without a pod
+	previousLastNoPodLSP := lastNoPodLSP
+	lastNoPodLSP = strset.New(slrLsp, legacyLsp)
+	t.Cleanup(func() { lastNoPodLSP = previousLastNoPodLSP })
+
+	fakeController.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, nil).Return([]ovnnb.LogicalSwitchPort{
+		{Name: slrLsp}, {Name: legacyLsp},
+	}, nil)
+	fakeController.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(slrLsp).Times(0)
+	fakeController.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(legacyLsp).Return(nil)
+
+	require.NoError(t, ctrl.markAndCleanLSP())
+}
+
+// TestMarkAndCleanLSPKeepsSwitchLBVipLSPWhileMigrationFails covers a legacy switch_lb_vip lsp whose
+// migration keeps failing: gc must not remove it, otherwise nobody answers ARP for the vip, since
+// the router port proxy is not configured.
+func TestMarkAndCleanLSPKeepsSwitchLBVipLSPWhileMigrationFails(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		Name: "subnet-a",
+		Spec: kubeovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24", Provider: util.OvnProvider, Vpc: "missing-vpc"},
+	}
+	slr := &kubeovnv1.Vip{
+		Name:   "slr",
+		Spec:   kubeovnv1.VipSpec{Type: util.SwitchLBRuleVip, Subnet: subnet.Name, Namespace: "default"},
+		Status: kubeovnv1.VipStatus{V4ip: "10.0.0.50"},
+	}
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{subnet},
+		Vips:    []*kubeovnv1.Vip{slr},
+	})
+	require.NoError(t, err)
+
+	ctrl := fakeController.fakeController
+	ctrl.config.EnableKeepVMIP = false
+	ctrl.addNodeQueue = newTypedRateLimitingQueue[string]("AddNode", nil)
+	slrLsp := ovs.PodNameToPortName(slr.Name, slr.Spec.Namespace, util.OvnProvider)
+
+	// the vpc is not available, so the proxy cannot be set and the legacy lsp is retained: no
+	// expectation for SetLogicalSwitchPortArpProxy or DeleteLogicalSwitchPort, a call fails the test
+	require.Error(t, ctrl.reconcileSwitchLBVipPort(slr))
+
+	previousLastNoPodLSP := lastNoPodLSP
+	lastNoPodLSP = strset.New()
+	t.Cleanup(func() { lastNoPodLSP = previousLastNoPodLSP })
+
+	fakeController.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(false, nil).
+		Return([]ovnnb.LogicalSwitchPort{{Name: slrLsp}}, nil).Times(3)
+	// the lsp is seen without a pod in every round, and still survives the rounds that would delete it
+	for range 3 {
+		require.NoError(t, ctrl.markAndCleanLSP())
+	}
+}

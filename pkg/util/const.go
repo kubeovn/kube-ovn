@@ -30,7 +30,7 @@ const (
 	SnatAnnotation               = "ovn.kubernetes.io/snat"
 	EipAnnotation                = "ovn.kubernetes.io/eip"
 	FipFinalizer                 = "ovn.kubernetes.io/fip"
-	VipAnnotation                = "ovn.kubernetes.io/vip"
+	VipAnnotation                = "ovn.kubernetes.io/vip" // removed in v1.17, ignored: pod static ip via vip is no longer supported
 	AAPsAnnotation               = "ovn.kubernetes.io/aaps"
 	ChassisAnnotation            = "ovn.kubernetes.io/chassis"
 	VMAnnotation                 = "ovn.kubernetes.io/virtualmachine"
@@ -63,7 +63,6 @@ const (
 	RouterLBRuleVipsAnnotation = "ovn.kubernetes.io/router_lb_vip"
 	SwitchLBRuleVipsAnnotation = "ovn.kubernetes.io/switch_lb_vip"
 	SwitchLBRuleVip            = "switch_lb_vip"
-	KubeHostVMVip              = "kube_host_vm_vip"
 	SwitchLBRuleSubnet         = "switch_lb_subnet"
 	VipAttachSubnetsAnnotation = "ovn.kubernetes.io/vip-last-attach-subnets"
 
@@ -374,6 +373,7 @@ const (
 	VhostUserSocketVolumeName = "vhostuser-sockets"
 
 	DefaultOVNIPSecCA       = "ovn-ipsec-ca"
+	DefaultOVNIPSecSigner   = "ovn-ipsec-signer"
 	DefaultOVSCACertPath    = "/var/lib/openvswitch/pki/switchca/cacert.pem"
 	DefaultOVSCACertKeyPath = "/var/lib/openvswitch/pki/switchca/private/cakey.pem"
 
@@ -393,13 +393,14 @@ const (
 	EnvKubernetesServiceHost = "KUBERNETES_SERVICE_HOST"
 	EnvKubernetesServicePort = "KUBERNETES_SERVICE_PORT"
 
-	EnvPodName      = "POD_NAME"
-	EnvPodNamespace = "POD_NAMESPACE"
-	EnvPodIP        = "POD_IP"
-	EnvPodIPs       = "POD_IPS"
-	EnvNodeName     = "NODE_NAME"
-	EnvHostIP       = "HOST_IP"
-	EnvHostIPs      = "HOST_IPS"
+	EnvPodName           = "POD_NAME"
+	EnvPodNamespace      = "POD_NAMESPACE"
+	EnvPodServiceAccount = "POD_SERVICE_ACCOUNT"
+	EnvPodIP             = "POD_IP"
+	EnvPodIPs            = "POD_IPS"
+	EnvNodeName          = "NODE_NAME"
+	EnvHostIP            = "HOST_IP"
+	EnvHostIPs           = "HOST_IPS"
 
 	// KubeOvnControllerServiceAccountName is the service account only kube-ovn-controller
 	// runs as (see charts/kube-ovn-v2/templates/rbac/ovn-sa.yaml and

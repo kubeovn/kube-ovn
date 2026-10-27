@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	certmanagerclientset "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
@@ -52,7 +51,6 @@ type Configuration struct {
 	KubeConfigFile                string
 	KubeClient                    kubernetes.Interface
 	KubeOvnClient                 clientset.Interface
-	CertManagerClient             certmanagerclientset.Interface
 	PodName                       string
 	PodNamespace                  string
 	NodeName                      string
@@ -72,10 +70,6 @@ type Configuration struct {
 	ExternalGatewayConfigNS       string
 	ExternalGatewaySwitch         string // provider network underlay vlan subnet
 	EnableMetrics                 bool
-	EnableOVNIPSec                bool
-	CertManagerIPSecCert          bool
-	CertManagerIssuerName         string
-	IPSecCertDuration             int
 	EnableArpDetectIPConflict     bool
 	KubeletDir                    string
 	EnableVerboseConnCheck        bool
@@ -144,10 +138,6 @@ func ParseFlags() *Configuration {
 		argEnableTProxy                  = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
 		argEnableRecompute               = pflag.Bool("enable-recompute", false, "Enable periodic ovn-controller recompute")
 		argOVSVsctlConcurrency           = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
-		argEnableOVNIPSec                = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
-		argCertManagerIPSecCert          = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
-		argCertManagerIssuerName         = pflag.String("cert-manager-issuer-name", "kube-ovn", "The cert-manager issuer name to request certificates from")
-		argOVNIPSecCertDuration          = pflag.Int("ovn-ipsec-cert-duration", 2*365*24*60*60, "The duration requested for IPSec certificates (seconds)")
 		argSetVxlanTxOff                 = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
 		argLogPerm                       = pflag.String("log-perm", "640", "The permission for the log file")
 		argGatewayNetfilterMode          = pflag.String("gateway-netfilter-mode", "auto", "gateway netfilter backend: auto, iptables, or nftables")
@@ -216,7 +206,6 @@ func ParseFlags() *Configuration {
 		ExternalGatewayConfigNS:   *argExternalGatewayConfigNS,
 		ExternalGatewaySwitch:     *argExternalGatewaySwitch,
 		EnableMetrics:             *argEnableMetrics,
-		EnableOVNIPSec:            *argEnableOVNIPSec,
 		EnableArpDetectIPConflict: *argEnableArpDetectIPConflict,
 		KubeletDir:                *argKubeletDir,
 		EnableVerboseConnCheck:    *argEnableVerboseConnCheck,
@@ -230,9 +219,6 @@ func ParseFlags() *Configuration {
 		TLSMinVersion:             *argTLSMinVersion,
 		TLSMaxVersion:             *argTLSMaxVersion,
 		TLSCipherSuites:           *argTLSCipherSuites,
-		CertManagerIPSecCert:      *argCertManagerIPSecCert,
-		CertManagerIssuerName:     *argCertManagerIssuerName,
-		IPSecCertDuration:         *argOVNIPSecCertDuration,
 		EnableNonPrimaryCNI:       *argNonPrimaryCNI,
 		ACLSampling: aclsampling.NodeConfig{
 			Enabled:      *argEnableACLSampling,
@@ -533,16 +519,6 @@ func (config *Configuration) initKubeClient() error {
 		return err
 	}
 	config.KubeClient = kubeClient
-
-	if config.CertManagerIPSecCert {
-		cfg.ContentType = util.ContentTypeJSON
-		cmClient, err := certmanagerclientset.NewForConfig(cfg)
-		if err != nil {
-			klog.Errorf("init certmanager client failed %v", err)
-			return err
-		}
-		config.CertManagerClient = cmClient
-	}
 
 	return nil
 }

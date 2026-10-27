@@ -15,7 +15,6 @@ on:
           - release-1.16
           - release-1.15
           - release-1.14
-          - release-1.13
   schedule:
   - cron: "20 19 * * *"
 
@@ -32,7 +31,6 @@ jobs:
         - release-1.16
         - release-1.15
         - release-1.14
-        - release-1.13
     name: Build
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
@@ -90,7 +88,6 @@ jobs:
         - release-1.16
         - release-1.15
         - release-1.14
-        - release-1.13
     needs:
       - build
     name: push
@@ -141,6 +138,6 @@ jobs:
             docker manifest create kubeovn/kube-ovn-base:$TAG-debug kubeovn/kube-ovn-base:$TAG-debug-amd64 kubeovn/kube-ovn-base:$TAG-debug-arm64
             docker manifest push kubeovn/kube-ovn-base:$TAG-debug
           fi
-          if [ "${{ matrix.branch }}" = "master" -o "`printf '${{ matrix.branch }}\nrelease-1.13' | sort -Vr | head -n1`" = "${{ matrix.branch }}" ]; then
+          if [ "${{ matrix.branch }}" = "master" -o "`printf '${{ matrix.branch }}\nrelease-1.14' | sort -Vr | head -n1`" = "${{ matrix.branch }}" ]; then
             docker push kubeovn/kube-ovn-base:$TAG-amd64-legacy
           fi
