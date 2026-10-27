@@ -816,6 +816,16 @@ func hasEgressRule(np *netv1.NetworkPolicy) bool {
 }
 
 func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, npp netv1.NetworkPolicyPeer, providers set.Set[string]) ([]string, []string, error) {
+	generation := c.policySelectorCacheGeneration()
+	providerKey := "all"
+	if providers != nil {
+		providerKey = strings.Join(providers.SortedList(), ",")
+	}
+	cacheKey := fmt.Sprintf("%s\x00%s\x00%#v\x00%s", namespace, protocol, npp, providerKey)
+	if selected, except, ok := c.getPolicyAddressCache(cacheKey); ok {
+		return selected, except, nil
+	}
+
 	selectedAddresses := []string{}
 	exceptAddresses := []string{}
 
@@ -886,6 +896,7 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 			}
 		}
 	}
+	c.setPolicyAddressCache(cacheKey, selectedAddresses, exceptAddresses, generation)
 	return selectedAddresses, exceptAddresses, nil
 }
 

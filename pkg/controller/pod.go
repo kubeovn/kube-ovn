@@ -192,6 +192,7 @@ func isPodStatusPhaseAlive(p *v1.Pod) bool {
 }
 
 func (c *Controller) enqueueAddPod(obj any) {
+	c.invalidatePolicySelectorCache()
 	p := obj.(*v1.Pod)
 	if p.Spec.HostNetwork {
 		return
@@ -263,6 +264,7 @@ func (c *Controller) getNsLabels(nsName, podName string) map[string]string {
 }
 
 func (c *Controller) enqueueDeletePod(obj any) {
+	c.invalidatePolicySelectorCache()
 	var p *v1.Pod
 	switch t := obj.(type) {
 	case *v1.Pod:
@@ -307,6 +309,7 @@ func (c *Controller) enqueueDeletePod(obj any) {
 }
 
 func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
+	c.invalidatePolicySelectorCache()
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 	c.enqueueVMIMigrationForBoundLauncher(oldPod, newPod)
