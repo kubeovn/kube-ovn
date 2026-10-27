@@ -72,7 +72,7 @@ type ControllerRuntime struct {
 	nmSyncer  *networkManagerSyncer
 	ovsClient *ovsutil.Client
 
-	flowCache      map[string]map[string][]string // key: bridgeName -> flowKey -> flow rules
+	flowCache      map[string]map[string]LbServiceRules // key: bridgeName -> flowKey -> service rule
 	flowCacheMutex sync.RWMutex
 	flowChan       chan struct{} // channel to trigger immediate flow sync
 	podQoSOps      podQoSOperations
@@ -135,7 +135,7 @@ func (c *Controller) initRuntime() error {
 	c.ovsClient = ovsutil.New()
 
 	// Initialize OpenFlow flow cache (ovn-kubernetes style)
-	c.flowCache = make(map[string]map[string][]string)
+	c.flowCache = make(map[string]map[string]LbServiceRules)
 	c.flowChan = make(chan struct{}, 1)
 
 	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
