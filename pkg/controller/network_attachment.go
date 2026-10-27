@@ -34,6 +34,15 @@ func (c *Controller) enqueueDeleteNetworkAttachment(_ any) {
 	c.invalidatePolicySelectorCache()
 }
 
+func (c *Controller) addNetworkAttachmentEventHandler(informer cache.SharedIndexInformer) error {
+	_, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    c.enqueueAddNetworkAttachment,
+		UpdateFunc: c.enqueueUpdateNetworkAttachment,
+		DeleteFunc: c.enqueueDeleteNetworkAttachment,
+	})
+	return err
+}
+
 // startNetAttachInformer starts the NAD informer and waits for cache sync.
 func (c *Controller) startNetAttachInformer(ctx context.Context) {
 	c.netAttachInformerFactory.Start(ctx.Done())

@@ -3,7 +3,9 @@ package controller
 import (
 	"fmt"
 	"testing"
+	"time"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
@@ -149,6 +151,44 @@ func TestPolicySelectorCacheInvalidatesOnPodAndNetworkAttachmentEvents(t *testin
 			require.False(t, ok)
 		})
 	}
+}
+
+func TestPolicySelectorCacheInvalidatesOnNetworkAttachmentInformerEvents(t *testing.T) {
+	fake, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+	controller := fake.fakeController
+	require.NoError(t, controller.addNetworkAttachmentEventHandler(fake.fakeInformers.netAttachInformer))
+
+	nadClient := controller.config.AttachNetClient.K8sCniCncfIoV1().NetworkAttachmentDefinitions(metav1.NamespaceDefault)
+	nad := &nadv1.NetworkAttachmentDefinition{
+		ObjectMeta: metav1.ObjectMeta{Name: "policy-cache", Namespace: metav1.NamespaceDefault},
+	}
+
+	assertInvalidated := func(name string, mutate func() error) {
+		generation := controller.policySelectorCacheGeneration()
+		controller.setPolicyAddressCache(name, []string{"10.0.0.1"}, nil, generation)
+		require.NoError(t, mutate())
+		require.Eventually(t, func() bool {
+			_, _, ok := controller.getPolicyAddressCache(name, generation)
+			return !ok
+		}, time.Second, 10*time.Millisecond)
+	}
+
+	assertInvalidated("add", func() error {
+		_, err := nadClient.Create(t.Context(), nad.DeepCopy(), metav1.CreateOptions{})
+		return err
+	})
+
+	assertInvalidated("update", func() error {
+		updated := nad.DeepCopy()
+		updated.Spec.Config = `{"cniVersion":"0.3.1","name":"policy-cache","type":"bridge"}`
+		_, err := nadClient.Update(t.Context(), updated, metav1.UpdateOptions{})
+		return err
+	})
+
+	assertInvalidated("delete", func() error {
+		return nadClient.Delete(t.Context(), nad.Name, metav1.DeleteOptions{})
+	})
 }
 
 func TestPolicySelectorCacheRejectsInvalidLabelSelector(t *testing.T) {

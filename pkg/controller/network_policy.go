@@ -850,8 +850,23 @@ func policyNetworkPolicyPeerCacheKey(peer netv1.NetworkPolicyPeer) (string, erro
 	}, "\x00"), nil
 }
 
+const policySelectorCacheScanAttempts = 2
+
 func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, npp netv1.NetworkPolicyPeer, providers set.Set[string]) ([]string, []string, error) {
-	generation := c.policySelectorCacheGeneration()
+	for range policySelectorCacheScanAttempts {
+		generation := c.policySelectorCacheGeneration()
+		selectedAddresses, exceptAddresses, err := c.fetchPolicySelectedAddressesOnce(namespace, protocol, npp, providers, generation)
+		if err != nil {
+			return nil, nil, err
+		}
+		if generation == c.policySelectorCacheGeneration() {
+			return selectedAddresses, exceptAddresses, nil
+		}
+	}
+	return nil, nil, fmt.Errorf("policy selector cache invalidated during address scan")
+}
+
+func (c *Controller) fetchPolicySelectedAddressesOnce(namespace, protocol string, npp netv1.NetworkPolicyPeer, providers set.Set[string], generation uint64) ([]string, []string, error) {
 	providerKey := "all"
 	if providers != nil {
 		providerKey = strings.Join(providers.SortedList(), ",")

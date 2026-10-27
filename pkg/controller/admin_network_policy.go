@@ -608,7 +608,20 @@ func (c *Controller) fetchSelectedPods(anpSubject *v1alpha1.AdminNetworkPolicySu
 }
 
 func (c *Controller) fetchPods(nsSelector, podSelector labels.Selector) ([]string, []string, []string, error) {
-	generation := c.policySelectorCacheGeneration()
+	for range policySelectorCacheScanAttempts {
+		generation := c.policySelectorCacheGeneration()
+		ports, v4Addresses, v6Addresses, err := c.fetchPodsOnce(nsSelector, podSelector, generation)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if generation == c.policySelectorCacheGeneration() {
+			return ports, v4Addresses, v6Addresses, nil
+		}
+	}
+	return nil, nil, nil, fmt.Errorf("policy selector cache invalidated during pod scan")
+}
+
+func (c *Controller) fetchPodsOnce(nsSelector, podSelector labels.Selector, generation uint64) ([]string, []string, []string, error) {
 	cacheKey := nsSelector.String() + "\x00" + podSelector.String()
 	if ports, v4Addresses, v6Addresses, ok := c.getPolicyPodScanCache(cacheKey, generation); ok {
 		return ports, v4Addresses, v6Addresses, nil

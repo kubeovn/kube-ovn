@@ -745,6 +745,10 @@ func Run(ctx context.Context, config *Configuration) {
 	defer controller.shutdown()
 	klog.Info("Starting OVN controller")
 
+	if err = controller.addNetworkAttachmentEventHandler(netAttachInformer.Informer()); err != nil {
+		util.LogFatalAndExit(err, "failed to add network attachment event handler")
+	}
+
 	// Start and sync NAD informer first, as many resources depend on NAD cache
 	// NAD CRD is optional, so we check if it exists before starting the informer
 	controller.StartNetAttachInformerFactory(ctx)
@@ -792,14 +796,6 @@ func Run(ctx context.Context, config *Configuration) {
 
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
-	}
-
-	if _, err = netAttachInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddNetworkAttachment,
-		UpdateFunc: controller.enqueueUpdateNetworkAttachment,
-		DeleteFunc: controller.enqueueDeleteNetworkAttachment,
-	}); err != nil {
-		util.LogFatalAndExit(err, "failed to add network attachment event handler")
 	}
 
 	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
