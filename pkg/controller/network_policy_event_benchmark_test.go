@@ -165,18 +165,23 @@ func BenchmarkNetworkPolicyNamespaceEventFanout(b *testing.B) {
 // BenchmarkAdminNetworkPolicyRuleFanout measures selector change matching for
 // one policy containing many rules.
 func BenchmarkAdminNetworkPolicyRuleFanout(b *testing.B) {
-	changes := [...]labelChange{benchmarkPodLabelChange(), benchmarkNamespaceLabelChange()}
+	changes := [...]struct {
+		name   string
+		change labelChange
+	}{{"Pod", benchmarkPodLabelChange()}, {"Namespace", benchmarkNamespaceLabelChange()}}
 	// ANP/BANP/CNP keep changed rule names in fixed-size arrays, so these
 	// benchmarks stay within the API's per-object rule limit.
 	for _, count := range []int{10, 100} {
 		b.Run(fmt.Sprintf("rules-%d", count), func(b *testing.B) {
 			ingress, egress := benchmarkANPRules(count)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for b.Loop() {
-				for _, change := range changes {
-					_, _ = isLabelsMatchAnpRulePeersForChange(ingress, egress, change)
-				}
+			for _, scenario := range changes {
+				b.Run(scenario.name, func(b *testing.B) {
+					b.ReportAllocs()
+					b.ResetTimer()
+					for b.Loop() {
+						_, _ = isLabelsMatchAnpRulePeersForChange(ingress, egress, scenario.change)
+					}
+				})
 			}
 		})
 	}
@@ -185,16 +190,21 @@ func BenchmarkAdminNetworkPolicyRuleFanout(b *testing.B) {
 // BenchmarkBaselineAdminNetworkPolicyRuleFanout measures selector change
 // matching for one baseline policy containing many rules.
 func BenchmarkBaselineAdminNetworkPolicyRuleFanout(b *testing.B) {
-	changes := [...]labelChange{benchmarkPodLabelChange(), benchmarkNamespaceLabelChange()}
+	changes := [...]struct {
+		name   string
+		change labelChange
+	}{{"Pod", benchmarkPodLabelChange()}, {"Namespace", benchmarkNamespaceLabelChange()}}
 	for _, count := range []int{10, 100} {
 		b.Run(fmt.Sprintf("rules-%d", count), func(b *testing.B) {
 			ingress, egress := benchmarkBANPRules(count)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for b.Loop() {
-				for _, change := range changes {
-					_, _ = isLabelsMatchBanpRulePeersForChange(ingress, egress, change)
-				}
+			for _, scenario := range changes {
+				b.Run(scenario.name, func(b *testing.B) {
+					b.ReportAllocs()
+					b.ResetTimer()
+					for b.Loop() {
+						_, _ = isLabelsMatchBanpRulePeersForChange(ingress, egress, scenario.change)
+					}
+				})
 			}
 		})
 	}
@@ -203,19 +213,24 @@ func BenchmarkBaselineAdminNetworkPolicyRuleFanout(b *testing.B) {
 // BenchmarkClusterNetworkPolicyRuleFanout measures selector change matching
 // for one cluster policy containing many rules.
 func BenchmarkClusterNetworkPolicyRuleFanout(b *testing.B) {
-	changes := [...]labelChange{benchmarkPodLabelChange(), benchmarkNamespaceLabelChange()}
+	changes := [...]struct {
+		name   string
+		change labelChange
+	}{{"Pod", benchmarkPodLabelChange()}, {"Namespace", benchmarkNamespaceLabelChange()}}
 	for _, count := range []int{10, 25} {
 		b.Run(fmt.Sprintf("rules-%d", count), func(b *testing.B) {
 			ingress, egress := benchmarkCNPRules(count)
-			b.ReportAllocs()
-			b.ResetTimer()
-			for b.Loop() {
-				for _, change := range changes {
-					for i := range ingress {
-						_ = doCnpLabelsMatchForChange(ingress[i].From[0].Namespaces, ingress[i].From[0].Pods, change)
-						_ = doCnpLabelsMatchForChange(egress[i].To[0].Namespaces, egress[i].To[0].Pods, change)
+			cnp := &v1alpha2.ClusterNetworkPolicy{
+				Spec: v1alpha2.ClusterNetworkPolicySpec{Ingress: ingress, Egress: egress},
+			}
+			for _, scenario := range changes {
+				b.Run(scenario.name, func(b *testing.B) {
+					b.ReportAllocs()
+					b.ResetTimer()
+					for b.Loop() {
+						_, _ = getAffectedCnpRulesForChange(cnp, scenario.change)
 					}
-				}
+				})
 			}
 		})
 	}
