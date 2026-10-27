@@ -823,13 +823,40 @@ func hasEgressRule(np *netv1.NetworkPolicy) bool {
 	return np.Spec.Egress != nil
 }
 
+func policyLabelSelectorCacheKey(selector *metav1.LabelSelector) string {
+	if selector == nil {
+		return "nil"
+	}
+
+	parsed, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		return fmt.Sprintf("invalid:%#v", *selector)
+	}
+	return "value:" + parsed.String()
+}
+
+func policyIPBlockCacheKey(block *netv1.IPBlock) string {
+	if block == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("value:%#v", *block)
+}
+
+func policyNetworkPolicyPeerCacheKey(peer netv1.NetworkPolicyPeer) string {
+	return strings.Join([]string{
+		policyLabelSelectorCacheKey(peer.PodSelector),
+		policyLabelSelectorCacheKey(peer.NamespaceSelector),
+		policyIPBlockCacheKey(peer.IPBlock),
+	}, "\x00")
+}
+
 func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, npp netv1.NetworkPolicyPeer, providers set.Set[string]) ([]string, []string, error) {
 	generation := c.policySelectorCacheGeneration()
 	providerKey := "all"
 	if providers != nil {
 		providerKey = strings.Join(providers.SortedList(), ",")
 	}
-	cacheKey := fmt.Sprintf("%s\x00%s\x00%#v\x00%s", namespace, protocol, npp, providerKey)
+	cacheKey := fmt.Sprintf("%s\x00%s\x00%s\x00%s", namespace, protocol, policyNetworkPolicyPeerCacheKey(npp), providerKey)
 	if selected, except, ok := c.getPolicyAddressCache(cacheKey); ok {
 		return selected, except, nil
 	}
