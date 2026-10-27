@@ -35,6 +35,8 @@ FROM kubeovn/kube-ovn-base:$BASE_TAG
 
 COPY --chmod=0644 logrotate/* /etc/logrotate.d/
 COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
+COPY --chmod=0644 THIRD-PARTY-NOTICES /usr/share/doc/kube-ovn/THIRD-PARTY-NOTICES
+COPY --chmod=0644 licenses /usr/share/doc/kube-ovn/licenses
 
 COPY --from=setcap /kube-ovn /kube-ovn
 RUN test "$(getcap /kube-ovn/kube-ovn-tproxy)" = "/kube-ovn/kube-ovn-tproxy cap_sys_admin=ep" && \
