@@ -5,6 +5,11 @@ dist/images/test-server
 dist/images/kube-ovn
 dist/images/kube-ovn-acl-sample
 dist/images/kube-ovn-cmd
+dist/images/kube-ovn-ipsec
+dist/images/kube-ovn-tproxy
+dist/images/kubectl-ko-node-agent
+# written into the working directory by dist/images/install.sh
+kubectl-ko-node-agent.yaml
 dist/images/kube-ovn-bfdd-supervisor
 dist/images/kube-ovn-daemon
 dist/images/kube-ovn-controller
