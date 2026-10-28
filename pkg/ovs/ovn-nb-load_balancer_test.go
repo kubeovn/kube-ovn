@@ -1,17 +1,21 @@
 package ovs
 
 import (
+	"context"
 	"fmt"
+	"maps"
 	"net"
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
-	"k8s.io/utils/ptr"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -38,6 +42,146 @@ func (suite *OvnClientTestSuite) testCreateLoadBalancer() {
 	// should no err create lb repeatedly
 	err = nbClient.CreateLoadBalancer(lbName, "tcp", "ip_dst")
 	require.NoError(t, err)
+}
+
+func (suite *OvnClientTestSuite) testCreateLoadBalancerDuplicateGuard() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+
+	listByName := func(t *testing.T, name string) []ovnnb.LoadBalancer {
+		t.Helper()
+		lbs, err := nbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+			return lb.Name == name
+		})
+		require.NoError(t, err)
+		return lbs
+	}
+
+	t.Run("does not add to pre-existing duplicates", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-lb-duplicates"
+
+		for range 2 {
+			ops, err := nbClient.Create(&ovnnb.LoadBalancer{
+				UUID:     ovsclient.NamedUUID(),
+				Name:     name,
+				Protocol: new(ovnnb.LoadBalancerProtocolTCP),
+			})
+			require.NoError(t, err)
+			require.NoError(t, nbClient.Transact("lb-add", ops))
+		}
+
+		require.NoError(t, nbClient.CreateLoadBalancer(name, "tcp"))
+		require.Len(t, listByName(t, name), 2)
+	})
+
+	t.Run("concurrent creates produce exactly one load balancer", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-lb-concurrent"
+
+		const goroutines = 10
+		errs := make([]error, goroutines)
+		var wg sync.WaitGroup
+		wg.Add(goroutines)
+		for i := range goroutines {
+			go func() {
+				defer wg.Done()
+				errs[i] = nbClient.CreateLoadBalancer(name, "tcp")
+			}()
+		}
+		wg.Wait()
+
+		for i, err := range errs {
+			require.NoError(t, err, "goroutine %d returned error", i)
+		}
+		require.Len(t, listByName(t, name), 1)
+	})
+
+	t.Run("wait blocks insert when row already exists", func(t *testing.T) {
+		t.Parallel()
+		name := "test-create-lb-wait-block"
+
+		// insert a row directly, bypassing the cache pre-check
+		ops, err := nbClient.Create(&ovnnb.LoadBalancer{
+			UUID:     ovsclient.NamedUUID(),
+			Name:     name,
+			Protocol: new(ovnnb.LoadBalancerProtocolTCP),
+		})
+		require.NoError(t, err)
+		require.NoError(t, nbClient.Transact("lb-add", ops))
+
+		created, err := nbClient.createLoadBalancerIfNotExists("lb-add", &ovnnb.LoadBalancer{
+			UUID:     ovsclient.NamedUUID(),
+			Name:     name,
+			Protocol: new(ovnnb.LoadBalancerProtocolTCP),
+		})
+		require.NoError(t, err)
+		require.False(t, created, "expected Wait to block insert for existing row")
+		require.Len(t, listByName(t, name), 1)
+	})
+
+	t.Run("concurrent reconciles produce exactly one load balancer", func(t *testing.T) {
+		t.Parallel()
+		name := "test-reconcile-lb-concurrent"
+
+		const goroutines = 10
+		errs := make([]error, goroutines)
+		var wg sync.WaitGroup
+		wg.Add(goroutines)
+		for i := range goroutines {
+			go func() {
+				defer wg.Done()
+				errs[i] = nbClient.ReconcileLoadBalancer(LoadBalancerConfig{Name: name, Protocol: "tcp"})
+			}()
+		}
+		wg.Wait()
+
+		// a reconcile that lost the creation race asks the caller to retry
+		for i, err := range errs {
+			if err != nil {
+				require.ErrorContains(t, err, "created concurrently", "goroutine %d", i)
+			}
+		}
+		require.Len(t, listByName(t, name), 1)
+		require.NoError(t, nbClient.ReconcileLoadBalancer(LoadBalancerConfig{Name: name, Protocol: "tcp"}))
+	})
+}
+
+func (suite *OvnClientTestSuite) testReconcileLoadBalancer() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-reconcile-lb"
+	externalIDs := map[string]string{"owner": "service"}
+
+	require.NoError(t, nbClient.ReconcileLoadBalancer(LoadBalancerConfig{
+		Name:            lbName,
+		Protocol:        "tcp",
+		SelectionFields: nil,
+		ExternalIDs:     externalIDs,
+		Options:         map[string]string{"affinity_timeout": "42", "unrelated": "keep"},
+	}))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, externalIDs, lb.ExternalIDs)
+	require.Equal(t, map[string]string{"affinity_timeout": "42", "unrelated": "keep"}, lb.Options)
+
+	require.NoError(t, nbClient.ReconcileLoadBalancer(LoadBalancerConfig{
+		Name:          lbName,
+		Protocol:      "tcp",
+		ExternalIDs:   map[string]string{"version": "v1"},
+		Options:       map[string]string{"distributed": "true"},
+		DeleteOptions: []string{"affinity_timeout"},
+	}))
+
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"owner": "service", "version": "v1"}, lb.ExternalIDs)
+	require.Equal(t, map[string]string{"distributed": "true", "unrelated": "keep"}, lb.Options)
 }
 
 func (suite *OvnClientTestSuite) testUpdateLoadBalancer() {
@@ -296,7 +440,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerOp() {
 		lb1 := &ovnnb.LoadBalancer{
 			UUID:     ovsclient.NamedUUID(),
 			Name:     lbName,
-			Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
+			Protocol: new(ovnnb.LoadBalancerProtocolTCP),
 		}
 		ops, err := nbClient.Create(lb1)
 		require.NoError(t, err)
@@ -307,7 +451,7 @@ func (suite *OvnClientTestSuite) testDeleteLoadBalancerOp() {
 		lb2 := &ovnnb.LoadBalancer{
 			UUID:     ovsclient.NamedUUID(),
 			Name:     lbName,
-			Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
+			Protocol: new(ovnnb.LoadBalancerProtocolTCP),
 		}
 		ops, err = nbClient.Create(lb2)
 		require.NoError(t, err)
@@ -368,7 +512,7 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 			lb1 := &ovnnb.LoadBalancer{
 				UUID:     ovsclient.NamedUUID(),
 				Name:     lbName,
-				Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
+				Protocol: new(ovnnb.LoadBalancerProtocolTCP),
 			}
 			ops, err := nbClient.Create(lb1)
 			require.NoError(t, err)
@@ -379,7 +523,7 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 			lb2 := &ovnnb.LoadBalancer{
 				UUID:     ovsclient.NamedUUID(),
 				Name:     lbName,
-				Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
+				Protocol: new(ovnnb.LoadBalancerProtocolTCP),
 			}
 			ops, err = nbClient.Create(lb2)
 			require.NoError(t, err)
@@ -391,6 +535,347 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerAffinityTimeout() {
 			require.ErrorContains(t, err, "more than one load balancer with same name")
 		},
 	)
+}
+
+func (suite *OvnClientTestSuite) testDeleteLoadBalancerAffinityTimeout() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-delete-affinity-timeout-lb"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.SetLoadBalancerAffinityTimeout(lbName, 42))
+	require.NoError(t, nbClient.DeleteLoadBalancerAffinityTimeout(lbName))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	_, ok := lb.Options["affinity_timeout"]
+	require.False(t, ok)
+
+	require.NoError(t, nbClient.DeleteLoadBalancerAffinityTimeout(lbName))
+}
+
+func (suite *OvnClientTestSuite) testSetLoadBalancerSelectionFields() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-set-lb-selection-fields"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.SetLoadBalancerSelectionFields(lbName, []string{"ip_src", "ipv6_src"}))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"ip_src", "ipv6_src"}, lb.SelectionFields)
+	require.NoError(t, nbClient.SetLoadBalancerSelectionFields(lbName, nil))
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Empty(t, lb.SelectionFields)
+}
+
+func (suite *OvnClientTestSuite) testSetLoadBalancerDistributed() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-set-lb-distributed"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.SetLoadBalancerDistributed(lbName, true))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "true", lb.Options["distributed"])
+	lb.Options["existing"] = "keep"
+	require.NoError(t, nbClient.UpdateLoadBalancer(lb, &lb.Options))
+	require.NoError(t, nbClient.SetLoadBalancerDistributed(lbName, false))
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	_, distributedSet := lb.Options["distributed"]
+	require.False(t, distributedSet)
+	require.Equal(t, "keep", lb.Options["existing"])
+}
+
+func (suite *OvnClientTestSuite) testSetLoadBalancerAddressFamily() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-set-lb-address-family"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.SetLoadBalancerAddressFamily(lbName, "ipv6"))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "ipv6", lb.Options["address-family"])
+	lb.Options["existing"] = "keep"
+	require.NoError(t, nbClient.UpdateLoadBalancer(lb, &lb.Options))
+	require.NoError(t, nbClient.SetLoadBalancerAddressFamily(lbName, "ipv4"))
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "ipv4", lb.Options["address-family"])
+	require.Equal(t, "keep", lb.Options["existing"])
+}
+
+func (suite *OvnClientTestSuite) testSetLoadBalancerExternalIDs() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lbName := "test-set-lb-external-ids"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	lb.ExternalIDs["existing"] = "keep"
+	require.NoError(t, nbClient.UpdateLoadBalancer(lb, &lb.ExternalIDs))
+	require.NoError(t, nbClient.SetLoadBalancerExternalIDs(lbName, map[string]string{"owner": "service"}))
+
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, "kube-ovn", lb.ExternalIDs["vendor"])
+	require.Equal(t, "keep", lb.ExternalIDs["existing"])
+	require.Equal(t, "service", lb.ExternalIDs["owner"])
+}
+
+func (suite *OvnClientTestSuite) testReconcileChassisTemplateVariables() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	chassis := "test-chassis-template-reconcile"
+	prefix := "kube_ovn_svc_test_"
+	variables := map[string]string{prefix + "vip": "10.96.0.10"}
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, prefix, variables))
+
+	var rows []ovnnb.ChassisTemplateVar
+	require.Eventually(t, func() bool {
+		rows = nil
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, variables)
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, util.CniTypeName, rows[0].ExternalIDs["vendor"])
+
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, "other_", map[string]string{"other_keep": "value"}))
+	require.Eventually(t, func() bool {
+		rows = nil
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && rows[0].Variables["other_keep"] == "value"
+	}, time.Second, 10*time.Millisecond)
+
+	variables = map[string]string{
+		prefix + "vip":      "10.96.0.11",
+		prefix + "backends": "10.0.0.2:8080",
+	}
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, prefix, variables))
+	require.Eventually(t, func() bool {
+		rows = nil
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{
+			prefix + "vip":      "10.96.0.11",
+			prefix + "backends": "10.0.0.2:8080",
+			"other_keep":        "value",
+		})
+	}, time.Second, 10*time.Millisecond)
+
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(chassis, prefix, nil))
+	require.Eventually(t, func() bool {
+		rows = nil
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{"other_keep": "value"})
+	}, time.Second, 10*time.Millisecond)
+}
+
+func (suite *OvnClientTestSuite) testReconcileTemplateVIPAndChassisVariables() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	fixture := newTemplateVIPTransactionFixture(t, nbClient)
+	beforeOld, err := nbClient.GetLoadBalancer(fixture.oldLB, false)
+	require.NoError(t, err)
+	beforeNew, err := nbClient.GetLoadBalancer(fixture.newLB, false)
+	require.NoError(t, err)
+	beforeVariables := templateVIPVariables(t, nbClient, fixture.variables[0].Chassis)
+	interceptor := &templateVIPTransactionClient{Client: nbClient.Client, fail: true}
+	transactionClient := &OVNNbClient{Client: interceptor, Timeout: nbClient.Timeout}
+
+	err = transactionClient.ReconcileTemplateVIPAndChassisVariables(fixture.migrations, fixture.staleVIPs, fixture.variables)
+	require.ErrorContains(t, err, "timed out")
+	require.Len(t, interceptor.transactions, 1)
+	requireTemplateVIPTransaction(t, interceptor.transactions[0])
+	oldLB, err := nbClient.GetLoadBalancer(fixture.oldLB, false)
+	require.NoError(t, err)
+	require.Equal(t, beforeOld, oldLB)
+	newLB, err := nbClient.GetLoadBalancer(fixture.newLB, false)
+	require.NoError(t, err)
+	require.Equal(t, beforeNew, newLB)
+	require.Equal(t, beforeVariables, templateVIPVariables(t, nbClient, fixture.variables[0].Chassis))
+	require.Empty(t, templateVIPVariables(t, nbClient, fixture.variables[1].Chassis))
+
+	interceptor.fail = false
+	require.NoError(t, transactionClient.ReconcileTemplateVIPAndChassisVariables(fixture.migrations, fixture.staleVIPs, fixture.variables))
+	require.Len(t, interceptor.transactions, 2)
+	requireTemplateVIPTransaction(t, interceptor.transactions[1])
+	require.Eventually(t, func() bool {
+		oldLB, err = nbClient.GetLoadBalancer(fixture.oldLB, false)
+		if err != nil || len(oldLB.Vips) != 1 || len(oldLB.HealthCheck) != 0 {
+			return false
+		}
+		newLB, err = nbClient.GetLoadBalancer(fixture.newLB, false)
+		return err == nil && maps.Equal(newLB.Vips, fixture.desiredVIPs)
+	}, time.Second, 10*time.Millisecond)
+	require.Equal(t, map[string]string{"10.96.0.31:90": "10.0.0.3:9090"}, oldLB.Vips)
+	require.Equal(t, map[string]string{"10.0.0.3": "retained-port:10.0.0.254"}, oldLB.IPPortMappings)
+	for _, migration := range fixture.migrations {
+		require.NotContains(t, oldLB.ExternalIDs, localExternalVIPKeyPrefix+migration.OldVIP)
+	}
+	for index, reconciliation := range fixture.variables {
+		expected := maps.Clone(reconciliation.Variables)
+		if index == 0 {
+			expected["other_keep"] = "value"
+		}
+		require.Eventually(t, func() bool {
+			rows := templateVIPVariables(t, nbClient, reconciliation.Chassis)
+			return len(rows) == 1 && maps.Equal(rows[0].Variables, expected)
+		}, time.Second, 10*time.Millisecond)
+	}
+}
+
+type templateVIPTransactionFixture struct {
+	oldLB, newLB string
+	migrations   []TemplateVIPMigration
+	staleVIPs    []TemplateVIPDeletion
+	variables    []ChassisTemplateVariableReconciliation
+	desiredVIPs  map[string]string
+}
+
+func newTemplateVIPTransactionFixture(t *testing.T, nbClient *OVNNbClient) templateVIPTransactionFixture {
+	t.Helper()
+	const prefix = "kube_ovn_template_atomic_"
+	fixture := templateVIPTransactionFixture{
+		oldLB: "test-template-atomic-old", newLB: "test-template-atomic-new",
+		desiredVIPs: make(map[string]string),
+	}
+	require.NoError(t, nbClient.CreateLoadBalancer(fixture.oldLB, "tcp"))
+	require.NoError(t, nbClient.CreateLoadBalancer(fixture.newLB, "tcp"))
+	oldLB, err := nbClient.GetLoadBalancer(fixture.oldLB, false)
+	require.NoError(t, err)
+	oldLB.Vips = map[string]string{"10.96.0.31:90": "10.0.0.3:9090"}
+	oldLB.IPPortMappings = map[string]string{"10.0.0.2": "removed-port:10.0.0.254", "10.0.0.3": "retained-port:10.0.0.254"}
+	variables := make(map[string]string)
+	for _, port := range []string{"80", "81"} {
+		vip := "10.96.0.30:" + port
+		vipVariable, backendVariable := prefix+"vip_"+port, prefix+"backends_"+port
+		oldLB.Vips[vip] = "10.0.0.2:8080,10.0.0.3:8080"
+		oldLB.ExternalIDs[localExternalVIPKeyPrefix+vip] = "old-node-port"
+		fixture.migrations = append(fixture.migrations, TemplateVIPMigration{
+			LoadBalancer: fixture.newLB, VIP: "^" + vipVariable + ":" + port,
+			Backends: []string{"^" + backendVariable}, OldVIP: vip, OldLoadBalancers: []string{fixture.oldLB},
+		})
+		fixture.desiredVIPs["^"+vipVariable+":"+port] = "^" + backendVariable
+		variables[vipVariable], variables[backendVariable] = "10.96.0.30", "10.0.0.2:8080,10.0.0.3:8080"
+	}
+	require.NoError(t, nbClient.UpdateLoadBalancer(oldLB, &oldLB.Vips, &oldLB.IPPortMappings, &oldLB.ExternalIDs))
+	for _, migration := range fixture.migrations {
+		require.NoError(t, nbClient.AddLoadBalancerHealthCheck(fixture.oldLB, migration.OldVIP, nil))
+	}
+	staleVIP := "^" + prefix + "stale:82"
+	require.NoError(t, nbClient.LoadBalancerAddVip(fixture.newLB, staleVIP, "^"+prefix+"stale_backends"))
+	fixture.staleVIPs = []TemplateVIPDeletion{{LoadBalancer: fixture.newLB, VIP: staleVIP}}
+	for _, chassis := range []string{"test-template-atomic-existing", "test-template-atomic-new"} {
+		fixture.variables = append(fixture.variables, ChassisTemplateVariableReconciliation{Chassis: chassis, Prefix: prefix, Variables: variables})
+	}
+	require.NoError(t, nbClient.ReconcileChassisTemplateVariables(fixture.variables[0].Chassis, "", map[string]string{
+		prefix + "vip_80": "10.96.0.99", prefix + "stale": "old", "other_keep": "value",
+	}))
+	return fixture
+}
+
+type templateVIPTransactionClient struct {
+	client.Client
+	fail         bool
+	transactions [][]ovsdb.Operation
+}
+
+func (c *templateVIPTransactionClient) Transact(ctx context.Context, ops ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	c.transactions = append(c.transactions, slices.Clone(ops))
+	if c.fail {
+		// A final unsatisfied wait rejects the transaction after all writes.
+		ops = append(slices.Clone(ops), ovsdb.Operation{
+			Op: ovsdb.OperationWait, Table: ovnnb.ChassisTemplateVarTable,
+			Timeout: new(0), Until: "==", Columns: []string{"chassis"},
+			Where: []ovsdb.Condition{ovsdb.NewCondition("chassis", ovsdb.ConditionEqual, "test-template-atomic-missing")},
+			Rows:  []ovsdb.Row{{"chassis": "test-template-atomic-missing"}},
+		})
+	}
+	return c.Client.Transact(ctx, ops...)
+}
+
+func requireTemplateVIPTransaction(t *testing.T, ops []ovsdb.Operation) {
+	t.Helper()
+	var tables []string
+	for _, op := range ops {
+		tables = append(tables, op.Table)
+	}
+	require.Contains(t, tables, ovnnb.LoadBalancerTable)
+	require.Contains(t, tables, ovnnb.ChassisTemplateVarTable)
+}
+
+func templateVIPVariables(t *testing.T, nbClient *OVNNbClient, chassis string) []ovnnb.ChassisTemplateVar {
+	t.Helper()
+	var rows []ovnnb.ChassisTemplateVar
+	require.NoError(t, nbClient.WhereCache(func(row *ovnnb.ChassisTemplateVar) bool {
+		return row.Chassis == chassis
+	}).List(t.Context(), &rows))
+	return rows
+}
+
+func (suite *OvnClientTestSuite) testDeleteChassisTemplateVariables() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	row := &ovnnb.ChassisTemplateVar{
+		UUID:    ovsclient.NamedUUID(),
+		Chassis: "test-chassis-template-cleanup",
+		Variables: map[string]string{
+			"kube_ovn_svc_active_vip":   "10.96.0.10",
+			"kube_ovn_svc_orphan_vip":   "10.96.0.11",
+			"other_controller_variable": "keep",
+		},
+	}
+	ops, err := nbClient.Create(row)
+	require.NoError(t, err)
+	require.NoError(t, nbClient.Transact("chassis-template-var-add", ops))
+	require.Eventually(t, func() bool {
+		var rows []ovnnb.ChassisTemplateVar
+		err := nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == row.Chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1
+	}, time.Second, 10*time.Millisecond)
+	require.NoError(t, nbClient.DeleteChassisTemplateVariables(func(name string) bool {
+		return name == "kube_ovn_svc_orphan_vip"
+	}))
+
+	var rows []ovnnb.ChassisTemplateVar
+	require.Eventually(t, func() bool {
+		rows = nil
+		err = nbClient.ovsDbClient.WhereCache(func(item *ovnnb.ChassisTemplateVar) bool {
+			return item.Chassis == row.Chassis
+		}).List(t.Context(), &rows)
+		return err == nil && len(rows) == 1 && maps.Equal(rows[0].Variables, map[string]string{
+			"kube_ovn_svc_active_vip":   "10.96.0.10",
+			"other_controller_variable": "keep",
+		})
+	}, time.Second, 10*time.Millisecond)
 }
 
 func (suite *OvnClientTestSuite) testSetLoadBalancerCtFlush() {
@@ -450,7 +935,7 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerCtFlush() {
 			lb1 := &ovnnb.LoadBalancer{
 				UUID:     ovsclient.NamedUUID(),
 				Name:     lbName,
-				Protocol: ptr.To(ovnnb.LoadBalancerProtocolUDP),
+				Protocol: new(ovnnb.LoadBalancerProtocolUDP),
 			}
 			ops, err := nbClient.Create(lb1)
 			require.NoError(t, err)
@@ -461,7 +946,7 @@ func (suite *OvnClientTestSuite) testSetLoadBalancerCtFlush() {
 			lb2 := &ovnnb.LoadBalancer{
 				UUID:     ovsclient.NamedUUID(),
 				Name:     lbName,
-				Protocol: ptr.To(ovnnb.LoadBalancerProtocolUDP),
+				Protocol: new(ovnnb.LoadBalancerProtocolUDP),
 			}
 			ops, err = nbClient.Create(lb2)
 			require.NoError(t, err)
@@ -592,7 +1077,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
 			lb1 := &ovnnb.LoadBalancer{
 				UUID:     ovsclient.NamedUUID(),
 				Name:     lbName,
-				Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
+				Protocol: new(ovnnb.LoadBalancerProtocolTCP),
 			}
 			ops, err := nbClient.Create(lb1)
 			require.NoError(t, err)
@@ -603,7 +1088,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
 			lb2 := &ovnnb.LoadBalancer{
 				UUID:     ovsclient.NamedUUID(),
 				Name:     lbName,
-				Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
+				Protocol: new(ovnnb.LoadBalancerProtocolTCP),
 			}
 			ops, err = nbClient.Create(lb2)
 			require.NoError(t, err)
@@ -611,8 +1096,15 @@ func (suite *OvnClientTestSuite) testLoadBalancerAddHealthCheck() {
 			err = nbClient.Transact("lb-add", ops)
 			require.NoError(t, err)
 
+			// pre-existing duplicates must not make the creation fail, nor be added to
 			err = nbClient.CreateLoadBalancer(lbName, "tcp")
-			require.ErrorContains(t, err, "more than one load balancer with same name")
+			require.NoError(t, err)
+
+			lbs, err := nbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
+				return lb.Name == lbName
+			})
+			require.NoError(t, err)
+			require.Len(t, lbs, 2)
 		},
 	)
 }
@@ -648,6 +1140,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 		err = nbClient.LoadBalancerAddVip(lbName, vip, strings.Split(backends, ",")...)
 		require.NoError(t, err)
 	}
+	require.NoError(t, nbClient.LoadBalancerAddIPPortMapping(lbName, markedVIP, map[string]string{"192.168.20.3": "backend.default"}))
 	require.NoError(t, nbClient.SetLoadBalancerVIPExternalTrafficLocal(lbName, markedVIP, "node-worker-1"))
 	deletedVips = []string{
 		markedVIP,
@@ -665,6 +1158,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	require.NoError(t, err)
 	require.Equal(t, vips, lb.Vips)
 	require.NotContains(t, lb.ExternalIDs, localExternalVIPKeyPrefix+markedVIP)
+	require.NotContains(t, lb.IPPortMappings, "192.168.20.3")
 
 	err = nbClient.LoadBalancerAddHealthCheck(lbName, "10.107.43.239:8080", false, nil, nil)
 	require.NoError(t, err)
@@ -681,7 +1175,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	lb1 := &ovnnb.LoadBalancer{
 		UUID:     ovsclient.NamedUUID(),
 		Name:     lbName,
-		Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
+		Protocol: new(ovnnb.LoadBalancerProtocolTCP),
 	}
 	ops, err := nbClient.Create(lb1)
 	require.NoError(t, err)
@@ -692,7 +1186,7 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 	lb2 := &ovnnb.LoadBalancer{
 		UUID:     ovsclient.NamedUUID(),
 		Name:     lbName,
-		Protocol: ptr.To(ovnnb.LoadBalancerProtocolTCP),
+		Protocol: new(ovnnb.LoadBalancerProtocolTCP),
 	}
 	ops, err = nbClient.Create(lb2)
 	require.NoError(t, err)
@@ -702,6 +1196,85 @@ func (suite *OvnClientTestSuite) testLoadBalancerDeleteVip() {
 
 	err = nbClient.LoadBalancerDeleteVip(lbName, "10.107.43.239:8080", ignoreHealthCheck)
 	require.ErrorContains(t, err, "more than one load balancer with same name")
+}
+
+func (suite *OvnClientTestSuite) testLoadBalancerMigrateVIP() {
+	t := suite.T()
+	t.Parallel()
+
+	const (
+		oldLBName = "test-lb-migrate-vip-old"
+		newLBName = "test-lb-migrate-vip-new"
+		lsName    = "test-lb-migrate-vip-ls"
+		oldVIP    = "10.96.0.20:80"
+		newVIP    = "^service_vip:80"
+		backend   = "10.0.0.2:8080"
+	)
+	nbClient := suite.ovnNBClient
+	require.NoError(t, nbClient.CreateLoadBalancer(oldLBName, "tcp"))
+	require.NoError(t, nbClient.CreateLoadBalancer(newLBName, "tcp"))
+	require.NoError(t, nbClient.CreateBareLogicalSwitch(lsName))
+	require.NoError(t, nbClient.LoadBalancerAddVip(oldLBName, oldVIP, backend))
+	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(oldLBName, oldVIP, false, map[string]string{"10.0.0.2": "backend.default"}, nil))
+
+	require.NoError(t, nbClient.LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(
+		newLBName,
+		newVIP,
+		[]string{"^service_backends"},
+		oldVIP,
+		[]string{oldLBName},
+		[]LoadBalancerAttachment{{LogicalSwitch: lsName, Operation: ovsdb.MutateOperationInsert}},
+		map[string]string{"10.0.0.2": "backend.default"},
+		false,
+		nil,
+	))
+
+	oldLB, err := nbClient.GetLoadBalancer(oldLBName, false)
+	require.NoError(t, err)
+	require.NotContains(t, oldLB.Vips, oldVIP)
+	require.NotContains(t, oldLB.IPPortMappings, "10.0.0.2")
+	require.Empty(t, oldLB.HealthCheck)
+
+	newLB, err := nbClient.GetLoadBalancer(newLBName, false)
+	require.NoError(t, err)
+	require.Equal(t, "^service_backends", newLB.Vips[newVIP])
+	require.Equal(t, map[string]string{"10.0.0.2": "backend.default"}, newLB.IPPortMappings)
+	require.Len(t, newLB.HealthCheck, 1)
+
+	ls, err := nbClient.GetLogicalSwitch(lsName, false)
+	require.NoError(t, err)
+	require.Contains(t, ls.LoadBalancer, newLB.UUID)
+}
+
+func (suite *OvnClientTestSuite) testLoadBalancerMigrateVIPClearsEmptyMapping() {
+	t := suite.T()
+	t.Parallel()
+
+	const (
+		lbName        = "test-lb-migrate-vip-clear-mapping"
+		vip           = "10.96.0.21:80"
+		otherVIP      = "10.96.0.22:80"
+		backend       = "10.0.0.3:8080"
+		sharedBackend = "10.0.0.4:8080"
+	)
+	nbClient := suite.ovnNBClient
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.LoadBalancerAddVip(lbName, vip, backend, sharedBackend))
+	require.NoError(t, nbClient.LoadBalancerAddVip(lbName, otherVIP, sharedBackend))
+	require.NoError(t, nbClient.LoadBalancerUpdateIPPortMapping(lbName, vip, map[string]string{
+		"10.0.0.3": "backend.default",
+		"10.0.0.4": "shared.default",
+	}))
+
+	// Cluster mode has no distributed backend mapping. Reconcile must still
+	// clear a mapping left behind when the VIP previously used Local mode.
+	require.NoError(t, nbClient.LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(
+		lbName, vip, []string{backend}, vip, nil, nil, nil, true, nil,
+	))
+
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"10.0.0.4": "shared.default"}, lb.IPPortMappings)
 }
 
 func (suite *OvnClientTestSuite) testSetLoadBalancerVIPExternalTrafficLocal() {
@@ -1496,4 +2069,128 @@ func (suite *OvnClientTestSuite) testLoadBalancerUpdateHealthCheckOp() {
 		require.NoError(t, err)
 		require.Nil(t, ops)
 	})
+}
+
+func TestLoadBalancerDisableHealthCheck(t *testing.T) {
+	for _, method := range []string{"reconcile", "add"} {
+		for _, vip := range []string{"10.96.0.30:80", "[fd00::30]:80"} {
+			t.Run(method+"/"+vip, func(t *testing.T) {
+				dbModel, err := ovnnb.FullDatabaseModel()
+				require.NoError(t, err)
+				_, socket := newOVSDBServer(t, fmt.Sprintf("disable-hc-%d", time.Now().UnixNano()), dbModel, ovnnb.Schema())
+				nbClient, err := newOvnNbClient(t, "unix:"+socket, 10)
+				require.NoError(t, err)
+				t.Cleanup(nbClient.Close)
+				testLoadBalancerDisableHealthCheck(t, nbClient, method, vip)
+			})
+		}
+	}
+}
+
+func testLoadBalancerDisableHealthCheck(t *testing.T, nbClient *OVNNbClient, method, vip string) {
+	t.Helper()
+	const (
+		lbName      = "disable-hc"
+		otherLBName = "keep-hc"
+		backend     = "10.0.0.2:8080"
+		otherVIP    = "10.96.0.31:80"
+	)
+	mapping := map[string]string{"10.0.0.2": "backend.default:10.0.0.254"}
+	for _, name := range []string{lbName, otherLBName} {
+		require.NoError(t, nbClient.CreateLoadBalancer(name, "tcp"))
+		require.NoError(t, nbClient.LoadBalancerAddVip(name, vip, backend))
+		require.NoError(t, nbClient.LoadBalancerAddHealthCheck(name, vip, false, mapping, nil))
+	}
+	require.NoError(t, nbClient.LoadBalancerAddVip(lbName, otherVIP, backend))
+	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(lbName, otherVIP, false, mapping, nil))
+	_, oldHC, err := nbClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	require.NoError(t, err)
+	_, otherHC, err := nbClient.GetLoadBalancerHealthCheck(lbName, otherVIP, false)
+	require.NoError(t, err)
+	_, otherLBHC, err := nbClient.GetLoadBalancerHealthCheck(otherLBName, vip, false)
+	require.NoError(t, err)
+
+	reconcile := func(ignoreHealthCheck bool) {
+		t.Helper()
+		if method == "add" {
+			require.NoError(t, nbClient.LoadBalancerAddHealthCheck(lbName, vip, ignoreHealthCheck, mapping, nil))
+		} else {
+			require.NoError(t, nbClient.LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(
+				lbName, vip, []string{backend}, vip, nil, nil, mapping, ignoreHealthCheck, nil,
+			))
+		}
+	}
+	for range 2 {
+		reconcile(true)
+		lb, hc, err := nbClient.GetLoadBalancerHealthCheck(lbName, vip, true)
+		require.NoError(t, err)
+		require.Nil(t, hc, "disabling health checks must remove the existing VIP health check")
+		require.Equal(t, []string{otherHC.UUID}, lb.HealthCheck)
+		require.Equal(t, backend, lb.Vips[vip])
+		require.Equal(t, backend, lb.Vips[otherVIP])
+		require.Equal(t, mapping, lb.IPPortMappings)
+		healthChecks, err := nbClient.ListLoadBalancerHealthChecks(func(hc *ovnnb.LoadBalancerHealthCheck) bool {
+			return hc.UUID == oldHC.UUID
+		})
+		require.NoError(t, err)
+		require.Empty(t, healthChecks, "the stale health check row must also be deleted")
+		_, hc, err = nbClient.GetLoadBalancerHealthCheck(otherLBName, vip, false)
+		require.NoError(t, err)
+		require.Equal(t, otherLBHC.UUID, hc.UUID)
+	}
+	reconcile(false)
+	lb, hc, err := nbClient.GetLoadBalancerHealthCheck(lbName, vip, false)
+	require.NoError(t, err)
+	require.NotEqual(t, oldHC.UUID, hc.UUID)
+	require.Len(t, lb.HealthCheck, 2)
+	reconcile(false)
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Len(t, lb.HealthCheck, 2)
+}
+
+type recordingOVSDBClient struct {
+	client.Client
+	transactions [][]ovsdb.Operation
+}
+
+func (c *recordingOVSDBClient) Transact(ctx context.Context, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	c.transactions = append(c.transactions, slices.Clone(operations))
+	return c.Client.Transact(ctx, operations...)
+}
+
+func TestLoadBalancerAddHealthCheckDisableIsAtomic(t *testing.T) {
+	dbModel, err := ovnnb.FullDatabaseModel()
+	require.NoError(t, err)
+	_, socket := newOVSDBServer(t, fmt.Sprintf("disable-hc-atomic-%d", time.Now().UnixNano()), dbModel, ovnnb.Schema())
+	nbClient, err := newOvnNbClient(t, "unix:"+socket, 10)
+	require.NoError(t, err)
+	t.Cleanup(nbClient.Close)
+
+	const (
+		lbName  = "disable-hc-atomic"
+		vip     = "10.96.0.30:80"
+		backend = "10.0.0.2:8080"
+	)
+	oldMapping := map[string]string{"10.0.0.2": "old-backend.default"}
+	newMapping := map[string]string{"10.0.0.2": "new-backend.default"}
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.LoadBalancerAddVip(lbName, vip, backend))
+	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(lbName, vip, false, oldMapping, nil))
+
+	recorder := &recordingOVSDBClient{Client: nbClient.Client}
+	nbClient.Client = recorder
+	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(lbName, vip, true, newMapping, nil))
+	require.Len(t, recorder.transactions, 1, "disabling a health check should use one transaction")
+	var hasMappingMutation, hasHealthCheckDelete bool
+	for _, op := range recorder.transactions[0] {
+		if op.Op == ovsdb.OperationMutate && op.Table == ovnnb.LoadBalancerTable {
+			hasMappingMutation = true
+		}
+		if op.Op == ovsdb.OperationDelete && op.Table == ovnnb.LoadBalancerHealthCheckTable {
+			hasHealthCheckDelete = true
+		}
+	}
+	require.True(t, hasMappingMutation, "the transaction should update IP port mappings")
+	require.True(t, hasHealthCheckDelete, "the transaction should delete the health check row")
 }

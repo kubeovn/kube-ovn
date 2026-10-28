@@ -158,6 +158,104 @@ func TestGetEncapIPByNetwork(t *testing.T) {
 	}
 }
 
+func TestComputePodMTU(t *testing.T) {
+	tests := []struct {
+		name        string
+		ifaceMTU    int
+		networkType string
+		encapIsIPv6 bool
+		maxMTU      int
+		expected    int
+		expectError bool
+	}{
+		{
+			name:        "geneve ipv4 no cap",
+			ifaceMTU:    1500,
+			networkType: util.NetworkTypeGeneve,
+			expected:    1400,
+		},
+		{
+			name:        "vlan ipv4 no cap uses geneve header",
+			ifaceMTU:    1500,
+			networkType: util.NetworkTypeVlan,
+			expected:    1400,
+		},
+		{
+			name:        "vxlan ipv4 no cap",
+			ifaceMTU:    1500,
+			networkType: util.NetworkTypeVxlan,
+			expected:    1450,
+		},
+		{
+			name:        "stt ipv4 no cap",
+			ifaceMTU:    1500,
+			networkType: util.NetworkTypeStt,
+			expected:    1428,
+		},
+		{
+			name:        "geneve ipv6 subtracts additional 20",
+			ifaceMTU:    1500,
+			networkType: util.NetworkTypeGeneve,
+			encapIsIPv6: true,
+			expected:    1380,
+		},
+		{
+			name:        "jumbo frame geneve capped to 1500",
+			ifaceMTU:    9000,
+			networkType: util.NetworkTypeGeneve,
+			maxMTU:      1500,
+			expected:    1500,
+		},
+		{
+			name:        "cap not triggered when computed value below cap",
+			ifaceMTU:    1500,
+			networkType: util.NetworkTypeGeneve,
+			maxMTU:      1500,
+			expected:    1400,
+		},
+		{
+			name:        "cap equal to computed value is a no-op",
+			ifaceMTU:    1600,
+			networkType: util.NetworkTypeGeneve,
+			maxMTU:      1500,
+			expected:    1500,
+		},
+		{
+			name:        "cap zero disables the cap on jumbo frames",
+			ifaceMTU:    9000,
+			networkType: util.NetworkTypeGeneve,
+			maxMTU:      0,
+			expected:    8900,
+		},
+		{
+			name:        "jumbo frame vxlan ipv6 capped",
+			ifaceMTU:    9000,
+			networkType: util.NetworkTypeVxlan,
+			encapIsIPv6: true,
+			maxMTU:      1500,
+			expected:    1500,
+		},
+		{
+			name:        "invalid network type errors",
+			ifaceMTU:    1500,
+			networkType: "bogus",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := computePodMTU(tt.ifaceMTU, tt.networkType, tt.encapIsIPv6, tt.maxMTU)
+			if tt.expectError {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
 func TestGetEncapIPByNetworkEmptyNodeNetworks(t *testing.T) {
 	config := &Configuration{
 		DefaultEncapIP: "10.0.0.1",

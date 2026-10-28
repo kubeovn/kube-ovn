@@ -3,6 +3,7 @@ package ovs
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -393,6 +394,138 @@ func (suite *OvnClientTestSuite) testCreateVirtualLogicalSwitchPort() {
 		require.NoError(t, err)
 	})
 
+	t.Run("concurrent creation is idempotent", func(t *testing.T) {
+		const callers = 8
+		concurrentLSPName := "test-create-concurrent-virtual-port-lsp"
+		start := make(chan struct{})
+		errs := make(chan error, callers)
+		var wg sync.WaitGroup
+		for range callers {
+			wg.Go(func() {
+				<-start
+				errs <- nbClient.CreateVirtualLogicalSwitchPort(concurrentLSPName, lsName, vip)
+			})
+		}
+		close(start)
+		wg.Wait()
+		close(errs)
+		for err := range errs {
+			require.NoError(t, err)
+		}
+		lsp, err := nbClient.GetLogicalSwitchPort(concurrentLSPName, false)
+		require.NoError(t, err)
+		require.Equal(t, "virtual", lsp.Type)
+		require.Equal(t, vip, lsp.Options["virtual-ip"])
+	})
+
+	t.Run("update virtual-ip when logical switch port exists", func(t *testing.T) {
+		updatedVIP := "192.168.33.11"
+		err = nbClient.CreateVirtualLogicalSwitchPort(lspName, lsName, updatedVIP)
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, map[string]string{
+			"virtual-ip": updatedVIP,
+		}, lsp.Options)
+	})
+
+	t.Run("atomically migrate legacy vip port", func(t *testing.T) {
+		legacyName := "legacy-vip"
+		newName := "vip:legacy-vip:ipv4"
+		legacyIP := "192.168.33.20"
+		err = nbClient.CreateVirtualLogicalSwitchPort(legacyName, lsName, legacyIP)
+		require.NoError(t, err)
+		legacyLsp, err := nbClient.GetLogicalSwitchPort(legacyName, false)
+		require.NoError(t, err)
+
+		err = nbClient.CreateVirtualLogicalSwitchPort(newName, lsName, legacyIP)
+		require.NoError(t, err)
+		migratedLsp, err := nbClient.GetLogicalSwitchPort(newName, false)
+		require.NoError(t, err)
+		require.Equal(t, legacyLsp.UUID, migratedLsp.UUID)
+		legacyLsp, err = nbClient.GetLogicalSwitchPort(legacyName, true)
+		require.NoError(t, err)
+		require.Nil(t, legacyLsp)
+	})
+
+	t.Run("atomically migrate legacy ipv6 vip port", func(t *testing.T) {
+		legacyName := "legacy-vip-v6"
+		newName := "vip:legacy-vip-v6:ipv6"
+		legacyIP := "2001:db8::20"
+		err = nbClient.CreateVirtualLogicalSwitchPort(legacyName, lsName, legacyIP)
+		require.NoError(t, err)
+		legacyLsp, err := nbClient.GetLogicalSwitchPort(legacyName, false)
+		require.NoError(t, err)
+
+		err = nbClient.CreateVirtualLogicalSwitchPort(newName, lsName, legacyIP)
+		require.NoError(t, err)
+		migratedLsp, err := nbClient.GetLogicalSwitchPort(newName, false)
+		require.NoError(t, err)
+		require.Equal(t, legacyLsp.UUID, migratedLsp.UUID)
+		legacyLsp, err = nbClient.GetLogicalSwitchPort(legacyName, true)
+		require.NoError(t, err)
+		require.Nil(t, legacyLsp)
+	})
+
+	t.Run("migrate legacy dual-stack vip port by address", func(t *testing.T) {
+		legacyName := "legacy-dual-vip"
+		newName := "vip:legacy-dual-vip:ipv4"
+		v4IP := "192.168.33.30"
+		v6IP := "2001:db8::30"
+		err = nbClient.CreateVirtualLogicalSwitchPort(legacyName, lsName, v4IP)
+		require.NoError(t, err)
+		legacyLsp, err := nbClient.GetLogicalSwitchPort(legacyName, false)
+		require.NoError(t, err)
+		legacyLsp.Options["virtual-ip"] = v4IP + "," + v6IP
+		err = nbClient.UpdateLogicalSwitchPort(legacyLsp, &legacyLsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.CreateVirtualLogicalSwitchPort(newName, lsName, v4IP)
+		require.NoError(t, err)
+		migratedLsp, err := nbClient.GetLogicalSwitchPort(newName, false)
+		require.NoError(t, err)
+		require.Equal(t, legacyLsp.UUID, migratedLsp.UUID)
+		require.Equal(t, v4IP, migratedLsp.Options["virtual-ip"])
+		legacyLsp, err = nbClient.GetLogicalSwitchPort(legacyName, true)
+		require.NoError(t, err)
+		require.Nil(t, legacyLsp)
+	})
+
+	t.Run("preserve legacy metadata when target port already exists", func(t *testing.T) {
+		legacyName := "legacy-vip-conflict"
+		newName := "vip:legacy-vip-conflict:ipv4"
+		legacyIP := "192.168.33.21"
+		pgName := "legacy-vip-conflict-pg"
+
+		err = nbClient.CreateVirtualLogicalSwitchPort(newName, lsName, "192.168.33.22")
+		require.NoError(t, err)
+		err = nbClient.CreateVirtualLogicalSwitchPort(legacyName, lsName, legacyIP)
+		require.NoError(t, err)
+		legacyLsp, err := nbClient.GetLogicalSwitchPort(legacyName, false)
+		require.NoError(t, err)
+		err = nbClient.SetVirtualLogicalSwitchPortVirtualParents(legacyName, "parent-port")
+		require.NoError(t, err)
+		err = nbClient.CreatePortGroup(pgName, nil)
+		require.NoError(t, err)
+		err = nbClient.PortGroupAddPorts(pgName, legacyName)
+		require.NoError(t, err)
+
+		err = nbClient.CreateVirtualLogicalSwitchPort(newName, lsName, legacyIP)
+		require.NoError(t, err)
+		migratedLsp, err := nbClient.GetLogicalSwitchPort(newName, false)
+		require.NoError(t, err)
+		require.Equal(t, legacyLsp.UUID, migratedLsp.UUID)
+		require.Equal(t, legacyIP, migratedLsp.Options["virtual-ip"])
+		require.Equal(t, "parent-port", migratedLsp.Options["virtual-parents"])
+		legacyLsp, err = nbClient.GetLogicalSwitchPort(legacyName, true)
+		require.NoError(t, err)
+		require.Nil(t, legacyLsp)
+		pg, err := nbClient.GetPortGroup(pgName, false)
+		require.NoError(t, err)
+		require.Contains(t, pg.Ports, migratedLsp.UUID)
+	})
+
 	t.Run("should print err log when logical switch port does not exist", func(t *testing.T) {
 		err = nbClient.CreateVirtualLogicalSwitchPort("", "", "")
 		require.Error(t, err)
@@ -533,6 +666,24 @@ func (suite *OvnClientTestSuite) testSetVirtualLogicalSwitchPortVirtualParents()
 		require.Equal(t, parents, lsp.Options["virtual-parents"])
 	})
 
+	t.Run("set virtual port addresses", func(t *testing.T) {
+		addresses := "2e:a5:9b:20:42:d2 192.168.211.31"
+		err = nbClient.SetVirtualLogicalSwitchPortAddresses(lspName, addresses)
+		require.NoError(t, err)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, []string{addresses}, lsp.Addresses)
+
+		err = nbClient.SetVirtualLogicalSwitchPortAddresses(lspName, addresses)
+		require.NoError(t, err)
+	})
+
+	t.Run("set virtual port addresses for missing port", func(t *testing.T) {
+		err := nbClient.SetVirtualLogicalSwitchPortAddresses("missing-virtual-port", "2e:a5:9b:20:42:d2 192.168.211.31")
+		require.Error(t, err)
+	})
+
 	t.Run("failed client set virtual-parents option", func(t *testing.T) {
 		err := failedNbClient.CreateBareLogicalSwitch(lsName)
 		require.Error(t, err)
@@ -580,46 +731,53 @@ func (suite *OvnClientTestSuite) testSetLogicalSwitchPortArpProxy() {
 	nbClient := suite.ovnNBClient
 	failedNbClient := suite.failedOvnNBClient
 	lsName := "test-set-lsp-arp-proxy-ls"
-	ips := "10.244.0.37,fc00::af4:25"
-	mac := "00:00:00:AB:B4:65"
-	podNamespace := "test-ns"
-	vpcName := "test-vpc"
-	lspName := "test-set-lsp-arp-proxy-lsp"
-	err := nbClient.CreateBareLogicalSwitch(lsName)
+	lrName := "test-set-lsp-arp-proxy-lr"
+	// the router type port created together with the switch
+	lspName := lsName + "-" + lrName
+	err := nbClient.CreateLogicalRouter(lrName)
+	require.NoError(t, err)
+	err = nbClient.CreateLogicalSwitch(lsName, lrName, "10.244.0.0/24", "10.244.0.1", util.GenerateMac(), true, false)
 	require.NoError(t, err)
 
-	t.Run("create logical switch port", func(t *testing.T) {
-		err = nbClient.CreateLogicalSwitchPort(lsName, lspName, ips, mac, lspName, podNamespace, true, "", "", false, nil, vpcName)
-		require.NoError(t, err)
-	})
-
 	t.Run("set arp_proxy option", func(t *testing.T) {
-		enableArpProxy := true
-		err = nbClient.SetLogicalSwitchPortArpProxy(lspName, enableArpProxy)
+		err = nbClient.SetLogicalSwitchPortArpProxy(lspName, []string{"10.244.0.2", "fd00::2"})
 		require.NoError(t, err)
 		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
-		require.Equal(t, "true", lsp.Options["arp_proxy"])
+		require.Equal(t, "10.244.0.2 fd00::2", lsp.Options["arp_proxy"])
+		// other options must be preserved
+		require.NotEmpty(t, lsp.Options["router-port"])
+	})
+
+	t.Run("setting the same addresses is a no-op", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortArpProxy(lspName, []string{"10.244.0.2", "fd00::2"})
+		require.NoError(t, err)
+	})
+
+	t.Run("replace arp_proxy option", func(t *testing.T) {
+		err = nbClient.SetLogicalSwitchPortArpProxy(lspName, []string{"10.244.0.3"})
+		require.NoError(t, err)
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, "10.244.0.3", lsp.Options["arp_proxy"])
 	})
 
 	t.Run("clear arp_proxy option", func(t *testing.T) {
-		enableArpProxy := false
-		err = nbClient.SetLogicalSwitchPortArpProxy(lspName, enableArpProxy)
+		err = nbClient.SetLogicalSwitchPortArpProxy(lspName, nil)
 		require.NoError(t, err)
 		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
 		require.NoError(t, err)
-		require.Empty(t, lsp.Options["arp_proxy"])
+		require.NotContains(t, lsp.Options, "arp_proxy")
+		require.NotEmpty(t, lsp.Options["router-port"])
 	})
 
 	t.Run("should print err log when logical switch port does not exist", func(t *testing.T) {
-		enableArpProxy := true
-		err = nbClient.SetLogicalSwitchPortArpProxy("test-nonexistent-lsp", enableArpProxy)
+		err = nbClient.SetLogicalSwitchPortArpProxy("test-nonexistent-lsp", []string{"10.244.0.2"})
 		require.Error(t, err)
 	})
 
 	t.Run("fail nb client should log err", func(t *testing.T) {
-		enableArpProxy := true
-		err = failedNbClient.SetLogicalSwitchPortArpProxy(lspName, enableArpProxy)
+		err = failedNbClient.SetLogicalSwitchPortArpProxy(lspName, []string{"10.244.0.2"})
 		require.Error(t, err)
 	})
 }
@@ -2521,6 +2679,44 @@ func (suite *OvnClientTestSuite) testResetLogicalSwitchPortMigrateOptions() {
 		expectedOptions := map[string]string{
 			"requested-chassis": srcNodeName,
 		}
+		require.Equal(t, expectedOptions, updatedLsp.Options)
+	})
+
+	t.Run("keep the options owned by a newer migration", func(t *testing.T) {
+		// a newer migration of the same VM took the port over: srcNodeName is now its source
+		newTargetNodeName := "new-target-node"
+		lsp.Options = map[string]string{
+			"requested-chassis":   fmt.Sprintf("%s,%s", targetNodeName, newTargetNodeName),
+			"activation-strategy": "rarp",
+		}
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, false)
+		require.NoError(t, err)
+
+		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		expectedOptions := map[string]string{
+			"requested-chassis":   fmt.Sprintf("%s,%s", targetNodeName, newTargetNodeName),
+			"activation-strategy": "rarp",
+		}
+		require.Equal(t, expectedOptions, updatedLsp.Options)
+	})
+
+	t.Run("keep the options of an already reset port", func(t *testing.T) {
+		lsp.Options = map[string]string{"requested-chassis": targetNodeName}
+		err = nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options)
+		require.NoError(t, err)
+
+		err = nbClient.ResetLogicalSwitchPortMigrateOptions(lspName, srcNodeName, targetNodeName, false)
+		require.NoError(t, err)
+
+		updatedLsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+
+		expectedOptions := map[string]string{"requested-chassis": targetNodeName}
 		require.Equal(t, expectedOptions, updatedLsp.Options)
 	})
 

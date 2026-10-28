@@ -32,6 +32,7 @@ import (
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/keymutex"
 
@@ -40,6 +41,7 @@ import (
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovninformerfactory "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/informer"
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -68,20 +70,24 @@ func TestDBStatusFailureWindowAllowsTLSRotation(t *testing.T) {
 }
 
 type fakeControllerInformers struct {
-	vpcInformer       kubeovninformer.VpcInformer
-	vpcNatGwInformer  kubeovninformer.VpcNatGatewayInformer
-	subnetInformer    kubeovninformer.SubnetInformer
-	ipInformer        kubeovninformer.IPInformer
-	vlanInformer      kubeovninformer.VlanInformer
-	serviceInformer   coreinformers.ServiceInformer
-	namespaceInformer coreinformers.NamespaceInformer
-	nodeInformer      coreinformers.NodeInformer
-	podInformer       coreinformers.PodInformer
+	vpcInformer          kubeovninformer.VpcInformer
+	vpcNatGwInformer     kubeovninformer.VpcNatGatewayInformer
+	subnetInformer       kubeovninformer.SubnetInformer
+	ipInformer           kubeovninformer.IPInformer
+	vlanInformer         kubeovninformer.VlanInformer
+	configMapInformer    coreinformers.ConfigMapInformer
+	serviceInformer      coreinformers.ServiceInformer
+	namespaceInformer    coreinformers.NamespaceInformer
+	nodeInformer         coreinformers.NodeInformer
+	podInformer          coreinformers.PodInformer
+	netAttachInformer    cache.SharedIndexInformer
+	switchLBRuleInformer kubeovninformer.SwitchLBRuleInformer
 }
 
 type fakeController struct {
 	fakeController  *Controller
 	fakeInformers   *fakeControllerInformers
+	kubeClient      *fake.Clientset
 	mockOvnClient   *mockovs.MockNbClient
 	mockOvnSbClient *mockovs.MockSbClient
 }
@@ -104,13 +110,19 @@ type FakeControllerOptions struct {
 	Namespaces            []*corev1.Namespace
 	Services              []*corev1.Service
 	Vpcs                  []*kubeovnv1.Vpc
+	VpcDNSs               []*kubeovnv1.VpcDns
 	RouterLBRules         []*kubeovnv1.RouterLBRule
+	SwitchLBRules         []*kubeovnv1.SwitchLBRule
 	OvnEips               []*kubeovnv1.OvnEip
 	OvnDnatRules          []*kubeovnv1.OvnDnatRule
 	OvnFipRules           []*kubeovnv1.OvnFip
 	OvnSnatRules          []*kubeovnv1.OvnSnatRule
+	Vips                  []*kubeovnv1.Vip
 	QoSPolicies           []*kubeovnv1.QoSPolicy
 	IptablesEips          []*kubeovnv1.IptablesEIP
+	IptablesFips          []*kubeovnv1.IptablesFIPRule
+	IptablesDnatRules     []*kubeovnv1.IptablesDnatRule
+	IptablesSnatRules     []*kubeovnv1.IptablesSnatRule
 	StatefulSets          []*appsv1.StatefulSet
 	Deployments           []*appsv1.Deployment
 	ConfigMaps            []*corev1.ConfigMap
@@ -133,7 +145,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		}}
 	}
 
-	// Create fake Kubernetes client with namespaces, pods, nodes, services, and workloads.
+	// Create fake Kubernetes client with namespaces, pods, nodes, services, workloads and config maps.
 	kubeObjects := make([]runtime.Object, 0, len(namespaces)+len(opts.Pods)+len(opts.Nodes)+len(opts.Services)+
 		len(opts.StatefulSets)+len(opts.Deployments)+len(opts.ConfigMaps))
 	for _, ns := range namespaces {
@@ -228,9 +240,25 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 			return nil, err
 		}
 	}
+	for _, vpcDNS := range opts.VpcDNSs {
+		_, err := kubeovnClient.KubeovnV1().VpcDnses().Create(
+			context.Background(), vpcDNS, metav1.CreateOptions{},
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for _, rlr := range opts.RouterLBRules {
 		_, err := kubeovnClient.KubeovnV1().RouterLBRules().Create(
 			context.Background(), rlr, metav1.CreateOptions{},
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+	for _, slr := range opts.SwitchLBRules {
+		_, err := kubeovnClient.KubeovnV1().SwitchLBRules().Create(
+			context.Background(), slr, metav1.CreateOptions{},
 		)
 		if err != nil {
 			return nil, err
@@ -268,6 +296,14 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 			return nil, err
 		}
 	}
+	for _, vip := range opts.Vips {
+		_, err := kubeovnClient.KubeovnV1().Vips().Create(
+			context.Background(), vip, metav1.CreateOptions{},
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
 	for _, qos := range opts.QoSPolicies {
 		_, err := kubeovnClient.KubeovnV1().QoSPolicies().Create(
 			context.Background(), qos, metav1.CreateOptions{},
@@ -284,9 +320,25 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 			return nil, err
 		}
 	}
+	for _, fip := range opts.IptablesFips {
+		if _, err := kubeovnClient.KubeovnV1().IptablesFIPRules().Create(context.Background(), fip, metav1.CreateOptions{}); err != nil {
+			return nil, err
+		}
+	}
+	for _, dnat := range opts.IptablesDnatRules {
+		if _, err := kubeovnClient.KubeovnV1().IptablesDnatRules().Create(context.Background(), dnat, metav1.CreateOptions{}); err != nil {
+			return nil, err
+		}
+	}
+	for _, snat := range opts.IptablesSnatRules {
+		if _, err := kubeovnClient.KubeovnV1().IptablesSnatRules().Create(context.Background(), snat, metav1.CreateOptions{}); err != nil {
+			return nil, err
+		}
+	}
 
 	// Create informer factories
-	kubeInformerFactory := informers.NewSharedInformerFactoryWithOptions(kubeClient, 0,
+	kubeInformerFactory := informers.NewSharedInformerFactoryWithOptions(
+		kubeClient, 0,
 		informers.WithTransform(util.TrimManagedFields),
 		informers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.Watch = true
@@ -302,7 +354,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	statefulSetInformer := kubeInformerFactory.Apps().V1().StatefulSets()
 	deploymentInformer := kubeInformerFactory.Apps().V1().Deployments()
 
-	nadInformerFactory := nadinformers.NewSharedInformerFactoryWithOptions(nadClient, 0,
+	nadInformerFactory := nadinformers.NewSharedInformerFactoryWithOptions(
+		nadClient, 0,
 		nadinformers.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.Watch = true
 			options.AllowWatchBookmarks = true
@@ -310,7 +363,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	)
 	nadInformer := nadInformerFactory.K8sCniCncfIo().V1().NetworkAttachmentDefinitions()
 
-	kubeovnInformerFactory := kubeovninformerfactory.NewSharedInformerFactoryWithOptions(kubeovnClient, 0,
+	kubeovnInformerFactory := kubeovninformerfactory.NewSharedInformerFactoryWithOptions(
+		kubeovnClient, 0,
 		kubeovninformerfactory.WithTransform(util.TrimManagedFields),
 		kubeovninformerfactory.WithTweakListOptions(func(options *metav1.ListOptions) {
 			options.Watch = true
@@ -325,23 +379,32 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
 	ippoolInformer := kubeovnInformerFactory.Kubeovn().V1().IPPools()
 	routerLBRuleInformer := kubeovnInformerFactory.Kubeovn().V1().RouterLBRules()
+	switchLBRuleInformer := kubeovnInformerFactory.Kubeovn().V1().SwitchLBRules()
+	vpcDNSInformer := kubeovnInformerFactory.Kubeovn().V1().VpcDnses()
 	ovnEipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnEips()
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
 	ovnFipInformer := kubeovnInformerFactory.Kubeovn().V1().OvnFips()
 	ovnSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnSnatRules()
+	vipInformer := kubeovnInformerFactory.Kubeovn().V1().Vips()
 	qosPolicyInformer := kubeovnInformerFactory.Kubeovn().V1().QoSPolicies()
 	iptablesEipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesEIPs()
+	iptablesFipInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesFIPRules()
+	iptablesDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesDnatRules()
+	iptablesSnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().IptablesSnatRules()
 
 	fakeInformers := &fakeControllerInformers{
-		vpcInformer:       vpcInformer,
-		vpcNatGwInformer:  vpcNatGwInformer,
-		subnetInformer:    subnetInformer,
-		ipInformer:        ipInformer,
-		vlanInformer:      vlanInformer,
-		serviceInformer:   serviceInformer,
-		namespaceInformer: namespaceInformer,
-		nodeInformer:      nodeInformer,
-		podInformer:       podInformer,
+		vpcInformer:          vpcInformer,
+		vpcNatGwInformer:     vpcNatGwInformer,
+		subnetInformer:       subnetInformer,
+		ipInformer:           ipInformer,
+		vlanInformer:         vlanInformer,
+		configMapInformer:    configMapInformer,
+		serviceInformer:      serviceInformer,
+		namespaceInformer:    namespaceInformer,
+		nodeInformer:         nodeInformer,
+		podInformer:          podInformer,
+		netAttachInformer:    nadInformer.Informer(),
+		switchLBRuleInformer: switchLBRuleInformer,
 	}
 
 	// Create mock OVN clients
@@ -368,6 +431,10 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		providerNetworksLister:        providerNetworkInformer.Lister(),
 		routerLBRuleLister:            routerLBRuleInformer.Lister(),
 		routerLBRuleSynced:            alwaysReady,
+		switchLBRuleLister:            switchLBRuleInformer.Lister(),
+		switchLBRuleSynced:            alwaysReady,
+		vpcDNSLister:                  vpcDNSInformer.Lister(),
+		vpcDNSSynced:                  alwaysReady,
 		ovnEipsLister:                 ovnEipInformer.Lister(),
 		ovnEipSynced:                  alwaysReady,
 		ovnDnatRulesLister:            ovnDnatRuleInformer.Lister(),
@@ -376,29 +443,43 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		ovnFipSynced:                  alwaysReady,
 		ovnSnatRulesLister:            ovnSnatRuleInformer.Lister(),
 		ovnSnatRuleSynced:             alwaysReady,
+		virtualIpsLister:              vipInformer.Lister(),
+		virtualIpsSynced:              alwaysReady,
 		netAttachLister:               nadInformer.Lister(),
 		netAttachSynced:               alwaysReady,
 		vpcNatGatewayLister:           vpcNatGwInformer.Lister(),
 		qosPoliciesLister:             qosPolicyInformer.Lister(),
 		qosPolicySynced:               alwaysReady,
 		iptablesEipsLister:            iptablesEipInformer.Lister(),
+		iptablesFipsLister:            iptablesFipInformer.Lister(),
+		iptablesDnatRulesLister:       iptablesDnatRuleInformer.Lister(),
+		iptablesSnatRulesLister:       iptablesSnatRuleInformer.Lister(),
 		statefulSetsLister:            statefulSetInformer.Lister(),
 		deploymentsLister:             deploymentInformer.Lister(),
 		configMapsLister:              configMapInformer.Lister(),
 		vpcNatGwKeyMutex:              keymutex.NewHashed(0),
+		qosNatGwKeyMutex:              keymutex.NewHashed(1),
 		OVNNbClient:                   mockOvnClient,
 		OVNSbClient:                   mockOvnSbClient,
 		ipam:                          ovnipam.NewIPAM(),
 		recorder:                      record.NewFakeRecorder(100),
 		podKeyMutex:                   keymutex.NewHashed(0),
+		vpcKeyMutex:                   keymutex.NewHashed(0),
 		subnetKeyMutex:                keymutex.NewHashed(0),
 		nsKeyMutex:                    keymutex.NewHashed(0),
 		addOrUpdateSubnetQueue:        newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil),
 		syncVirtualPortsQueue:         newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
 		updateSubnetStatusQueue:       newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
+		updateVirtualParentsQueue:     newTypedRateLimitingQueue[string]("UpdateVirtualParents", nil),
 		addOrUpdateVpcNatGatewayQueue: newTypedRateLimitingQueue[string]("AddOrUpdateVpcNatGateway", nil),
 		initVpcNatGatewayQueue:        newTypedRateLimitingQueue[string]("InitVpcNatGateway", nil),
+		configMapsSynced:              alwaysReady,
+		serviceCIDRStore:              util.NewServiceCIDRStore("10.96.0.0/12"),
+		updateIptablesEipQueue:        newTypedRateLimitingQueue[string]("UpdateIptablesEip", nil),
 	}
+
+	// the kubevirt informer is created without a client: tests populate its indexer directly
+	ctrl.kubevirtInformerFactory = informer.NewKubeVirtInformerFactoryWithOptions(nil, nil)
 
 	ctrl.config = &Configuration{
 		ClusterRouter:         util.DefaultVpc,
@@ -431,6 +512,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	return &fakeController{
 		fakeController:  ctrl,
 		fakeInformers:   fakeInformers,
+		kubeClient:      kubeClient,
 		mockOvnClient:   mockOvnClient,
 		mockOvnSbClient: mockOvnSbClient,
 	}, nil

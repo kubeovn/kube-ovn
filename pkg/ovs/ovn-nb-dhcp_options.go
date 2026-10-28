@@ -10,6 +10,7 @@ import (
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -23,7 +24,7 @@ func (c *OVNNbClient) CreateDHCPOptions(lsName, cidr, options string) error {
 	return c.createDHCPEntry(lsName, "", cidr, options)
 }
 
-func (c *OVNNbClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHCPOptionsUUIDs, error) {
+func (c *OVNNbClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int, routerPortNames ...string) (*DHCPOptionsUUIDs, error) {
 	lsName := subnet.Name
 	cidrBlock := subnet.Spec.CIDRBlock
 	gateway := subnet.Spec.Gateway
@@ -31,10 +32,23 @@ func (c *OVNNbClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHC
 		gateway = subnet.Status.U2OInterconnectionIP
 	}
 	enableDHCP := subnet.Spec.EnableDHCP
+	var ops []ovsdb.Operation
+	for _, portName := range routerPortNames {
+		raOps, err := c.logicalRouterPortRAOp(portName, subnet.Spec.IPv6RAConfigs, subnet.Spec.EnableIPv6RA)
+		if err != nil {
+			return nil, err
+		}
+		ops = append(ops, raOps...)
+	}
 
 	/* delete dhcp options */
 	if !enableDHCP {
-		if err := c.DeleteDHCPOptions(lsName, subnet.Spec.Protocol); err != nil {
+		deleteOps, err := c.DeleteDHCPOptionsOp(lsName, subnet.Spec.Protocol, true)
+		if err != nil {
+			return nil, err
+		}
+		ops = append(ops, deleteOps...)
+		if err := c.Transact("subnet-dhcp-options-update", ops); err != nil {
 			klog.Error(err)
 			return nil, fmt.Errorf("delete dhcp options for logical switch %s: %w", lsName, err)
 		}
@@ -59,24 +73,80 @@ func (c *OVNNbClient) UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHC
 
 	dhcpOptionsUUIDs := &DHCPOptionsUUIDs{}
 	if len(v4CIDR) != 0 {
-		dhcpV4OptUUID, err := c.updateDHCPv4Options(lsName, "", v4CIDR, v4Gateway, subnet.Spec.DHCPv4Options, mtu)
+		v4Ops, err := c.subnetDHCPOptionsOp(lsName, v4CIDR, v4Gateway, subnet.Spec.DHCPv4Options, mtu)
 		if err != nil {
 			klog.Error(err)
 			return nil, fmt.Errorf("update IPv4 dhcp options for logical switch %s: %w", lsName, err)
 		}
-		dhcpOptionsUUIDs.DHCPv4OptionsUUID = dhcpV4OptUUID
+		ops = append(ops, v4Ops...)
 	}
 
 	if len(v6CIDR) != 0 {
-		dhcpV6OptUUID, err := c.updateDHCPv6Options(lsName, "", v6CIDR, subnet.Spec.DHCPv6Options)
+		v6Ops, err := c.subnetDHCPOptionsOp(lsName, v6CIDR, "", subnet.Spec.DHCPv6Options, mtu)
 		if err != nil {
 			klog.Error(err)
 			return nil, fmt.Errorf("update IPv6 dhcp options for logical switch %s: %w", lsName, err)
 		}
-		dhcpOptionsUUIDs.DHCPv6OptionsUUID = dhcpV6OptUUID
+		ops = append(ops, v6Ops...)
+	}
+	if err := c.Transact("subnet-dhcp-options-update", ops); err != nil {
+		return nil, fmt.Errorf("update DHCP options for logical switch %s: %w", lsName, err)
+	}
+	for _, family := range []struct {
+		cidr     string
+		protocol string
+		uuid     *string
+	}{
+		{v4CIDR, kubeovnv1.ProtocolIPv4, &dhcpOptionsUUIDs.DHCPv4OptionsUUID},
+		{v6CIDR, kubeovnv1.ProtocolIPv6, &dhcpOptionsUUIDs.DHCPv6OptionsUUID},
+	} {
+		if family.cidr != "" {
+			entry, err := c.GetDHCPOptions(lsName, family.protocol, false)
+			if err != nil {
+				return nil, err
+			}
+			*family.uuid = entry.UUID
+		}
 	}
 
 	return dhcpOptionsUUIDs, nil
+}
+
+func (c *OVNNbClient) subnetDHCPOptionsOp(lsName, cidr, gateway, options string, mtu int) ([]ovsdb.Operation, error) {
+	protocol := util.CheckProtocol(cidr)
+	if protocol != kubeovnv1.ProtocolIPv4 && protocol != kubeovnv1.ProtocolIPv6 {
+		return nil, fmt.Errorf("invalid DHCP cidr %s", cidr)
+	}
+	entry, err := c.GetDHCPOptions(lsName, protocol, true)
+	if err != nil {
+		return nil, err
+	}
+	create := entry == nil
+	if create {
+		entry, err = newDHCPOptionsEntry(lsName, "", cidr, "")
+		if err != nil {
+			return nil, err
+		}
+		entry.UUID = ovsclient.NamedUUID()
+	}
+	macKey := "server_mac"
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		macKey = "server_id"
+	}
+	mac := entry.Options[macKey]
+	if create {
+		mac = util.GenerateMac()
+	}
+	entry.Cidr = cidr
+	if protocol == kubeovnv1.ProtocolIPv4 {
+		entry.Options = buildDHCPv4Options(options, gateway, mac, mtu, []string{"lease_time", "router", "server_id", "server_mac", "mtu"})
+	} else {
+		entry.Options = buildDHCPv6Options(options, mac, []string{"server_id"})
+	}
+	if create {
+		return c.Create(entry)
+	}
+	return c.Where(entry).Update(entry, &entry.Cidr, &entry.Options)
 }
 
 // UpdateDHCPOptionsForPort creates or updates per-port DHCP_Options for a logical switch port.
@@ -264,15 +334,28 @@ func (c *OVNNbClient) DeleteDHCPOptionsByUUIDs(uuidList ...string) error {
 
 // DeleteDHCPOptions delete dhcp options which belongs to logical switch
 func (c *OVNNbClient) DeleteDHCPOptions(lsName, protocol string) error {
+	return c.deleteDHCPOptions(lsName, protocol, false)
+}
+
+// DeleteDHCPOptionsOp returns operations that remove DHCP options owned by a
+// logical switch. It is used by callers that need to combine DHCP cleanup
+// with other logical switch changes in one transaction.
+func (c *OVNNbClient) DeleteDHCPOptionsOp(lsName, protocol string, keepPerPort bool) ([]ovsdb.Operation, error) {
 	if protocol == kubeovnv1.ProtocolDual {
 		protocol = ""
 	}
 	externalIDs := map[string]string{
 		LogicalSwitchKey: lsName,
-		"protocol":       protocol, // list all protocol dhcp options when protocol is ""
+		"protocol":       protocol,
 	}
+	filter := dhcpOptionsFilter(true, externalIDs)
+	return c.WhereCache(func(o *ovnnb.DHCPOptions) bool {
+		return filter(o) && (!keepPerPort || o.ExternalIDs[PortKey] == "")
+	}).Delete()
+}
 
-	op, err := c.WhereCache(dhcpOptionsFilter(true, externalIDs)).Delete()
+func (c *OVNNbClient) deleteDHCPOptions(lsName, protocol string, keepPerPort bool) error {
+	op, err := c.DeleteDHCPOptionsOp(lsName, protocol, keepPerPort)
 	if err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operation for deleting dhcp options: %w", err)

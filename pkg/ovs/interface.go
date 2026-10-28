@@ -25,6 +25,7 @@ type Vswitch interface {
 }
 
 type NBGlobal interface {
+	GetIPsecGlobal(context.Context) (*IPsecGlobalState, error)
 	UpdateNbGlobal(nbGlobal *ovnnb.NBGlobal, fields ...any) error
 	SetAzName(azName string) error
 	SetUseCtInvMatch() error
@@ -40,6 +41,7 @@ type NBGlobal interface {
 
 type LogicalRouter interface {
 	CreateLogicalRouter(lrName string) error
+	CreateLogicalRouterWithOptions(lrName string, options map[string]string) error
 	UpdateLogicalRouter(lr *ovnnb.LogicalRouter, fields ...any) error
 	DeleteLogicalRouter(lrName string) error
 	LogicalRouterUpdateLoadBalancers(lrName string, op ovsdb.Mutator, lbNames ...string) error
@@ -50,6 +52,7 @@ type LogicalRouter interface {
 }
 
 type LogicalRouterPort interface {
+	ReconcileBFDLogicalRouterPort(lrName, portName string, networks, chassises []string, enabled bool) error
 	CreatePeerRouterPort(localRouter, remoteRouter, localRouterPortIP string) error
 	CreateLogicalRouterPort(lrName, lrpName, mac string, networks []string) error
 	UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error
@@ -62,6 +65,8 @@ type LogicalRouterPort interface {
 	GetLogicalRouterPortByUUID(uuid string) (*ovnnb.LogicalRouterPort, error)
 	ListLogicalRouterPorts(externalIDs map[string]string, filter func(lrp *ovnnb.LogicalRouterPort) bool) ([]ovnnb.LogicalRouterPort, error)
 	ListGatewayChassisByLogicalRouterPort(lrpName string, ignoreNotFound bool) ([]ovnnb.GatewayChassis, error)
+	CreateGatewayChassises(lrpName string, chassises ...string) error
+	DeleteGatewayChassises(lrpName string, chassises []string) error
 	LogicalRouterPortExists(lrpName string) (bool, error)
 }
 
@@ -97,6 +102,7 @@ type LogicalSwitch interface {
 	LogicalSwitchUpdateLoadBalancers(lsName string, op ovsdb.Mutator, lbNames ...string) error
 	LogicalSwitchUpdateOtherConfig(lsName string, op ovsdb.Mutator, otherConfig map[string]string) error
 	DeleteLogicalSwitch(lsName string) error
+	DeleteLogicalSwitchResources(lsName, protocol string, routerPortNames ...string) error
 	ListLogicalSwitch(needVendorFilter bool, filter func(ls *ovnnb.LogicalSwitch) bool) ([]ovnnb.LogicalSwitch, error)
 	ListLogicalSwitchNames(needVendorFilter bool, filter func(ls *ovnnb.LogicalSwitch) bool) ([]string, error)
 	LogicalSwitchExists(lsName string) (bool, error)
@@ -109,13 +115,15 @@ type LogicalSwitchPort interface {
 	CreateVirtualLogicalSwitchPorts(lsName string, ips ...string) error
 	// create virtual type logical switch port for allowed-address-pair
 	CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error
+	// set addresses on a virtual type logical switch port for allowed-address-pair
+	SetVirtualLogicalSwitchPortAddresses(lspName, addresses string) error
 	// update virtual type logical switch port virtual-parents for allowed-address-pair
 	SetVirtualLogicalSwitchPortVirtualParents(lsName, parents string) error
 	SetLogicalSwitchPortDHCPOptions(portName string, dhcpOptions *DHCPOptionsUUIDs) error
 	ReconcilePortDHCPOptions(lsName, portName string, subnetDHCP *DHCPOptionsUUIDs, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*DHCPOptionsUUIDs, bool, error)
 	SetLogicalSwitchPortSecurity(portSecurity bool, lspName, mac, ips, vips string) error
 	SetLogicalSwitchPortVirtualParents(lsName, parents string, ips ...string) error
-	SetLogicalSwitchPortArpProxy(lspName string, enableArpProxy bool) error
+	SetLogicalSwitchPortArpProxy(lspName string, proxyIPs []string) error
 	SetLogicalSwitchPortExternalIDs(lspName string, externalIDs map[string]string) error
 	SetLogicalSwitchPortVlanTag(lspName string, vlanID int) error
 	SetLogicalSwitchPortsSecurityGroup(sgName, op string) error
@@ -137,7 +145,10 @@ type LogicalSwitchPort interface {
 
 type LoadBalancer interface {
 	CreateLoadBalancer(lbName, protocol string, selectFields ...string) error
+	SetLoadBalancerSelectionFields(lbName string, selectionFields []string) error
 	LoadBalancerAddVip(lbName, vip string, backends ...string) error
+	LoadBalancerMigrateVIP(lbName, vip string, backends []string, oldVIP string, oldLBNames ...string) error
+	LoadBalancerMigrateVIPWithAttachments(lbName, vip string, backends []string, oldVIP string, oldLBNames []string, attachments []LoadBalancerAttachment) error
 	LoadBalancerDeleteVip(lbName, vip string, ignoreHealthCheck bool) error
 	LoadBalancerAddIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
 	LoadBalancerUpdateIPPortMapping(lbName, vip string, ipPortMappings map[string]string) error
@@ -146,6 +157,15 @@ type LoadBalancer interface {
 	LoadBalancerAddHealthCheck(lbName, vip string, ignoreHealthCheck bool, ipPortMapping, externals map[string]string) error
 	LoadBalancerDeleteHealthCheck(lbName, uuid string) error
 	SetLoadBalancerAffinityTimeout(lbName string, timeout int) error
+	DeleteLoadBalancerAffinityTimeout(lbName string) error
+	SetLoadBalancerDistributed(lbName string, distributed bool) error
+	SetLoadBalancerTemplate(lbName string, template bool) error
+	SetLoadBalancerAddressFamily(lbName, family string) error
+	SetLoadBalancerTemplateVIP(lbName, vip, backendVariable string) error
+	ReconcileTemplateVIPAndChassisVariables(migrations []TemplateVIPMigration, staleVIPs []TemplateVIPDeletion, variables []ChassisTemplateVariableReconciliation) error
+	ReconcileChassisTemplateVariables(chassis, prefix string, variables map[string]string) error
+	DeleteChassisTemplateVariables(filter func(name string) bool) error
+	SetLoadBalancerExternalIDs(lbName string, externalIDs map[string]string) error
 	SetLoadBalancerPreferLocalBackend(lbName string, preferLocalBackend bool) error
 	SetLoadBalancerCtFlush(lbName string, ctFlush bool) error
 	DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool) error
@@ -196,7 +216,7 @@ type ACL interface {
 	DeleteAcls(parentName, parentType, direction string, externalIDs map[string]string) error
 	DeleteAclsOps(parentName, parentType, direction string, externalIDs map[string]string) ([]ovsdb.Operation, error)
 	UpdateAnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha1.AdminNetworkPolicyPort, isIngress, isBanp bool) ([]ovsdb.Operation, error)
-	UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyPort, isIngress bool, tier int) ([]ovsdb.Operation, error)
+	UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyProtocol, isIngress bool, tier int) ([]ovsdb.Operation, error)
 	MigrateACLTier() error
 	CleanNoParentKeyAcls() error
 }
@@ -235,7 +255,7 @@ type LogicalRouterPolicy interface {
 	DeleteLogicalRouterPolicy(lrName string, priority int, match string) error
 	DeleteLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string) error
 	DeleteLogicalRouterPolicyByUUID(lrName, uuid string) error
-	DeleteLogicalRouterPolicyByNexthop(lrName string, priority int, nexthop string) error
+	DeleteLogicalRouterPolicyIfUnchanged(lrName string, observed *ovnnb.LogicalRouterPolicy) (bool, error)
 	ClearLogicalRouterPolicy(lrName string) error
 	ListLogicalRouterPolicies(lrName string, priority int, externalIDs map[string]string, ignoreExtIDEmptyValue bool) ([]*ovnnb.LogicalRouterPolicy, error)
 	GetLogicalRouterPolicy(lrName string, priority int, match string, ignoreNotFound bool) ([]*ovnnb.LogicalRouterPolicy, error)
@@ -258,7 +278,7 @@ type NAT interface {
 }
 
 type DHCPOptions interface {
-	UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int) (*DHCPOptionsUUIDs, error)
+	UpdateDHCPOptions(subnet *kubeovnv1.Subnet, mtu int, routerPortNames ...string) (*DHCPOptionsUUIDs, error)
 	UpdateDHCPOptionsForPort(lsName, portName, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*DHCPOptionsUUIDs, error)
 	DeleteDHCPOptions(lsName, protocol string) error
 	DeleteDHCPOptionsForPort(portName string) error
@@ -304,6 +324,7 @@ type NbClient interface {
 type SbClient interface {
 	Chassis
 	Common
+	GetIPsecGlobal(context.Context) (*IPsecGlobalState, error)
 }
 
 type Common interface {

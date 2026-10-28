@@ -1,12 +1,19 @@
 package controller
 
 import (
+	"encoding/hex"
 	"testing"
 
+	"github.com/cnf/structhash"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/keymutex"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
+	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -73,6 +80,61 @@ func Test_securityGroupALLNotExist(t *testing.T) {
 		require.NoError(t, err)
 		require.True(t, exist)
 	})
+}
+
+func TestHandleAddOrUpdateSgForceRecordsRuleHashes(t *testing.T) {
+	fc := newFakeController(t)
+	ctrl := fc.fakeController
+
+	sg := &kubeovnv1.SecurityGroup{
+		Name: "test-sg",
+		Spec: kubeovnv1.SecurityGroupSpec{
+			Tier: util.SecurityGroupAPITierMinimum,
+			IngressRules: []kubeovnv1.SecurityGroupRule{{
+				IPVersion:     "ipv4",
+				Priority:      1,
+				RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+				RemoteAddress: "10.0.0.0/8",
+				Protocol:      kubeovnv1.SgProtocolALL,
+				Policy:        kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
+			}},
+			EgressRules: []kubeovnv1.SecurityGroupRule{{
+				IPVersion:     "ipv4",
+				Priority:      1,
+				RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+				RemoteAddress: "192.168.0.0/16",
+				Protocol:      kubeovnv1.SgProtocolALL,
+				Policy:        kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
+			}},
+		},
+	}
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(sg))
+	ctrl.sgsLister = kubeovnlister.NewSecurityGroupLister(indexer)
+	ctrl.sgKeyMutex = keymutex.NewHashed(0)
+	ctrl.syncSgPortsQueue = newTypedRateLimitingQueue[string]("TestSyncSecurityGroupPorts", nil)
+	ctrl.config.KubeOvnClient = kubeovnfake.NewSimpleClientset()
+	_, err := ctrl.config.KubeOvnClient.KubeovnV1().SecurityGroups().Create(t.Context(), sg, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	fc.mockOvnClient.EXPECT().CreatePortGroup(ovs.GetSgPortGroupName(sg.Name), map[string]string{
+		"type": "security_group",
+		sgKey:  sg.Name,
+	}).Return(nil)
+	fc.mockOvnClient.EXPECT().CreateAddressSet(ovs.GetSgV4AssociatedName(sg.Name), map[string]string{sgKey: sg.Name}).Return(nil)
+	fc.mockOvnClient.EXPECT().CreateAddressSet(ovs.GetSgV6AssociatedName(sg.Name), map[string]string{sgKey: sg.Name}).Return(nil)
+	fc.mockOvnClient.EXPECT().UpdateSgACL(gomock.Any(), ovnnb.ACLDirectionToLport).Return(nil)
+	fc.mockOvnClient.EXPECT().CreateSgBaseACL(sg.Name, ovnnb.ACLDirectionToLport).Return(nil)
+	fc.mockOvnClient.EXPECT().UpdateSgACL(gomock.Any(), ovnnb.ACLDirectionFromLport).Return(nil)
+	fc.mockOvnClient.EXPECT().CreateSgBaseACL(sg.Name, ovnnb.ACLDirectionFromLport).Return(nil)
+
+	require.NoError(t, ctrl.handleAddOrUpdateSg(sg.Name, true))
+	updated, err := ctrl.config.KubeOvnClient.KubeovnV1().SecurityGroups().Get(t.Context(), sg.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, hex.EncodeToString(structhash.Md5(sg.Spec.IngressRules, 1)), updated.Status.IngressMd5)
+	require.Equal(t, hex.EncodeToString(structhash.Md5(sg.Spec.EgressRules, 1)), updated.Status.EgressMd5)
+	require.True(t, updated.Status.IngressLastSyncSuccess)
+	require.True(t, updated.Status.EgressLastSyncSuccess)
 }
 
 func Test_validateSgRule(t *testing.T) {

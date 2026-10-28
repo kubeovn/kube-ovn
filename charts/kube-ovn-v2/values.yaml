@@ -90,8 +90,10 @@ networking:
     enableLogicalGateways: false
     # -- MTU of the subnet.
     # If set to 0, the MTU is auto-detected.
+    # Refer to .networking.maxMtu to cap the MTU.
     # @section -- Network parameters of the CNI
     mtu: 0
+
   # -- Configuration for the service subnet.
   # If .networking.stack is set to IPv4, only the .v4 key is used.
   # If .networking.stack is set to IPv6, only the .v6 key is used.
@@ -182,6 +184,14 @@ networking:
   # @section -- Network parameters of the CNI
   enableMetrics: true
 
+  # -- Upper bound applied to the auto-detected pod MTU (0 disables the cap).
+  # Useful when the underlay uses jumbo frames but pod traffic egresses to a
+  # 1500-byte path (e.g. the internet), where the uncapped value would cause
+  # fragmentation or PMTUD-dependent blackholes. Ignored when .networking.pods.mtu is set.
+  # This applies to custom and default subnets.
+  # @section -- Network parameters of the CNI
+  maxMtu: 0
+
   # -- Configuration if we're running on top of a VLAN.
   # @section -- Network parameters of the CNI
   vlan:
@@ -233,6 +243,9 @@ features:
   # -- Enable TProxy
   # @section -- Opt-in/out Features
   enableTproxy: false
+  # -- Enable periodic ovn-controller recompute
+  # @section -- Opt-in/out Features
+  enableRecompute: false
   # -- Enable OVN interconnections
   # @section -- Opt-in/out Features
   enableOvnInterconnections: false
@@ -284,6 +297,9 @@ cni:
   # Should be a string representing a double-digit integer.
   # @section -- CNI configuration
   configPriority: "01"
+  # -- Whether to install the bundled CNI plugins besides kube-ovn.
+  # @section -- CNI configuration
+  installCNIPlugins: true
   # -- Whether to use Kube-OVN as non-primary CNI. When set to true, Kube-OVN will not allocate/handle primary network interfaces.
   # Interfaces are created using Network Attachment Definitions (NADs)
   # @section -- CNI configuration
@@ -298,6 +314,10 @@ validatingWebhook:
   # -- Enable the deployment of the validating webhook.
   # @section -- Validating webhook configuration
   enabled: false
+  certificate:
+    # -- Create the webhook Certificate and self-signed Issuer. Set to false to manage your own cert-manager Certificate and issuer outside this chart; the webhook remains enabled. See the README for required resource names and upgrade considerations.
+    # @section -- Validating webhook configuration
+    create: true
   # -- Override image settings for kube-ovn-webhook. Empty fields fall back to the global kube-ovn image.
   # @section -- Validating webhook configuration
   image:
@@ -698,6 +718,15 @@ bgpSpeaker:
   # -- Labels to be added to kube-ovn-speaker pods.
   # @section -- BGP speaker configuration
   podLabels: {}
+
+  # -- The name of the configMap that will be mounted in the kube-ovn-speaker pod.
+  # The ConfigMap can provide YAML configuration files for kube-ovn-speaker.
+  # To use a specific file, pass its mounted file path via '--config' or set 'KUBE_OVN_BGP_SPEAKER_CONFIG_FILE'.
+  # @section -- BGP speaker configuration
+  configMap: ""
+  # -- Directory where the ConfigMap will be mounted in the kube-ovn-speaker pod.
+  # @section -- BGP speaker configuration
+  configMapMountPath: "/etc/kube-ovn/"
 
   # -- Extra environment variables to be added to kube-ovn-speaker pods.
   # @section -- BGP speaker configuration
@@ -1321,3 +1350,19 @@ extraObjects: []
 #           }
 #         ]
 #       }
+
+# Dedicated node IPsec container, rendered when the existing IPsec feature is enabled.
+ipsec:
+  certManager:
+    enabled: false
+    issuerName: kube-ovn
+  certificateDuration: 63072000
+  requestTimeout: 300s
+  priority: -5
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 1000m
+      memory: 256Mi

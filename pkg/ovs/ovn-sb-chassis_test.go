@@ -1,8 +1,11 @@
 package ovs
 
 import (
+	"context"
 	"testing"
 	"time"
+
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
@@ -23,6 +26,21 @@ func newChassis(nbcfg int, hostname, name string, encaps, transportZones, vtepLo
 		TransportZones:      transportZones,
 		VtepLogicalSwitches: vtepLogicalSwitches,
 	}
+}
+
+// countChassisPrivate counts chassis_private rows by name, the table is not monitored
+func countChassisPrivate(t *testing.T, sbClient *OVNSbClient, name string) int {
+	t.Helper()
+	op := ovsdb.Operation{
+		Op:    ovsdb.OperationSelect,
+		Table: ovnsb.ChassisPrivateTable,
+		Where: []ovsdb.Condition{ovsdb.NewCondition("name", ovsdb.ConditionEqual, name)},
+	}
+	results, err := sbClient.Client.Transact(context.Background(), op)
+	require.NoError(t, err)
+	require.Len(t, results, 1)
+	require.Empty(t, results[0].Error)
+	return len(results[0].Rows)
 }
 
 func (suite *OvnClientTestSuite) testGetChassis() {
@@ -95,6 +113,29 @@ func (suite *OvnClientTestSuite) testDeleteChassis() {
 		chassis, err = sbClient.GetChassis("chassis-name-2", true)
 		require.NoError(t, err)
 		require.Nil(t, chassis)
+	})
+
+	t.Run("test delete chassis with chassis_private", func(t *testing.T) {
+		chassis := newChassis(0, "host-name-private", "chassis-name-private", nil, nil, nil, nil, nil)
+		chassisOps, err := sbClient.Create(chassis)
+		require.NoError(t, err)
+		privateOps, err := sbClient.Create(&ovnsb.ChassisPrivate{
+			UUID:    ovsclient.NamedUUID(),
+			Name:    "chassis-name-private",
+			Chassis: &chassis.UUID,
+		})
+		require.NoError(t, err)
+		err = sbClient.Transact("chassis-add", append(chassisOps, privateOps...))
+		require.NoError(t, err)
+		require.Equal(t, 1, countChassisPrivate(t, sbClient, "chassis-name-private"))
+
+		err = sbClient.DeleteChassis("chassis-name-private")
+		require.NoError(t, err)
+
+		chassis, err = sbClient.GetChassis("chassis-name-private", true)
+		require.NoError(t, err)
+		require.Nil(t, chassis)
+		require.Zero(t, countChassisPrivate(t, sbClient, "chassis-name-private"))
 	})
 
 	t.Run("test delete chassis with empty chassis name", func(t *testing.T) {

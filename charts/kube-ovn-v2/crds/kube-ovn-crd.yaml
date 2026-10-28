@@ -2910,6 +2910,12 @@ spec:
                 type: string
               dhcpV6OptionsUUID:
                 type: string
+              gatewayMAC:
+                description: |-
+                  GatewayMAC is the mac address of the subnet's logical router port, recorded so
+                  the validating webhook can independently verify a switch_lb_rule vip mac repair
+                  (see pkg/webhook/vip.go) without needing access to the controller's in-memory IPAM.
+                type: string
               mcastQuerierIP:
                 type: string
               mcastQuerierMAC:
@@ -4266,6 +4272,11 @@ spec:
                 x-kubernetes-validations:
                 - message: This field is immutable.
                   rule: self == oldSelf
+              priorityClassName:
+                description: |-
+                  Optional PriorityClass name applied to the workload pods.
+                  If not specified, the cluster's default Pod priority applies.
+                type: string
               replicas:
                 default: 1
                 description: workload replicas

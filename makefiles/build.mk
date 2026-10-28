@@ -37,7 +37,12 @@ verify-crd: gen-crd
 .PHONY: build-go
 build-go:
 	go mod tidy
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kubectl-ko ./cmd/kubectl-ko
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kubectl-ko-node-agent ./cmd/ko-helper
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kube-ovn -v ./cmd/cni
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kube-ovn-acl-sample -v ./cmd/acl_sample
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kube-ovn-tproxy -v ./cmd/tproxy
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kube-ovn-ipsec -v ./cmd/ipsec
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-cmd -v ./cmd
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-bfdd-supervisor -v ./cmd/bfdd_supervisor
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-daemon -v ./cmd/daemon
@@ -47,7 +52,12 @@ build-go:
 
 .PHONY: build-go-arm
 build-go-arm:
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kubectl-ko ./cmd/kubectl-ko
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kubectl-ko-node-agent ./cmd/ko-helper
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kube-ovn -v ./cmd/cni
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kube-ovn-acl-sample -v ./cmd/acl_sample
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kube-ovn-tproxy -v ./cmd/tproxy
+	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kube-ovn-ipsec -v ./cmd/ipsec
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-cmd -v ./cmd
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-bfdd-supervisor -v ./cmd/bfdd_supervisor
 	CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build $(GO_BUILD_FLAGS) -buildmode=pie -o $(CURDIR)/dist/images/kube-ovn-daemon -v ./cmd/daemon
@@ -74,9 +84,9 @@ build-debug: gen-crd
 
 .PHONY: base-amd64
 base-amd64:
-	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 --build-arg ARCH=amd64 --build-arg GO_VERSION --build-arg TRIVY_DB_REPOSITORY -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-amd64 -o type=docker -f dist/images/Dockerfile.base dist/images/
-	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 --build-arg ARCH=amd64 --build-arg GO_VERSION --build-arg TRIVY_DB_REPOSITORY --build-arg LEGACY=true -t $(REGISTRY)/kube-ovn-base:$(LEGACY_TAG) -o type=docker -f dist/images/Dockerfile.base dist/images/
-	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 --build-arg ARCH=amd64 --build-arg GO_VERSION --build-arg TRIVY_DB_REPOSITORY --build-arg DEBUG=true -t $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-amd64 -o type=docker -f dist/images/Dockerfile.base dist/images/
+	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 --build-arg ARCH=amd64 --build-arg GO_VERSION -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-amd64 -o type=docker -f dist/images/Dockerfile.base dist/images/
+	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 --build-arg ARCH=amd64 --build-arg GO_VERSION --build-arg LEGACY=true -t $(REGISTRY)/kube-ovn-base:$(LEGACY_TAG) -o type=docker -f dist/images/Dockerfile.base dist/images/
+	docker buildx build $(IMAGE_LABELS) --platform linux/amd64 --build-arg ARCH=amd64 --build-arg GO_VERSION --build-arg DEBUG=true -t $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-amd64 -o type=docker -f dist/images/Dockerfile.base dist/images/
 
 .PHONY: base-amd64-dpdk
 base-amd64-dpdk:
@@ -84,8 +94,8 @@ base-amd64-dpdk:
 
 .PHONY: base-arm64
 base-arm64:
-	docker buildx build $(IMAGE_LABELS) --platform linux/arm64 --build-arg ARCH=arm64 --build-arg GO_VERSION --build-arg TRIVY_DB_REPOSITORY -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 -o type=docker -f dist/images/Dockerfile.base dist/images/
-	docker buildx build $(IMAGE_LABELS) --platform linux/arm64 --build-arg ARCH=arm64 --build-arg GO_VERSION --build-arg TRIVY_DB_REPOSITORY --build-arg DEBUG=true -t $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-arm64 -o type=docker -f dist/images/Dockerfile.base dist/images/
+	docker buildx build $(IMAGE_LABELS) --platform linux/arm64 --build-arg ARCH=arm64 --build-arg GO_VERSION -t $(REGISTRY)/kube-ovn-base:$(RELEASE_TAG)-arm64 -o type=docker -f dist/images/Dockerfile.base dist/images/
+	docker buildx build $(IMAGE_LABELS) --platform linux/arm64 --build-arg ARCH=arm64 --build-arg GO_VERSION --build-arg DEBUG=true -t $(REGISTRY)/kube-ovn-base:$(DEBUG_TAG)-arm64 -o type=docker -f dist/images/Dockerfile.base dist/images/
 
 .PHONY: build-kit
 build-kit: gen-crd build-go
@@ -169,14 +179,19 @@ lint: verify-crd
 ifeq ($(CI),true)
 	@echo "Running in GitHub Actions"
 	golangci-lint run -v
-	go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test
+	go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go tool modernize -test
 else
 	@echo "Running in local environment"
 	golangci-lint run -v --fix
-	go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go run golang.org/x/tools/gopls/internal/analysis/modernize/cmd/modernize@latest -test -fix
+	go list ./... | grep -vE '$(MODERNIZE_EXCLUDE)' | xargs go tool modernize -test -fix
 endif
 
 .PHONY: scan
 scan:
 	trivy image --exit-code=1 --ignore-unfixed --scanners vuln $(REGISTRY)/kube-ovn:$(RELEASE_TAG)
 	trivy image --exit-code=1 --ignore-unfixed --scanners vuln $(REGISTRY)/vpc-nat-gateway:$(RELEASE_TAG)
+
+.PHONY: build-kubectl-ko
+build-kubectl-ko:
+	CGO_ENABLED=0 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kubectl-ko$(if $(filter windows,$(shell go env GOOS)),.exe) ./cmd/kubectl-ko
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build $(GO_BUILD_FLAGS) -o $(CURDIR)/dist/images/kubectl-ko-node-agent ./cmd/ko-helper

@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -38,6 +39,16 @@ func init() {
 
 	zc := zap.NewProductionConfig()
 	zc.Level = zap.NewAtomicLevelAt(zapcore.Level(-3))
+	if value := os.Getenv("KUBE_OVN_LIBOVSDB_LOG_VERBOSITY"); value != "" {
+		verbosity, err := strconv.Atoi(value)
+		if err != nil || verbosity < 0 || verbosity > 5 {
+			klog.Warningf("invalid KUBE_OVN_LIBOVSDB_LOG_VERBOSITY %q; keeping verbosity 3", value)
+		} else {
+			zc.Level = zap.NewAtomicLevelAt(zapcore.Level(-verbosity))
+			// Diagnostic transactions must not be dropped by production log sampling.
+			zc.Sampling = nil
+		}
+	}
 	zc.EncoderConfig.EncodeLevel = func(l zapcore.Level, enc zapcore.PrimitiveArrayEncoder) {
 		if l < zapcore.InfoLevel {
 			l = zapcore.InfoLevel
@@ -55,6 +66,32 @@ func NamedUUID() string {
 	return fmt.Sprintf("u%010d", atomic.AddUint32(&namedUUIDCounter, 1))
 }
 
+type initialMonitorClient interface {
+	NewMonitor(...client.MonitorOption) *client.Monitor
+	Monitor(context.Context, *client.Monitor) (client.MonitorCookie, error)
+}
+
+func hasMultipleEndpoints(addr string) bool {
+	endpointCount := 0
+	for range strings.SplitSeq(addr, ",") {
+		endpointCount++
+		if endpointCount > 1 {
+			return true
+		}
+	}
+	return false
+}
+
+// monitorWithTimeout bounds the initial monitor RPC so cache update errors cannot block startup forever.
+func monitorWithTimeout(c initialMonitorClient, monitors []client.MonitorOption, timeout time.Duration) error {
+	monitor := c.NewMonitor(monitors...)
+	monitor.Method = ovsdb.ConditionalMonitorRPC
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+	_, err := c.Monitor(ctx, monitor)
+	return err
+}
+
 // NewOvsDbClient creates a new ovsdb client
 func NewOvsDbClient(
 	db string,
@@ -68,6 +105,7 @@ func NewOvsDbClient(
 
 	var ssl bool
 	var options []client.Option
+	multipleEndpoints := hasMultipleEndpoints(addr)
 	for ep := range strings.SplitSeq(addr, ",") {
 		if !ssl && strings.HasPrefix(ep, client.SSL) {
 			ssl = true
@@ -75,7 +113,7 @@ func NewOvsDbClient(
 		options = append(options, client.WithEndpoint(ep))
 	}
 	var backOff backoff.BackOff
-	if len(options) > 1 {
+	if multipleEndpoints {
 		// multiple endpoints, use zero backoff to try next endpoint immediately
 		backOff = &backoff.ZeroBackOff{}
 	} else {
@@ -97,6 +135,8 @@ func NewOvsDbClient(
 	dbLogger := logger.WithValues("db", db)
 	connectTimeout := time.Duration(ovsDbConTimeout) * time.Second
 	inactivityTimeout := time.Duration(ovsDbInactivityTimeout) * time.Second
+	// libovsdb checks the actual backend's model on every connection and watches
+	// leadership only for clustered databases. A single address may be an HA LB.
 	options = append(options, client.WithLeaderOnly(true), client.WithLogger(&dbLogger))
 	if inactivityTimeout > 0 {
 		// Reading and parsing the DB after reconnect at scale can (unsurprisingly)
@@ -123,9 +163,7 @@ func NewOvsDbClient(
 
 	if len(monitors) != 0 {
 		klog.Infof("setting up monitors for %s database on server %s", db, addr)
-		monitor := c.NewMonitor(monitors...)
-		monitor.Method = ovsdb.ConditionalMonitorRPC
-		if _, err = c.Monitor(context.TODO(), monitor); err != nil {
+		if err = monitorWithTimeout(c, monitors, connectTimeout); err != nil {
 			c.Close()
 			klog.Errorf("failed to monitor database on %s server %s: %v", db, addr, err)
 			return nil, err

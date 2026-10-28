@@ -169,6 +169,35 @@ func formatDHCPOptions(options map[string]string) string {
 	return sb.String()
 }
 
+// splitDHCPOptions splits the raw option string on commas,
+// commas inside braces are part of the value and do not split,
+// e.g. router=10.0.0.1,classless_static_route={10.0.0.0/24,10.0.0.1}
+func splitDHCPOptions(raw string) []string {
+	var options []string
+	depth, start := 0, 0
+	for i, c := range raw {
+		switch c {
+		case '{':
+			depth++
+		case '}':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				options = append(options, raw[start:i])
+				start = i + 1
+			}
+		}
+	}
+	if depth != 0 {
+		// unbalanced braces, fall back to a plain split so that a malformed
+		// value does not swallow the options following it
+		return strings.Split(raw, ",")
+	}
+	return append(options, raw[start:])
+}
+
 // parseDHCPOptions parses dhcp options,
 // the raw option's format is: server_id=192.168.123.50,server_mac=00:00:00:08:0a:11
 func parseDHCPOptions(raw string) map[string]string {
@@ -181,8 +210,7 @@ func parseDHCPOptions(raw string) map[string]string {
 
 	// trim blank
 	raw = strings.ReplaceAll(raw, " ", "")
-	options := strings.SplitSeq(raw, ",")
-	for option := range options {
+	for _, option := range splitDHCPOptions(raw) {
 		kv := strings.Split(option, "=")
 		// TODO: ignore invalidate option, maybe need further validation
 		if len(kv) != 2 || len(kv[0]) == 0 || len(kv[1]) == 0 {

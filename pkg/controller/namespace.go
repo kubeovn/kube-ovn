@@ -17,6 +17,7 @@ import (
 )
 
 func (c *Controller) enqueueAddNamespace(obj any) {
+	c.invalidatePolicySelectorCache()
 	if c.config.EnableNP {
 		for _, np := range c.namespaceMatchNetworkPolicies(obj.(*v1.Namespace)) {
 			c.updateNpQueue.Add(np)
@@ -28,6 +29,7 @@ func (c *Controller) enqueueAddNamespace(obj any) {
 }
 
 func (c *Controller) enqueueDeleteNamespace(obj any) {
+	c.invalidatePolicySelectorCache()
 	var ns *v1.Namespace
 	switch t := obj.(type) {
 	case *v1.Namespace:
@@ -56,6 +58,7 @@ func (c *Controller) enqueueDeleteNamespace(obj any) {
 }
 
 func (c *Controller) enqueueUpdateNamespace(oldObj, newObj any) {
+	c.invalidatePolicySelectorCache()
 	oldNs := oldObj.(*v1.Namespace)
 	newNs := newObj.(*v1.Namespace)
 	if oldNs.ResourceVersion == newNs.ResourceVersion {
@@ -66,14 +69,15 @@ func (c *Controller) enqueueUpdateNamespace(oldObj, newObj any) {
 		if c.config.EnableNP {
 			oldNp := c.namespaceMatchNetworkPolicies(oldNs)
 			newNp := c.namespaceMatchNetworkPolicies(newNs)
-			for _, np := range util.DiffStringSlice(oldNp, newNp) {
+			for _, np := range util.UnionStringSlice(oldNp, newNp) {
 				c.updateNpQueue.Add(np)
 			}
 		}
 
 		if c.config.EnableANP {
-			c.updateAnpsByLabelsMatch(newObj.(*v1.Namespace).Labels, nil)
-			c.updateCnpsByLabelsMatch(newObj.(*v1.Namespace).Labels, nil)
+			change := labelChange{oldNs.Labels, newNs.Labels, nil, nil}
+			c.updateAnpsByLabelsChange(change)
+			c.updateCnpsByLabelsChange(change)
 		}
 
 		expectSubnets, err := c.getNsExpectSubnets(newNs)

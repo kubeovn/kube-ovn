@@ -10,7 +10,6 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 	"k8s.io/utils/set"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -146,7 +145,7 @@ func (c *OVNNbClient) UpdateLogicalRouterStaticRoute(route *ovnnb.LogicalRouterS
 // DeleteLogicalRouterStaticRoute delete a logical router static route
 func (c *OVNNbClient) DeleteLogicalRouterStaticRoute(lrName string, routeTable, policy *string, ipPrefix, nexthop string) error {
 	if policy == nil || len(*policy) == 0 {
-		policy = ptr.To(ovnnb.LogicalRouterStaticRoutePolicyDstIP)
+		policy = new(ovnnb.LogicalRouterStaticRoutePolicyDstIP)
 	}
 
 	lr, err := c.GetLogicalRouter(lrName, true)
@@ -268,7 +267,7 @@ func (c *OVNNbClient) BatchDeleteLogicalRouterStaticRoute(lrName string, staticR
 			continue
 		}
 		if route.Policy == nil {
-			route.Policy = ptr.To(ovnnb.LogicalRouterStaticRoutePolicyDstIP)
+			route.Policy = new(ovnnb.LogicalRouterStaticRoutePolicyDstIP)
 		}
 
 		staticRoutesMap[createStaticRouteKey(route.RouteTable, *route.Policy, route.IPPrefix)] = route.Nexthop
@@ -495,7 +494,7 @@ func (c *OVNNbClient) batchListLogicalRouterStaticRoutesForDelete(staticRoutes m
 		}
 
 		if route.Policy == nil {
-			route.Policy = ptr.To(ovnnb.LogicalRouterStaticRoutePolicyDstIP)
+			route.Policy = new(ovnnb.LogicalRouterStaticRoutePolicyDstIP)
 		}
 
 		key := createStaticRouteKey(route.RouteTable, *route.Policy, route.IPPrefix)

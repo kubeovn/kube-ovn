@@ -15,7 +15,6 @@ on:
           - release-1.16
           - release-1.15
           - release-1.14
-          - release-1.13
   schedule:
   - cron: "20 19 * * *"
 
@@ -32,7 +31,6 @@ jobs:
         - release-1.16
         - release-1.15
         - release-1.14
-        - release-1.13
     name: Build
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
@@ -58,12 +56,20 @@ jobs:
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
         env:
           GO_VERSION: ${{ steps.setup-go.outputs.go-version }}
-          TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2
           IMAGE_REF_NAME: ${{ matrix.branch }}
         run: |
           export IMAGE_REVISION=$(git rev-parse HEAD)
           make base-${{ matrix.arch }}
           make base-tar-${{ matrix.arch }}
+
+      - name: Test OVN router ARP and ND
+        if: (github.event.inputs.branch || matrix.branch) == matrix.branch && hashFiles('dist/images/tests/ovn-router-arp-nd.py') != ''
+        run: |
+          docker run --rm --network=none --read-only --tmpfs /tmp \
+            --mount "type=bind,source=$PWD/dist/images/tests/ovn-router-arp-nd.py,target=/ovn-router-arp-nd.py,readonly" \
+            --entrypoint python3 \
+            "kubeovn/kube-ovn-base:$(cat VERSION)-${{ matrix.arch }}" \
+            -B /ovn-router-arp-nd.py
 
       - name: Upload image to artifact
         if:  (github.event.inputs.branch || matrix.branch) == matrix.branch
@@ -82,7 +88,6 @@ jobs:
         - release-1.16
         - release-1.15
         - release-1.14
-        - release-1.13
     needs:
       - build
     name: push
@@ -133,6 +138,6 @@ jobs:
             docker manifest create kubeovn/kube-ovn-base:$TAG-debug kubeovn/kube-ovn-base:$TAG-debug-amd64 kubeovn/kube-ovn-base:$TAG-debug-arm64
             docker manifest push kubeovn/kube-ovn-base:$TAG-debug
           fi
-          if [ "${{ matrix.branch }}" = "master" -o "`printf '${{ matrix.branch }}\nrelease-1.13' | sort -Vr | head -n1`" = "${{ matrix.branch }}" ]; then
+          if [ "${{ matrix.branch }}" = "master" -o "`printf '${{ matrix.branch }}\nrelease-1.14' | sort -Vr | head -n1`" = "${{ matrix.branch }}" ]; then
             docker push kubeovn/kube-ovn-base:$TAG-amd64-legacy
           fi

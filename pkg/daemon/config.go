@@ -14,7 +14,6 @@ import (
 	"sync"
 	"time"
 
-	certmanagerclientset "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
@@ -43,6 +42,7 @@ type Configuration struct {
 	HostTunnelSrc                 bool
 	DPDKTunnelIface               string
 	MTU                           int
+	MaxMTU                        int
 	MSS                           int
 	EnableMirror                  bool
 	MirrorNic                     string
@@ -51,7 +51,6 @@ type Configuration struct {
 	KubeConfigFile                string
 	KubeClient                    kubernetes.Interface
 	KubeOvnClient                 clientset.Interface
-	CertManagerClient             certmanagerclientset.Interface
 	PodName                       string
 	PodNamespace                  string
 	NodeName                      string
@@ -71,16 +70,13 @@ type Configuration struct {
 	ExternalGatewayConfigNS       string
 	ExternalGatewaySwitch         string // provider network underlay vlan subnet
 	EnableMetrics                 bool
-	EnableOVNIPSec                bool
-	CertManagerIPSecCert          bool
-	CertManagerIssuerName         string
-	IPSecCertDuration             int
 	EnableArpDetectIPConflict     bool
 	KubeletDir                    string
 	EnableVerboseConnCheck        bool
 	TCPConnCheckPort              int32
 	UDPConnCheckPort              int32
 	EnableTProxy                  bool
+	EnableRecompute               bool
 	OVSVsctlConcurrency           int32
 	SetVxlanTxOff                 bool
 	LogPerm                       string
@@ -105,15 +101,15 @@ type Configuration struct {
 // TODO: validate configuration
 func ParseFlags() *Configuration {
 	var (
-		argInstallCNIConfig = pflag.Bool("install-cni-config", false, "Install CNI config")
-		argCniConfDir       = pflag.String("cni-conf-dir", "/etc/cni/net.d", "Path of the CNI config directory.")
-		argCniConfFile      = pflag.String("cni-conf-file", "/kube-ovn/01-kube-ovn.conflist", "Path of the CNI config file.")
-		argsCniConfName     = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/, default: 01-kube-ovn.conflist")
-
+		argInstallCNIConfig      = pflag.Bool("install-cni-config", false, "Install CNI config")
+		argCniConfDir            = pflag.String("cni-conf-dir", "/etc/cni/net.d", "Path of the CNI config directory.")
+		argCniConfFile           = pflag.String("cni-conf-file", "/kube-ovn/01-kube-ovn.conflist", "Path of the CNI config file.")
+		argsCniConfName          = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/, default: 01-kube-ovn.conflist")
 		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication, can be a nic name or a group of regex separated by comma (default the default route iface)")
 		argHostTunnelSrc         = pflag.Bool("host-tunnel-src", false, "Enable /32 address selection for the tunnel source, excludes localhost addresses unless explicitly allowed.")
 		argDPDKTunnelIface       = pflag.String("dpdk-tunnel-iface", "br-phy", "Specifies the name of the dpdk tunnel iface.")
 		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface in overlay networks (default iface MTU - 100)")
+		argMaxMTU                = pflag.Int("max-mtu", 0, "Upper bound applied to the auto-computed pod MTU (0 disables the cap). Useful when the underlay uses jumbo frames but pod traffic egresses to a 1500-byte path (e.g. the internet), where the uncapped value would cause fragmentation or PMTUD-dependent blackholes. Ignored when --mtu is set explicitly.")
 		argEnableMirror          = pflag.Bool("enable-mirror", false, "Enable traffic mirror (default false)")
 		argMirrorNic             = pflag.String("mirror-iface", "mirror0", "The mirror nic name that will be created by kube-ovn")
 		argBindSocket            = pflag.String("bind-socket", defaultBindSocket, "The socket daemon bind to.")
@@ -140,11 +136,8 @@ func ParseFlags() *Configuration {
 		argTCPConnectivityCheckPort      = pflag.Int32("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
 		argUDPConnectivityCheckPort      = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 		argEnableTProxy                  = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
+		argEnableRecompute               = pflag.Bool("enable-recompute", false, "Enable periodic ovn-controller recompute")
 		argOVSVsctlConcurrency           = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
-		argEnableOVNIPSec                = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
-		argCertManagerIPSecCert          = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
-		argCertManagerIssuerName         = pflag.String("cert-manager-issuer-name", "kube-ovn", "The cert-manager issuer name to request certificates from")
-		argOVNIPSecCertDuration          = pflag.Int("ovn-ipsec-cert-duration", 2*365*24*60*60, "The duration requested for IPSec certificates (seconds)")
 		argSetVxlanTxOff                 = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
 		argLogPerm                       = pflag.String("log-perm", "640", "The permission for the log file")
 		argGatewayNetfilterMode          = pflag.String("gateway-netfilter-mode", "auto", "gateway netfilter backend: auto, iptables, or nftables")
@@ -190,6 +183,7 @@ func ParseFlags() *Configuration {
 		HostTunnelSrc:             *argHostTunnelSrc,
 		DPDKTunnelIface:           *argDPDKTunnelIface,
 		MTU:                       *argMTU,
+		MaxMTU:                    *argMaxMTU,
 		EnableMirror:              *argEnableMirror,
 		MirrorNic:                 *argMirrorNic,
 		BindSocket:                *argBindSocket,
@@ -212,22 +206,19 @@ func ParseFlags() *Configuration {
 		ExternalGatewayConfigNS:   *argExternalGatewayConfigNS,
 		ExternalGatewaySwitch:     *argExternalGatewaySwitch,
 		EnableMetrics:             *argEnableMetrics,
-		EnableOVNIPSec:            *argEnableOVNIPSec,
 		EnableArpDetectIPConflict: *argEnableArpDetectIPConflict,
 		KubeletDir:                *argKubeletDir,
 		EnableVerboseConnCheck:    *argEnableVerboseConnCheck,
 		TCPConnCheckPort:          *argTCPConnectivityCheckPort,
 		UDPConnCheckPort:          *argUDPConnectivityCheckPort,
 		EnableTProxy:              *argEnableTProxy,
+		EnableRecompute:           *argEnableRecompute,
 		OVSVsctlConcurrency:       *argOVSVsctlConcurrency,
 		SetVxlanTxOff:             *argSetVxlanTxOff,
 		LogPerm:                   *argLogPerm,
 		TLSMinVersion:             *argTLSMinVersion,
 		TLSMaxVersion:             *argTLSMaxVersion,
 		TLSCipherSuites:           *argTLSCipherSuites,
-		CertManagerIPSecCert:      *argCertManagerIPSecCert,
-		CertManagerIssuerName:     *argCertManagerIssuerName,
-		IPSecCertDuration:         *argOVNIPSecCertDuration,
 		EnableNonPrimaryCNI:       *argNonPrimaryCNI,
 		ACLSampling: aclsampling.NodeConfig{
 			Enabled:      *argEnableACLSampling,
@@ -270,6 +261,38 @@ func (config *Configuration) Init(nicBridgeMappings map[string]string) error {
 
 	klog.Infof("daemon config: %v", config)
 	return nil
+}
+
+// computePodMTU derives the pod MTU from the tunnel interface MTU and network
+// type. When maxMTU > 0, the result is capped at maxMTU. This guards against
+// jumbo-frame underlays (e.g. 9000) producing pod MTUs that trigger
+// fragmentation or PMTUD blackholes on egress paths clamped to 1500.
+func computePodMTU(ifaceMTU int, networkType string, encapIsIPv6 bool, maxMTU int) (int, error) {
+	var podMTU int
+
+	// Compute the MTU based on the tunnel overhead
+	switch networkType {
+	case util.NetworkTypeGeneve, util.NetworkTypeVlan:
+		podMTU = ifaceMTU - util.GeneveHeaderLength
+	case util.NetworkTypeVxlan:
+		podMTU = ifaceMTU - util.VxlanHeaderLength
+	case util.NetworkTypeStt:
+		podMTU = ifaceMTU - util.SttHeaderLength
+	default:
+		return 0, fmt.Errorf("invalid network type: %s", networkType)
+	}
+
+	if encapIsIPv6 {
+		// IPv6 header size is 40
+		podMTU -= 20
+	}
+
+	// If maxMTU is specified, clamp MTU to the value provided
+	if maxMTU > 0 && podMTU > maxMTU {
+		podMTU = maxMTU
+	}
+
+	return podMTU, nil
 }
 
 func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) error {
@@ -331,20 +354,11 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 	encapIsIPv6 := util.CheckProtocol(encapIP) == kubeovnv1.ProtocolIPv6
 
 	if config.MTU == 0 {
-		switch config.NetworkType {
-		case util.NetworkTypeGeneve, util.NetworkTypeVlan:
-			config.MTU = mtu - util.GeneveHeaderLength
-		case util.NetworkTypeVxlan:
-			config.MTU = mtu - util.VxlanHeaderLength
-		case util.NetworkTypeStt:
-			config.MTU = mtu - util.SttHeaderLength
-		default:
-			return fmt.Errorf("invalid network type: %s", config.NetworkType)
+		podMTU, err := computePodMTU(mtu, config.NetworkType, encapIsIPv6, config.MaxMTU)
+		if err != nil {
+			return err
 		}
-		if encapIsIPv6 {
-			// IPv6 header size is 40
-			config.MTU -= 20
-		}
+		config.MTU = podMTU
 		// Warn but do not raise: the path MTU is dictated by the underlying
 		// link, and forcing the value above it would replace silent IPv6
 		// drops with silent IPv4 fragmentation/blackholing.
@@ -505,16 +519,6 @@ func (config *Configuration) initKubeClient() error {
 		return err
 	}
 	config.KubeClient = kubeClient
-
-	if config.CertManagerIPSecCert {
-		cfg.ContentType = util.ContentTypeJSON
-		cmClient, err := certmanagerclientset.NewForConfig(cfg)
-		if err != nil {
-			klog.Errorf("init certmanager client failed %v", err)
-			return err
-		}
-		config.CertManagerClient = cmClient
-	}
 
 	return nil
 }

@@ -23,7 +23,7 @@ docker inspect kube-ovn-test -f '{{.NetworkSettings.Networks.kind.IPAddress}}'
 kubectl exec -it test-client -- ./test-server --remote-address=172.18.0.5 --remote-port=80 --output=json --duration-seconds=60
 
 # terminal 2
-kubectl ko reload
+kubectl ko restart
 
 # Try with different address to test different path.
 ```

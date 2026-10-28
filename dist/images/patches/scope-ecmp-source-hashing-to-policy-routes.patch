@@ -1,0 +1,30 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Sat, 20 Sep 2026 00:00:00 +0000
+Subject: [PATCH] use L3 source and destination hash for policy route ECMP
+
+Hash policy-route ECMP on source and destination IPv4/IPv6 addresses only.
+This keeps fragmented and unfragmented packets from the same flow on the same
+egress-gateway replica, at the cost of per-port load balancing.
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+ northd/northd.c | 11 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/northd/northd.c b/northd/northd.c
+index 1ca8dedafa..2522df5b20 100644
+--- a/northd/northd.c
++++ b/northd/northd.c
+@@ -11883,0 +11884,3 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
++        /* Hash policy-route ECMP on source and destination IP addresses.
++         * A pure L3 hash keeps fragmented and unfragmented packets from
++         * the same flow on the same egress-gateway replica. */
+@@ -11885 +11888,2 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
+-                      "; %s = select(", REG_ECMP_GROUP_ID, ecmp_group_id,
++                      "; %s = select(values=(", REG_ECMP_GROUP_ID,
++                      ecmp_group_id,
+@@ -11895 +11899,2 @@ build_ecmp_routing_policy_flows(struct lflow_table *lflows,
+-        ds_put_cstr(&actions, ");");
++        ds_put_cstr(&actions,
++                    "); hash_fields=\"ip_src,ip_dst,ipv6_src,ipv6_dst\");");

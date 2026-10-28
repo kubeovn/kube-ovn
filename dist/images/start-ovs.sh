@@ -5,6 +5,7 @@ set -euo pipefail
 
 HW_OFFLOAD=${HW_OFFLOAD:-false}
 ENABLE_SSL=${ENABLE_SSL:-false}
+ENABLE_OVN_IPSEC=${ENABLE_OVN_IPSEC:-false}
 OVN_DB_IPS=${OVN_DB_IPS:-}
 OVN_SB_ADDR=${OVN_SB_ADDR:-}
 TUNNEL_TYPE=${TUNNEL_TYPE:-geneve}
@@ -74,8 +75,9 @@ trap quit EXIT
 # update links to point to the iptables binaries
 iptables -V
 
-# Start ovsdb
-/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random --ovsdb-server-wrapper="${DEBUG_WRAPPER}"
+# Keep OVSDB sockets group-writable for the non-root TProxy helper, including
+# after monitor restarts. bind() applies the umask even after OVS sets FD mode 0770.
+/usr/share/openvswitch/scripts/ovs-ctl restart --no-ovs-vswitchd --system-id=random --ovsdb-server-umask=0007 --ovsdb-server-wrapper="${DEBUG_WRAPPER}"
 # Restrict the number of pthreads ovs-vswitchd creates to reduce the
 # amount of RSS it uses on hosts with many cores
 # https://bugzilla.redhat.com/show_bug.cgi?id=1571379
@@ -116,11 +118,97 @@ function handle_underlay_bridges() {
   done
 }
 
+function restoreProviderBridgeDefaultFlow() {
+  local mappings br flows restored rc i
+  for i in $(seq 1 10); do
+    if mappings=$(ovs-vsctl --if-exists get open . external-ids:ovn-bridge-mappings); then
+      break
+    fi
+    if [ "$i" -eq 10 ]; then
+      echo "failed to get ovn-bridge-mappings"
+      return 1
+    fi
+    echo "failed to get ovn-bridge-mappings, retrying"
+    sleep 1
+  done
+
+  mappings=$(echo "$mappings" | tr -d '"')
+  if [ -z "$mappings" ]; then
+    echo "no provider bridge mapping found, skip restoring default flows"
+    return 0
+  fi
+
+  for br in $(echo "$mappings" | tr ',' '\n' | awk -F: 'NF == 2 && $2 != "" {print $2}' | sort -u); do
+    if ovs-vsctl br-exists "$br"; then
+      :
+    else
+      rc=$?
+      if [ "$rc" -eq 2 ]; then
+        continue
+      fi
+      echo "failed to check whether bridge $br exists"
+      return 1
+    fi
+    if ! ovs-vsctl --timeout=30 wait-until bridge "$br" datapath_id!='[]'; then
+      echo "bridge $br is not ready"
+      return 1
+    fi
+
+    restored=false
+    for i in $(seq 1 11); do
+      if flows=$(ovs-ofctl dump-flows "$br" table=0); then
+        if echo "$flows" | grep -qE 'priority=0,? actions=NORMAL$'; then
+          restored=true
+          break
+        fi
+        if [ "$i" -eq 11 ]; then
+          break
+        fi
+        echo "restoring default flow on provider bridge $br"
+        ovs-ofctl add-flow "$br" "priority=0,actions=NORMAL" || true
+      else
+        echo "failed to dump flows of bridge $br, retrying"
+      fi
+      sleep 1
+    done
+    if [ "$restored" != true ]; then
+      echo "failed to restore default flow on bridge $br"
+      return 1
+    fi
+  done
+}
+
 handle_underlay_bridges
+
+# Persisted marked intent also gates a restart when an old deployment has
+# removed the sidecar. Only the coordinated cleanup may remove that intent.
+ovs-vsctl --no-wait set Open_vSwitch . external-ids:ovn-encap-type="${TUNNEL_TYPE}"
+protection_mark=$(ovs-vsctl --if-exists get Open_vSwitch . external_ids:ovn-ipsec-protection-mark)
+if [[ "$ENABLE_OVN_IPSEC" == true || "$protection_mark" != '[]' && -n "$protection_mark" || -e /run/kube-ovn-ipsec-protection/required || -L /run/kube-ovn-ipsec-protection/required ]]; then
+  ovn-controller --version | grep -Fx 'IPsec output protection version 1'
+  echo 'Waiting for IPsec preparation or live protection before restoring the OVS datapath'
+  while true; do
+    protection_ovs_uuid=$(ovs-vsctl get Open_vSwitch . _uuid)
+    if /kube-ovn/kube-ovn-ipsec --check=startup --ovs-uuid="$protection_ovs_uuid"; then
+      break
+    fi
+    # A finite cleanup init may have released protection and exited between
+    # our first read and the probe. Recheck the disabled startup condition.
+    if [[ "$ENABLE_OVN_IPSEC" != true && ! -e /run/kube-ovn-ipsec-protection/required && ! -L /run/kube-ovn-ipsec-protection/required ]]; then
+      protection_mark=$(ovs-vsctl --if-exists get Open_vSwitch . external_ids:ovn-ipsec-protection-mark)
+      if [[ "$protection_mark" == '[]' || -z "$protection_mark" ]]; then
+        break
+      fi
+    fi
+    sleep 1
+  done
+fi
 
 # Start vswitchd. restart will automatically set/unset flow-restore-wait which is not what we want
 /usr/share/openvswitch/scripts/ovs-ctl restart --no-ovsdb-server --system-id=random --no-mlockall --ovs-vswitchd-wrapper="$DEBUG_WRAPPER"
 /usr/share/openvswitch/scripts/ovs-ctl --protocol=udp --dport=6081 enable-protocol
+
+restoreProviderBridgeDefaultFlow
 
 function gen_conn_str {
   if [[ -z "${OVN_DB_IPS}" ]]; then

@@ -30,7 +30,7 @@ func (c *OVNSbClient) UpdateChassis(chassis *ovnsb.Chassis, fields ...any) error
 	return nil
 }
 
-// DeleteChassis delete one chassis by name
+// DeleteChassis delete one chassis and its chassis_private by name
 func (c *OVNSbClient) DeleteChassis(chassisName string) error {
 	chassis, err := c.GetChassis(chassisName, true)
 	if err != nil {
@@ -45,6 +45,13 @@ func (c *OVNSbClient) DeleteChassis(chassisName string) error {
 		klog.Error(err)
 		return fmt.Errorf("failed to generate delete chassis operations for node %s: %w", chassis.Hostname, err)
 	}
+	// chassis_private is not monitored, delete it by the indexed name column
+	privateOps, err := c.ovsDbClient.Where(&ovnsb.ChassisPrivate{Name: chassisName}).Delete()
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to generate delete chassis_private operations for node %s: %w", chassis.Hostname, err)
+	}
+	ops = append(ops, privateOps...)
 	if err = c.Transact("chassis-del", ops); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("failed to delete chassis for node %s: %w", chassis.Hostname, err)

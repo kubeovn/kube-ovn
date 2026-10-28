@@ -89,13 +89,12 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 
 		externalIDs := map[string]string{"vendor": util.CniTypeName}
 
-		mockOvnClient.EXPECT().CreateLogicalRouter(vpcName).Return(nil)
-		mockOvnClient.EXPECT().UpdateLogicalRouter(gomock.Any(), gomock.Any()).Return(nil)
+		mockOvnClient.EXPECT().CreateLogicalRouterWithOptions(vpcName, map[string]string{
+			"mac_binding_age_threshold":     "300",
+			"dynamic_neigh_routers":         "true",
+			"always_learn_from_arp_request": "false",
+		}).Return(nil)
 		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", externalIDs).Return(existingKubeOvnRoutes, nil)
-		mockOvnClient.EXPECT().GetLogicalRouter(vpcName, false).Return(&ovnnb.LogicalRouter{
-			Name: vpcName,
-			Nat:  []string{},
-		}, nil)
 		mockOvnClient.EXPECT().DeleteLogicalRouterStaticRoute(vpcName, gomock.Any(), gomock.Any(), "10.0.0.0/24", "1.2.3.4").Return(nil)
 		mockOvnClient.EXPECT().AddLogicalRouterStaticRoute(
 			vpcName,
@@ -109,8 +108,7 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 		mockOvnClient.EXPECT().ListLogicalRouterPolicies(vpcName, -1, nil, true).Return(nil, nil)
 		mockOvnClient.EXPECT().ListLogicalSwitch(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().ListLogicalRouter(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalRouter{}, nil).AnyTimes()
-		mockOvnClient.EXPECT().DeleteLogicalRouterPort(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
-		mockOvnClient.EXPECT().DeleteHAChassisGroup(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
+		mockOvnClient.EXPECT().ReconcileBFDLogicalRouterPort(vpcName, fmt.Sprintf("bfd@%s", vpcName), nil, nil, false).Return(nil)
 		err = ctrl.handleAddOrUpdateVpc(vpcName)
 		require.NoError(t, err)
 	})
@@ -156,19 +154,17 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 
 		externalIDs := map[string]string{"vendor": util.CniTypeName}
 
-		mockOvnClient.EXPECT().CreateLogicalRouter(vpcName).Return(nil)
-		mockOvnClient.EXPECT().UpdateLogicalRouter(gomock.Any(), gomock.Any()).Return(nil)
+		mockOvnClient.EXPECT().CreateLogicalRouterWithOptions(vpcName, map[string]string{
+			"mac_binding_age_threshold":     "300",
+			"dynamic_neigh_routers":         "true",
+			"always_learn_from_arp_request": "false",
+		}).Return(nil)
 		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", externalIDs).Return(existingKubeOvnRoutes, nil)
-		mockOvnClient.EXPECT().GetLogicalRouter(vpcName, false).Return(&ovnnb.LogicalRouter{
-			Name: vpcName,
-			Nat:  []string{},
-		}, nil)
 		mockOvnClient.EXPECT().DeleteLogicalRouterStaticRoute(vpcName, gomock.Any(), gomock.Any(), "10.0.0.0/24", "1.2.3.4").Return(nil)
 		mockOvnClient.EXPECT().ListLogicalRouterPolicies(vpcName, -1, nil, true).Return(nil, nil)
 		mockOvnClient.EXPECT().ListLogicalSwitch(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().ListLogicalRouter(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalRouter{}, nil).AnyTimes()
-		mockOvnClient.EXPECT().DeleteLogicalRouterPort(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
-		mockOvnClient.EXPECT().DeleteHAChassisGroup(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
+		mockOvnClient.EXPECT().ReconcileBFDLogicalRouterPort(vpcName, fmt.Sprintf("bfd@%s", vpcName), nil, nil, false).Return(nil)
 		err = ctrl.handleAddOrUpdateVpc(vpcName)
 		require.NoError(t, err)
 	})
@@ -207,20 +203,18 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 
 		externalIDs := map[string]string{"vendor": util.CniTypeName}
 
-		mockOvnClient.EXPECT().CreateLogicalRouter(vpcName).Return(nil)
-		mockOvnClient.EXPECT().UpdateLogicalRouter(gomock.Any(), gomock.Any()).Return(nil)
+		mockOvnClient.EXPECT().CreateLogicalRouterWithOptions(vpcName, map[string]string{
+			"mac_binding_age_threshold":     "300",
+			"dynamic_neigh_routers":         "true",
+			"always_learn_from_arp_request": "false",
+		}).Return(nil)
 		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", externalIDs).Return(existingKubeOvnRoutes, nil)
-		mockOvnClient.EXPECT().GetLogicalRouter(vpcName, false).Return(&ovnnb.LogicalRouter{
-			Name: vpcName,
-			Nat:  []string{},
-		}, nil)
 		mockOvnClient.EXPECT().DeleteLogicalRouterStaticRoute(vpcName, gomock.Any(), gomock.Any(), "10.0.0.0/24", "1.2.3.4").Return(nil)
 		mockOvnClient.EXPECT().DeleteLogicalRouterStaticRoute(vpcName, gomock.Any(), gomock.Any(), "192.168.0.0/24", "10.0.0.1").Return(nil)
 		mockOvnClient.EXPECT().ListLogicalRouterPolicies(vpcName, -1, nil, true).Return(nil, nil)
 		mockOvnClient.EXPECT().ListLogicalSwitch(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().ListLogicalRouter(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalRouter{}, nil).AnyTimes()
-		mockOvnClient.EXPECT().DeleteLogicalRouterPort(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
-		mockOvnClient.EXPECT().DeleteHAChassisGroup(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
+		mockOvnClient.EXPECT().ReconcileBFDLogicalRouterPort(vpcName, fmt.Sprintf("bfd@%s", vpcName), nil, nil, false).Return(nil)
 		err = ctrl.handleAddOrUpdateVpc(vpcName)
 		require.NoError(t, err)
 	})
@@ -261,13 +255,12 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 
 		externalIDs := map[string]string{"vendor": util.CniTypeName}
 
-		mockOvnClient.EXPECT().CreateLogicalRouter(vpcName).Return(nil)
-		mockOvnClient.EXPECT().UpdateLogicalRouter(gomock.Any(), gomock.Any()).Return(nil)
+		mockOvnClient.EXPECT().CreateLogicalRouterWithOptions(vpcName, map[string]string{
+			"mac_binding_age_threshold":     "300",
+			"dynamic_neigh_routers":         "true",
+			"always_learn_from_arp_request": "false",
+		}).Return(nil)
 		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", externalIDs).Return(nil, nil)
-		mockOvnClient.EXPECT().GetLogicalRouter(vpcName, false).Return(&ovnnb.LogicalRouter{
-			Name: vpcName,
-			Nat:  []string{},
-		}, nil)
 		mockOvnClient.EXPECT().AddLogicalRouterStaticRoute(
 			vpcName,
 			util.MainRouteTable,
@@ -280,8 +273,7 @@ func Test_handleAddOrUpdateVpc_staticRoutes(t *testing.T) {
 		mockOvnClient.EXPECT().ListLogicalRouterPolicies(vpcName, -1, nil, true).Return(nil, nil)
 		mockOvnClient.EXPECT().ListLogicalSwitch(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().ListLogicalRouter(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalRouter{}, nil).AnyTimes()
-		mockOvnClient.EXPECT().DeleteLogicalRouterPort(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
-		mockOvnClient.EXPECT().DeleteHAChassisGroup(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
+		mockOvnClient.EXPECT().ReconcileBFDLogicalRouterPort(vpcName, fmt.Sprintf("bfd@%s", vpcName), nil, nil, false).Return(nil)
 		err = ctrl.handleAddOrUpdateVpc(vpcName)
 		require.NoError(t, err)
 	})
@@ -328,13 +320,12 @@ func Test_handleAddOrUpdateVpc_policyRoutes_ecmpNextHops(t *testing.T) {
 
 		externalIDs := map[string]string{"vendor": util.CniTypeName}
 
-		mockOvnClient.EXPECT().CreateLogicalRouter(vpcName).Return(nil)
-		mockOvnClient.EXPECT().UpdateLogicalRouter(gomock.Any(), gomock.Any()).Return(nil)
+		mockOvnClient.EXPECT().CreateLogicalRouterWithOptions(vpcName, map[string]string{
+			"mac_binding_age_threshold":     "300",
+			"dynamic_neigh_routers":         "true",
+			"always_learn_from_arp_request": "false",
+		}).Return(nil)
 		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", externalIDs).Return(nil, nil)
-		mockOvnClient.EXPECT().GetLogicalRouter(vpcName, false).Return(&ovnnb.LogicalRouter{
-			Name: vpcName,
-			Nat:  []string{},
-		}, nil)
 		mockOvnClient.EXPECT().ListLogicalRouterPolicies(vpcName, -1, nil, true).Return(nil, nil)
 		// The key assertion: empty NextHopIP must produce nil next-hops, not [""]
 		mockOvnClient.EXPECT().AddLogicalRouterPolicy(
@@ -348,8 +339,7 @@ func Test_handleAddOrUpdateVpc_policyRoutes_ecmpNextHops(t *testing.T) {
 		).Return(nil)
 		mockOvnClient.EXPECT().ListLogicalSwitch(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().ListLogicalRouter(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalRouter{}, nil).AnyTimes()
-		mockOvnClient.EXPECT().DeleteLogicalRouterPort(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
-		mockOvnClient.EXPECT().DeleteHAChassisGroup(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
+		mockOvnClient.EXPECT().ReconcileBFDLogicalRouterPort(vpcName, fmt.Sprintf("bfd@%s", vpcName), nil, nil, false).Return(nil)
 		err = ctrl.handleAddOrUpdateVpc(vpcName)
 		require.NoError(t, err)
 	})
@@ -390,13 +380,12 @@ func Test_handleAddOrUpdateVpc_policyRoutes_ecmpNextHops(t *testing.T) {
 
 		externalIDs := map[string]string{"vendor": util.CniTypeName}
 
-		mockOvnClient.EXPECT().CreateLogicalRouter(vpcName).Return(nil)
-		mockOvnClient.EXPECT().UpdateLogicalRouter(gomock.Any(), gomock.Any()).Return(nil)
+		mockOvnClient.EXPECT().CreateLogicalRouterWithOptions(vpcName, map[string]string{
+			"mac_binding_age_threshold":     "300",
+			"dynamic_neigh_routers":         "true",
+			"always_learn_from_arp_request": "false",
+		}).Return(nil)
 		mockOvnClient.EXPECT().ListLogicalRouterStaticRoutes(vpcName, nil, nil, "", externalIDs).Return(nil, nil)
-		mockOvnClient.EXPECT().GetLogicalRouter(vpcName, false).Return(&ovnnb.LogicalRouter{
-			Name: vpcName,
-			Nat:  []string{},
-		}, nil)
 		// No existing policies in OVN for this custom VPC
 		mockOvnClient.EXPECT().ListLogicalRouterPolicies(vpcName, -1, nil, true).Return(nil, nil)
 		// The key assertion: next-hops must be split into a slice, not wrapped as one element
@@ -411,8 +400,7 @@ func Test_handleAddOrUpdateVpc_policyRoutes_ecmpNextHops(t *testing.T) {
 		).Return(nil)
 		mockOvnClient.EXPECT().ListLogicalSwitch(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitch{}, nil).AnyTimes()
 		mockOvnClient.EXPECT().ListLogicalRouter(gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalRouter{}, nil).AnyTimes()
-		mockOvnClient.EXPECT().DeleteLogicalRouterPort(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
-		mockOvnClient.EXPECT().DeleteHAChassisGroup(fmt.Sprintf("bfd@%s", vpcName)).Return(nil)
+		mockOvnClient.EXPECT().ReconcileBFDLogicalRouterPort(vpcName, fmt.Sprintf("bfd@%s", vpcName), nil, nil, false).Return(nil)
 		err = ctrl.handleAddOrUpdateVpc(vpcName)
 		require.NoError(t, err)
 	})
@@ -483,11 +471,7 @@ func TestReconcileVpcBfdLRPClearsHAChassisGroupWhenSelectorMatchesNoNodes(t *tes
 
 	portName := "bfd@test-vpc-bfd"
 	networks := []string{"169.254.0.1/32"}
-	mockOvnClient.EXPECT().CreateLogicalRouterPort(vpc.Name, portName, "", networks).Return(nil)
-	mockOvnClient.EXPECT().UpdateLogicalRouterPortNetworks(portName, networks).Return(nil)
-	mockOvnClient.EXPECT().UpdateLogicalRouterPortOptions(portName, map[string]string{"bfd-only": "true"}).Return(nil)
-	mockOvnClient.EXPECT().CreateHAChassisGroup(portName, []string{}, map[string]string{"lrp": portName}).Return(nil)
-	mockOvnClient.EXPECT().SetLogicalRouterPortHAChassisGroup(portName, portName).Return(nil)
+	mockOvnClient.EXPECT().ReconcileBFDLogicalRouterPort(vpc.Name, portName, networks, []string{}, true).Return(nil)
 
 	name, nodes, err := ctrl.reconcileVpcBfdLRP(vpc)
 	require.NoError(t, err)

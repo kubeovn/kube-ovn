@@ -48,6 +48,61 @@ All three `ovsOvn` directories must point outside `/etc`, which is read-only on 
 only becomes a host mount when `features.enableOvnIpsec` is enabled, but setting it up front keeps IPSEC
 from failing later with `mkdir /etc/origin: read-only file system`.
 
+## Externally managed webhook certificates
+
+By default, enabling the validating webhook creates a cert-manager Certificate and
+a self-signed Issuer. To use your own Certificate specification and existing
+Issuer or ClusterIssuer, keep the webhook enabled and disable only certificate
+creation:
+
+```yaml
+validatingWebhook:
+  enabled: true
+  certificate:
+    create: false
+```
+
+Manage the replacement Certificate outside this chart, for example in a parent
+chart. It must be named `kube-ovn-webhook-serving-cert` in the configured
+`namespace` and write to `kube-ovn-webhook-secret`. Include all three Service DNS
+names, substituting your configured `namespace` and `clusterDomain`:
+
+```yaml
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: kube-ovn-webhook-serving-cert
+  namespace: kube-system
+spec:
+  secretName: kube-ovn-webhook-secret
+  dnsNames:
+    - kube-ovn-webhook.kube-system
+    - kube-ovn-webhook.kube-system.svc
+    - kube-ovn-webhook.kube-system.svc.cluster.local
+  issuerRef:
+    group: cert-manager.io
+    kind: Issuer
+    name: existing-webhook-issuer
+```
+
+The referenced Issuer must already exist in the Certificate namespace, or use
+`kind: ClusterIssuer` for a cluster-scoped issuer. Add any certificate policy
+fields required by your environment to this external Certificate.
+
+The webhook requires `tls.crt` and `tls.key` in `kube-ovn-webhook-secret`
+to serve HTTPS. The serving process does not require `ca.crt`.
+
+cert-manager's CA injector uses the webhook's `cert-manager.io/inject-ca-from`
+annotation to locate the Certificate named `kube-ovn-webhook-serving-cert`.
+It copies `ca.crt` from that Certificate's backing Secret into the webhook's
+`caBundle`, which the API server uses to verify the webhook's serving certificate.
+
+For an existing installation, plan the Certificate ownership transfer before
+changing this setting. Helm removes the previously managed Certificate and Issuer
+on upgrade; simply applying another Certificate with the same name does not
+transfer ownership. Secret deletion also depends on cert-manager owner-reference
+configuration.
+
 ## Migrate from v1 to v2 Chart
 
 > **⚠️ This is a breaking migration.** The v2 chart adopts standard Kubernetes labels (`app.kubernetes.io/name`,
@@ -656,6 +711,24 @@ false
 			<td>Args passed to the kube-ovn-speaker pod.</td>
 		</tr>
 		<tr>
+			<td>bgpSpeaker.configMap</td>
+			<td>string</td>
+			<td><pre lang="json">
+""
+</pre>
+</td>
+			<td>The name of the configMap that will be mounted in the kube-ovn-speaker pod. The ConfigMap can provide YAML configuration files for kube-ovn-speaker. To use a specific file, pass its mounted file path via '--config' or set 'KUBE_OVN_BGP_SPEAKER_CONFIG_FILE'.</td>
+		</tr>
+		<tr>
+			<td>bgpSpeaker.configMapMountPath</td>
+			<td>string</td>
+			<td><pre lang="json">
+"/etc/kube-ovn/"
+</pre>
+</td>
+			<td>Directory where the ConfigMap will be mounted in the kube-ovn-speaker pod.</td>
+		</tr>
+		<tr>
 			<td>bgpSpeaker.enabled</td>
 			<td>bool</td>
 			<td><pre lang="json">
@@ -663,15 +736,6 @@ false
 </pre>
 </td>
 			<td>Enable the kube-ovn-speaker.</td>
-		</tr>
-		<tr>
-			<td>bgpSpeaker.extraEnv</td>
-			<td>list</td>
-			<td><pre lang="json">
-[]
-</pre>
-</td>
-			<td>Extra environment variables to be added to kube-ovn-speaker pods.</td>
 		</tr>
 		<tr>
 			<td>bgpSpeaker.labels</td>
@@ -1011,6 +1075,15 @@ false
 			<td>Priority of Kube-OVN within the CNI configuration directory on the node. Should be a string representing a double-digit integer.</td>
 		</tr>
 		<tr>
+			<td>cni.installCNIPlugins</td>
+			<td>bool</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+			<td>Whether to install the bundled CNI plugins besides kube-ovn.</td>
+		</tr>
+		<tr>
 			<td>cni.localConfigFile</td>
 			<td>string</td>
 			<td><pre lang="json">
@@ -1282,6 +1355,7 @@ false
   "enableNetworkPolicies": true,
   "enableOvnInterconnections": false,
   "enableOvnIpsec": false,
+  "enableRecompute": false,
   "enableSecureServing": false,
   "enableTproxy": false,
   "enableU2OInterconnections": false
@@ -1388,6 +1462,15 @@ false
 </pre>
 </td>
 			<td>Enable IPSEC</td>
+		</tr>
+		<tr>
+			<td>features.enableRecompute</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Enable periodic ovn-controller recompute</td>
 		</tr>
 		<tr>
 			<td>features.enableSecureServing</td>
@@ -2016,6 +2099,15 @@ false
 </pre>
 </td>
 			<td>Name of the join subnet once it gets generated in the cluster.</td>
+		</tr>
+		<tr>
+			<td>networking.maxMtu</td>
+			<td>int</td>
+			<td><pre lang="json">
+0
+</pre>
+</td>
+			<td>Upper bound applied to the auto-detected pod MTU (0 disables the cap). Useful when the underlay uses jumbo frames but pod traffic egresses to a 1500-byte path (e.g. the internet), where the uncapped value would cause fragmentation or PMTUD-dependent blackholes. Ignored when .networking.pods.mtu is set. This applies to custom and default subnets.</td>
 		</tr>
 		<tr>
 			<td>networking.networkType</td>
@@ -2775,6 +2867,15 @@ false
 </pre>
 </td>
 			<td>Annotations to be added to all top-level kube-ovn-webhook objects (resources under templates/webhook)</td>
+		</tr>
+		<tr>
+			<td>validatingWebhook.certificate.create</td>
+			<td>bool</td>
+			<td><pre lang="json">
+true
+</pre>
+</td>
+			<td>Create the webhook Certificate and self-signed Issuer. Set to false to manage your own cert-manager Certificate and issuer outside this chart; the webhook remains enabled. See the README for required resource names and upgrade considerations.</td>
 		</tr>
 		<tr>
 			<td>validatingWebhook.enabled</td>

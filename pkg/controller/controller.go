@@ -60,6 +60,8 @@ const (
 	baselineAdminNetworkPolicyKey = "banp"
 	ippoolKey                     = "ippool"
 	clusterNetworkPolicyKey       = "cnp"
+	u2oOverlayCIDRsKey            = "isU2OOverlayCIDRs"
+	u2oOverlayCIDRsVpcKey         = "vpc"
 )
 
 // Controller is kube-ovn main controller that watch ns/pod/node/svc/ep and operate ovn
@@ -83,6 +85,7 @@ type Controller struct {
 	podsLister             v1.PodLister
 	podsSynced             cache.InformerSynced
 	podIndexer             cache.Indexer
+	policySelectorCache    policySelectorCache
 	addOrUpdatePodQueue    workqueue.TypedRateLimitingInterface[string]
 	deletePodQueue         workqueue.TypedRateLimitingInterface[string]
 	deletingPodObjMap      *xsync.Map[string, *corev1.Pod]
@@ -110,7 +113,11 @@ type Controller struct {
 	updateVpcSnatQueue            workqueue.TypedRateLimitingInterface[string]
 	updateVpcSubnetQueue          workqueue.TypedRateLimitingInterface[string]
 	vpcNatGwKeyMutex              keymutex.KeyMutex
-	vpcNatGwExecKeyMutex          keymutex.KeyMutex
+	// qosNatGwKeyMutex is the only QoS data-plane lock. It is keyed by NAT gateway,
+	// never by EIP or QoS policy, because every QoS rule on one gateway shares its
+	// HTB root, IFB device and ingress redirect state.
+	qosNatGwKeyMutex     keymutex.KeyMutex
+	vpcNatGwExecKeyMutex keymutex.KeyMutex
 
 	vpcEgressGatewayLister           kubeovnlister.VpcEgressGatewayLister
 	vpcEgressGatewaySynced           cache.InformerSynced
@@ -261,6 +268,7 @@ type Controller struct {
 	endpointSlicesSynced          cache.InformerSynced
 	epsIndexer                    cache.Indexer
 	addOrUpdateEndpointSliceQueue workqueue.TypedRateLimitingInterface[string]
+	priorityEndpointSliceQueue    workqueue.TypedRateLimitingInterface[string]
 	epKeyMutex                    keymutex.KeyMutex
 	serviceL2StatusMutex          sync.RWMutex
 	serviceL2StatusIndexer        cache.Indexer
@@ -275,6 +283,7 @@ type Controller struct {
 	npsLister        netv1.NetworkPolicyLister
 	npsSynced        cache.InformerSynced
 	npIndexer        cache.Indexer
+	policyEventIndex policyEventIndex
 	updateNpQueue    workqueue.TypedRateLimitingInterface[string]
 	deleteNpQueue    workqueue.TypedRateLimitingInterface[networkPolicyDeleteRequest]
 	npSamplingQueue  workqueue.TypedRateLimitingInterface[string]
@@ -533,6 +542,7 @@ func Run(ctx context.Context, config *Configuration) {
 		updateVpcSnatQueue:               newTypedRateLimitingQueue("UpdateVpcSnat", custCrdRateLimiter),
 		updateVpcSubnetQueue:             newTypedRateLimitingQueue("UpdateVpcSubnet", custCrdRateLimiter),
 		vpcNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
+		qosNatGwKeyMutex:                 keymutex.NewHashed(numKeyLocks),
 		vpcNatGwExecKeyMutex:             keymutex.NewHashed(numKeyLocks),
 		vpcEgressGatewayLister:           vpcEgressGatewayInformer.Lister(),
 		vpcEgressGatewaySynced:           vpcEgressGatewayInformer.Informer().HasSynced,
@@ -643,6 +653,7 @@ func Run(ctx context.Context, config *Configuration) {
 		endpointSlicesLister:          endpointSliceInformer.Lister(),
 		endpointSlicesSynced:          endpointSliceInformer.Informer().HasSynced,
 		addOrUpdateEndpointSliceQueue: newTypedRateLimitingQueue[string]("UpdateEndpointSlice", nil),
+		priorityEndpointSliceQueue:    newTypedRateLimitingQueue[string]("PriorityUpdateEndpointSlice", nil),
 		epKeyMutex:                    keymutex.NewHashed(numKeyLocks),
 
 		deploymentsLister:  deploymentInformer.Lister(),
@@ -737,9 +748,13 @@ func Run(ctx context.Context, config *Configuration) {
 	} else {
 		go controller.runDisabledACLSamplingCleanup(ctx)
 	}
-	if config.EnableLb {
-		controller.routerLBRuleLister = routerLBRuleInformer.Lister()
-		controller.routerLBRuleSynced = routerLBRuleInformer.Informer().HasSynced
+	controller.routerLBRuleLister = routerLBRuleInformer.Lister()
+	controller.routerLBRuleSynced = routerLBRuleInformer.Informer().HasSynced
+	controller.switchLBRuleLister = switchLBRuleInformer.Lister()
+	controller.switchLBRuleSynced = switchLBRuleInformer.Informer().HasSynced
+	controller.vpcDNSLister = vpcDNSInformer.Lister()
+	controller.vpcDNSSynced = vpcDNSInformer.Informer().HasSynced
+	if config.EnableOvnLB {
 		controller.addRouterLBRuleQueue = newTypedRateLimitingQueue("AddRouterLBRule", custCrdRateLimiter)
 		controller.delRouterLBRuleQueue = newTypedRateLimitingQueue(
 			"DeleteRouterLBRule",
@@ -756,8 +771,6 @@ func Run(ctx context.Context, config *Configuration) {
 			),
 		)
 
-		controller.switchLBRuleLister = switchLBRuleInformer.Lister()
-		controller.switchLBRuleSynced = switchLBRuleInformer.Informer().HasSynced
 		controller.addSwitchLBRuleQueue = newTypedRateLimitingQueue("AddSwitchLBRule", custCrdRateLimiter)
 		controller.delSwitchLBRuleQueue = newTypedRateLimitingQueue(
 			"DeleteSwitchLBRule",
@@ -774,8 +787,6 @@ func Run(ctx context.Context, config *Configuration) {
 			),
 		)
 
-		controller.vpcDNSLister = vpcDNSInformer.Lister()
-		controller.vpcDNSSynced = vpcDNSInformer.Informer().HasSynced
 		controller.addOrUpdateVpcDNSQueue = newTypedRateLimitingQueue("AddOrUpdateVpcDns", custCrdRateLimiter)
 		controller.delVpcDNSQueue = newTypedRateLimitingQueue("DeleteVpcDns", custCrdRateLimiter)
 	}
@@ -797,21 +808,27 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.anpsLister = anpInformer.Lister()
 		controller.anpsSynced = anpInformer.Informer().HasSynced
 		controller.addAnpQueue = newTypedRateLimitingQueue[string]("AddAdminNetworkPolicy", nil)
-		controller.updateAnpQueue = newTypedRateLimitingQueue[*AdminNetworkPolicyChangedDelta]("UpdateAdminNetworkPolicy", nil)
+		controller.updateAnpQueue = newCoalescingDeltaQueue("UpdateAdminNetworkPolicy", func(delta *AdminNetworkPolicyChangedDelta) string {
+			return delta.key
+		}, mergeAdminNetworkPolicyDelta)
 		controller.deleteAnpQueue = newTypedRateLimitingQueue[*v1alpha1.AdminNetworkPolicy]("DeleteAdminNetworkPolicy", nil)
 		controller.anpKeyMutex = keymutex.NewHashed(numKeyLocks)
 
 		controller.banpsLister = banpInformer.Lister()
 		controller.banpsSynced = banpInformer.Informer().HasSynced
 		controller.addBanpQueue = newTypedRateLimitingQueue[string]("AddBaseAdminNetworkPolicy", nil)
-		controller.updateBanpQueue = newTypedRateLimitingQueue[*AdminNetworkPolicyChangedDelta]("UpdateBaseAdminNetworkPolicy", nil)
+		controller.updateBanpQueue = newCoalescingDeltaQueue("UpdateBaseAdminNetworkPolicy", func(delta *AdminNetworkPolicyChangedDelta) string {
+			return delta.key
+		}, mergeAdminNetworkPolicyDelta)
 		controller.deleteBanpQueue = newTypedRateLimitingQueue[*v1alpha1.BaselineAdminNetworkPolicy]("DeleteBaseAdminNetworkPolicy", nil)
 		controller.banpKeyMutex = keymutex.NewHashed(numKeyLocks)
 
 		controller.cnpsLister = cnpInformer.Lister()
 		controller.cnpsSynced = cnpInformer.Informer().HasSynced
 		controller.addCnpQueue = newTypedRateLimitingQueue[string]("AddClusterNetworkPolicy", nil)
-		controller.updateCnpQueue = newTypedRateLimitingQueue[*ClusterNetworkPolicyChangedDelta]("UpdateClusterNetworkPolicy", nil)
+		controller.updateCnpQueue = newCoalescingDeltaQueue("UpdateClusterNetworkPolicy", func(delta *ClusterNetworkPolicyChangedDelta) string {
+			return delta.key
+		}, mergeClusterNetworkPolicyDelta)
 		controller.deleteCnpQueue = newTypedRateLimitingQueue[*netpolv1alpha2.ClusterNetworkPolicy]("DeleteClusterNetworkPolicy", nil)
 		controller.cnpKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
@@ -838,6 +855,10 @@ func Run(ctx context.Context, config *Configuration) {
 
 	defer controller.shutdown()
 	klog.Info("Starting OVN controller")
+
+	if err = controller.addNetworkAttachmentEventHandler(netAttachInformer.Informer()); err != nil {
+		util.LogFatalAndExit(err, "failed to add network attachment event handler")
+	}
 
 	// Start and sync NAD informer first, as many resources depend on NAD cache
 	// NAD CRD is optional, so we check if it exists before starting the informer
@@ -877,9 +898,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.ovnEipSynced, controller.ovnFipSynced, controller.ovnSnatRuleSynced,
 		controller.ovnDnatRuleSynced,
 	}
-	if controller.config.EnableLb {
-		cacheSyncs = append(cacheSyncs, controller.routerLBRuleSynced, controller.switchLBRuleSynced, controller.vpcDNSSynced)
-	}
+	cacheSyncs = append(cacheSyncs, controller.routerLBRuleSynced, controller.switchLBRuleSynced, controller.vpcDNSSynced)
 	if controller.config.EnableNP {
 		cacheSyncs = append(cacheSyncs, controller.npsSynced)
 	}
@@ -892,6 +911,9 @@ func Run(ctx context.Context, config *Configuration) {
 
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
+	}
+	if err := controller.rebuildPolicyEventIndex(); err != nil {
+		util.LogFatalAndExit(err, "failed to build network policy event index")
 	}
 
 	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -1093,7 +1115,7 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add qos policy event handler")
 	}
 
-	if config.EnableLb {
+	if config.EnableOvnLB {
 		if _, err = routerLBRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc:    controller.enqueueAddRouterLBRule,
 			UpdateFunc: controller.enqueueUpdateRouterLBRule,
@@ -1211,8 +1233,13 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to set NB_Global option skip_conntrack_ipcidrs")
 	}
 
-	if err := c.OVNNbClient.SetOVNIPSec(c.config.EnableOVNIPSec); err != nil {
-		util.LogFatalAndExit(err, "failed to set NB_Global ipsec")
+	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSecCert {
+		if err := c.InitDefaultOVNIPsecCA(); err != nil {
+			util.LogFatalAndExit(err, "failed to init ovn ipsec CA")
+		}
+	}
+	if err := c.reconcileIPsecCoordination(ctx); err != nil {
+		klog.ErrorS(err, "Initialize IPsec coordination")
 	}
 
 	if err := c.InitOVN(); err != nil {
@@ -1226,6 +1253,12 @@ func (c *Controller) Run(ctx context.Context) {
 
 	if err := c.syncFinalizers(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize crd finalizers")
+	}
+	if err := c.syncNatUIDLabels(); err != nil {
+		// References that could not be migrated keep their previous labels and are migrated on
+		// the next start, but the controller must stay up: a single object that a webhook or an
+		// inconsistent spec rejects would otherwise restart the controller in a loop.
+		klog.Errorf("failed to migrate NAT UID labels: %v", err)
 	}
 
 	if err := c.InitIPAM(); err != nil {
@@ -1244,16 +1277,29 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
 	}
 
-	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSecCert {
-		if err := c.InitDefaultOVNIPsecCA(); err != nil {
-			util.LogFatalAndExit(err, "failed to init ovn ipsec CA")
-		}
+	c.startKubeOVNTLSManager(ctx)
+	if c.config.EnableOVNIPSec && c.config.CertManagerIPSecCert {
+		go c.watchIPsecCertificateRequests(ctx)
 	}
 
-	c.startKubeOVNTLSManager(ctx)
-
 	// start workers to do all the network operations
+	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSecCert {
+		go wait.UntilWithContext(ctx, func(ctx context.Context) {
+			operationCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+			defer cancel()
+			if err := c.finalizeIPsecCAFormat(operationCtx); err != nil {
+				klog.ErrorS(err, "Finalize IPsec CA migration")
+			}
+		}, 30*time.Second)
+	}
 	c.startWorkers(ctx)
+	go wait.UntilWithContext(ctx, func(ctx context.Context) {
+		operationCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		if err := c.reconcileIPsecCoordination(operationCtx); err != nil {
+			klog.ErrorS(err, "Reconcile IPsec coordination")
+		}
+	}, 15*time.Second)
 
 	c.initResourceOnce()
 	<-ctx.Done()
@@ -1330,6 +1376,7 @@ func (c *Controller) shutdown() {
 	c.updateServiceQueue.ShutDown()
 	c.addOrUpdateNftableLbSvcQueue.ShutDown()
 	c.addOrUpdateEndpointSliceQueue.ShutDown()
+	c.priorityEndpointSliceQueue.ShutDown()
 
 	c.addVlanQueue.ShutDown()
 	c.delVlanQueue.ShutDown()
@@ -1351,7 +1398,7 @@ func (c *Controller) shutdown() {
 	c.addOrUpdateVpcEgressGatewayQueue.ShutDown()
 	c.delVpcEgressGatewayQueue.ShutDown()
 
-	if c.config.EnableLb {
+	if c.config.EnableOvnLB {
 		c.addRouterLBRuleQueue.ShutDown()
 		c.delRouterLBRuleQueue.ShutDown()
 		c.updateRouterLBRuleQueue.ShutDown()
@@ -1527,7 +1574,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}
 	}
 
-	if c.config.EnableLb {
+	if c.config.EnableOvnLB {
 		go wait.Until(runWorker("add service", c.addServiceQueue, c.handleAddService), time.Second, ctx.Done())
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 		go wait.Until(runWorker("delete service", c.deleteServiceQueue, c.handleDeleteService), time.Second, ctx.Done())
@@ -1552,6 +1599,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(func() {
 			c.resyncVpcDNSConfig()
 		}, 5*time.Second, ctx.Done())
+		go wait.Until(runWorker("priority add/update endpoint slice", c.priorityEndpointSliceQueue, c.handleUpdateEndpointSlice), time.Second, ctx.Done())
 	}
 
 	for range c.config.WorkerNum {
@@ -1565,7 +1613,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("update status of ippool", c.updateIPPoolStatusQueue, c.handleUpdateIPPoolStatus), time.Second, ctx.Done())
 		go wait.Until(runWorker("virtual port for subnet", c.syncVirtualPortsQueue, c.syncVirtualPort), time.Second, ctx.Done())
 
-		if c.config.EnableLb {
+		if c.config.EnableOvnLB {
 			go wait.Until(runWorker("update service", c.updateServiceQueue, c.handleUpdateService), time.Second, ctx.Done())
 			go wait.Until(runWorker("add/update endpoint slice", c.addOrUpdateEndpointSliceQueue, c.handleUpdateEndpointSlice), time.Second, ctx.Done())
 		}
@@ -1739,7 +1787,7 @@ func (c *Controller) initResourceOnce() {
 	if err := c.initVpcNatGw(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize vpc nat gateways")
 	}
-	if c.config.EnableLb {
+	if c.config.EnableOvnLB {
 		if err := c.initVpcDNSConfig(); err != nil {
 			util.LogFatalAndExit(err, "failed to initialize vpc-dns")
 		}
@@ -1781,6 +1829,8 @@ func getWorkItemKey(obj any) string {
 	case *vpcService:
 		return cache.MetaObjectToName(obj.(*vpcService).Svc).String()
 	case *AdminNetworkPolicyChangedDelta:
+		return v.key
+	case *ClusterNetworkPolicyChangedDelta:
 		return v.key
 	case *SwitchLBRuleInfo:
 		return v.Name
