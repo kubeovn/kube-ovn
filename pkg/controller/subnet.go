@@ -495,6 +495,28 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
+func hasLiveSubnetWithOverlappingCIDR(subnet *kubeovnv1.Subnet, subnets []*kubeovnv1.Subnet) bool {
+	for _, candidate := range subnets {
+		if candidate.Name == subnet.Name || !candidate.DeletionTimestamp.IsZero() ||
+			candidate.Spec.Vpc != subnet.Spec.Vpc {
+			continue
+		}
+
+		if util.CIDROverlap(candidate.Spec.CIDRBlock, subnet.Spec.CIDRBlock) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Controller) hasLiveSubnetWithOverlappingCIDR(subnet *kubeovnv1.Subnet) (bool, error) {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		return false, err
+	}
+	return hasLiveSubnetWithOverlappingCIDR(subnet, subnets), nil
+}
+
 // getSubnetMTU returns the effective MTU for DHCP options of the given subnet.
 func (c *Controller) getSubnetMTU(subnet *kubeovnv1.Subnet) (int, error) {
 	var mtu int
@@ -955,7 +977,12 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) (err error) {
 		klog.Errorf("failed to delete policy route for underlay to overlay subnet interconnection %s, %v", subnet.Name, err)
 		return err
 	}
-	if subnet.Spec.Vpc != c.config.ClusterRouter {
+	keepRoutes, err := c.hasLiveSubnetWithOverlappingCIDR(subnet)
+	if err != nil {
+		klog.Errorf("failed to check successor subnet for %s, %v", subnet.Name, err)
+		return err
+	}
+	if subnet.Spec.Vpc != c.config.ClusterRouter && !keepRoutes {
 		if err := c.deleteStaticRouteForU2OInterconn(subnet); err != nil {
 			klog.Errorf("failed to delete static route for underlay to overlay subnet interconnection %s, %v", subnet.Name, err)
 			return err
@@ -970,7 +997,7 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) (err error) {
 		}
 	}
 
-	if subnet.Spec.Vpc != c.config.ClusterRouter {
+	if subnet.Spec.Vpc != c.config.ClusterRouter && !keepRoutes {
 		if err := c.deleteCustomVPCPolicyRoutesForSubnet(subnet); err != nil {
 			klog.Errorf("failed to delete custom vpc routes subnet %s, %v", subnet.Name, err)
 			return err

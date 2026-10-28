@@ -134,6 +134,53 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 	}
 }
 
+func TestHasLiveSubnetWithOverlappingCIDR(t *testing.T) {
+	deleting := metav1.Now()
+	base := &kubeovnv1.Subnet{
+		Name: "subnet-a",
+		Spec: kubeovnv1.SubnetSpec{Vpc: "vpc-a", CIDRBlock: "10.0.0.0/24"},
+	}
+
+	tests := []struct {
+		name      string
+		candidate *kubeovnv1.Subnet
+		want      bool
+	}{
+		{
+			name:      "live successor",
+			candidate: &kubeovnv1.Subnet{Name: "subnet-b", Spec: base.Spec},
+			want:      true,
+		},
+		{
+			name: "terminating successor",
+			candidate: &kubeovnv1.Subnet{
+				Name:              "subnet-b",
+				Spec:              base.Spec,
+				DeletionTimestamp: new(deleting),
+			},
+		},
+		{
+			name:      "different vpc",
+			candidate: &kubeovnv1.Subnet{Name: "subnet-b", Spec: kubeovnv1.SubnetSpec{Vpc: "vpc-b", CIDRBlock: base.Spec.CIDRBlock}},
+		},
+		{
+			name:      "different vlan",
+			candidate: &kubeovnv1.Subnet{Name: "subnet-b", Spec: kubeovnv1.SubnetSpec{Vpc: base.Spec.Vpc, Vlan: "vlan-a", CIDRBlock: base.Spec.CIDRBlock}},
+			want:      true,
+		},
+		{
+			name:      "different cidr",
+			candidate: &kubeovnv1.Subnet{Name: "subnet-b", Spec: kubeovnv1.SubnetSpec{Vpc: base.Spec.Vpc, CIDRBlock: "10.0.1.0/24"}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, hasLiveSubnetWithOverlappingCIDR(base, []*kubeovnv1.Subnet{base, tc.candidate}))
+		})
+	}
+}
+
 func TestEnqueueUpdateSubnetOnDeletionTimestamp(t *testing.T) {
 	deletionTimestamp := metav1.Now()
 	tests := []struct {
