@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	jsonv2 "encoding/json/v2"
+	"errors"
 	"flag"
 	"fmt"
 	"math/rand/v2"
 	"net"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -71,54 +71,52 @@ func execOrDie(kubeContext, cmd string) string {
 	ginkgo.By(`Executing "kubectl ` + strings.Join(args, " ") + `"`)
 	command, cleanup, err := kubectlKoCommand(kubeContext, args...)
 	framework.ExpectNoError(err, "failed to prepare kubectl ko command")
-	defer cleanup()
+	defer func() {
+		framework.ExpectNoError(cleanup(), "failed to remove temporary kubeconfig")
+	}()
 	output, err := command.Output()
 	framework.ExpectNoError(err, "kubectl ko command failed")
 	return string(output)
 }
 
-func kubectlKoCommand(kubeContext string, args ...string) (*exec.Cmd, func(), error) {
+func kubectlKoCommand(kubeContext string, args ...string) (*exec.Cmd, func() error, error) {
 	testConfig := e2ekubectl.NewTestKubeconfig(k8sframework.TestContext.CertDir,
 		k8sframework.TestContext.Host, k8sframework.TestContext.KubeConfig,
 		kubeContext, k8sframework.TestContext.KubectlPath, "")
 	if framework.KubectlKoUsesLegacySyntax() {
 		command := exec.Command(testConfig.KubectlPath, "ko")
 		command.Args = append(command.Args, args[1:]...)
-		if testConfig.KubeConfig == "" {
-			return command, func() {}, nil
-		}
-
-		config, err := clientcmd.LoadFromFile(testConfig.KubeConfig)
+		loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+		loadingRules.ExplicitPath = testConfig.KubeConfig
+		config, err := loadingRules.Load()
 		if err != nil {
-			return nil, nil, fmt.Errorf("load kubeconfig %q: %w", testConfig.KubeConfig, err)
+			return nil, nil, fmt.Errorf("load kubeconfig: %w", err)
 		}
 		if _, ok := config.Contexts[kubeContext]; !ok {
-			return nil, nil, fmt.Errorf("kubeconfig %q has no context %q", testConfig.KubeConfig, kubeContext)
+			return nil, nil, fmt.Errorf("kubeconfig has no context %q", kubeContext)
 		}
 		config.CurrentContext = kubeContext
 
-		temporaryConfig, err := os.CreateTemp(filepath.Dir(testConfig.KubeConfig), ".kube-ovn-e2e-kubeconfig-")
+		temporaryConfig, err := os.CreateTemp("", ".kube-ovn-e2e-kubeconfig-")
 		if err != nil {
 			return nil, nil, fmt.Errorf("create temporary kubeconfig: %w", err)
 		}
 		temporaryPath := temporaryConfig.Name()
 		if err := temporaryConfig.Close(); err != nil {
-			_ = os.Remove(temporaryPath)
-			return nil, nil, fmt.Errorf("close temporary kubeconfig %q: %w", temporaryPath, err)
+			return nil, nil, fmt.Errorf("close temporary kubeconfig %q: %w", temporaryPath, errors.Join(err, os.Remove(temporaryPath)))
 		}
 		if err := clientcmd.WriteToFile(*config, temporaryPath); err != nil {
-			_ = os.Remove(temporaryPath)
-			return nil, nil, fmt.Errorf("write temporary kubeconfig %q: %w", temporaryPath, err)
+			return nil, nil, fmt.Errorf("write temporary kubeconfig %q: %w", temporaryPath, errors.Join(err, os.Remove(temporaryPath)))
 		}
 
 		command.Env = environmentWithKubeconfig(temporaryPath)
-		return command, func() { _ = os.Remove(temporaryPath) }, nil
+		return command, func() error { return os.Remove(temporaryPath) }, nil
 	}
 
 	command := testConfig.KubectlCmd()
 	pluginArgs := append([]string{"ko"}, command.Args[1:]...)
 	pluginArgs = append(pluginArgs, args[1:]...)
-	return exec.Command(command.Path, pluginArgs...), func() {}, nil
+	return exec.Command(command.Path, pluginArgs...), func() error { return nil }, nil
 }
 
 func environmentWithKubeconfig(path string) []string {
