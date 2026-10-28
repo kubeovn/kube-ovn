@@ -1005,3 +1005,73 @@ func TestNftableLbOwnerLabelsCheckDisabled(t *testing.T) {
 		nil, map[string]string{util.NftableLbSvcNsLabel: "ns1", util.NftableLbSvcNameLabel: "svc"},
 	))
 }
+
+// TestIptablesEIPUpdateHookAllowsQoSChange pins what a ready EIP may still change: its QoS policy,
+// which the controller reconciles in place, and nothing else. Rejecting the QoS field would make
+// the eip QoS feature unusable, because an EIP is only ever used once it is ready.
+func TestIptablesEIPUpdateHookAllowsQoSChange(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, ovnv1.AddToScheme(scheme))
+	encode := func(eip *ovnv1.IptablesEIP) runtime.RawExtension {
+		raw, err := json.Marshal(eip)
+		require.NoError(t, err)
+		return runtime.RawExtension{Raw: raw}
+	}
+
+	ready := &ovnv1.IptablesEIP{
+		Name:   "eip0",
+		Spec:   ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1", NatGwDp: "gw0", ExternalSubnet: "ext"},
+		Status: ovnv1.IptablesEIPStatus{IP: "192.168.0.1", Ready: true},
+	}
+	v := &ValidatingHook{
+		decoder: admission.NewDecoder(scheme),
+		cache: &mockCache{objects: map[string]runtime.Object{
+			"kube-system/ovn-vpc-nat-config": &corev1.ConfigMap{
+				Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem,
+				Data: map[string]string{"image": "test-image"},
+			},
+			"kube-system/ovn-vpc-nat-gw-config": &corev1.ConfigMap{
+				Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem,
+				Data: map[string]string{"enable-vpc-nat-gw": "true"},
+			},
+			"/ext":  &ovnv1.Subnet{Name: "ext", Spec: ovnv1.SubnetSpec{CIDRBlock: "192.168.0.0/24"}},
+			"/gw0":  &ovnv1.VpcNatGateway{Name: "gw0"},
+			"/qos0": &ovnv1.QoSPolicy{Name: "qos0"},
+		}},
+	}
+	update := func(newEip *ovnv1.IptablesEIP) admission.Response {
+		return v.iptablesEIPUpdateHook(context.Background(), admission.Request{
+			Operation: admissionv1.Update,
+			OldObject: encode(ready),
+			Object:    encode(newEip),
+		})
+	}
+
+	withQoS := ready.DeepCopy()
+	withQoS.Spec.QoSPolicy = "qos0"
+	resp := update(withQoS)
+	require.True(t, resp.Allowed, "attaching a qos policy to a ready eip must be allowed, got: %+v", resp.Result)
+
+	detached := withQoS.DeepCopy()
+	detached.Spec.QoSPolicy = ""
+	resp = v.iptablesEIPUpdateHook(context.Background(), admission.Request{
+		Operation: admissionv1.Update,
+		OldObject: encode(withQoS),
+		Object:    encode(detached),
+	})
+	require.True(t, resp.Allowed, "detaching the qos policy must be allowed, got: %+v", resp.Result)
+
+	readdressed := ready.DeepCopy()
+	readdressed.Spec.V4ip = "192.168.0.2"
+	resp = update(readdressed)
+	require.False(t, resp.Allowed, "the address of a ready eip stays immutable")
+	require.Contains(t, resp.Result.Message, "is ready, does not support change")
+
+	moved := ready.DeepCopy()
+	moved.Spec.NatGwDp = "gw1"
+	resp = update(moved)
+	require.False(t, resp.Allowed, "the gateway of an eip stays immutable")
+	require.Contains(t, resp.Result.Message, "NatGwDp is immutable")
+}

@@ -222,8 +222,16 @@ func (v *ValidatingHook) iptablesEIPUpdateHook(ctx context.Context, req admissio
 
 	if eipOld.Spec != eipNew.Spec {
 		if eipOld.Status.Ready && eipNew.Status.Redo == eipOld.Status.Redo {
-			err := fmt.Errorf("IptablesEIP \"%s\" is ready, does not support change", eipNew.Name)
-			return ctrlwebhook.Errored(http.StatusBadRequest, err)
+			// The QoS policy is the one spec field the controller reconciles on a live EIP: it
+			// re-programs the gateway QoS in place (claimAndRestoreVpcNatGwQoS) and never touches
+			// the address. Rejecting it here would make the whole eip QoS feature unusable once
+			// the EIP is ready, which is the only state it is ever used in.
+			oldSpec, newSpec := eipOld.Spec, eipNew.Spec
+			oldSpec.QoSPolicy, newSpec.QoSPolicy = "", ""
+			if oldSpec != newSpec {
+				err := fmt.Errorf("IptablesEIP \"%s\" is ready, does not support change", eipNew.Name)
+				return ctrlwebhook.Errored(http.StatusBadRequest, err)
+			}
 		}
 		if err := v.ValidateVpcNatConfig(ctx); err != nil {
 			return ctrlwebhook.Errored(http.StatusBadRequest, err)
