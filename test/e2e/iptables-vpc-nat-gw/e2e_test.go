@@ -234,6 +234,25 @@ func waitForIptablesEIPReady(eipClient *framework.IptablesEIPClient, eipName str
 	return nil
 }
 
+// subnetIPsChangedBy reports whether the subnet address counters moved by delta addresses compared
+// to the given baseline, for whichever families the subnet has. The counters are written by the
+// controller asynchronously after an IptablesEIP takes or releases its address, so a test has to
+// wait for them instead of sampling once.
+func subnetIPsChangedBy(base, current *apiv1.Subnet, delta int) bool {
+	v4 := base.Status.V4AvailableIPs.AddInt(delta).Equal(current.Status.V4AvailableIPs) &&
+		base.Status.V4UsingIPs.AddInt(-delta).Equal(current.Status.V4UsingIPs)
+	v6 := base.Status.V6AvailableIPs.AddInt(delta).Equal(current.Status.V6AvailableIPs) &&
+		base.Status.V6UsingIPs.AddInt(-delta).Equal(current.Status.V6UsingIPs)
+	switch current.Spec.Protocol {
+	case apiv1.ProtocolIPv4:
+		return v4
+	case apiv1.ProtocolIPv6:
+		return v6
+	default:
+		return v4 && v6
+	}
+}
+
 // verifySubnetStatusAfterEIPOperation verifies subnet status after EIP operation
 func verifySubnetStatusAfterEIPOperation(subnetClient *framework.SubnetClient, subnetName string,
 	protocol, operation, shouldContainIP string,
@@ -1024,7 +1043,6 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		// sharing case
 		sharedVipName := "shared-vip-" + randomSuffix
 		sharedEipName := "shared-eip-" + randomSuffix
-		sharedEipDnatName := "shared-eip-dnat-" + randomSuffix
 		sharedEipSnatName := "shared-eip-snat-" + randomSuffix
 		sharedEipFipShouldOkName := "shared-eip-fip-should-ok-" + randomSuffix
 		sharedEipFipShouldFailName := "shared-eip-fip-should-fail-" + randomSuffix
@@ -1257,13 +1275,11 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			iptablesFIPClient.DeleteSync(sharedEipFipShouldFailName)
 		})
 
-		ginkgo.By("Creating iptables dnat for dnat with share eip vip")
-		shareDnat := framework.MakeIptablesDnatRule(sharedEipDnatName, sharedEipName, "80", "tcp", fipVip.Status.V4ip, "8080")
-		_ = iptablesDnatRuleClient.CreateSync(shareDnat)
-		ginkgo.DeferCleanup(func() {
-			ginkgo.By("Cleaning up shared dnat " + sharedEipDnatName)
-			iptablesDnatRuleClient.DeleteSync(sharedEipDnatName)
-		})
+		// No DNAT is created on this eip: a FIP installs "-A EXCLUSIVE_DNAT -d <eip> -j DNAT", and
+		// DNAT_FILTER jumps to EXCLUSIVE_DNAT before SHARED_DNAT (nat-gateway.sh), so a
+		// port-scoped DNAT rule on the same eip would never see a packet. That is what the
+		// webhook rejects, and it is why this eip is shared by a FIP and a SNAT only; DNAT on its
+		// own eip is covered by the dnat case above.
 
 		ginkgo.By("Creating iptables snat with share eip vip")
 		shareSnat := framework.MakeIptablesSnatRule(sharedEipSnatName, sharedEipName, overlaySubnetV4Cidr)
@@ -1286,8 +1302,6 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				"Hairpin SNAT rule should be created for shared SNAT EIP")
 		}
 
-		ginkgo.By("Get share dnat")
-		shareDnat = iptablesDnatRuleClient.Get(sharedEipDnatName)
 		ginkgo.By("Get share snat")
 		shareSnat = iptablesSnatRuleClient.Get(sharedEipSnatName)
 		ginkgo.By("Get share fip should ok")
@@ -1297,8 +1311,6 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("Check share eip should has the external ip label")
 		framework.ExpectHaveKeyWithValue(shareEip.Labels, util.EipV4IpLabel, shareEip.Spec.V4ip)
-		ginkgo.By("Check share dnat should has the external ip label")
-		framework.ExpectHaveKeyWithValue(shareDnat.Labels, util.EipV4IpLabel, shareEip.Spec.V4ip)
 		ginkgo.By("Check share snat should has the external ip label")
 		framework.ExpectHaveKeyWithValue(shareSnat.Labels, util.EipV4IpLabel, shareEip.Spec.V4ip)
 		ginkgo.By("Check share fip should ok should has the external ip label")
@@ -1310,7 +1322,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		// Use Eventually: after SNAT CreateSync returns the controller may not have finished
 		// patching EIP.Status.Nat yet (informer cache lag between patchSnatLabel and
 		// patchEipStatus). The controller schedules a delayed reset to correct this.
-		nats := []string{util.DnatUsingEip, util.FipUsingEip, util.SnatUsingEip}
+		nats := []string{util.FipUsingEip, util.SnatUsingEip}
 		expectedNat := strings.Join(nats, ",")
 		ginkgo.By("Waiting for shareEip Status.Nat to reflect all nat types: " + expectedNat)
 		gomega.Eventually(func() string {
@@ -2595,8 +2607,10 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			podLabels, ports, corev1.ServiceAffinityNone)
 		_ = serviceClient.Create(svc)
 		ginkgo.DeferCleanup(func() {
+			// Wait for the Service to be gone, not just requested: its records hold the eip in
+			// use, and the eip cleanup registered before this one runs right after it.
 			ginkgo.By("Cleaning up service " + lbSvcName)
-			serviceClient.Delete(lbSvcName)
+			serviceClient.DeleteSync(lbSvcName)
 		})
 
 		lbRuleSelector := fmt.Sprintf("%s=%s,%s=%s", util.NftableLbSvcNsLabel, f.Namespace.Name, util.NftableLbSvcNameLabel, lbSvcName)
@@ -3214,7 +3228,12 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			"IptablesEIP CR should have finalizer after creation")
 
 		ginkgo.By("5. Wait for external subnet status to be updated after IptablesEIP creation")
-		time.Sleep(5 * time.Second)
+		// The address counters are written by the controller after the EIP got its address, so the
+		// update has to be waited for: sampling once after a fixed sleep makes this flaky.
+		gomega.Eventually(func() bool {
+			return subnetIPsChangedBy(initialSubnet, subnetClient.Get(externalSubnetName), -1)
+		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"the external subnet should account the address the IptablesEIP took")
 
 		ginkgo.By("6. Verify external subnet status after IptablesEIP CR creation")
 		afterCreateSubnet := subnetClient.Get(externalSubnetName)
@@ -3287,7 +3306,10 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectTrue(deleted, "IptablesEIP CR should be deleted")
 
 		ginkgo.By("9. Wait for external subnet status to be updated after IptablesEIP deletion")
-		time.Sleep(5 * time.Second)
+		gomega.Eventually(func() bool {
+			return subnetIPsChangedBy(afterCreateSubnet, subnetClient.Get(externalSubnetName), 1)
+		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"the external subnet should release the address the IptablesEIP held")
 
 		ginkgo.By("10. Verify external subnet status after IptablesEIP CR deletion")
 		afterDeleteSubnet := subnetClient.Get(externalSubnetName)
@@ -3420,15 +3442,22 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		framework.ExpectTrue(strings.Contains(eipCR.Status.Nat, util.FipUsingEip),
 			"EIP status.Nat should contain 'fip' when used by FIP rule")
 
-		ginkgo.By("6. Delete the IptablesEIP (should not remove finalizer while FIP exists)")
-		err := f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().Delete(context.Background(), eipName, metav1.DeleteOptions{})
-		framework.ExpectNoError(err, "Deleting IptablesEIP should succeed")
+		// An EIP in use is kept two ways, and which one applies depends on whether the webhook is
+		// installed: it refuses the request outright, or the controller holds the finalizer.
+		ginkgo.By("6. Delete the IptablesEIP (it must not disappear while the FIP exists)")
+		eipDeleteErr := f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().Delete(context.Background(), eipName, metav1.DeleteOptions{})
+		if eipDeleteErr != nil {
+			framework.ExpectContainSubstring(eipDeleteErr.Error(), "still in use",
+				"the only acceptable rejection is admission protecting the eip in use")
+		}
 
 		ginkgo.By("7. Wait and verify EIP still exists with finalizer (blocked by FIP)")
 		time.Sleep(5 * time.Second)
 		eipCR = iptablesEIPClient.Get(eipName)
 		framework.ExpectNotNil(eipCR, "IptablesEIP should still exist")
-		framework.ExpectNotNil(eipCR.DeletionTimestamp, "IptablesEIP should have DeletionTimestamp")
+		if eipDeleteErr == nil {
+			framework.ExpectNotNil(eipCR.DeletionTimestamp, "IptablesEIP should have DeletionTimestamp")
+		}
 		framework.ExpectContainElement(eipCR.Finalizers, util.KubeOVNControllerFinalizer,
 			"IptablesEIP should still have finalizer because it's being used by FIP")
 
@@ -3459,6 +3488,13 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				break
 			}
 			time.Sleep(1 * time.Second)
+		}
+
+		if eipDeleteErr != nil {
+			ginkgo.By("10b. Requesting deletion again: admission accepts it once the FIP is gone")
+			gomega.Eventually(func() error {
+				return f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().Delete(context.Background(), eipName, metav1.DeleteOptions{})
+			}, 60*time.Second, 2*time.Second).Should(gomega.Succeed())
 		}
 
 		ginkgo.By("11. Verify EIP is now deleted after FIP is removed")
@@ -3740,9 +3776,12 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		fip := framework.MakeIptablesFIPRule(fipName, eipName1, fipVip.Status.V4ip)
 		_ = iptablesFIPClient.CreateSync(fip)
 
+		// The DNAT goes on the second eip: the first one carries a FIP, whose
+		// "-A EXCLUSIVE_DNAT -d <eip> -j DNAT" rule is reached before SHARED_DNAT and would
+		// swallow every packet of a port-scoped DNAT on the same address.
 		ginkgo.By("7. Creating DNAT rule")
 		dnatName := "ha-dnat-" + randomSuffix
-		dnat := framework.MakeIptablesDnatRule(dnatName, eipName1, "80", "tcp", dnatVip.Status.V4ip, "8080")
+		dnat := framework.MakeIptablesDnatRule(dnatName, eipName2, "80", "tcp", dnatVip.Status.V4ip, "8080")
 		_ = iptablesDnatRuleClient.CreateSync(dnat)
 
 		ginkgo.By("8. Creating SNAT rule")
@@ -3768,7 +3807,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				"FIP SNAT rule should exist on pod %s", podName)
 
 			gomega.Eventually(func() bool {
-				return dnatRuleExists(podName, eip1.Status.IP, "80", "tcp", dnatVip.Status.V4ip, "8080")
+				return dnatRuleExists(podName, eip2.Status.IP, "80", "tcp", dnatVip.Status.V4ip, "8080")
 			}, 30*time.Second, 2*time.Second).Should(gomega.BeTrue(),
 				"DNAT rule should exist on pod %s", podName)
 
