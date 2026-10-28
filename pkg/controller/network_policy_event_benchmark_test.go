@@ -55,18 +55,30 @@ func BenchmarkNetworkPolicyIndexedFanout(b *testing.B) {
 					}
 				}
 				b.Run("Pod", func(b *testing.B) {
+					candidateCount := count * 2
+					if indexed {
+						candidateCount = len(c.policyEventIndexCandidatesForPod(oldPod, oldNamespace)) +
+							len(c.policyEventIndexCandidatesForPod(newPod, oldNamespace))
+					}
 					b.ReportAllocs()
 					for b.Loop() {
 						c.podMatchNetworkPolicies(oldPod)
 						c.podMatchNetworkPolicies(newPod)
 					}
+					b.ReportMetric(float64(candidateCount), "candidate-policies/op")
 				})
 				b.Run("Namespace", func(b *testing.B) {
+					candidateCount := count * 2
+					if indexed {
+						candidateCount = len(c.policyEventIndex.candidatesForNamespace(oldNamespace.Labels)) +
+							len(c.policyEventIndex.candidatesForNamespace(newNamespace.Labels))
+					}
 					b.ReportAllocs()
 					for b.Loop() {
 						c.namespaceMatchNetworkPolicies(oldNamespace)
 						c.namespaceMatchNetworkPolicies(newNamespace)
 					}
+					b.ReportMetric(float64(candidateCount), "candidate-policies/op")
 				})
 			})
 		}
