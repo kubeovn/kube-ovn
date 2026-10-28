@@ -3,12 +3,48 @@ package controller
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/tools/cache"
 
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 )
+
+func TestNetworkPolicyEventIndexTracksPolicyUpdatesAndDeletion(t *testing.T) {
+	c := &Controller{
+		updateNpQueue: newTypedRateLimitingQueue[string]("UpdateNetworkPolicy", nil),
+		deleteNpQueue: newTypedRateLimitingQueue[networkPolicyDeleteRequest]("DeleteNetworkPolicy", nil),
+	}
+	t.Cleanup(c.updateNpQueue.ShutDown)
+	t.Cleanup(c.deleteNpQueue.ShutDown)
+	np := &netv1.NetworkPolicy{
+		Name: "selected", Namespace: "policy",
+		Spec: netv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "old"}},
+			Ingress: []netv1.NetworkPolicyIngressRule{{From: []netv1.NetworkPolicyPeer{{
+				NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"tenant": "old"}},
+			}}}},
+		},
+	}
+	c.enqueueAddNp(np)
+	require.Equal(t, []string{"policy/selected"}, c.policyEventIndex.candidatesForPod(nil, map[string]string{"app": "old"}))
+	require.Equal(t, []string{"policy/selected"}, c.policyEventIndex.candidatesForNamespace(map[string]string{"tenant": "old"}))
+
+	updated := np.DeepCopy()
+	updated.Spec.PodSelector.MatchLabels["app"] = "new"
+	updated.Spec.Ingress[0].From[0].NamespaceSelector.MatchLabels["tenant"] = "new"
+	c.enqueueUpdateNp(np, updated)
+	require.Empty(t, c.policyEventIndex.candidatesForPod(nil, map[string]string{"app": "old"}))
+	require.Empty(t, c.policyEventIndex.candidatesForNamespace(map[string]string{"tenant": "old"}))
+	require.Equal(t, []string{"policy/selected"}, c.policyEventIndex.candidatesForPod(nil, map[string]string{"app": "new"}))
+	require.Equal(t, []string{"policy/selected"}, c.policyEventIndex.candidatesForNamespace(map[string]string{"tenant": "new"}))
+
+	c.enqueueDeleteNp(cache.DeletedFinalStateUnknown{Key: "policy/selected", Obj: updated})
+	require.Empty(t, c.policyEventIndex.candidatesForPod(nil, map[string]string{"app": "new"}))
+	require.Empty(t, c.policyEventIndex.candidatesForNamespace(map[string]string{"tenant": "new"}))
+}
 
 func TestPolicyEventIndexSelectorCandidates(t *testing.T) {
 	index := policyEventIndex{}

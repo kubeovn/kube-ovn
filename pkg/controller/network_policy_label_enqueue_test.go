@@ -166,6 +166,8 @@ func addPolicyLabelTestFixtures(t *testing.T, c *Controller, namespaceEvent bool
 	c.anpsLister = anplister.NewAdminNetworkPolicyLister(anpIndexer)
 	c.banpsLister = anplister.NewBaselineAdminNetworkPolicyLister(banpIndexer)
 	c.cnpsLister = cnplister.NewClusterNetworkPolicyLister(cnpIndexer)
+	require.NoError(t, c.rebuildPolicyEventIndex())
+	require.True(t, c.policyEventIndex.isReady())
 }
 
 func assertPolicyLabelDeltas(t *testing.T, c *Controller, policyNames []string, oldMatches bool) {

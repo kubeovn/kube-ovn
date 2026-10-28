@@ -265,7 +265,6 @@ type Controller struct {
 
 	npsLister        netv1.NetworkPolicyLister
 	npsSynced        cache.InformerSynced
-	npIndexer        cache.Indexer
 	policyEventIndex policyEventIndex
 	updateNpQueue    workqueue.TypedRateLimitingInterface[string]
 	deleteNpQueue    workqueue.TypedRateLimitingInterface[networkPolicyDeleteRequest]
