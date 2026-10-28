@@ -1394,9 +1394,14 @@ func TestGcChassisUnderExternalVpcStillGCsTaggedChassis(t *testing.T) {
 
 // TestGcChassisDeletesStaleDuplicateOfClaimedLiveNode covers a stale chassis
 // left behind after chassis recreation: once a live node's ChassisAnnotation
-// claims one chassis, any other unclaimed chassis with the same hostname is a
-// duplicate (ErrOneNodeMultiChassis) and must be deleted rather than deferred.
-// Deferral only applies while the node has not claimed any chassis.
+// claims one chassis, any other chassis with the same hostname that already
+// carries the kube-ovn vendor tag is a confirmed duplicate
+// (ErrOneNodeMultiChassis) and must be deleted rather than deferred. An
+// untagged same-hostname chassis, by contrast, is left completely untouched
+// once a claim exists - a hostname match alone can't prove it's kube-ovn's,
+// since an external OVN host can coincidentally share the node's hostname.
+// Deferral (for untagged chassis) only applies while the node has not
+// claimed any chassis yet.
 func TestGcChassisDeletesStaleDuplicateOfClaimedLiveNode(t *testing.T) {
 	kubeOvnTag := map[string]string{"vendor": util.CniTypeName}
 	claimedNode := &corev1.Node{
@@ -1423,16 +1428,23 @@ func TestGcChassisDeletesStaleDuplicateOfClaimedLiveNode(t *testing.T) {
 			},
 		},
 		{
-			name:              "untagged stale duplicate is self-healed and deleted under external vpc",
+			// A hostname match alone isn't proof of kube-ovn ownership once
+			// the node already has an authoritative claim: an external OVN
+			// host can coincidentally share the node's hostname. Unlike an
+			// already-tagged duplicate (confirmed kube-ovn, safe to delete),
+			// an untagged same-hostname chassis here must be left completely
+			// alone - no relabeling, no deletion.
+			name:              "untagged chassis sharing a claimed node's hostname is left untouched under external vpc",
 			enableExternalVpc: true,
 			nodes:             []*corev1.Node{claimedNode},
 			setup: func(m *mockovs.MockSbClient) {
 				m.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
 					{Name: "chassis-current", Hostname: "node-1", ExternalIDs: kubeOvnTag},
-					{Name: "chassis-old", Hostname: "node-1"},
+					{Name: "external-hv", Hostname: "node-1"},
 				}, nil)
-				m.EXPECT().UpdateChassisTag("chassis-old", "node-1").Return(nil)
-				m.EXPECT().DeleteChassis("chassis-old").Return(nil)
+				// No UpdateChassisTag/DeleteChassis for "external-hv": gomock
+				// fails if it's relabeled or removed despite the hostname
+				// collision with an already-claimed node.
 			},
 		},
 		{
