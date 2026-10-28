@@ -88,17 +88,26 @@ func (q *coalescingDeltaQueue[T]) Forget(item T) {
 }
 
 func (q *coalescingDeltaQueue[T]) Get() (item T, shutdown bool) {
-	key, shutdown := q.queue.Get()
-	if shutdown {
-		return item, true
-	}
+	for {
+		key, shutdown := q.queue.Get()
+		if shutdown {
+			return item, true
+		}
 
-	q.mu.Lock()
-	item = q.pending[key]
-	delete(q.pending, key)
-	q.inFlight[item] = key
-	q.mu.Unlock()
-	return item, false
+		q.mu.Lock()
+		var ok bool
+		item, ok = q.pending[key]
+		if ok {
+			delete(q.pending, key)
+			q.inFlight[item] = key
+		}
+		q.mu.Unlock()
+		if ok {
+			return item, false
+		}
+		// A delayed retry can outlive a newer event that already consumed its snapshot.
+		q.queue.Done(key)
+	}
 }
 
 func (q *coalescingDeltaQueue[T]) Len() int {
@@ -221,6 +230,10 @@ func isZeroChangedNames(names []ChangedName) bool {
 	return true
 }
 
+func changedNameMatches(change ChangedName, currentName string) bool {
+	return change.isMatch || (change.curRuleName != "" && change.curRuleName == currentName)
+}
+
 func mergeDeltaChangedNames(dst, src []ChangedName) {
 	for index := range src {
 		if src[index].curRuleName != "" {
@@ -237,7 +250,8 @@ func mergeAdminNetworkPolicyDelta(dst, src *AdminNetworkPolicyChangedDelta) {
 	dst.field = ""
 	mergeDeltaChangedNames(dst.ingressRuleNames[:], src.ingressRuleNames[:])
 	mergeDeltaChangedNames(dst.egressRuleNames[:], src.egressRuleNames[:])
-	dst.DNSReconcileDone = dst.DNSReconcileDone && src.DNSReconcileDone
+	dst.DNSReconcileNeeded = dst.DNSReconcileNeeded || src.DNSReconcileNeeded || !dst.DNSReconcileDone || !src.DNSReconcileDone
+	dst.DNSReconcileDone = dst.DNSReconcileDone || src.DNSReconcileDone
 }
 
 func mergeClusterNetworkPolicyDelta(dst, src *ClusterNetworkPolicyChangedDelta) {
@@ -247,5 +261,6 @@ func mergeClusterNetworkPolicyDelta(dst, src *ClusterNetworkPolicyChangedDelta) 
 	dst.field = ""
 	mergeDeltaChangedNames(dst.ingressRuleNames[:], src.ingressRuleNames[:])
 	mergeDeltaChangedNames(dst.egressRuleNames[:], src.egressRuleNames[:])
-	dst.DNSReconcileDone = dst.DNSReconcileDone && src.DNSReconcileDone
+	dst.DNSReconcileNeeded = dst.DNSReconcileNeeded || src.DNSReconcileNeeded || !dst.DNSReconcileDone || !src.DNSReconcileDone
+	dst.DNSReconcileDone = dst.DNSReconcileDone || src.DNSReconcileDone
 }
