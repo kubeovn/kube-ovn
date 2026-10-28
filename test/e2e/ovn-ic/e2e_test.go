@@ -61,19 +61,31 @@ func TestE2E(t *testing.T) {
 func execOrDie(kubeContext, cmd string) string {
 	ginkgo.GinkgoHelper()
 
-	ginkgo.By(`Switching context to ` + kubeContext)
-	e2ekubectl.NewKubectlCommand("", "config", "use-context", kubeContext).ExecOrDie("")
+	ginkgo.By(`Using context ` + kubeContext)
+	k8sframework.TestContext.KubeContext = kubeContext
 
-	cmd = strings.Join(framework.KubectlKoArgs(strings.Fields(cmd)...), " ")
-	ginkgo.By(`Executing "kubectl ` + cmd + `"`)
-	return e2ekubectl.NewKubectlCommand("", strings.Fields(cmd)...).ExecOrDie("")
+	args := framework.KubectlKoArgs(strings.Fields(cmd)...)
+	ginkgo.By(`Executing "kubectl ` + strings.Join(args, " ") + `"`)
+	output, err := kubectlKoCommand(kubeContext, args[1:]...).Output()
+	framework.ExpectNoError(err, "kubectl ko command failed")
+	return string(output)
+}
+
+func kubectlKoCommand(kubeContext string, args ...string) *exec.Cmd {
+	testConfig := e2ekubectl.NewTestKubeconfig(k8sframework.TestContext.CertDir,
+		k8sframework.TestContext.Host, k8sframework.TestContext.KubeConfig,
+		kubeContext, k8sframework.TestContext.KubectlPath, "")
+	command := testConfig.KubectlCmd()
+	pluginArgs := append([]string{"ko"}, command.Args[1:]...)
+	pluginArgs = append(pluginArgs, args...)
+	return exec.Command(command.Path, pluginArgs...)
 }
 
 func execPodOrDie(kubeContext, namespace, pod, cmd string) string {
 	ginkgo.GinkgoHelper()
 
-	ginkgo.By(`Switching context to ` + kubeContext)
-	e2ekubectl.NewKubectlCommand("", "config", "use-context", kubeContext).ExecOrDie("")
+	ginkgo.By(`Using context ` + kubeContext)
+	k8sframework.TestContext.KubeContext = kubeContext
 
 	ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespace, pod))
 	return e2epodoutput.RunHostCmdOrDie(namespace, pod, cmd)
@@ -89,18 +101,12 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 	clientSets := make([]clientset.Interface, len(clusters))
 	podClients := make([]*framework.PodClient, len(clusters))
 	namespaceNames := make([]string, len(clusters))
-	var kubectlConfig string
 	ginkgo.BeforeEach(func() {
 		for i := range clusters {
 			clientSets[i] = frameworks[i].ClientSet
 			podClients[i] = frameworks[i].PodClient()
 			namespaceNames[i] = frameworks[i].Namespace.Name
 		}
-		kubectlConfig = k8sframework.TestContext.KubeConfig
-		k8sframework.TestContext.KubeConfig = ""
-	})
-	ginkgo.AfterEach(func() {
-		k8sframework.TestContext.KubeConfig = kubectlConfig
 	})
 
 	fnCheckPodHTTP := func() {
@@ -204,13 +210,10 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 2: Delete configmap ovn-ic-config and rebuild it")
-		execCmd := "kubectl get configmap ovn-ic-config -n kube-system -oyaml > temp-ovn-ic-config.yaml; kubectl delete configmap ovn-ic-config -n kube-system"
-		_, err := exec.Command("bash", "-c", execCmd).CombinedOutput()
-		framework.ExpectNoError(err)
-
-		execCmd = "kubectl apply -f temp-ovn-ic-config.yaml; rm -f temp-ovn-ic-config.yaml"
-		_, err = exec.Command("bash", "-c", execCmd).CombinedOutput()
-		framework.ExpectNoError(err)
+		k8sframework.TestContext.KubeContext = frameworks[len(frameworks)-1].KubeContext
+		configMap := e2ekubectl.NewKubectlCommand("kube-system", "get", "configmap", "ovn-ic-config", "-o", "yaml").ExecOrDie("")
+		e2ekubectl.NewKubectlCommand("kube-system", "delete", "configmap", "ovn-ic-config").ExecOrDie("")
+		e2ekubectl.NewKubectlCommand("kube-system", "apply", "-f", "-").WithStdinData(configMap).ExecOrDie("")
 		fnCheckPodHTTP()
 	})
 
@@ -307,12 +310,8 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 4: scale ecmp path from 3 to 5")
-		switchCmd := "kubectl config use-context kind-kube-ovn"
-		_, err := exec.Command("bash", "-c", switchCmd).CombinedOutput()
-		framework.ExpectNoError(err, "switch to kube-ovn cluster failed")
-
-		patchCmd := "kubectl patch deployment ovn-ic-server -n kube-system --type='json' -p=\"[{'op': 'replace', 'path': '/spec/template/spec/containers/0/env/1/value', 'value': '5'}]\""
-		_, _ = exec.Command("bash", "-c", patchCmd).CombinedOutput()
+		k8sframework.TestContext.KubeContext = "kind-kube-ovn"
+		e2ekubectl.NewKubectlCommand("kube-system", "patch", "deployment", "ovn-ic-server", "--type=json", "-p", `[{"op":"replace","path":"/spec/template/spec/containers/0/env/1/value","value":"5"}]`).ExecOrDie("")
 		if frameworks[0].ClusterIPFamily == "dual" {
 			checkECMPCount(10)
 		} else {
@@ -321,8 +320,8 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 5: reduce ecmp path from 5 to 3")
-		patchCmd = "kubectl patch deployment ovn-ic-server -n kube-system --type='json' -p=\"[{'op': 'replace', 'path': '/spec/template/spec/containers/0/env/1/value', 'value': '3'}]\""
-		_, _ = exec.Command("bash", "-c", patchCmd).CombinedOutput()
+		k8sframework.TestContext.KubeContext = "kind-kube-ovn"
+		e2ekubectl.NewKubectlCommand("kube-system", "patch", "deployment", "ovn-ic-server", "--type=json", "-p", `[{"op":"replace","path":"/spec/template/spec/containers/0/env/1/value","value":"3"}]`).ExecOrDie("")
 		if frameworks[0].ClusterIPFamily == "dual" {
 			checkECMPCount(6)
 		} else {
@@ -331,55 +330,39 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 6: disable gateway kube-ovn1-worker gateway")
-		switchCmd = "kubectl config use-context kind-kube-ovn1"
-		_, err = exec.Command("bash", "-c", switchCmd).CombinedOutput()
-		framework.ExpectNoError(err, "switch to kube-ovn1 cluster failed")
-
+		k8sframework.TestContext.KubeContext = "kind-kube-ovn1"
 		disableNetworkCmd := "docker exec kube-ovn1-worker iptables -I INPUT -p udp --dport 6081 -j DROP"
-		_, err = exec.Command("bash", "-c", disableNetworkCmd).CombinedOutput()
+		_, err := exec.Command("bash", "-c", disableNetworkCmd).CombinedOutput()
 		framework.ExpectNoError(err, "disable kube-ovn1-worker gateway failed")
 
-		taintCmd := "kubectl taint nodes kube-ovn1-worker e2e=test:NoSchedule"
-		_, _ = exec.Command("bash", "-c", taintCmd).CombinedOutput()
+		e2ekubectl.NewKubectlCommand("", "taint", "nodes", "kube-ovn1-worker", "e2e=test:NoSchedule").ExecOrDie("")
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 7: disable gateway kube-ovn1-worker2 gateway")
-		switchCmd = "kubectl config use-context kind-kube-ovn1"
-		_, err = exec.Command("bash", "-c", switchCmd).CombinedOutput()
-		framework.ExpectNoError(err, "switch to kube-ovn1 cluster failed")
-
+		k8sframework.TestContext.KubeContext = "kind-kube-ovn1"
 		disableNetworkCmd = "docker exec kube-ovn1-worker2 iptables -I INPUT -p udp --dport 6081 -j DROP"
 		_, err = exec.Command("bash", "-c", disableNetworkCmd).CombinedOutput()
 		framework.ExpectNoError(err, "disable kube-ovn1-worker2 gateway failed")
 
-		taintCmd = "kubectl taint nodes kube-ovn1-worker2 e2e=test:NoSchedule"
-		_, _ = exec.Command("bash", "-c", taintCmd).CombinedOutput()
+		e2ekubectl.NewKubectlCommand("", "taint", "nodes", "kube-ovn1-worker2", "e2e=test:NoSchedule").ExecOrDie("")
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 8: enable gateway kube-ovn1-worker gateway")
-		switchCmd = "kubectl config use-context kind-kube-ovn1"
-		_, err = exec.Command("bash", "-c", switchCmd).CombinedOutput()
-		framework.ExpectNoError(err, "switch to kube-ovn1 cluster failed")
-
+		k8sframework.TestContext.KubeContext = "kind-kube-ovn1"
 		disableNetworkCmd = "docker exec kube-ovn1-worker iptables -D INPUT -p udp --dport 6081 -j DROP"
 		_, err = exec.Command("bash", "-c", disableNetworkCmd).CombinedOutput()
 		framework.ExpectNoError(err, "enable kube-ovn1-worker gateway failed")
 
-		taintCmd = "kubectl taint nodes kube-ovn1-worker e2e=test:NoSchedule-"
-		_, _ = exec.Command("bash", "-c", taintCmd).CombinedOutput()
+		e2ekubectl.NewKubectlCommand("", "taint", "nodes", "kube-ovn1-worker", "e2e=test:NoSchedule-").ExecOrDie("")
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 9: enable gateway kube-ovn1-worker2 gateway")
-		switchCmd = "kubectl config use-context kind-kube-ovn1"
-		_, err = exec.Command("bash", "-c", switchCmd).CombinedOutput()
-		framework.ExpectNoError(err, "switch to kube-ovn1 cluster failed")
-
+		k8sframework.TestContext.KubeContext = "kind-kube-ovn1"
 		disableNetworkCmd = "docker exec kube-ovn1-worker2 iptables -D INPUT -p udp --dport 6081 -j DROP"
 		_, err = exec.Command("bash", "-c", disableNetworkCmd).CombinedOutput()
 		framework.ExpectNoError(err, "enable kube-ovn1-worker2 gateway failed")
 
-		taintCmd = "kubectl taint nodes kube-ovn1-worker2 e2e=test:NoSchedule-"
-		_, _ = exec.Command("bash", "-c", taintCmd).CombinedOutput()
+		e2ekubectl.NewKubectlCommand("", "taint", "nodes", "kube-ovn1-worker2", "e2e=test:NoSchedule-").ExecOrDie("")
 		fnCheckPodHTTP()
 	})
 })
@@ -392,10 +375,8 @@ func checkECMPCount(expectCount int) {
 
 	for _, cluster := range clusters {
 		clusterName := "kind-" + cluster
-		ginkgo.By("Switching kubectl config context to " + clusterName)
-		switchCmd := "kubectl config use-context " + clusterName
-		_, err := exec.Command("bash", "-c", switchCmd).CombinedOutput()
-		framework.ExpectNoError(err, "failed to switch kubectl config context to %s", clusterName)
+		ginkgo.By("Using kubectl context " + clusterName)
+		k8sframework.TestContext.KubeContext = clusterName
 
 		ginkgo.By("Checking logical router route count")
 		for range maxRetryTimes {
@@ -411,7 +392,5 @@ func checkECMPCount(expectCount int) {
 		framework.ExpectEqual(ecmpCount, expectCount)
 	}
 
-	switchCmd := "kubectl config use-context kind-kube-ovn"
-	_, err := exec.Command("bash", "-c", switchCmd).CombinedOutput()
-	framework.ExpectNoError(err, "switch to kube-ovn cluster failed")
+	k8sframework.TestContext.KubeContext = "kind-kube-ovn"
 }
