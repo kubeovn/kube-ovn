@@ -115,22 +115,22 @@ func Test_readyToRemoveFinalizer(t *testing.T) {
 	}
 }
 
-func TestHasLiveSubnetWithOverlappingCIDR(t *testing.T) {
+func TestSubnetRouteOwnershipForLiveSuccessors(t *testing.T) {
 	deleting := metav1.Now()
 	base := &kubeovnv1.Subnet{
 		Name: "subnet-a",
-		Spec: kubeovnv1.SubnetSpec{Vpc: "vpc-a", CIDRBlock: "10.0.0.0/24"},
+		Spec: kubeovnv1.SubnetSpec{Vpc: "vpc-a", CIDRBlock: "10.0.0.0/24,fd00::/64", Gateway: "10.0.0.1,fd00::1", RouteTable: "100"},
 	}
 
 	tests := []struct {
 		name      string
 		candidate *kubeovnv1.Subnet
-		want      bool
+		want      subnetRouteOwnership
 	}{
 		{
 			name:      "live successor",
 			candidate: &kubeovnv1.Subnet{Name: "subnet-b", Spec: base.Spec},
-			want:      true,
+			want:      subnetRouteOwnership{policyV4: true, policyV6: true, staticV4: true, staticV6: true},
 		},
 		{
 			name: "terminating successor",
@@ -139,25 +139,61 @@ func TestHasLiveSubnetWithOverlappingCIDR(t *testing.T) {
 				Spec:              base.Spec,
 				DeletionTimestamp: new(deleting),
 			},
+			want: subnetRouteOwnership{},
 		},
 		{
 			name:      "different vpc",
 			candidate: &kubeovnv1.Subnet{Name: "subnet-b", Spec: kubeovnv1.SubnetSpec{Vpc: "vpc-b", CIDRBlock: base.Spec.CIDRBlock}},
+			want:      subnetRouteOwnership{},
 		},
 		{
-			name:      "different vlan",
-			candidate: &kubeovnv1.Subnet{Name: "subnet-b", Spec: kubeovnv1.SubnetSpec{Vpc: base.Spec.Vpc, Vlan: "vlan-a", CIDRBlock: base.Spec.CIDRBlock}},
-			want:      true,
+			name: "different vlan without routes",
+			candidate: &kubeovnv1.Subnet{
+				Name: "subnet-b",
+				Spec: kubeovnv1.SubnetSpec{Vpc: base.Spec.Vpc, Vlan: "vlan-a", CIDRBlock: base.Spec.CIDRBlock},
+			},
+			want: subnetRouteOwnership{},
 		},
 		{
-			name:      "different cidr",
-			candidate: &kubeovnv1.Subnet{Name: "subnet-b", Spec: kubeovnv1.SubnetSpec{Vpc: base.Spec.Vpc, CIDRBlock: "10.0.1.0/24"}},
+			name: "logical gateway vlan successor",
+			candidate: &kubeovnv1.Subnet{
+				Name: "subnet-b",
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc: base.Spec.Vpc, Vlan: "vlan-a", LogicalGateway: true,
+					CIDRBlock: base.Spec.CIDRBlock, Gateway: base.Spec.Gateway, RouteTable: base.Spec.RouteTable,
+				},
+			},
+			want: subnetRouteOwnership{policyV4: true, policyV6: true, staticV4: true, staticV6: true},
+		},
+		{
+			name: "overlapping but different cidr",
+			candidate: &kubeovnv1.Subnet{
+				Name: "subnet-b",
+				Spec: kubeovnv1.SubnetSpec{Vpc: base.Spec.Vpc, CIDRBlock: "10.0.0.0/25,fd00::/65"},
+			},
+			want: subnetRouteOwnership{},
+		},
+		{
+			name: "single family successor",
+			candidate: &kubeovnv1.Subnet{
+				Name: "subnet-b",
+				Spec: kubeovnv1.SubnetSpec{Vpc: base.Spec.Vpc, CIDRBlock: "10.0.0.0/24"},
+			},
+			want: subnetRouteOwnership{policyV4: true},
+		},
+		{
+			name: "same cidr with different static route key",
+			candidate: &kubeovnv1.Subnet{
+				Name: "subnet-b",
+				Spec: kubeovnv1.SubnetSpec{Vpc: base.Spec.Vpc, CIDRBlock: base.Spec.CIDRBlock, Gateway: "10.0.0.2,fd00::2", RouteTable: "100"},
+			},
+			want: subnetRouteOwnership{policyV4: true, policyV6: true},
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, subnetHasLiveCIDROverlap(base, []*kubeovnv1.Subnet{base, tc.candidate}))
+			require.Equal(t, tc.want, subnetRouteOwnershipForLiveSuccessors(base, []*kubeovnv1.Subnet{base, tc.candidate}))
 		})
 	}
 }
