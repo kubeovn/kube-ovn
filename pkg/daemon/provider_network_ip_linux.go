@@ -144,7 +144,7 @@ func (c *Controller) acknowledgeProviderNetworkAddressCleanup(pn *kubeovnv1.Prov
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if address.IPUID == "" {
-		return fmt.Errorf("cannot acknowledge cleanup without an IP UID")
+		return errors.New("cannot acknowledge cleanup without an IP UID")
 	}
 	return retry.RetryOnConflict(retry.DefaultBackoff, func() error {
 		current, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Get(ctx, pn.Name, metav1.GetOptions{})

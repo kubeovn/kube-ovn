@@ -199,8 +199,12 @@ func TestFinishProviderNetworkInitReadiness(t *testing.T) {
 			require.NoError(t, getErr)
 			readyLabel := fmt.Sprintf(util.ProviderNetworkReadyTemplate, pn.Name)
 			if tt.needsIP && !tt.patchFails {
-				for _, template := range []string{util.ProviderNetworkReadyTemplate, util.ProviderNetworkInterfaceTemplate,
-					util.ProviderNetworkMtuTemplate, util.ProviderNetworkVlanIntTemplate} {
+				for _, template := range []string{
+					util.ProviderNetworkReadyTemplate,
+					util.ProviderNetworkInterfaceTemplate,
+					util.ProviderNetworkMtuTemplate,
+					util.ProviderNetworkVlanIntTemplate,
+				} {
 					require.NotContains(t, stored.Labels, fmt.Sprintf(template, pn.Name))
 				}
 			} else {
