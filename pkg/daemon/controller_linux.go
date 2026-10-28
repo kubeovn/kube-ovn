@@ -604,7 +604,7 @@ func (c *Controller) reconcileServices(event *serviceEvent) error {
 	if len(lbServiceRulesToAdd) > 0 {
 		for _, rule := range lbServiceRulesToAdd {
 			klog.Infof("Adding LB service rule: %+v", rule)
-			if err := c.AddOrUpdateUnderlaySubnetSvcLocalFlowCache(rule.IP, rule.Port, rule.Protocol, rule.DstMac, rule.UnderlayNic, rule.BridgeName, rule.SubnetName); err != nil {
+			if err := c.AddOrUpdateUnderlaySubnetSvcLocalFlowCache(rule); err != nil {
 				if errors.Is(err, errUnderlayLocalnetPatchNotReady) {
 					klog.Infof("retry underlay service flow later: %v", err)
 					return err
