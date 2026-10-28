@@ -1146,6 +1146,7 @@ func TestHasAliveSiblingVMPod(t *testing.T) {
 				APIVersion: kubevirtv1.SchemeGroupVersion.String(),
 				Kind:       util.KindVirtualMachineInstance,
 				Name:       vmName,
+				UID:        "vmi-uid",
 			},
 		}
 	}
@@ -1164,6 +1165,8 @@ func TestHasAliveSiblingVMPod(t *testing.T) {
 		}
 		return p
 	}
+	otherVmiPod := vmPod("virt-launcher-vm-bbb", "vm", corev1.PodRunning, false)
+	otherVmiPod.OwnerReferences[0].UID = "other-vmi-uid"
 
 	tests := []struct {
 		name           string
@@ -1195,6 +1198,13 @@ func TestHasAliveSiblingVMPod(t *testing.T) {
 				vmPod("virt-launcher-vm-aaa", "vm", corev1.PodSucceeded, true),
 				vmPod("virt-launcher-vm-bbb", "vm", corev1.PodSucceeded, false),
 			},
+			vmName:         "vm",
+			excludePodName: "virt-launcher-vm-aaa",
+			want:           false,
+		},
+		{
+			name:           "same name but different VMI UID",
+			pods:           []*corev1.Pod{otherVmiPod},
 			vmName:         "vm",
 			excludePodName: "virt-launcher-vm-aaa",
 			want:           false,
@@ -1233,7 +1243,8 @@ func TestHasAliveSiblingVMPod(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := hasAliveSiblingVMPod(tt.pods, tt.vmName, tt.excludePodName)
+			deletedPod := vmPod(tt.excludePodName, tt.vmName, corev1.PodFailed, true)
+			got := hasAliveSiblingVMPod(tt.pods, deletedPod, tt.vmName)
 			assert.Equal(t, tt.want, got)
 		})
 	}

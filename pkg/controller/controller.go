@@ -85,6 +85,7 @@ type Controller struct {
 	podsLister             v1.PodLister
 	podsSynced             cache.InformerSynced
 	podIndexer             cache.Indexer
+	policySelectorCache    policySelectorCache
 	addOrUpdatePodQueue    workqueue.TypedRateLimitingInterface[string]
 	deletePodQueue         workqueue.TypedRateLimitingInterface[string]
 	deletingPodObjMap      *xsync.Map[string, *corev1.Pod]
@@ -296,6 +297,7 @@ type Controller struct {
 	npsLister        netv1.NetworkPolicyLister
 	npsSynced        cache.InformerSynced
 	npIndexer        cache.Indexer
+	policyEventIndex policyEventIndex
 	updateNpQueue    workqueue.TypedRateLimitingInterface[string]
 	deleteNpQueue    workqueue.TypedRateLimitingInterface[networkPolicyDeleteRequest]
 	npSamplingQueue  workqueue.TypedRateLimitingInterface[string]
@@ -820,21 +822,27 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.anpsLister = anpInformer.Lister()
 		controller.anpsSynced = anpInformer.Informer().HasSynced
 		controller.addAnpQueue = newTypedRateLimitingQueue[string]("AddAdminNetworkPolicy", nil)
-		controller.updateAnpQueue = newTypedRateLimitingQueue[*AdminNetworkPolicyChangedDelta]("UpdateAdminNetworkPolicy", nil)
+		controller.updateAnpQueue = newCoalescingDeltaQueue("UpdateAdminNetworkPolicy", func(delta *AdminNetworkPolicyChangedDelta) string {
+			return delta.key
+		}, mergeAdminNetworkPolicyDelta)
 		controller.deleteAnpQueue = newTypedRateLimitingQueue[*v1alpha1.AdminNetworkPolicy]("DeleteAdminNetworkPolicy", nil)
 		controller.anpKeyMutex = keymutex.NewHashed(numKeyLocks)
 
 		controller.banpsLister = banpInformer.Lister()
 		controller.banpsSynced = banpInformer.Informer().HasSynced
 		controller.addBanpQueue = newTypedRateLimitingQueue[string]("AddBaseAdminNetworkPolicy", nil)
-		controller.updateBanpQueue = newTypedRateLimitingQueue[*AdminNetworkPolicyChangedDelta]("UpdateBaseAdminNetworkPolicy", nil)
+		controller.updateBanpQueue = newCoalescingDeltaQueue("UpdateBaseAdminNetworkPolicy", func(delta *AdminNetworkPolicyChangedDelta) string {
+			return delta.key
+		}, mergeAdminNetworkPolicyDelta)
 		controller.deleteBanpQueue = newTypedRateLimitingQueue[*v1alpha1.BaselineAdminNetworkPolicy]("DeleteBaseAdminNetworkPolicy", nil)
 		controller.banpKeyMutex = keymutex.NewHashed(numKeyLocks)
 
 		controller.cnpsLister = cnpInformer.Lister()
 		controller.cnpsSynced = cnpInformer.Informer().HasSynced
 		controller.addCnpQueue = newTypedRateLimitingQueue[string]("AddClusterNetworkPolicy", nil)
-		controller.updateCnpQueue = newTypedRateLimitingQueue[*ClusterNetworkPolicyChangedDelta]("UpdateClusterNetworkPolicy", nil)
+		controller.updateCnpQueue = newCoalescingDeltaQueue("UpdateClusterNetworkPolicy", func(delta *ClusterNetworkPolicyChangedDelta) string {
+			return delta.key
+		}, mergeClusterNetworkPolicyDelta)
 		controller.deleteCnpQueue = newTypedRateLimitingQueue[*netpolv1alpha2.ClusterNetworkPolicy]("DeleteClusterNetworkPolicy", nil)
 		controller.cnpKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
@@ -861,6 +869,10 @@ func Run(ctx context.Context, config *Configuration) {
 
 	defer controller.shutdown()
 	klog.Info("Starting OVN controller")
+
+	if err = controller.addNetworkAttachmentEventHandler(netAttachInformer.Informer()); err != nil {
+		util.LogFatalAndExit(err, "failed to add network attachment event handler")
+	}
 
 	// Start and sync NAD informer first, as many resources depend on NAD cache
 	// NAD CRD is optional, so we check if it exists before starting the informer
@@ -913,6 +925,9 @@ func Run(ctx context.Context, config *Configuration) {
 
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
+	}
+	if err := controller.rebuildPolicyEventIndex(); err != nil {
+		util.LogFatalAndExit(err, "failed to build network policy event index")
 	}
 
 	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -1232,8 +1247,13 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to set NB_Global option skip_conntrack_ipcidrs")
 	}
 
-	if err := c.OVNNbClient.SetOVNIPSec(c.config.EnableOVNIPSec); err != nil {
-		util.LogFatalAndExit(err, "failed to set NB_Global ipsec")
+	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSecCert {
+		if err := c.InitDefaultOVNIPsecCA(); err != nil {
+			util.LogFatalAndExit(err, "failed to init ovn ipsec CA")
+		}
+	}
+	if err := c.reconcileIPsecCoordination(ctx); err != nil {
+		klog.ErrorS(err, "Initialize IPsec coordination")
 	}
 
 	if err := c.InitOVN(); err != nil {
@@ -1271,16 +1291,29 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
 	}
 
-	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSecCert {
-		if err := c.InitDefaultOVNIPsecCA(); err != nil {
-			util.LogFatalAndExit(err, "failed to init ovn ipsec CA")
-		}
+	c.startKubeOVNTLSManager(ctx)
+	if c.config.EnableOVNIPSec && c.config.CertManagerIPSecCert {
+		go c.watchIPsecCertificateRequests(ctx)
 	}
 
-	c.startKubeOVNTLSManager(ctx)
-
 	// start workers to do all the network operations
+	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSecCert {
+		go wait.UntilWithContext(ctx, func(ctx context.Context) {
+			operationCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+			defer cancel()
+			if err := c.finalizeIPsecCAFormat(operationCtx); err != nil {
+				klog.ErrorS(err, "Finalize IPsec CA migration")
+			}
+		}, 30*time.Second)
+	}
 	c.startWorkers(ctx)
+	go wait.UntilWithContext(ctx, func(ctx context.Context) {
+		operationCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		defer cancel()
+		if err := c.reconcileIPsecCoordination(operationCtx); err != nil {
+			klog.ErrorS(err, "Reconcile IPsec coordination")
+		}
+	}, 15*time.Second)
 
 	c.initResourceOnce()
 	<-ctx.Done()
@@ -1806,6 +1839,8 @@ func getWorkItemKey(obj any) string {
 	case *vpcService:
 		return cache.MetaObjectToName(obj.(*vpcService).Svc).String()
 	case *AdminNetworkPolicyChangedDelta:
+		return v.key
+	case *ClusterNetworkPolicyChangedDelta:
 		return v.key
 	case *SwitchLBRuleInfo:
 		return v.Name

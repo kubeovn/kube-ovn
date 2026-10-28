@@ -3,9 +3,10 @@ module github.com/kubeovn/kube-ovn
 go 1.27.3
 
 require (
+	cel.dev/cel-go v0.33.1
 	github.com/brianvoe/gofakeit/v7 v7.18.0
 	github.com/cenkalti/backoff/v7 v7.0.1
-	github.com/cert-manager/cert-manager v1.21.2
+	github.com/cert-manager/cert-manager v1.21.3
 	github.com/cnf/structhash v0.0.0-20250313080605-df4c6cc74a9a
 	github.com/containerd/nerdctl/v2 v2.4.1
 	github.com/containernetworking/cni v1.3.1
@@ -30,7 +31,7 @@ require (
 	github.com/mdlayher/packet v1.2.0
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
-	github.com/moby/sys/mountinfo v0.7.2
+	github.com/moby/sys/mountinfo v0.7.3
 	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 	github.com/osrg/gobgp/v4 v4.10.0
@@ -53,11 +54,11 @@ require (
 	go.uber.org/zap v1.28.0
 	go.universe.tf/metallb v0.16.1
 	golang.org/x/mod v0.42.0
-	golang.org/x/net v0.61.0
+	golang.org/x/net v0.62.0
 	golang.org/x/sys v0.49.0
 	golang.org/x/time v0.16.0
 	golang.org/x/tools v0.52.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 	gopkg.in/k8snetworkplumbingwg/multus-cni.v4 v4.3.1
 	gopkg.in/yaml.v3 v3.0.1
@@ -68,6 +69,7 @@ require (
 	k8s.io/cli-runtime v0.37.1
 	k8s.io/client-go v0.37.1
 	k8s.io/component-base v0.37.1
+	k8s.io/component-helpers v0.37.1
 	k8s.io/klog/v2 v2.140.0
 	k8s.io/kubectl v0.37.1
 	k8s.io/kubernetes v1.37.1
@@ -259,7 +261,6 @@ require (
 	k8s.io/cloud-provider v0.37.0 // indirect
 	k8s.io/cluster-bootstrap v0.37.0 // indirect
 	k8s.io/code-generator v0.37.1 // indirect
-	k8s.io/component-helpers v0.37.1 // indirect
 	k8s.io/controller-manager v0.37.1 // indirect
 	k8s.io/cri-api v0.37.1 // indirect
 	k8s.io/cri-client v0.37.0 // indirect

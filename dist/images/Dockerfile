@@ -15,6 +15,7 @@ COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
 COPY kube-ovn-bfdd-supervisor /kube-ovn/kube-ovn-bfdd-supervisor
 COPY kube-ovn-daemon /kube-ovn/kube-ovn-daemon
 COPY kube-ovn-tproxy /kube-ovn/kube-ovn-tproxy
+COPY kube-ovn-ipsec /kube-ovn/kube-ovn-ipsec
 COPY kube-ovn-controller /kube-ovn/kube-ovn-controller
 COPY vpc-egress-gateway-observer /kube-ovn/vpc-egress-gateway-observer
 RUN ln -s /kube-ovn/kube-ovn-cmd /kube-ovn/kube-ovn-monitor && \
@@ -34,6 +35,8 @@ FROM kubeovn/kube-ovn-base:$BASE_TAG
 
 COPY --chmod=0644 logrotate/* /etc/logrotate.d/
 COPY grace_stop_ovn_controller /usr/share/ovn/scripts/grace_stop_ovn_controller
+COPY --chmod=0644 THIRD-PARTY-NOTICES /usr/share/doc/kube-ovn/THIRD-PARTY-NOTICES
+COPY --chmod=0644 licenses /usr/share/doc/kube-ovn/licenses
 
 COPY --from=setcap /kube-ovn /kube-ovn
 RUN test "$(getcap /kube-ovn/kube-ovn-tproxy)" = "/kube-ovn/kube-ovn-tproxy cap_sys_admin=ep" && \

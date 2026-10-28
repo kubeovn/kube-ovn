@@ -37,10 +37,14 @@ type ChangedName struct {
 }
 
 type AdminNetworkPolicyChangedDelta struct {
-	key              string
-	ruleNames        [util.AnpMaxRules]ChangedName
-	field            ChangedField
-	DNSReconcileDone bool
+	key                string
+	ruleNames          [util.AnpMaxRules]ChangedName
+	ingressRuleNames   [util.AnpMaxRules]ChangedName
+	egressRuleNames    [util.AnpMaxRules]ChangedName
+	fields             changedFieldMask
+	field              ChangedField
+	DNSReconcileDone   bool
+	DNSReconcileNeeded bool
 }
 
 type labelChange struct {
@@ -55,7 +59,9 @@ func (change labelChange) anyMatch(matcher func(map[string]string, map[string]st
 }
 
 func (c *Controller) enqueueAddAnp(obj any) {
-	key := cache.MetaObjectToName(obj.(*v1alpha1.AdminNetworkPolicy)).String()
+	anp := obj.(*v1alpha1.AdminNetworkPolicy)
+	c.indexAdminNetworkPolicy(anp)
+	key := cache.MetaObjectToName(anp).String()
 	klog.V(3).Infof("enqueue add anp %s", key)
 	c.addAnpQueue.Add(key)
 }
@@ -76,6 +82,7 @@ func (c *Controller) enqueueDeleteAnp(obj any) {
 		klog.Warningf("unexpected type: %T", obj)
 		return
 	}
+	c.policyEventIndex.remove(policyEventRef{kind: policyEventAdminNetworkPolicy, key: anp.Name})
 
 	klog.V(3).Infof("enqueue delete anp %s", cache.MetaObjectToName(anp).String())
 	c.deleteAnpQueue.Add(anp)
@@ -84,6 +91,7 @@ func (c *Controller) enqueueDeleteAnp(obj any) {
 func (c *Controller) enqueueUpdateAnp(oldObj, newObj any) {
 	oldAnpObj := oldObj.(*v1alpha1.AdminNetworkPolicy)
 	newAnpObj := newObj.(*v1alpha1.AdminNetworkPolicy)
+	c.indexAdminNetworkPolicy(newAnpObj)
 
 	// All the acls should be recreated with the following situations
 	if oldAnpObj.Spec.Priority != newAnpObj.Spec.Priority || len(oldAnpObj.Spec.Ingress) != len(newAnpObj.Spec.Ingress) || len(oldAnpObj.Spec.Egress) != len(newAnpObj.Spec.Egress) {
@@ -130,7 +138,7 @@ func (c *Controller) enqueueUpdateAnp(oldObj, newObj any) {
 	for index, rule := range newAnpObj.Spec.Ingress {
 		oldRule := oldAnpObj.Spec.Ingress[index]
 		if !reflect.DeepEqual(oldRule.From, rule.From) {
-			changedIngressRuleNames[index] = ChangedName{curRuleName: rule.Name}
+			changedIngressRuleNames[index] = ChangedName{curRuleName: rule.Name, isMatch: rule.Name == ""}
 			ruleChanged = true
 		}
 	}
@@ -142,7 +150,7 @@ func (c *Controller) enqueueUpdateAnp(oldObj, newObj any) {
 	for index, rule := range newAnpObj.Spec.Egress {
 		oldRule := oldAnpObj.Spec.Egress[index]
 		if !reflect.DeepEqual(oldRule.To, rule.To) {
-			changedEgressRuleNames[index] = ChangedName{curRuleName: rule.Name}
+			changedEgressRuleNames[index] = ChangedName{curRuleName: rule.Name, isMatch: rule.Name == ""}
 			ruleChanged = true
 		}
 	}
@@ -291,19 +299,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 
 	// Reconcile DNSNameResolvers for all collected domain names
 	if c.config.EnableDNSNameResolver {
-		// Collect all domain names from egress rules
-		var allDomainNames []string
-		for _, anpr := range anp.Spec.Egress {
-			for _, anprpeer := range anpr.To {
-				if len(anprpeer.DomainNames) != 0 {
-					for _, domainName := range anprpeer.DomainNames {
-						allDomainNames = append(allDomainNames, string(domainName))
-					}
-				}
-			}
-		}
-
-		if err := c.reconcileDNSNameResolversForANP(anpName, allDomainNames); err != nil {
+		if err := c.reconcileAnpDNSNameResolvers(anpName, anp); err != nil {
 			klog.Errorf("failed to reconcile DNSNameResolvers for ANP %s: %v", anpName, err)
 			return err
 		}
@@ -427,6 +423,8 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	// Only handle updates that do not affect acls.
 	c.anpKeyMutex.LockKey(changed.key)
 	defer func() { _ = c.anpKeyMutex.UnlockKey(changed.key) }()
+	changed.normalizeRuleNames()
+	fields := changed.fieldsMask()
 
 	klog.Infof("handleUpdateAnp: processing ANP %s, field=%s, DNSReconcileDone=%v",
 		changed.key, changed.field, changed.DNSReconcileDone)
@@ -455,7 +453,7 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	pgName := strings.ReplaceAll(anpName, "-", ".")
 
 	// The port-group for anp should be updated
-	if changed.field == ChangedSubject {
+	if fields&changedFieldSubject != 0 {
 		// The port-group must exist when update anp, this check should never be matched.
 		if ok, err := c.OVNNbClient.PortGroupExists(pgName); !ok || err != nil {
 			klog.Errorf("port-group for anp %s does not exist when update anp", desiredAnp.Name)
@@ -475,10 +473,11 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	}
 
 	// Peer selector in ingress/egress rule has changed, so the corresponding address-set need be updated
-	if changed.field == ChangedIngressRule {
+	if fields&changedFieldIngressRule != 0 {
+		ruleNames := changed.ruleNamesFor(ChangedIngressRule)
 		for index, rule := range desiredAnp.Spec.Ingress {
 			// Make sure the rule is changed and go on update
-			if rule.Name == changed.ruleNames[index].curRuleName || changed.ruleNames[index].isMatch {
+			if changedNameMatches(ruleNames[index], rule.Name) {
 				if err := c.setAddrSetForAnpRule(anpName, pgName, rule.Name, index, rule.From, []v1alpha1.AdminNetworkPolicyEgressPeer{}, true, false); err != nil {
 					klog.Errorf("failed to set ingress address-set for anp rule %s/%s, %v", anpName, rule.Name, err)
 					return err
@@ -487,33 +486,24 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 		}
 	}
 
-	if changed.field == ChangedEgressRule {
+	if fields&changedFieldEgressRule != 0 {
+		ruleNames := changed.ruleNamesFor(ChangedEgressRule)
+		needDNSReconcile := c.config.EnableDNSNameResolver && (changed.DNSReconcileNeeded || !changed.DNSReconcileDone)
 		for index, rule := range desiredAnp.Spec.Egress {
 			// Check if we need to update address sets (rule changed or DNS reconciliation needed)
-			needAddrSetUpdate := rule.Name == changed.ruleNames[index].curRuleName || changed.ruleNames[index].isMatch || changed.DNSReconcileDone
-
-			// Check if we need to reconcile DNS resolvers (DNS feature enabled and not already done)
-			needDNSReconcile := c.config.EnableDNSNameResolver && !changed.DNSReconcileDone
+			needAddrSetUpdate := changedNameMatches(ruleNames[index], rule.Name) || changed.DNSReconcileDone
 
 			if needAddrSetUpdate {
 				if err := c.setAddrSetForAnpRule(anpName, pgName, rule.Name, index, []v1alpha1.AdminNetworkPolicyIngressPeer{}, rule.To, false, false); err != nil {
 					klog.Errorf("failed to set egress address-set for anp rule %s/%s, %v", anpName, rule.Name, err)
 					return err
 				}
-
-				if needDNSReconcile {
-					var currentDomainNames []string
-					for _, peer := range rule.To {
-						for _, domainName := range peer.DomainNames {
-							currentDomainNames = append(currentDomainNames, string(domainName))
-						}
-					}
-
-					if err := c.reconcileDNSNameResolversForANP(anpName, currentDomainNames); err != nil {
-						klog.Errorf("failed to reconcile DNSNameResolvers for egress rule %s/%s, %v", anpName, rule.Name, err)
-						return err
-					}
-				}
+			}
+		}
+		if needDNSReconcile {
+			if err := c.reconcileAnpDNSNameResolvers(anpName, desiredAnp); err != nil {
+				klog.Errorf("failed to reconcile DNSNameResolvers for ANP %s: %v", anpName, err)
+				return err
 			}
 		}
 	}
@@ -561,6 +551,21 @@ func hasAnpDomainNames(anp *v1alpha1.AdminNetworkPolicy) bool {
 	return false
 }
 
+func getAnpDomainNames(anp *v1alpha1.AdminNetworkPolicy) (domainNames []string) {
+	for _, rule := range anp.Spec.Egress {
+		for _, peer := range rule.To {
+			for _, domainName := range peer.DomainNames {
+				domainNames = append(domainNames, string(domainName))
+			}
+		}
+	}
+	return domainNames
+}
+
+func (c *Controller) reconcileAnpDNSNameResolvers(anpName string, anp *v1alpha1.AdminNetworkPolicy) error {
+	return c.reconcileDNSNameResolversForANP(anpName, getAnpDomainNames(anp))
+}
+
 func (c *Controller) fetchSelectedPods(anpSubject *v1alpha1.AdminNetworkPolicySubject) ([]string, error) {
 	var ports []string
 
@@ -595,6 +600,25 @@ func (c *Controller) fetchSelectedPods(anpSubject *v1alpha1.AdminNetworkPolicySu
 }
 
 func (c *Controller) fetchPods(nsSelector, podSelector labels.Selector) ([]string, []string, []string, error) {
+	for range policySelectorCacheScanAttempts {
+		generation := c.policySelectorCacheGeneration()
+		ports, v4Addresses, v6Addresses, err := c.fetchPodsOnce(nsSelector, podSelector, generation)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		if generation == c.policySelectorCacheGeneration() {
+			return ports, v4Addresses, v6Addresses, nil
+		}
+	}
+	return nil, nil, nil, errors.New("policy selector cache invalidated during pod scan")
+}
+
+func (c *Controller) fetchPodsOnce(nsSelector, podSelector labels.Selector, generation uint64) ([]string, []string, []string, error) {
+	cacheKey := nsSelector.String() + "\x00" + podSelector.String()
+	if ports, v4Addresses, v6Addresses, ok := c.getPolicyPodScanCache(cacheKey, generation); ok {
+		return ports, v4Addresses, v6Addresses, nil
+	}
+
 	ports := make([]string, 0, util.AnpMaxRules)
 	v4Addresses := make([]string, 0, util.AnpMaxRules)
 	v6Addresses := make([]string, 0, util.AnpMaxRules)
@@ -646,6 +670,7 @@ func (c *Controller) fetchPods(nsSelector, podSelector labels.Selector) ([]strin
 		}
 	}
 
+	c.setPolicyPodScanCache(cacheKey, ports, v4Addresses, v6Addresses, generation)
 	return ports, v4Addresses, v6Addresses, nil
 }
 
@@ -937,11 +962,25 @@ func (c *Controller) updateAnpsByLabelsMatch(nsLabels, podLabels map[string]stri
 }
 
 func (c *Controller) updateAnpsByLabelsChange(change labelChange) {
-	anps, err := c.anpsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list admin network policies for label update: %v", err)
+	keys := c.policyEventIndex.candidatesForChange(policyEventAdminNetworkPolicy, change)
+	if !c.policyEventIndex.isReady() {
+		anps, err := c.anpsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list admin network policies for label update: %v", err)
+		}
+		keys = make([]string, 0, len(anps))
+		for _, anp := range anps {
+			keys = append(keys, anp.Name)
+		}
 	}
-	for _, anp := range anps {
+	for _, key := range keys {
+		anp, err := c.anpsLister.Get(key)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get admin network policy %s for label update: %v", key, err)
+			}
+			continue
+		}
 		if isLabelsMatchForChange(anp.Spec.Subject.Namespaces, anp.Spec.Subject.Pods, change) {
 			klog.Infof("anp %s, labels matched for anp's subject", anp.Name)
 			c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: anp.Name, field: ChangedSubject})
@@ -959,11 +998,25 @@ func (c *Controller) updateAnpsByLabelsChange(change labelChange) {
 		}
 	}
 
-	banps, err := c.banpsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list baseline admin network policies for label update: %v", err)
+	keys = c.policyEventIndex.candidatesForChange(policyEventBaselineAdminNetworkPolicy, change)
+	if !c.policyEventIndex.isReady() {
+		banps, err := c.banpsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list baseline admin network policies for label update: %v", err)
+		}
+		keys = make([]string, 0, len(banps))
+		for _, banp := range banps {
+			keys = append(keys, banp.Name)
+		}
 	}
-	for _, banp := range banps {
+	for _, key := range keys {
+		banp, err := c.banpsLister.Get(key)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get baseline admin network policy %s for label update: %v", key, err)
+			}
+			continue
+		}
 		if isLabelsMatchForChange(banp.Spec.Subject.Namespaces, banp.Spec.Subject.Pods, change) {
 			klog.Infof("banp %s, labels matched for banp's subject", banp.Name)
 			c.updateBanpQueue.Add(&AdminNetworkPolicyChangedDelta{key: banp.Name, field: ChangedSubject})

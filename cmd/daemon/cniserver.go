@@ -103,16 +103,7 @@ func main() {
 			listOption.AllowWatchBookmarks = true
 		}))
 
-	caSecretInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
-		kubeinformers.WithTransform(util.TrimManagedFields),
-		kubeinformers.WithTweakListOptions(func(listOption *v1.ListOptions) {
-			listOption.FieldSelector = "metadata.name=" + util.DefaultOVNIPSecCA
-			listOption.AllowWatchBookmarks = true
-		}),
-		kubeinformers.WithNamespace(os.Getenv(util.EnvPodNamespace)),
-	)
-
-	ctl, err := daemon.NewController(config, stopCh, podInformerFactory, nodeInformerFactory, caSecretInformerFactory, kubeovnInformerFactory)
+	ctl, err := daemon.NewController(config, stopCh, podInformerFactory, nodeInformerFactory, kubeovnInformerFactory)
 	if err != nil {
 		util.LogFatalAndExit(err, "failed to create controller")
 	}

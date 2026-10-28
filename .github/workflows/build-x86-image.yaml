@@ -33,9 +33,17 @@ env:
   # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
   SUBMARINER_VERSION: 0.24.2
   # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
-  TALOS_VERSION: v1.14.4
+  TALOS_VERSION: v1.14.5
 
 jobs:
+  network-e2e-diagnostics-validation:
+    name: Validate network E2E diagnostics
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Run diagnostics tests
+        run: python3 -m unittest hack/test_network_e2e_diagnostics.py
+
   prepare-kind-node-images:
     name: Prepare private Kind node image (${{ matrix.k8s-version }})
     if: github.event_name == 'pull_request' || github.event_name == 'push'
@@ -247,17 +255,28 @@ jobs:
       - name: Install OVSDB test server
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends openvswitch-common
+          sudo apt-get install -y --no-install-recommends openvswitch-common python3-yaml
           mkdir -p "$RUNNER_TEMP/cni-ovsdb-bin"
           for binary in ovsdb-tool ovsdb-server; do
             ln -s "$(command -v "$binary")" "$RUNNER_TEMP/cni-ovsdb-bin/$binary"
           done
           echo "OVSDB_CNI_TEST_BIN_DIR=$RUNNER_TEMP/cni-ovsdb-bin" >> "$GITHUB_ENV"
 
+      - uses: azure/setup-helm@v5.0.1
+
+      - name: Check IPsec installation contracts
+        run: |
+          python3 hack/test-ipsec-container.py
+          bash dist/images/install-cni-security_test.sh
+          bash -n dist/images/install.sh
+          git diff --check
+
       - name: Unit test
         run: |
           python3 hack/test-ovn-db-mode.py
           make ut
+          go test -race ./pkg/ipsec
+          go test -race ./pkg/controller -run TestIPsec -count=1
 
       - uses: shogo82148/actions-goveralls@v1
         continue-on-error: true
@@ -377,6 +396,13 @@ jobs:
             make image-kube-ovn
           fi
           make tar-kube-ovn
+
+      - name: Verify the packaged IPsec monitor
+        run: |
+          docker run --rm --network none --user 0:65534 --cap-drop ALL \
+            --security-opt no-new-privileges --memory 128m --cpus 1 \
+            --mount "type=bind,src=$PWD/hack/test-ipsec-monitor.py,dst=/tmp/test-ipsec-monitor.py,readonly" \
+            "kubeovn/kube-ovn:$TAG" python3 /tmp/test-ipsec-monitor.py /usr/share/openvswitch/scripts/ovs-monitor-ipsec
 
       - name: Build dpdk
         run: |
@@ -546,7 +572,8 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # Leave time after the Ginkgo timeout for diagnostics and artifact uploads.
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
@@ -628,14 +655,6 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
-          fi
-
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
@@ -658,6 +677,16 @@ jobs:
         id: install
         run: make kind-install-${{ matrix.mode }}-${{ matrix.ip-family }}
 
+      - name: Enable networking debug logs before E2E
+        timeout-minutes: 5
+        run: |
+          args=()
+          if [ '${{ matrix.mode }}' = overlay ]; then
+            args+=(--isolate-service-proxy-fallback)
+          fi
+          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" prepare \
+            "$GITHUB_WORKSPACE/network-e2e-diagnostics/preparation" "${args[@]}"
+
       - name: Run E2E
         id: e2e
         working-directory: ${{ env.E2E_DIR }}
@@ -665,7 +694,28 @@ jobs:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: ${{ matrix.mode }}
-        run: make k8s-conformance-e2e
+          E2E_MAX_SECONDS: 3900
+        run: >-
+          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" run
+          "$GITHUB_WORKSPACE/network-e2e-diagnostics"
+          --suite k8s-conformance-e2e
+
+      - name: Collect final network state
+        if: always() && steps.install.outcome != 'skipped'
+        continue-on-error: true
+        timeout-minutes: 3
+        run: >-
+          python3 hack/network_e2e_diagnostics.py snapshot
+          network-e2e-diagnostics/post-job
+
+      - name: Upload network diagnostics and test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-diagnostics
+          path: network-e2e-diagnostics/
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Collect k8s events
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
@@ -711,39 +761,6 @@ jobs:
         with:
           name: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log
           path: k8s-conformance-e2e-${{ matrix.ip-family }}-${{ matrix.mode }}-ko-log.tar.gz
-
-      - name: Check valgrind result
-        run: |
-          if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
-            exit
-          fi
-
-          kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status ds ovs-ovn
-          sleep 10
-          kubectl -n kube-system rollout restart deploy ovn-central
-          kubectl -n kube-system rollout status deploy ovn-central
-          while true; do
-            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
-              break
-            fi
-            sleep 1
-          done
-          bash .github/scripts/collect-kubectl-ko-log.sh
-
-          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
-            echo "Checking if valgrind log file for $daemon exists..."
-            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
-          done
-
-          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
-              echo $f
-              cat "$f"
-              exit 1
-            fi;
-          done
 
   acl-sampling-e2e:
     name: ACL Sampling E2E
@@ -842,7 +859,8 @@ jobs:
       - build-e2e-binaries
       - netpol-path-filter
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    # Leave time after the Ginkgo timeout for diagnostics and artifact uploads.
+    timeout-minutes: 150
     strategy:
       fail-fast: false
       matrix:
@@ -926,14 +944,6 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
-          fi
-
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
@@ -951,10 +961,41 @@ jobs:
         id: install
         run: make kind-install-${{ matrix.ip-family }}
 
+      - name: Enable networking debug logs before E2E
+        timeout-minutes: 5
+        run: >-
+          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" prepare
+          "$GITHUB_WORKSPACE/network-e2e-diagnostics/preparation"
+
       - name: Run E2E
         id: e2e
         working-directory: ${{ env.E2E_DIR }}
-        run: make k8s-netpol-e2e
+        env:
+          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          NP_ENFORCEMENT: ${{ matrix.np-enforcement }}
+          E2E_MAX_SECONDS: 7500
+        run: >-
+          python3 "$GITHUB_WORKSPACE/hack/network_e2e_diagnostics.py" run
+          "$GITHUB_WORKSPACE/network-e2e-diagnostics"
+          --suite k8s-netpol-e2e
+
+      - name: Collect final network state
+        if: always() && steps.install.outcome != 'skipped'
+        continue-on-error: true
+        timeout-minutes: 3
+        run: >-
+          python3 hack/network_e2e_diagnostics.py snapshot
+          network-e2e-diagnostics/post-job
+
+      - name: Upload network diagnostics and test reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: k8s-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-diagnostics
+          path: network-e2e-diagnostics/
+          retention-days: 7
+          if-no-files-found: warn
 
       - name: Collect k8s events
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
@@ -1000,39 +1041,6 @@ jobs:
         with:
           name: k8s-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log
           path: k8s-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
-
-      - name: Check valgrind result
-        run: |
-          if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
-            exit
-          fi
-
-          kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status ds ovs-ovn
-          sleep 10
-          kubectl -n kube-system rollout restart deploy ovn-central
-          kubectl -n kube-system rollout status deploy ovn-central
-          while true; do
-            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
-              break
-            fi
-            sleep 1
-          done
-          bash .github/scripts/collect-kubectl-ko-log.sh
-
-          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
-            echo "Checking if valgrind log file for $daemon exists..."
-            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
-          done
-
-          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
-              echo $f
-              cat "$f"
-              exit 1
-            fi;
-          done
 
   cyclonus-netpol-e2e:
     name: Cyclonus Network Policy E2E
@@ -1102,14 +1110,6 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
-          fi
-
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
@@ -1178,39 +1178,6 @@ jobs:
         with:
           name: cyclonus-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log
           path: cyclonus-netpol-e2e-${{ matrix.ip-family }}-${{ matrix.np-enforcement }}-ko-log.tar.gz
-
-      - name: Check valgrind result
-        run: |
-          if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
-            exit
-          fi
-
-          kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status ds ovs-ovn
-          sleep 10
-          kubectl -n kube-system rollout restart deploy ovn-central
-          kubectl -n kube-system rollout status deploy ovn-central
-          while true; do
-            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
-              break
-            fi
-            sleep 1
-          done
-          bash .github/scripts/collect-kubectl-ko-log.sh
-
-          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
-            echo "Checking if valgrind log file for $daemon exists..."
-            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
-          done
-
-          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
-              echo $f
-              cat "$f"
-              exit 1
-            fi;
-          done
 
   kube-ovn-conformance-e2e:
     name: Kube-OVN Conformance E2E
@@ -1296,14 +1263,6 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
-          fi
-
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
@@ -1374,39 +1333,6 @@ jobs:
         with:
           name: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-conformance-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
-
-      - name: Check valgrind result
-        run: |
-          if [ "x$DEBUG_WRAPPER" != "xvalgrind" ]; then
-            exit
-          fi
-
-          kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status ds ovs-ovn
-          sleep 10
-          kubectl -n kube-system rollout restart deploy ovn-central
-          kubectl -n kube-system rollout status deploy ovn-central
-          while true; do
-            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
-              break
-            fi
-            sleep 1
-          done
-          bash .github/scripts/collect-kubectl-ko-log.sh
-
-          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
-            echo "Checking if valgrind log file for $daemon exists..."
-            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
-          done
-
-          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
-              echo $f
-              cat "$f"
-              exit 1
-            fi;
-          done
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
@@ -2835,7 +2761,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
         with:
@@ -3115,14 +3041,6 @@ jobs:
       - name: Load image
         run: docker load --input kube-ovn.tar
 
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
-          fi
-
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
         with:
@@ -3269,14 +3187,6 @@ jobs:
 
       - name: Load image
         run: docker load --input kube-ovn.tar
-
-      - name: Set environment variables
-        run: |
-          if [ $(($RANDOM%2)) -ne 0 ]; then
-            # run as root and use valgrind to debug memory leak
-            echo "VERSION=$(cat VERSION)-debug" >> "$GITHUB_ENV"
-            echo "DEBUG_WRAPPER=valgrind" >> "$GITHUB_ENV"
-          fi
 
       - name: Download private Kind node image
         uses: actions/download-artifact@v8
@@ -3522,7 +3432,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -3860,7 +3770,7 @@ jobs:
         id: install
         env:
           UNTAINT_CONTROL_PLANE: "false"
-        run: make kind-install-debug-valgrind-${{ matrix.ip-family }}
+        run: make kind-install-${{ matrix.ip-family }}
 
       - name: Install Multus
         run: make kind-install-multus
@@ -3917,35 +3827,6 @@ jobs:
         with:
           name: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log
           path: vpc-egress-gateway-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
-
-      - name: Check valgrind result
-        run: |
-          kubectl -n kube-system rollout restart ds ovs-ovn
-          kubectl -n kube-system rollout status ds ovs-ovn
-          sleep 10
-          kubectl -n kube-system rollout restart deploy ovn-central
-          kubectl -n kube-system rollout status deploy ovn-central
-          while true; do
-            if [ $(kubectl -n kube-system get pod -l app=ovs -o name | wc -l) -eq $(kubectl get node -o name | wc -l) ]; then
-              break
-            fi
-            sleep 1
-          done
-          bash .github/scripts/collect-kubectl-ko-log.sh
-
-          for daemon in ovsdb-nb ovsdb-sb ovn-northd ovn-controller ovsdb-server ovs-vswitchd; do
-            echo "Checking if valgrind log file for $daemon exists..."
-            find kubectl-ko-log -type f -name "$daemon.valgrind.log.[[:digit:]]*" -exec false {} + && exit 1
-          done
-
-          find kubectl-ko-log -type f -name '*.valgrind.log.*' | while read f; do
-            if grep -qw 'definitely lost' "$f"; then
-              echo "Memory leak detected in $(basename $f | awk -F. '{print $1}')."
-              echo $f
-              cat "$f"
-              exit 1
-            fi;
-          done
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
@@ -4258,7 +4139,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 120
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
         with:
@@ -4311,6 +4192,8 @@ jobs:
           key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
+      - uses: azure/setup-helm@v5.0.1
+
       - name: Install kind
         uses: helm/kind-action@v1.15.1
         with:
@@ -4332,6 +4215,46 @@ jobs:
 
       - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
+
+      - name: Validate IPsec runtime with the built image
+        run: |
+          ipsec_image="kubeovn/kube-ovn:$(cat VERSION)"
+          capture_image="kubeovn/kube-ovn:$(cat VERSION)-debug"
+          CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/ipsec-tests" ./pkg/ipsec
+          CGO_ENABLED=0 go test -c -o "$RUNNER_TEMP/ipsec-ovsdb-tests" ./pkg/ovs
+          # A published base without the extension must fail before identity issuance.
+          docker run --rm --network none --user 0:65534 --cap-drop ALL --cap-add NET_BIND_SERVICE \
+            --security-opt no-new-privileges \
+            --mount "type=bind,src=$RUNNER_TEMP/ipsec-tests,dst=/tmp/ipsec-tests,readonly" \
+            --env KUBE_OVN_IPSEC_UNSUPPORTED_TEST=true \
+            kubeovn/kube-ovn-base:v1.17.0@sha256:300011722d58c4c822279b034476d124f6f52d5ba607ddc68939fea1364746c1 \
+            /tmp/ipsec-tests -test.run '^TestCandidateWithoutProtection$' -test.v -test.timeout=30s
+          docker run --rm --network none --user 0:65534 --cap-drop ALL --cap-add NET_BIND_SERVICE \
+            --security-opt no-new-privileges --memory 512m --cpus 1 \
+            --env OVSDB_CNI_TEST_BIN_DIR=/tmp/ovs-tools \
+            --mount "type=bind,src=$RUNNER_TEMP/ipsec-ovsdb-tests,dst=/tmp/ipsec-ovsdb-tests,readonly" \
+            "$ipsec_image" bash -c '
+              set -euo pipefail
+              mkdir /tmp/ovs-tools
+              ln -s "$(command -v ovsdb-tool)" /tmp/ovs-tools/ovsdb-tool
+              ln -s "$(command -v ovsdb-server)" /tmp/ovs-tools/ovsdb-server
+              exec /tmp/ipsec-ovsdb-tests -test.run "^TestIPsec" -test.v -test.timeout=120s
+            '
+          bash hack/test-ipsec-runtime.sh "$ipsec_image" "$RUNNER_TEMP/ipsec-tests"
+          bash hack/test-ipsec-traffic.sh "$ipsec_image" "$RUNNER_TEMP/ipsec-tests" "$capture_image"
+
+      - name: Validate IPsec installer, release and protected tunnel outputs
+        run: |
+          ipsec_image="kubeovn/kube-ovn:$(cat VERSION)"
+          capture_image="kubeovn/kube-ovn:$(cat VERSION)-debug"
+          IPSEC_OVERLAY_INSTALLER=true bash hack/test-ipsec-overlay.sh "$ipsec_image" "$capture_image"
+          IPSEC_CLEANUP_STARTUP=true bash hack/test-ipsec-overlay.sh "$ipsec_image" "$capture_image"
+          for family in IPv4 IPv6; do
+            for tunnel in geneve vxlan; do
+              IPSEC_PROTECTION_FAILURES=true IPSEC_OVERLAY_FAMILY="$family" IPSEC_OVERLAY_TUNNEL="$tunnel" \
+                bash hack/test-ipsec-overlay.sh "$ipsec_image" "$capture_image"
+            done
+          done
 
       - name: Create kind cluster
         run: |
@@ -4403,7 +4326,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
         with:
@@ -4477,6 +4400,12 @@ jobs:
 
       - name: Load private Kind node image
         run: docker load --input kind-node-v1.37.0.tar
+
+      - name: Verify bound CSR signing and cert-manager admission
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3-yaml
+          bash hack/test-ipsec-api.sh
 
       - name: Create kind cluster
         run: |

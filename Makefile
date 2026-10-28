@@ -49,11 +49,11 @@ KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 
 # renovate: datasource=github-releases depName=cilium packageName=cilium/cilium
-CILIUM_VERSION = v1.20.3
+CILIUM_VERSION = v1.20.4
 CILIUM_IMAGE_REPO = quay.io/cilium
 
 # renovate: datasource=github-releases depName=cert-manager packageName=cert-manager/cert-manager
-CERT_MANAGER_VERSION = v1.21.2
+CERT_MANAGER_VERSION = v1.21.3
 CERT_MANAGER_CONTROLLER = quay.io/jetstack/cert-manager-controller:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_CAINJECTOR = quay.io/jetstack/cert-manager-cainjector:$(CERT_MANAGER_VERSION)
 CERT_MANAGER_WEBHOOK = quay.io/jetstack/cert-manager-webhook:$(CERT_MANAGER_VERSION)
@@ -198,6 +198,7 @@ install-chart:
 		--set image.pullPolicy=$(or $(IMAGE_PULL_POLICY),IfNotPresent) \
 		--set OVN_DIR=$(or $(OVN_DIR),/etc/origin/ovn) \
 		--set OPENVSWITCH_DIR=$(or $(OPENVSWITCH_DIR),/etc/origin/openvswitch) \
+		--set OVN_IPSEC_KEY_DIR=$(or $(OVN_IPSEC_KEY_DIR),/etc/origin/ovs_ipsec_keys) \
 		--set DISABLE_MODULES_MANAGEMENT=$(or $(DISABLE_MODULES_MANAGEMENT),false) \
 		--set cni_conf.MOUNT_LOCAL_BIN_DIR=$(or $(MOUNT_LOCAL_BIN_DIR),true) \
 		--set networking.ENABLE_SSL=$(or $(ENABLE_SSL),false) \
@@ -231,6 +232,7 @@ upgrade-chart:
 		--set image.pullPolicy=$(or $(IMAGE_PULL_POLICY),IfNotPresent) \
 		--set OVN_DIR=$(or $(OVN_DIR),/etc/origin/ovn) \
 		--set OPENVSWITCH_DIR=$(or $(OPENVSWITCH_DIR),/etc/origin/openvswitch) \
+		--set OVN_IPSEC_KEY_DIR=$(or $(OVN_IPSEC_KEY_DIR),/etc/origin/ovs_ipsec_keys) \
 		--set DISABLE_MODULES_MANAGEMENT=$(or $(DISABLE_MODULES_MANAGEMENT),false) \
 		--set cni_conf.MOUNT_LOCAL_BIN_DIR=$(or $(MOUNT_LOCAL_BIN_DIR),true) \
 		--set networking.ENABLE_SSL=$(or $(ENABLE_SSL),false) \

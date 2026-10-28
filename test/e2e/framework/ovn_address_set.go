@@ -16,7 +16,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
-	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/utils/set"
 
 	"github.com/onsi/ginkgo/v2"
@@ -196,7 +195,7 @@ func getOVNNbClient(tables ...string) (*ovs.OVNNbClient, map[string]model.Model)
 }
 
 func resolveOVNNbConnection() (string, error) {
-	config, err := k8sframework.LoadConfig()
+	config, err := loadConfig()
 	if err != nil {
 		return "", err
 	}

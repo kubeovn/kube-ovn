@@ -46,6 +46,8 @@ func TestEnqueueUpdatePodWhenRoutedChanges(t *testing.T) {
 		Spec:      networkingv1.NetworkPolicySpec{PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "selected"}}},
 	}))
 	controller.npsLister = networkinglister.NewNetworkPolicyLister(npIndexer)
+	require.NoError(t, controller.rebuildPolicyEventIndex())
+	require.True(t, controller.policyEventIndex.isReady())
 
 	oldPod := pod.DeepCopy()
 	newPod := pod.DeepCopy()
@@ -108,6 +110,8 @@ func TestEnqueueUpdatePodWhenLabelsStillMatchNetworkPolicy(t *testing.T) {
 		}))
 	}
 	controller.npsLister = networkinglister.NewNetworkPolicyLister(npIndexer)
+	require.NoError(t, controller.rebuildPolicyEventIndex())
+	require.True(t, controller.policyEventIndex.isReady())
 
 	oldPod := pod.DeepCopy()
 	newPod := pod.DeepCopy()

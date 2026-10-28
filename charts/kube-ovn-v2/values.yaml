@@ -314,6 +314,10 @@ validatingWebhook:
   # -- Enable the deployment of the validating webhook.
   # @section -- Validating webhook configuration
   enabled: false
+  certificate:
+    # -- Create the webhook Certificate and self-signed Issuer. Set to false to manage your own cert-manager Certificate and issuer outside this chart; the webhook remains enabled. See the README for required resource names and upgrade considerations.
+    # @section -- Validating webhook configuration
+    create: true
   # -- Override image settings for kube-ovn-webhook. Empty fields fall back to the global kube-ovn image.
   # @section -- Validating webhook configuration
   image:
@@ -1346,3 +1350,19 @@ extraObjects: []
 #           }
 #         ]
 #       }
+
+# Dedicated node IPsec container, rendered when the existing IPsec feature is enabled.
+ipsec:
+  certManager:
+    enabled: false
+    issuerName: kube-ovn
+  certificateDuration: 63072000
+  requestTimeout: 300s
+  priority: -5
+  resources:
+    requests:
+      cpu: 10m
+      memory: 64Mi
+    limits:
+      cpu: 1000m
+      memory: 256Mi
