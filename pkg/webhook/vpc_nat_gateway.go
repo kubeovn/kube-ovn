@@ -501,6 +501,10 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 		return fmt.Errorf("BFD is enabled on NAT gateway but VPC %s does not have BFD enabled (vpc.spec.enableBfd must be true)", gw.Spec.Vpc)
 	}
 
+	if err := v.validateNatGwConntrackSync(ctx, gw); err != nil {
+		return err
+	}
+
 	for _, t := range gw.Spec.Tolerations {
 		if t.Operator != corev1.TolerationOpExists &&
 			t.Operator != corev1.TolerationOpEqual {
@@ -513,6 +517,56 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 			t.Effect != corev1.TaintEffectPreferNoSchedule {
 			err := fmt.Errorf("invalid taint effect: %s, supported params: \"NoSchedule\", \"PreferNoSchedule\", \"NoExecute\"", t.Effect)
 			return err
+		}
+	}
+
+	return nil
+}
+
+// validateNatGwConntrackSync checks the conntrack synchronization settings of a NAT gateway:
+// synchronization only makes sense between several replicas, the multicast group has to be an
+// IPv4 multicast address that is routable inside the gateway subnet, and no other gateway of the
+// same subnet may already synchronize over the same group and port, which would mix the NAT state
+// of two gateways.
+func (v *ValidatingHook) validateNatGwConntrackSync(ctx context.Context, gw *ovnv1.VpcNatGateway) error {
+	if !gw.Spec.ConntrackSync.Enabled {
+		return nil
+	}
+
+	if !util.IsNatGwHAMode(gw) {
+		return fmt.Errorf("conntrack synchronization requires HA mode: NAT gateway %q has %d replica, set spec.replicas > 1",
+			gw.Name, max(gw.Spec.Replicas, 1))
+	}
+
+	group := gw.Spec.ConntrackSync.MulticastGroup
+	if group != "" {
+		ip := net.ParseIP(group)
+		if ip == nil || ip.To4() == nil || !ip.IsMulticast() {
+			return fmt.Errorf("conntrackSync.multicastGroup %q is not an IPv4 multicast address, use an address in 239.0.0.0/8", group)
+		}
+		// 224.0.0.0/24 carries the well-known control groups and is never forwarded.
+		if ip.IsLinkLocalMulticast() {
+			return fmt.Errorf("conntrackSync.multicastGroup %q is reserved for link-local control traffic, use an address in 239.0.0.0/8", group)
+		}
+	} else if gw.UID == "" {
+		// The group is derived from the UID, which has not been assigned yet: there is nothing
+		// to compare against the other gateways.
+		return nil
+	}
+
+	gwList := &ovnv1.VpcNatGatewayList{}
+	if err := v.cache.List(ctx, gwList); err != nil {
+		return err
+	}
+
+	syncGroup, syncPort := util.NatGwConntrackSyncGroup(gw), util.NatGwConntrackSyncPort(gw)
+	for _, other := range gwList.Items {
+		if other.Name == gw.Name || !other.Spec.ConntrackSync.Enabled || other.Spec.Subnet != gw.Spec.Subnet {
+			continue
+		}
+		if util.NatGwConntrackSyncGroup(&other) == syncGroup && util.NatGwConntrackSyncPort(&other) == syncPort {
+			return fmt.Errorf("NAT gateway %q already synchronizes conntrack entries over %s:%d on subnet %s, set another conntrackSync.multicastGroup or conntrackSync.port",
+				other.Name, syncGroup, syncPort, gw.Spec.Subnet)
 		}
 	}
 

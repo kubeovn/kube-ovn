@@ -4702,6 +4702,9 @@ spec:
     - jsonPath: .spec.bfd.enabled
       name: BFD
       type: boolean
+    - jsonPath: .spec.conntrackSync.enabled
+      name: ConntrackSync
+      type: boolean
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
@@ -5738,6 +5741,29 @@ spec:
                     description: BGP router ID
                     type: string
                 type: object
+              conntrackSync:
+                description: Conntrack synchronization between replicas (HA mode only)
+                properties:
+                  enabled:
+                    default: false
+                    description: |-
+                      Enable conntrack synchronization between the gateway replicas.
+                      Only supported in HA mode (replicas > 1); toggling it recreates the gateway Pods.
+                    type: boolean
+                  multicastGroup:
+                    description: |-
+                      IPv4 multicast group used to synchronize conntrack entries, preferably in 239.0.0.0/8.
+                      When empty, a group in 239.0.0.0/8 is derived from the gateway UID so that two gateways
+                      sharing a subnet do not exchange state.
+                    type: string
+                  port:
+                    default: 3780
+                    description: UDP port used to synchronize conntrack entries.
+                    format: int32
+                    maximum: 65535
+                    minimum: 1
+                    type: integer
+                type: object
               externalSubnets:
                 description: External subnets accessible through the NAT gateway
                 items:
@@ -6768,6 +6794,28 @@ spec:
                         type: array
                         x-kubernetes-list-type: atomic
                     type: object
+                type: object
+              conntrackSync:
+                description: Conntrack synchronization state observed on the gateway
+                  replicas
+                properties:
+                  enabled:
+                    description: Whether conntrack synchronization is configured on
+                      the gateway
+                    type: boolean
+                  multicastGroup:
+                    description: |-
+                      Multicast group the replicas synchronize over, derived from the gateway UID when
+                      spec.conntrackSync.multicastGroup is empty
+                    type: string
+                  port:
+                    description: UDP port the replicas synchronize over
+                    format: int32
+                    type: integer
+                  ready:
+                    description: Whether the conntrackd container is ready on every
+                      gateway replica
+                    type: boolean
                 type: object
               externalSubnets:
                 description: External subnets configured for the NAT gateway

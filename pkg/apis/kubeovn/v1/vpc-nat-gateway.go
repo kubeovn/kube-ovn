@@ -30,6 +30,7 @@ type VpcNatGatewayList struct {
 // +kubebuilder:printcolumn:name="Replicas",type="integer",JSONPath=".spec.replicas"
 // +kubebuilder:printcolumn:name="Ready",type="boolean",JSONPath=".status.ready"
 // +kubebuilder:printcolumn:name="BFD",type="boolean",JSONPath=".spec.bfd.enabled"
+// +kubebuilder:printcolumn:name="ConntrackSync",type="boolean",JSONPath=".spec.conntrackSync.enabled"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 //
 // VpcNatGateway represents a NAT gateway for a VPC, implemented by a StatefulSet in non-HA mode or a Deployment in HA mode.
@@ -89,6 +90,8 @@ type VpcNatGatewaySpec struct {
 	BgpSpeaker VpcBgpSpeaker `json:"bgpSpeaker"`
 	// BFD configuration for health monitoring and automatic failover (HA mode only)
 	BFD VpcNatGatewayBFDConfig `json:"bfd,omitempty"`
+	// Conntrack synchronization between replicas (HA mode only)
+	ConntrackSync VpcNatGatewayConntrackSyncConfig `json:"conntrackSync,omitempty"`
 	// Internal subnets by name (resolved to CIDRs) for OVN route injection.
 	// Traffic from these subnets destined for 0.0.0.0/0 or ::/0 will be routed to NAT gateway instances.
 	// This field is cumulative with internalCIDRs.
@@ -156,6 +159,36 @@ type VpcNatGatewayBFDConfig struct {
 	Multiplier int32 `json:"multiplier,omitempty"`
 }
 
+// VpcNatGatewayConntrackSyncConfig configures conntrack state synchronization between
+// NAT gateway replicas. It is only meaningful in HA mode (Replicas > 1): each replica runs a
+// conntrackd sidecar that multicasts its NAT conntrack entries to the other replicas over the
+// gateway subnet, so that a flow NATed by one replica can be handled by any other one.
+//
+// conntrackd is designed for failover rather than for real-time sharing between active replicas:
+// when a reply comes back through a replica that has not yet received the entry, the first reply
+// packet may be dropped. TCP recovers through retransmission, single-packet UDP exchanges may not.
+//
+// Two replicas SNATing to the same EIP can also pick the same source port towards the same
+// destination, in which case the entry of one of them fails to be inserted on the other. The
+// gateways rely on --random-fully to keep such collisions rare; partitioning the source port
+// range between the replicas is left for later.
+type VpcNatGatewayConntrackSyncConfig struct {
+	// Enable conntrack synchronization between the gateway replicas.
+	// Only supported in HA mode (replicas > 1); toggling it recreates the gateway Pods.
+	// +kubebuilder:default=false
+	Enabled bool `json:"enabled"`
+	// IPv4 multicast group used to synchronize conntrack entries, preferably in 239.0.0.0/8.
+	// When empty, a group in 239.0.0.0/8 is derived from the gateway UID so that two gateways
+	// sharing a subnet do not exchange state.
+	// +kubebuilder:validation:Optional
+	MulticastGroup string `json:"multicastGroup,omitempty"`
+	// UDP port used to synchronize conntrack entries.
+	// +kubebuilder:default=3780
+	// +kubebuilder:validation:Minimum=1
+	// +kubebuilder:validation:Maximum=65535
+	Port int32 `json:"port,omitempty"`
+}
+
 // TODO: Consider removing redundant Status fields since statefulset template changes always trigger Pod recreation.
 type VpcNatGatewayStatus struct {
 	// QoS policy applied to the NAT gateway
@@ -180,6 +213,21 @@ type VpcNatGatewayStatus struct {
 	InternalSubnets []string `json:"internalSubnets,omitempty"`
 	// Internal CIDRs configured for OVN route injection
 	InternalCIDRs []string `json:"internalCIDRs,omitempty"`
+	// Conntrack synchronization state observed on the gateway replicas
+	ConntrackSync VpcNatGatewayConntrackSyncStatus `json:"conntrackSync,omitempty"`
+}
+
+// VpcNatGatewayConntrackSyncStatus reports the conntrack synchronization state of a NAT gateway.
+type VpcNatGatewayConntrackSyncStatus struct {
+	// Whether conntrack synchronization is configured on the gateway
+	Enabled bool `json:"enabled"`
+	// Multicast group the replicas synchronize over, derived from the gateway UID when
+	// spec.conntrackSync.multicastGroup is empty
+	MulticastGroup string `json:"multicastGroup,omitempty"`
+	// UDP port the replicas synchronize over
+	Port int32 `json:"port,omitempty"`
+	// Whether the conntrackd container is ready on every gateway replica
+	Ready bool `json:"ready"`
 }
 
 // VpcNatWorkload contains information about the underlying Kubernetes workload (Deployment or StatefulSet)

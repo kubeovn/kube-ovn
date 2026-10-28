@@ -23,8 +23,9 @@ import (
 )
 
 type mockCache struct {
-	objects   map[string]runtime.Object
-	dnatRules []ovnv1.IptablesDnatRule
+	objects     map[string]runtime.Object
+	dnatRules   []ovnv1.IptablesDnatRule
+	natGateways []ovnv1.VpcNatGateway
 }
 
 func (m *mockCache) Get(_ context.Context, key client.ObjectKey, obj client.Object, _ ...client.GetOption) error {
@@ -60,6 +61,9 @@ func (m *mockCache) List(_ context.Context, list client.ObjectList, opts ...clie
 	if len(opts) == 0 {
 		if dnats, ok := list.(*ovnv1.IptablesDnatRuleList); ok {
 			dnats.Items = m.dnatRules
+		}
+		if gws, ok := list.(*ovnv1.VpcNatGatewayList); ok {
+			gws.Items = m.natGateways
 		}
 	}
 	return nil
