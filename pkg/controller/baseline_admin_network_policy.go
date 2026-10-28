@@ -95,7 +95,7 @@ func (c *Controller) enqueueUpdateBanp(oldObj, newObj any) {
 	for index, rule := range newBanp.Spec.Ingress {
 		oldRule := oldBanp.Spec.Ingress[index]
 		if !reflect.DeepEqual(oldRule.From, rule.From) {
-			changedIngressRuleNames[index] = ChangedName{curRuleName: rule.Name}
+			changedIngressRuleNames[index] = ChangedName{curRuleName: rule.Name, isMatch: rule.Name == ""}
 			ruleChanged = true
 		}
 	}
@@ -107,7 +107,7 @@ func (c *Controller) enqueueUpdateBanp(oldObj, newObj any) {
 	for index, rule := range newBanp.Spec.Egress {
 		oldRule := oldBanp.Spec.Egress[index]
 		if !reflect.DeepEqual(oldRule.To, rule.To) {
-			changedEgressRuleNames[index] = ChangedName{curRuleName: rule.Name}
+			changedEgressRuleNames[index] = ChangedName{curRuleName: rule.Name, isMatch: rule.Name == ""}
 			ruleChanged = true
 		}
 	}
@@ -389,7 +389,7 @@ func (c *Controller) handleUpdateBanp(changed *AdminNetworkPolicyChangedDelta) e
 		ruleNames := changed.ruleNamesFor(ChangedIngressRule)
 		for index, rule := range desiredBanp.Spec.Ingress {
 			// Make sure the rule is changed and go on update
-			if rule.Name == ruleNames[index].curRuleName || ruleNames[index].isMatch {
+			if changedNameMatches(ruleNames[index], rule.Name) {
 				if err := c.setAddrSetForAnpRule(banpName, pgName, rule.Name, index, rule.From, []v1alpha1.AdminNetworkPolicyEgressPeer{}, true, true); err != nil {
 					klog.Errorf("failed to set ingress address-set for anp rule %s/%s, %v", banpName, rule.Name, err)
 					return err
@@ -402,7 +402,7 @@ func (c *Controller) handleUpdateBanp(changed *AdminNetworkPolicyChangedDelta) e
 		ruleNames := changed.ruleNamesFor(ChangedEgressRule)
 		for index, rule := range desiredBanp.Spec.Egress {
 			// Make sure the rule is changed and go on update
-			if rule.Name == ruleNames[index].curRuleName || ruleNames[index].isMatch {
+			if changedNameMatches(ruleNames[index], rule.Name) {
 				if err := c.setAddrSetForBaselineAnpRule(banpName, pgName, rule.Name, index, []v1alpha1.AdminNetworkPolicyIngressPeer{}, rule.To, false, true); err != nil {
 					klog.Errorf("failed to set egress address-set for banp rule %s/%s, %v", banpName, rule.Name, err)
 					return err

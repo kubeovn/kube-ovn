@@ -27,13 +27,14 @@ import (
 
 // ClusterNetworkPolicyChangedDelta is used to determine what changed within a ClusterNetworkPolicy
 type ClusterNetworkPolicyChangedDelta struct {
-	key              string
-	ruleNames        [util.CnpMaxRules]ChangedName
-	ingressRuleNames [util.CnpMaxRules]ChangedName
-	egressRuleNames  [util.CnpMaxRules]ChangedName
-	fields           changedFieldMask
-	field            ChangedField
-	DNSReconcileDone bool
+	key                string
+	ruleNames          [util.CnpMaxRules]ChangedName
+	ingressRuleNames   [util.CnpMaxRules]ChangedName
+	egressRuleNames    [util.CnpMaxRules]ChangedName
+	fields             changedFieldMask
+	field              ChangedField
+	DNSReconcileDone   bool
+	DNSReconcileNeeded bool
 }
 
 // enqueueAddCnp adds a new ClusterNetworkPolicy to the processing queue for creation
@@ -326,7 +327,7 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 		ruleNames := changed.ruleNamesFor(ChangedIngressRule)
 		for index, rule := range desiredCnp.Spec.Ingress {
 			// Make sure the rule is changed and go on update
-			if rule.Name == ruleNames[index].curRuleName || ruleNames[index].isMatch {
+			if changedNameMatches(ruleNames[index], rule.Name) {
 				if err := c.setAddrSetForCnpRule(cnpName, pgName, rule.Name, index, rule.From, []v1alpha2.ClusterNetworkPolicyEgressPeer{}, true, false); err != nil {
 					klog.Errorf("failed to set ingress address-set for cnp rule %s/%s, %v", cnpName, rule.Name, err)
 					return err
@@ -337,25 +338,22 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 
 	if fields&changedFieldEgressRule != 0 {
 		ruleNames := changed.ruleNamesFor(ChangedEgressRule)
+		needDNSReconcile := c.config.EnableDNSNameResolver && (changed.DNSReconcileNeeded || !changed.DNSReconcileDone)
 		for index, rule := range desiredCnp.Spec.Egress {
 			// Check if we need to update address sets (rule changed or DNS reconciliation needed)
-			needAddrSetUpdate := rule.Name == ruleNames[index].curRuleName || ruleNames[index].isMatch || changed.DNSReconcileDone
-
-			// Check if we need to reconcile DNS resolvers (DNS feature enabled and not already done)
-			needDNSReconcile := c.config.EnableDNSNameResolver && !changed.DNSReconcileDone
+			needAddrSetUpdate := changedNameMatches(ruleNames[index], rule.Name) || changed.DNSReconcileDone
 
 			if needAddrSetUpdate {
 				if err := c.setAddrSetForCnpRule(cnpName, pgName, rule.Name, index, []v1alpha2.ClusterNetworkPolicyIngressPeer{}, rule.To, false, false); err != nil {
 					klog.Errorf("failed to set egress address-set for cnp rule %s/%s, %v", cnpName, rule.Name, err)
 					return err
 				}
-
-				if needDNSReconcile {
-					if err := c.reconcileDNSNameResolversForANP(cnpName, getCnpDomainsNames(desiredCnp)); err != nil {
-						klog.Errorf("failed to reconcile DNSNameResolvers for egress rule %s/%s, %v", cnpName, rule.Name, err)
-						return err
-					}
-				}
+			}
+		}
+		if needDNSReconcile {
+			if err := c.reconcileDNSNameResolversForANP(cnpName, getCnpDomainsNames(desiredCnp)); err != nil {
+				klog.Errorf("failed to reconcile DNSNameResolvers for CNP %s: %v", cnpName, err)
+				return err
 			}
 		}
 	}
@@ -905,6 +903,7 @@ func getCnpAddressSetsToUpdate(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) (i
 
 		if !reflect.DeepEqual(oldRule.From, rule.From) {
 			change.curRuleName = rule.Name
+			change.isMatch = rule.Name == ""
 		}
 
 		ingress[index] = change
@@ -917,6 +916,7 @@ func getCnpAddressSetsToUpdate(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) (i
 
 		if !reflect.DeepEqual(oldRule.To, rule.To) {
 			change.curRuleName = rule.Name
+			change.isMatch = rule.Name == ""
 		}
 
 		egress[index] = change
