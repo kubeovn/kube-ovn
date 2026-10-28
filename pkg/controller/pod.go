@@ -3064,9 +3064,8 @@ func isVMPod(pod *v1.Pod) (bool, string) {
 
 // hasAliveSiblingVMPod reports whether pods contains any alive virt-launcher
 // pod owned by the same VMI as deletedPod.
-// It is used to decide whether a VM LSP's port-group memberships are still
-// owned by another running sibling (e.g. a live-migration destination) when a
-// completed/GC'd source pod is being processed.
+// A live sibling keeps the shared LSP, IP CR, and IPAM address in use, as well
+// as the LSP's port-group memberships, during migration pod cleanup.
 func hasAliveSiblingVMPod(pods []*v1.Pod, deletedPod *v1.Pod, vmName string) bool {
 	ownerUID := vmiPodOwnerUID(deletedPod, vmName)
 	for _, p := range pods {
