@@ -364,13 +364,22 @@ func (c *Controller) reconcileVpcEgressGatewayRoutes(ctx *vpcEgressGatewayReconc
 		{addressFamily: 4, protocol: "IPv4", bfdIP: ctx.bfdIPv4, nexthops: state.nodeNexthopIPv4, sources: state.ipv4Src},
 		{addressFamily: 6, protocol: "IPv6", bfdIP: ctx.bfdIPv6, nexthops: state.nodeNexthopIPv6, sources: state.ipv6Src},
 	}
+	// Reconcile every address family even if one of them fails (e.g. the
+	// unsupported-selectors condition) so that, for dual-stack gateways, a
+	// failure/early-return for one AF never prevents the other AF's address
+	// set, LR policies, BFD sessions, and stale resources from converging to
+	// the current spec. Errors are aggregated and reported once all AFs have
+	// been given a chance to converge.
+	var errs []error
 	for _, route := range routes {
 		if err := c.reconcileVpcEgressGatewayOVNRoutes(ctx.gateway, route.addressFamily, ctx.vpc.Status.Router,
 			ctx.vpc.Status.BFDPort.Name, route.bfdIP, route.nexthops, route.sources); err != nil {
 			klog.Error(err)
-			err = fmt.Errorf("failed to reconcile %s OVN routes: %w", route.protocol, err)
-			return c.failVpcEgressGatewayReconcile(ctx.gateway, "ReconcileOVNRoutesFailed", err)
+			errs = append(errs, fmt.Errorf("failed to reconcile %s OVN routes: %w", route.protocol, err))
 		}
+	}
+	if len(errs) != 0 {
+		return c.failVpcEgressGatewayReconcile(ctx.gateway, "ReconcileOVNRoutesFailed", errors.Join(errs...))
 	}
 	return nil
 }
