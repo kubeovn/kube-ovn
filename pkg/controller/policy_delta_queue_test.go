@@ -5,6 +5,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/util/workqueue"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -166,4 +169,59 @@ func TestCoalescingDeltaQueuePreservesEventsDuringRetry(t *testing.T) {
 	require.Equal(t, "egress-1", next.ruleNamesFor(ChangedEgressRule)[0].curRuleName)
 	queue.Forget(next)
 	queue.Done(next)
+}
+
+func TestPolicyLabelEventsCoalesceThroughAllPolicyHandlers(t *testing.T) {
+	controller := newPolicyLabelTestController(t, &corev1.Namespace{Name: metav1.NamespaceDefault})
+	controller.updateAnpQueue = newCoalescingDeltaQueue("UpdateAdminNetworkPolicy", func(delta *AdminNetworkPolicyChangedDelta) string {
+		return delta.key
+	}, mergeAdminNetworkPolicyDelta)
+	controller.updateBanpQueue = newCoalescingDeltaQueue("UpdateBaseAdminNetworkPolicy", func(delta *AdminNetworkPolicyChangedDelta) string {
+		return delta.key
+	}, mergeAdminNetworkPolicyDelta)
+	controller.updateCnpQueue = newCoalescingDeltaQueue("UpdateClusterNetworkPolicy", func(delta *ClusterNetworkPolicyChangedDelta) string {
+		return delta.key
+	}, mergeClusterNetworkPolicyDelta)
+	t.Cleanup(controller.updateAnpQueue.ShutDown)
+	t.Cleanup(controller.updateBanpQueue.ShutDown)
+	t.Cleanup(controller.updateCnpQueue.ShutDown)
+	addPolicyLabelTestFixtures(t, controller, false)
+
+	oldPod := &corev1.Pod{
+		Name: "selected", Namespace: metav1.NamespaceDefault, ResourceVersion: "1",
+		Labels:      map[string]string{"app": "old"},
+		Annotations: map[string]string{util.LogicalSwitchAnnotation: util.DefaultSubnet},
+	}
+	newPod := oldPod.DeepCopy()
+	newPod.ResourceVersion = "2"
+	newPod.Labels = map[string]string{"app": "new"}
+	controller.enqueueUpdatePod(oldPod, newPod)
+
+	assertCoalescedPolicyFields(t, controller.updateAnpQueue, []string{"old", "new", "both"})
+	assertCoalescedPolicyFields(t, controller.updateBanpQueue, []string{"old", "new", "both"})
+	assertCoalescedCnpFields(t, controller.updateCnpQueue, []string{"old", "new", "both"})
+}
+
+func assertCoalescedPolicyFields(t *testing.T, queue workqueue.TypedRateLimitingInterface[*AdminNetworkPolicyChangedDelta], keys []string) {
+	t.Helper()
+	require.Equal(t, len(keys), queue.Len())
+	for queue.Len() > 0 {
+		item, shutdown := queue.Get()
+		require.False(t, shutdown)
+		require.Contains(t, keys, item.key)
+		require.Equal(t, changedFieldSubject|changedFieldIngressRule|changedFieldEgressRule, item.fieldsMask())
+		queue.Done(item)
+	}
+}
+
+func assertCoalescedCnpFields(t *testing.T, queue workqueue.TypedRateLimitingInterface[*ClusterNetworkPolicyChangedDelta], keys []string) {
+	t.Helper()
+	require.Equal(t, len(keys), queue.Len())
+	for queue.Len() > 0 {
+		item, shutdown := queue.Get()
+		require.False(t, shutdown)
+		require.Contains(t, keys, item.key)
+		require.Equal(t, changedFieldSubject|changedFieldIngressRule|changedFieldEgressRule, item.fieldsMask())
+		queue.Done(item)
+	}
 }
