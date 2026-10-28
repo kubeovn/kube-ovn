@@ -173,6 +173,7 @@ spec:
           - --cert-manager-issuer-name={{ .Values.ipsec.certManager.issuerName }}
           - --enable-anp={{- .Values.func.ENABLE_ANP }}
           - --enable-dns-name-resolver={{- .Values.func.ENABLE_DNS_NAME_RESOLVER }}
+          - --enable-external-endpoint={{- .Values.func.ENABLE_EXTERNAL_ENDPOINT }}
           - --ovsdb-con-timeout={{- .Values.func.OVSDB_CON_TIMEOUT }}
           - --ovsdb-inactivity-timeout={{- .Values.func.OVSDB_INACTIVITY_TIMEOUT }}
           - --enable-live-migration-optimize={{- .Values.func.ENABLE_LIVE_MIGRATION_OPTIMIZE }}

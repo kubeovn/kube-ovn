@@ -8,3 +8,4 @@ Please visit:
 Repository feature notes:
 
 - [Experimental NetworkPolicy ACL sampling](acl-sampling.md)
+- [Experimental ExternalEndpoint](external-endpoint.md)

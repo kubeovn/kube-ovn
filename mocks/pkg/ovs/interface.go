@@ -1358,6 +1358,20 @@ func (mr *MockLogicalSwitchPortMockRecorder) CreateLogicalSwitchPort(lsName, lsp
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLogicalSwitchPort", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CreateLogicalSwitchPort), lsName, lspName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
 }
 
+// CreateLogicalSwitchPortWithOwner mocks base method.
+func (m *MockLogicalSwitchPort) CreateLogicalSwitchPortWithOwner(lsName, lspName, ip, mac string, portSecurity bool, securityGroups string, enableDHCP bool, dhcpOptions *ovs.DHCPOptionsUUIDs, vpc string, ownerExternalIDs map[string]string, requestedChassis string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateLogicalSwitchPortWithOwner", lsName, lspName, ip, mac, portSecurity, securityGroups, enableDHCP, dhcpOptions, vpc, ownerExternalIDs, requestedChassis)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateLogicalSwitchPortWithOwner indicates an expected call of CreateLogicalSwitchPortWithOwner.
+func (mr *MockLogicalSwitchPortMockRecorder) CreateLogicalSwitchPortWithOwner(lsName, lspName, ip, mac, portSecurity, securityGroups, enableDHCP, dhcpOptions, vpc, ownerExternalIDs, requestedChassis any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLogicalSwitchPortWithOwner", reflect.TypeOf((*MockLogicalSwitchPort)(nil).CreateLogicalSwitchPortWithOwner), lsName, lspName, ip, mac, portSecurity, securityGroups, enableDHCP, dhcpOptions, vpc, ownerExternalIDs, requestedChassis)
+}
+
 // CreateVirtualLogicalSwitchPort mocks base method.
 func (m *MockLogicalSwitchPort) CreateVirtualLogicalSwitchPort(lspName, lsName, ip string) error {
 	m.ctrl.T.Helper()
@@ -4251,6 +4265,20 @@ func (m *MockNbClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName
 func (mr *MockNbClientMockRecorder) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLogicalSwitchPort", reflect.TypeOf((*MockNbClient)(nil).CreateLogicalSwitchPort), lsName, lspName, ip, mac, podName, namespace, portSecurity, securityGroups, vips, enableDHCP, dhcpOptions, vpc)
+}
+
+// CreateLogicalSwitchPortWithOwner mocks base method.
+func (m *MockNbClient) CreateLogicalSwitchPortWithOwner(lsName, lspName, ip, mac string, portSecurity bool, securityGroups string, enableDHCP bool, dhcpOptions *ovs.DHCPOptionsUUIDs, vpc string, ownerExternalIDs map[string]string, requestedChassis string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CreateLogicalSwitchPortWithOwner", lsName, lspName, ip, mac, portSecurity, securityGroups, enableDHCP, dhcpOptions, vpc, ownerExternalIDs, requestedChassis)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CreateLogicalSwitchPortWithOwner indicates an expected call of CreateLogicalSwitchPortWithOwner.
+func (mr *MockNbClientMockRecorder) CreateLogicalSwitchPortWithOwner(lsName, lspName, ip, mac, portSecurity, securityGroups, enableDHCP, dhcpOptions, vpc, ownerExternalIDs, requestedChassis any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateLogicalSwitchPortWithOwner", reflect.TypeOf((*MockNbClient)(nil).CreateLogicalSwitchPortWithOwner), lsName, lspName, ip, mac, portSecurity, securityGroups, enableDHCP, dhcpOptions, vpc, ownerExternalIDs, requestedChassis)
 }
 
 // CreateNodeACL mocks base method.

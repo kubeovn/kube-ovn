@@ -354,6 +354,23 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 		return true, err
 	}
 
+	// Check if ExternalEndpoint exists
+	if ip.Spec.PodType == util.KindExternalEndpoint {
+		if !c.config.EnableExternalEndpoint {
+			// the feature is disabled: keep the address rather than guess
+			return true, nil
+		}
+		ep, err := c.externalEndpointsLister.ExternalEndpoints(ip.Spec.Namespace).Get(ip.Spec.PodName)
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return false, nil
+			}
+			return true, err
+		}
+		// an endpoint recreated with the same name owns a different ip CR
+		return ip.Labels[util.ExternalEndpointUIDLabel] == string(ep.UID), nil
+	}
+
 	// check whether the ip belongs to a subnet's u2o ip or mcast query ip
 	if owners := ip.GetOwnerReferences(); len(owners) != 0 {
 		var err error
@@ -492,6 +509,16 @@ func (c *Controller) markAndCleanLSP() error {
 	}
 	ipMap.Add(vmLsps...)
 
+	// The lsp of an external endpoint is owned by the ExternalEndpoint object, not by a
+	// pod. It is kept out of ipMap: an endpoint whose hypervisor has not bound the port
+	// yet is not a pod with a lost lsp.
+	var externalEndpointPorts map[string]struct{}
+	if c.config.EnableExternalEndpoint {
+		if externalEndpointPorts, err = c.externalEndpointPortNames(); err != nil {
+			return err
+		}
+	}
+
 	vips, err := c.virtualIpsLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list virtual ip, %v", err)
@@ -543,6 +570,15 @@ func (c *Controller) markAndCleanLSP() error {
 		if vipsMap.Has(lsp.Name) {
 			// skip gc lsp for switch lb rule
 			continue
+		}
+		if lsp.ExternalIDs[externalEndpointExternalIDKey] != "" {
+			if !c.config.EnableExternalEndpoint {
+				// disabling the feature does not tear down the ports of existing endpoints
+				continue
+			}
+			if _, ok := externalEndpointPorts[lsp.Name]; ok {
+				continue
+			}
 		}
 		if !lastNoPodLSP.Has(lsp.Name) {
 			noPodLSP.Add(lsp.Name)
@@ -1283,7 +1319,22 @@ func (c *Controller) gcChassis() error {
 		}
 	}
 
+	// a hypervisor that external endpoints are pinned to is not a node, but its chassis
+	// is in use. The pins are read from the ports themselves, so they are honoured
+	// even while the feature is disabled and the ports are kept.
+	var externalEndpointChassis map[string]struct{}
+	if len(chassisNodes) != 0 {
+		if externalEndpointChassis, err = c.externalEndpointChassis(); err != nil {
+			return err
+		}
+	}
 	for chassisName, hostname := range chassisNodes {
+		_, pinnedByName := externalEndpointChassis[chassisName]
+		_, pinnedByHostname := externalEndpointChassis[hostname]
+		if pinnedByName || pinnedByHostname {
+			klog.V(3).Infof("keep chassis %s of host %s, which external endpoints are pinned to", chassisName, hostname)
+			continue
+		}
 		klog.Infof("gc node %s chassis %s", hostname, chassisName)
 		if err := c.OVNSbClient.DeleteChassis(chassisName); err != nil {
 			klog.Errorf("failed to delete node %s chassis %s %v", hostname, chassisName, err)

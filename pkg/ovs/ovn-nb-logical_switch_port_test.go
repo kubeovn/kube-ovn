@@ -2985,3 +2985,70 @@ func (suite *OvnClientTestSuite) testReconcilePortDHCPOptions() {
 		require.Empty(t, result.DHCPv6OptionsUUID)
 	})
 }
+
+func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortWithOwner() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lsName := "test-create-lsp-owner-ls"
+	otherLsName := "test-create-lsp-owner-ls-other"
+	lspName := "test-create-lsp-owner-lsp"
+	mac := "00:00:00:ab:b4:66"
+	owner := map[string]string{"external_endpoint": "ns/ep"}
+
+	require.NoError(t, nbClient.CreateBareLogicalSwitch(lsName))
+	require.NoError(t, nbClient.CreateBareLogicalSwitch(otherLsName))
+
+	t.Run("create writes the owner and the chassis pin with the port", func(t *testing.T) {
+		require.NoError(t, nbClient.CreateLogicalSwitchPortWithOwner(lsName, lspName, "10.244.1.10", mac, true, "sg", false, nil, "test-vpc", owner, "hv-1"))
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, []string{mac + " 10.244.1.10"}, lsp.Addresses)
+		require.Equal(t, []string{mac + " 10.244.1.10"}, lsp.PortSecurity)
+		require.Equal(t, "ns/ep", lsp.ExternalIDs["external_endpoint"])
+		require.Equal(t, lsName, lsp.ExternalIDs[LogicalSwitchKey])
+		require.Equal(t, util.CniTypeName, lsp.ExternalIDs["vendor"])
+		require.Equal(t, "true", lsp.ExternalIDs["associated_sg_sg"])
+		require.NotContains(t, lsp.ExternalIDs, "pod")
+		require.Equal(t, "hv-1", lsp.Options["requested-chassis"])
+	})
+
+	t.Run("update keeps other options and moves the chassis pin", func(t *testing.T) {
+		require.NoError(t, nbClient.SetLogicalSwitchPortExternalIDs(lspName, map[string]string{"external_endpoint": "ns/ep"}))
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		lsp.Options["mcast_flood"] = "true"
+		require.NoError(t, nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options))
+
+		require.NoError(t, nbClient.CreateLogicalSwitchPortWithOwner(lsName, lspName, "10.244.1.11", mac, false, "", false, nil, "test-vpc", owner, "hv-2"))
+		lsp, err = nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, []string{mac + " 10.244.1.11"}, lsp.Addresses)
+		require.Empty(t, lsp.PortSecurity)
+		require.NotContains(t, lsp.ExternalIDs, "associated_sg_sg")
+		require.Equal(t, "ns/ep", lsp.ExternalIDs["external_endpoint"])
+		require.Equal(t, "hv-2", lsp.Options["requested-chassis"])
+		require.Equal(t, "true", lsp.Options["mcast_flood"])
+	})
+
+	t.Run("empty chassis removes the pin", func(t *testing.T) {
+		require.NoError(t, nbClient.CreateLogicalSwitchPortWithOwner(lsName, lspName, "10.244.1.11", mac, false, "", false, nil, "test-vpc", owner, ""))
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.NotContains(t, lsp.Options, "requested-chassis")
+	})
+
+	t.Run("a port on another switch is moved in one transaction", func(t *testing.T) {
+		require.NoError(t, nbClient.CreateLogicalSwitchPortWithOwner(otherLsName, lspName, "10.244.1.11", mac, false, "", false, nil, "test-vpc", owner, "hv-1"))
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, otherLsName, lsp.ExternalIDs[LogicalSwitchKey])
+		ls, err := nbClient.GetLogicalSwitch(lsName, false)
+		require.NoError(t, err)
+		require.NotContains(t, ls.Ports, lsp.UUID)
+		ls, err = nbClient.GetLogicalSwitch(otherLsName, false)
+		require.NoError(t, err)
+		require.Contains(t, ls.Ports, lsp.UUID)
+	})
+}

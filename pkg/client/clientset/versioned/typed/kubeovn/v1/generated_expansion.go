@@ -24,6 +24,8 @@ type DNSNameResolverExpansion interface{}
 
 type EvpnConfExpansion interface{}
 
+type ExternalEndpointExpansion interface{}
+
 type IPExpansion interface{}
 
 type IPPoolExpansion interface{}

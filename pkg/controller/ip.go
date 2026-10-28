@@ -195,6 +195,10 @@ func (c *Controller) handleAddReservedIP(key string) (err error) {
 		return err
 	}
 
+	if ip.Spec.PodType == util.KindExternalEndpoint {
+		// reserved by the ExternalEndpoint handler, which creates its IP CRs
+		return nil
+	}
 	if ip.Spec.PodType != "" &&
 		ip.Spec.PodType != util.KindVirtualMachine &&
 		ip.Spec.PodType != util.KindStatefulSet {
@@ -306,6 +310,25 @@ func (c *Controller) handleUpdateIP(key string) (err error) {
 			}
 		}
 		portName := cachedIP.Name
+		if cachedIP.Spec.PodType == util.KindExternalEndpoint {
+			if !c.config.EnableExternalEndpoint {
+				// keep the IP CR, and with it the address reservation at the next start,
+				// until the feature is enabled again and can tell whether the port is in use
+				klog.Warningf("keep ip CR %s of an external endpoint while --enable-external-endpoint is disabled", cachedIP.Name)
+				return nil
+			}
+			if err = c.releaseOrphanedExternalEndpointAddress(cachedIP); err != nil {
+				return err
+			}
+			if err = c.handleDelIPFinalizer(cachedIP); err != nil {
+				klog.Errorf("failed to handle del ip finalizer %v", err)
+				return err
+			}
+			if c.config.EnableExternalEndpoint {
+				c.addOrUpdateExternalEndpointQueue.Add(cache.NewObjectName(cachedIP.Spec.Namespace, cachedIP.Spec.PodName).String())
+			}
+			return nil
+		}
 		if isOvnSubnet(subnet) {
 			port, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
 			if err != nil {

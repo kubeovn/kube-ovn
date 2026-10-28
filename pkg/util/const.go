@@ -136,6 +136,7 @@ const (
 	ExGatewayLabel                     = "ovn.kubernetes.io/external-gw"
 	VpcNatGatewayLabel                 = "ovn.kubernetes.io/vpc-nat-gw"
 	IPReservedLabel                    = "ovn.kubernetes.io/ip_reserved"
+	ExternalEndpointUIDLabel           = "ovn.kubernetes.io/external_endpoint_uid"
 	VpcNatGatewayNameLabel             = "ovn.kubernetes.io/vpc-nat-gw-name"
 	NftableLbSvcNsLabel                = "ovn.kubernetes.io/nftable-lb-svc-ns"
 	NftableLbSvcNameLabel              = "ovn.kubernetes.io/nftable-lb-svc-name"
@@ -469,6 +470,7 @@ var (
 	KindSubnet           = ObjectKind[*kubeovnv1.Subnet]()
 	KindVip              = ObjectKind[*kubeovnv1.Vip]()
 	KindRouterLBRule     = ObjectKind[*kubeovnv1.RouterLBRule]()
+	KindExternalEndpoint = ObjectKind[*kubeovnv1.ExternalEndpoint]()
 	KindSwitchLBRule     = ObjectKind[*kubeovnv1.SwitchLBRule]()
 	KindVpc              = ObjectKind[*kubeovnv1.Vpc]()
 	KindVpcEgressGateway = ObjectKind[*kubeovnv1.VpcEgressGateway]()

@@ -59,6 +59,8 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().DNSNameResolvers().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("evpn-confs"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().EvpnConves().Informer()}, nil
+	case v1.SchemeGroupVersion.WithResource("external-endpoints"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().ExternalEndpoints().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("ips"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Kubeovn().V1().IPs().Informer()}, nil
 	case v1.SchemeGroupVersion.WithResource("ippools"):

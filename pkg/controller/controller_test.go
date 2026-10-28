@@ -102,6 +102,7 @@ type FakeControllerOptions struct {
 	IPPools               []*kubeovnv1.IPPool
 	VpcNatGateways        []*kubeovnv1.VpcNatGateway
 	IPs                   []*kubeovnv1.IP
+	ExternalEndpoints     []*kubeovnv1.ExternalEndpoint
 	Vlans                 []*kubeovnv1.Vlan
 	ProviderNetworks      []*kubeovnv1.ProviderNetwork
 	NetworkAttachments    []*nadv1.NetworkAttachmentDefinition
@@ -211,6 +212,14 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	for _, ip := range opts.IPs {
 		_, err := kubeovnClient.KubeovnV1().IPs().Create(
 			context.Background(), ip, metav1.CreateOptions{},
+		)
+		if err != nil {
+			return nil, err
+		}
+	}
+	for _, ep := range opts.ExternalEndpoints {
+		_, err := kubeovnClient.KubeovnV1().ExternalEndpoints(ep.Namespace).Create(
+			context.Background(), ep, metav1.CreateOptions{},
 		)
 		if err != nil {
 			return nil, err
@@ -374,6 +383,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	vpcInformer := kubeovnInformerFactory.Kubeovn().V1().Vpcs()
 	subnetInformer := kubeovnInformerFactory.Kubeovn().V1().Subnets()
 	ipInformer := kubeovnInformerFactory.Kubeovn().V1().IPs()
+	externalEndpointInformer := kubeovnInformerFactory.Kubeovn().V1().ExternalEndpoints()
 	vpcNatGwInformer := kubeovnInformerFactory.Kubeovn().V1().VpcNatGateways()
 	vlanInformer := kubeovnInformerFactory.Kubeovn().V1().Vlans()
 	providerNetworkInformer := kubeovnInformerFactory.Kubeovn().V1().ProviderNetworks()
@@ -426,6 +436,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		ippoolLister:                  ippoolInformer.Lister(),
 		ippoolSynced:                  alwaysReady,
 		ipsLister:                     ipInformer.Lister(),
+		externalEndpointsLister:       externalEndpointInformer.Lister(),
 		ipSynced:                      alwaysReady,
 		vlansLister:                   vlanInformer.Lister(),
 		providerNetworksLister:        providerNetworkInformer.Lister(),
@@ -477,6 +488,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		serviceCIDRStore:              util.NewServiceCIDRStore("10.96.0.0/12"),
 		updateIptablesEipQueue:        newTypedRateLimitingQueue[string]("UpdateIptablesEip", nil),
 	}
+
+	ctrl.addOrUpdateExternalEndpointQueue = newTypedRateLimitingQueue[string]("AddOrUpdateExternalEndpoint", nil)
 
 	// the kubevirt informer is created without a client: tests populate its indexer directly
 	ctrl.kubevirtInformerFactory = informer.NewKubeVirtInformerFactoryWithOptions(nil, nil)

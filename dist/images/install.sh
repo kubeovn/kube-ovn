@@ -73,6 +73,7 @@ IPSEC_CERT_DURATION=${IPSEC_CERT_DURATION:-63072000} # 2 years in seconds
 CERT_MANAGER_ISSUER_NAME=${CERT_MANAGER_ISSUER_NAME:-kube-ovn}
 ENABLE_ANP=${ENABLE_ANP:-false}
 ENABLE_DNS_NAME_RESOLVER=${ENABLE_DNS_NAME_RESOLVER:-false}
+ENABLE_EXTERNAL_ENDPOINT=${ENABLE_EXTERNAL_ENDPOINT:-false}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 HOST_TUNNEL_SRC=${HOST_TUNNEL_SRC:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
@@ -765,6 +766,218 @@ spec:
         type: object
     served: true
     storage: true
+---
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.20.1
+  name: external-endpoints.kubeovn.io
+spec:
+  group: kubeovn.io
+  names:
+    kind: ExternalEndpoint
+    listKind: ExternalEndpointList
+    plural: external-endpoints
+    shortNames:
+    - eep
+    singular: external-endpoint
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.subnet
+      name: Subnet
+      type: string
+    - jsonPath: .status.v4ip
+      name: V4IP
+      type: string
+    - jsonPath: .status.v6ip
+      name: V6IP
+      type: string
+    - jsonPath: .status.macAddress
+      name: Mac
+      type: string
+    - jsonPath: .spec.chassis
+      name: Chassis
+      type: string
+    - jsonPath: .status.up
+      name: Up
+      type: boolean
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          ExternalEndpoint is a network interface of a workload that runs outside of
+          Kubernetes, for example a libvirt VM on a hypervisor that runs ovn-controller
+          against the Kube-OVN OVN southbound database. Kube-OVN owns the address and
+          the logical switch port of the endpoint; the hypervisor owns the VM and its
+          OVS interface, which it binds to the port by setting
+          external_ids:iface-id=<status.interfaceID>.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            properties:
+              chassis:
+                description: |-
+                  Chassis is the OVN chassis name or hostname of the hypervisor that is
+                  allowed to bind the port (logical switch port options:requested-chassis).
+                  It is required: the endpoint names the one host that owns its binding, the
+                  chassis garbage collector keeps that host's chassis, and no other chassis
+                  connected to the southbound database can claim the port. Changing it moves
+                  the binding to another hypervisor.
+                minLength: 1
+                type: string
+              interfaceID:
+                description: |-
+                  InterfaceID is the name of the logical switch port and the value the
+                  hypervisor sets as external_ids:iface-id on the OVS interface. It must
+                  be a UUID so that libvirt can set it natively through
+                  <virtualport type='openvswitch'><parameters interfaceid='...'/>.
+                  Defaults to metadata.uid.
+                pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+                type: string
+              ipAddress:
+                description: |-
+                  IPAddress requests static addresses, comma separated for dual stack.
+                  A random address is allocated from the subnet when empty.
+                type: string
+              macAddress:
+                description: MacAddress of the endpoint NIC. A random address is allocated
+                  when empty.
+                pattern: ^([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}$
+                type: string
+              portSecurity:
+                description: |-
+                  PortSecurity restricts the traffic sent by the endpoint to its own MAC
+                  and IP addresses. Defaults to true.
+                type: boolean
+              securityGroups:
+                description: SecurityGroups is the list of Kube-OVN security groups
+                  applied to the port.
+                items:
+                  type: string
+                type: array
+                x-kubernetes-list-type: set
+              subnet:
+                description: Subnet is the Kube-OVN subnet the endpoint joins.
+                minLength: 1
+                type: string
+            required:
+            - chassis
+            - subnet
+            type: object
+            x-kubernetes-validations:
+            - message: subnet is immutable
+              rule: self.subnet == oldSelf.subnet
+            - message: macAddress is immutable
+              rule: has(self.macAddress) == has(oldSelf.macAddress) && (!has(self.macAddress)
+                || self.macAddress == oldSelf.macAddress)
+            - message: ipAddress is immutable
+              rule: has(self.ipAddress) == has(oldSelf.ipAddress) && (!has(self.ipAddress)
+                || self.ipAddress == oldSelf.ipAddress)
+            - message: interfaceID is immutable
+              rule: has(self.interfaceID) == has(oldSelf.interfaceID) && (!has(self.interfaceID)
+                || self.interfaceID == oldSelf.interfaceID)
+          status:
+            properties:
+              conditions:
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              interfaceID:
+                description: InterfaceID is the iface-id the hypervisor must set on
+                  the OVS interface.
+                type: string
+              macAddress:
+                type: string
+              up:
+                description: Up reports whether an OVN chassis has claimed the port.
+                type: boolean
+              v4ip:
+                type: string
+              v6ip:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
 ---
 ---
 apiVersion: apiextensions.k8s.io/v1
@@ -7698,6 +7911,8 @@ rules:
       - switch-lb-rules/status
       - router-lb-rules
       - router-lb-rules/status
+      - external-endpoints
+      - external-endpoints/status
       - vpc-dnses
       - vpc-dnses/status
       - dnsnameresolvers
@@ -9274,6 +9489,7 @@ spec:
           - --secure-serving=${SECURE_SERVING}
           - --enable-anp=$ENABLE_ANP
           - --enable-dns-name-resolver=$ENABLE_DNS_NAME_RESOLVER
+          - --enable-external-endpoint=$ENABLE_EXTERNAL_ENDPOINT
           - --ovsdb-con-timeout=$OVSDB_CON_TIMEOUT
           - --ovsdb-inactivity-timeout=$OVSDB_INACTIVITY_TIMEOUT
           - --enable-live-migration-optimize=$ENABLE_LIVE_MIGRATION_OPTIMIZE
