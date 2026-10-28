@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -14,20 +15,18 @@ import (
 
 const flowKindUnderlayService = "usvc"
 
-func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(serviceIP string, port uint16, protocol, dstMac, underlayNic, bridgeName, subnetName string) error {
-	rule := LbServiceRules{
-		IP: serviceIP, Port: port, Protocol: protocol, DstMac: dstMac,
-		UnderlayNic: underlayNic, BridgeName: bridgeName, SubnetName: subnetName,
-	}
+var errUnderlayLocalnetPatchNotReady = errors.New("underlay localnet patch port is not ready")
+
+func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(rule LbServiceRules) error {
 	if _, err := rule.flows(c.getPortID); err != nil {
 		if errors.Is(err, errUnderlayLocalnetPatchNotReady) {
-			klog.Infof("patch-localnet port for subnet %s not found on bridge %s, retrying underlay service flow for %s:%d", subnetName, bridgeName, serviceIP, port)
+			klog.Infof("patch-localnet port for subnet %s not ready on bridge %s, retrying underlay service flow for %s:%d", rule.SubnetName, rule.BridgeName, rule.IP, rule.Port)
 		}
 		return err
 	}
 
-	key := buildFlowKey(flowKindUnderlayService, serviceIP, port, protocol, "")
-	c.setFlowCache(c.flowCache, bridgeName, key, rule)
+	key := buildFlowKey(flowKindUnderlayService, rule.IP, rule.Port, rule.Protocol, "")
+	c.setFlowCache(c.flowCache, rule.BridgeName, key, rule)
 
 	klog.V(5).Infof("updated underlay flow cache for service %s", key)
 	c.requestFlowSync()
@@ -81,6 +80,12 @@ func (c *Controller) deleteUnderlaySubnetSvcLocalFlowCache(bridgeName, serviceIP
 	c.requestFlowSync()
 }
 
+func underlayServiceLocalFlows(cookie string, priority, inPort, outPort int, protoStr, nwDst, serviceIP, dstMac string, port uint16) []string {
+	phy := fmt.Sprintf("cookie=%s,priority=%d,in_port=%d,%s,%s=%s,tp_dst=%d actions=mod_dl_dst:%s,output:%d",
+		cookie, priority, inPort, protoStr, nwDst, serviceIP, port, dstMac, outPort)
+	return []string{phy}
+}
+
 func buildFlowKey(kind, ip string, port uint16, protocol, extra string) string {
 	if extra == "" {
 		return fmt.Sprintf("%s-%s-%s-%d", kind, ip, protocol, port)
@@ -97,6 +102,9 @@ func (c *Controller) getPortID(portName string) (int, error) {
 	portID, err := strconv.Atoi(strings.TrimSpace(ofportStr))
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse ofport %q: %w", ofportStr, err)
+	}
+	if portID <= 0 {
+		return 0, fmt.Errorf("ofport %d for interface %s is not ready", portID, portName)
 	}
 
 	return portID, nil
