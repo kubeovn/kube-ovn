@@ -14,6 +14,7 @@ import (
 	extClientSet "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	versionutil "k8s.io/apimachinery/pkg/util/version"
+	restclient "k8s.io/client-go/rest"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/utils/ktesting/format"
 	admissionapi "k8s.io/pod-security-admission/api"
@@ -43,7 +44,7 @@ const (
 )
 
 func LoadKubeOVNClientSet() (*kubeovncs.Clientset, error) {
-	config, err := framework.LoadConfig()
+	config, err := loadConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +125,37 @@ func NewDefaultFramework(baseName string) *Framework {
 
 func (f *Framework) useContext() {
 	if f.KubeContext != "" {
+		clearDerivedHost()
 		framework.TestContext.KubeContext = f.KubeContext
+	}
+}
+
+var derivedHost struct {
+	context string
+	host    string
+}
+
+func loadConfig() (*restclient.Config, error) {
+	hadHost := framework.TestContext.Host != ""
+	config, err := framework.LoadConfig()
+	if err != nil {
+		return nil, err
+	}
+	if !hadHost && framework.TestContext.Host != "" {
+		derivedHost.context = framework.TestContext.KubeContext
+		derivedHost.host = framework.TestContext.Host
+	}
+	return config, nil
+}
+
+func clearDerivedHost() {
+	if derivedHost.host != "" && derivedHost.context == framework.TestContext.KubeContext &&
+		framework.TestContext.Host == derivedHost.host {
+		framework.TestContext.Host = ""
+		derivedHost = struct {
+			context string
+			host    string
+		}{}
 	}
 }
 
@@ -177,7 +208,7 @@ func (f *Framework) BeforeEach() {
 
 	if f.KubeOVNClientSet == nil {
 		ginkgo.By("Creating a Kube-OVN client")
-		config, err := framework.LoadConfig()
+		config, err := loadConfig()
 		ExpectNoError(err)
 
 		config.QPS = f.Options.ClientQPS
@@ -188,7 +219,7 @@ func (f *Framework) BeforeEach() {
 
 	if f.KubeVirtClientSet == nil {
 		ginkgo.By("Creating a KubeVirt client")
-		config, err := framework.LoadConfig()
+		config, err := loadConfig()
 		ExpectNoError(err)
 
 		config.QPS = f.Options.ClientQPS
@@ -199,7 +230,7 @@ func (f *Framework) BeforeEach() {
 
 	if f.ExtClientSet == nil {
 		ginkgo.By("Creating a Kubernetes client")
-		config, err := framework.LoadConfig()
+		config, err := loadConfig()
 		ExpectNoError(err)
 
 		config.QPS = f.Options.ClientQPS
@@ -210,7 +241,7 @@ func (f *Framework) BeforeEach() {
 
 	if f.AttachNetClient == nil {
 		ginkgo.By("Creating a network attachment definition client")
-		config, err := framework.LoadConfig()
+		config, err := loadConfig()
 		ExpectNoError(err)
 
 		config.QPS = f.Options.ClientQPS
@@ -221,7 +252,7 @@ func (f *Framework) BeforeEach() {
 
 	if f.MetallbClientSet == nil {
 		ginkgo.By("Creating a MetalLB client")
-		config, err := framework.LoadConfig()
+		config, err := loadConfig()
 		ExpectNoError(err)
 
 		config.QPS = f.Options.ClientQPS
@@ -232,7 +263,7 @@ func (f *Framework) BeforeEach() {
 
 	if f.AnpClientSet == nil {
 		ginkgo.By("Creating an AdminNetworkPolicy client")
-		config, err := framework.LoadConfig()
+		config, err := loadConfig()
 		ExpectNoError(err)
 
 		config.QPS = f.Options.ClientQPS
@@ -257,6 +288,10 @@ func (f *Framework) BeforeEach() {
 	}
 
 	framework.TestContext.Host = ""
+	derivedHost = struct {
+		context string
+		host    string
+	}{}
 }
 
 // VersionPriorTo returns true if the Kube-OVN version is prior to the specified version.
