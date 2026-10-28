@@ -55,7 +55,9 @@ func (change labelChange) anyMatch(matcher func(map[string]string, map[string]st
 }
 
 func (c *Controller) enqueueAddAnp(obj any) {
-	key := cache.MetaObjectToName(obj.(*v1alpha1.AdminNetworkPolicy)).String()
+	anp := obj.(*v1alpha1.AdminNetworkPolicy)
+	c.indexAdminNetworkPolicy(anp)
+	key := cache.MetaObjectToName(anp).String()
 	klog.V(3).Infof("enqueue add anp %s", key)
 	c.addAnpQueue.Add(key)
 }
@@ -76,6 +78,7 @@ func (c *Controller) enqueueDeleteAnp(obj any) {
 		klog.Warningf("unexpected type: %T", obj)
 		return
 	}
+	c.policyEventIndex.remove(policyEventRef{kind: policyEventAdminNetworkPolicy, key: anp.Name})
 
 	klog.V(3).Infof("enqueue delete anp %s", cache.MetaObjectToName(anp).String())
 	c.deleteAnpQueue.Add(anp)
@@ -84,6 +87,7 @@ func (c *Controller) enqueueDeleteAnp(obj any) {
 func (c *Controller) enqueueUpdateAnp(oldObj, newObj any) {
 	oldAnpObj := oldObj.(*v1alpha1.AdminNetworkPolicy)
 	newAnpObj := newObj.(*v1alpha1.AdminNetworkPolicy)
+	c.indexAdminNetworkPolicy(newAnpObj)
 
 	// All the acls should be recreated with the following situations
 	if oldAnpObj.Spec.Priority != newAnpObj.Spec.Priority || len(oldAnpObj.Spec.Ingress) != len(newAnpObj.Spec.Ingress) || len(oldAnpObj.Spec.Egress) != len(newAnpObj.Spec.Egress) {
@@ -957,11 +961,25 @@ func (c *Controller) updateAnpsByLabelsMatch(nsLabels, podLabels map[string]stri
 }
 
 func (c *Controller) updateAnpsByLabelsChange(change labelChange) {
-	anps, err := c.anpsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list admin network policies for label update: %v", err)
+	keys := c.policyEventIndex.candidatesForChange(policyEventAdminNetworkPolicy, change)
+	if !c.policyEventIndex.isReady() {
+		anps, err := c.anpsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list admin network policies for label update: %v", err)
+		}
+		keys = make([]string, 0, len(anps))
+		for _, anp := range anps {
+			keys = append(keys, anp.Name)
+		}
 	}
-	for _, anp := range anps {
+	for _, key := range keys {
+		anp, err := c.anpsLister.Get(key)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get admin network policy %s for label update: %v", key, err)
+			}
+			continue
+		}
 		if isLabelsMatchForChange(anp.Spec.Subject.Namespaces, anp.Spec.Subject.Pods, change) {
 			klog.Infof("anp %s, labels matched for anp's subject", anp.Name)
 			c.updateAnpQueue.Add(&AdminNetworkPolicyChangedDelta{key: anp.Name, field: ChangedSubject})
@@ -979,11 +997,25 @@ func (c *Controller) updateAnpsByLabelsChange(change labelChange) {
 		}
 	}
 
-	banps, err := c.banpsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list baseline admin network policies for label update: %v", err)
+	keys = c.policyEventIndex.candidatesForChange(policyEventBaselineAdminNetworkPolicy, change)
+	if !c.policyEventIndex.isReady() {
+		banps, err := c.banpsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list baseline admin network policies for label update: %v", err)
+		}
+		keys = make([]string, 0, len(banps))
+		for _, banp := range banps {
+			keys = append(keys, banp.Name)
+		}
 	}
-	for _, banp := range banps {
+	for _, key := range keys {
+		banp, err := c.banpsLister.Get(key)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get baseline admin network policy %s for label update: %v", key, err)
+			}
+			continue
+		}
 		if isLabelsMatchForChange(banp.Spec.Subject.Namespaces, banp.Spec.Subject.Pods, change) {
 			klog.Infof("banp %s, labels matched for banp's subject", banp.Name)
 			c.updateBanpQueue.Add(&AdminNetworkPolicyChangedDelta{key: banp.Name, field: ChangedSubject})

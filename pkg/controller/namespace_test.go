@@ -57,6 +57,8 @@ func TestEnqueueUpdateNamespaceWhenLabelsStillMatchNetworkPolicy(t *testing.T) {
 		}))
 	}
 	controller.npsLister = networkinglister.NewNetworkPolicyLister(npIndexer)
+	require.NoError(t, controller.rebuildPolicyEventIndex())
+	require.True(t, controller.policyEventIndex.isReady())
 
 	oldNs := ns.DeepCopy()
 	newNs := ns.DeepCopy()

@@ -7,6 +7,9 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corelister "k8s.io/client-go/listers/core/v1"
+	networkinglister "k8s.io/client-go/listers/networking/v1"
+	"k8s.io/client-go/tools/cache"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 )
@@ -15,6 +18,60 @@ const (
 	benchmarkPolicyLabelCount = 16
 	benchmarkNamespace        = "benchmark"
 )
+
+// BenchmarkNetworkPolicyIndexedFanout compares the production matching paths
+// with a ready index and with the full-scan fallback over the same policies.
+func BenchmarkNetworkPolicyIndexedFanout(b *testing.B) {
+	oldPod := &corev1.Pod{Namespace: benchmarkNamespace, Labels: map[string]string{"app": "app-0"}}
+	newPod := oldPod.DeepCopy()
+	newPod.Labels = map[string]string{"app": "app-1"}
+	oldNamespace := &corev1.Namespace{Name: benchmarkNamespace, Labels: map[string]string{"tenant": "tenant-0"}}
+	newNamespace := oldNamespace.DeepCopy()
+	newNamespace.Labels = map[string]string{"tenant": "tenant-1"}
+
+	for _, count := range []int{100, 1000} {
+		for _, indexed := range []bool{false, true} {
+			b.Run(fmt.Sprintf("policies-%d/indexed-%t", count, indexed), func(b *testing.B) {
+				policyIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+				namespaceIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+				if err := namespaceIndexer.Add(oldNamespace); err != nil {
+					b.Fatal(err)
+				}
+				policies := benchmarkNetworkPolicies(count)
+				for i := range policies {
+					policies[i].Name = fmt.Sprintf("policy-%d", i)
+					if err := policyIndexer.Add(&policies[i]); err != nil {
+						b.Fatal(err)
+					}
+				}
+				c := &Controller{
+					config:           &Configuration{EnableNP: true},
+					npsLister:        networkinglister.NewNetworkPolicyLister(policyIndexer),
+					namespacesLister: corelister.NewNamespaceLister(namespaceIndexer),
+				}
+				if indexed {
+					if err := c.rebuildPolicyEventIndex(); err != nil {
+						b.Fatal(err)
+					}
+				}
+				b.Run("Pod", func(b *testing.B) {
+					b.ReportAllocs()
+					for b.Loop() {
+						c.podMatchNetworkPolicies(oldPod)
+						c.podMatchNetworkPolicies(newPod)
+					}
+				})
+				b.Run("Namespace", func(b *testing.B) {
+					b.ReportAllocs()
+					for b.Loop() {
+						c.namespaceMatchNetworkPolicies(oldNamespace)
+						c.namespaceMatchNetworkPolicies(newNamespace)
+					}
+				})
+			})
+		}
+	}
+}
 
 func benchmarkSelector(key, value string) metav1.LabelSelector {
 	return metav1.LabelSelector{MatchLabels: map[string]string{key: value}}
