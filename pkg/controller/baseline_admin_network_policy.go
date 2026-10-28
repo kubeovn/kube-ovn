@@ -353,6 +353,8 @@ func (c *Controller) handleUpdateBanp(changed *AdminNetworkPolicyChangedDelta) e
 	// Only handle updates that do not affect acls.
 	c.banpKeyMutex.LockKey(changed.key)
 	defer func() { _ = c.banpKeyMutex.UnlockKey(changed.key) }()
+	changed.normalizeRuleNames()
+	fields := changed.fieldsMask()
 
 	cachedBanp, err := c.banpsLister.Get(changed.key)
 	if err != nil {
@@ -369,7 +371,7 @@ func (c *Controller) handleUpdateBanp(changed *AdminNetworkPolicyChangedDelta) e
 	pgName := strings.ReplaceAll(banpName, "-", ".")
 
 	// The port-group for anp should be updated
-	if changed.field == ChangedSubject {
+	if fields&changedFieldSubject != 0 {
 		// The port-group must exist when update anp, this check should never be matched.
 		if ok, err := c.OVNNbClient.PortGroupExists(pgName); !ok || err != nil {
 			klog.Errorf("port-group for banp %s does not exist when update banp", desiredBanp.Name)
@@ -389,10 +391,11 @@ func (c *Controller) handleUpdateBanp(changed *AdminNetworkPolicyChangedDelta) e
 	}
 
 	// Peer selector in ingress/egress rule has changed, so the corresponding address-set need be updated
-	if changed.field == ChangedIngressRule {
+	if fields&changedFieldIngressRule != 0 {
+		ruleNames := changed.ruleNamesFor(ChangedIngressRule)
 		for index, rule := range desiredBanp.Spec.Ingress {
 			// Make sure the rule is changed and go on update
-			if rule.Name == changed.ruleNames[index].curRuleName {
+			if rule.Name == ruleNames[index].curRuleName || ruleNames[index].isMatch {
 				if err := c.setAddrSetForAnpRule(banpName, pgName, rule.Name, index, rule.From, []v1alpha1.AdminNetworkPolicyEgressPeer{}, true, true); err != nil {
 					klog.Errorf("failed to set ingress address-set for anp rule %s/%s, %v", banpName, rule.Name, err)
 					return err
@@ -414,10 +417,11 @@ func (c *Controller) handleUpdateBanp(changed *AdminNetworkPolicyChangedDelta) e
 		}
 	}
 
-	if changed.field == ChangedEgressRule {
+	if fields&changedFieldEgressRule != 0 {
+		ruleNames := changed.ruleNamesFor(ChangedEgressRule)
 		for index, rule := range desiredBanp.Spec.Egress {
 			// Make sure the rule is changed and go on update
-			if rule.Name == changed.ruleNames[index].curRuleName {
+			if rule.Name == ruleNames[index].curRuleName || ruleNames[index].isMatch {
 				if err := c.setAddrSetForBaselineAnpRule(banpName, pgName, rule.Name, index, []v1alpha1.AdminNetworkPolicyIngressPeer{}, rule.To, false, true); err != nil {
 					klog.Errorf("failed to set egress address-set for banp rule %s/%s, %v", banpName, rule.Name, err)
 					return err
