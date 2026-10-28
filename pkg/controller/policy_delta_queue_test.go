@@ -152,8 +152,10 @@ func TestCoalescingDeltaQueuePreservesEventsDuringRetry(t *testing.T) {
 	}, mergeAdminNetworkPolicyDelta)
 	t.Cleanup(queue.ShutDown)
 
-	queue.Add(&AdminNetworkPolicyChangedDelta{key: "policy", field: ChangedEgressRule,
-		ruleNames: [util.AnpMaxRules]ChangedName{{curRuleName: "egress-1"}}})
+	queue.Add(&AdminNetworkPolicyChangedDelta{
+		key: "policy", field: ChangedEgressRule,
+		ruleNames: [util.AnpMaxRules]ChangedName{{curRuleName: "egress-1"}},
+	})
 	item, shutdown := queue.Get()
 	require.False(t, shutdown)
 
