@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -20,6 +22,7 @@ import (
 	k8stypes "k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
@@ -66,19 +69,67 @@ func execOrDie(kubeContext, cmd string) string {
 
 	args := framework.KubectlKoArgs(strings.Fields(cmd)...)
 	ginkgo.By(`Executing "kubectl ` + strings.Join(args, " ") + `"`)
-	output, err := kubectlKoCommand(kubeContext, args[1:]...).Output()
+	command, cleanup, err := kubectlKoCommand(kubeContext, args...)
+	framework.ExpectNoError(err, "failed to prepare kubectl ko command")
+	defer cleanup()
+	output, err := command.Output()
 	framework.ExpectNoError(err, "kubectl ko command failed")
 	return string(output)
 }
 
-func kubectlKoCommand(kubeContext string, args ...string) *exec.Cmd {
+func kubectlKoCommand(kubeContext string, args ...string) (*exec.Cmd, func(), error) {
 	testConfig := e2ekubectl.NewTestKubeconfig(k8sframework.TestContext.CertDir,
 		k8sframework.TestContext.Host, k8sframework.TestContext.KubeConfig,
 		kubeContext, k8sframework.TestContext.KubectlPath, "")
+	if framework.KubectlKoUsesLegacySyntax() {
+		command := exec.Command(testConfig.KubectlPath, "ko")
+		command.Args = append(command.Args, args[1:]...)
+		if testConfig.KubeConfig == "" {
+			return command, func() {}, nil
+		}
+
+		config, err := clientcmd.LoadFromFile(testConfig.KubeConfig)
+		if err != nil {
+			return nil, nil, fmt.Errorf("load kubeconfig %q: %w", testConfig.KubeConfig, err)
+		}
+		if _, ok := config.Contexts[kubeContext]; !ok {
+			return nil, nil, fmt.Errorf("kubeconfig %q has no context %q", testConfig.KubeConfig, kubeContext)
+		}
+		config.CurrentContext = kubeContext
+
+		temporaryConfig, err := os.CreateTemp(filepath.Dir(testConfig.KubeConfig), ".kube-ovn-e2e-kubeconfig-")
+		if err != nil {
+			return nil, nil, fmt.Errorf("create temporary kubeconfig: %w", err)
+		}
+		temporaryPath := temporaryConfig.Name()
+		if err := temporaryConfig.Close(); err != nil {
+			_ = os.Remove(temporaryPath)
+			return nil, nil, fmt.Errorf("close temporary kubeconfig %q: %w", temporaryPath, err)
+		}
+		if err := clientcmd.WriteToFile(*config, temporaryPath); err != nil {
+			_ = os.Remove(temporaryPath)
+			return nil, nil, fmt.Errorf("write temporary kubeconfig %q: %w", temporaryPath, err)
+		}
+
+		command.Env = environmentWithKubeconfig(temporaryPath)
+		return command, func() { _ = os.Remove(temporaryPath) }, nil
+	}
+
 	command := testConfig.KubectlCmd()
 	pluginArgs := append([]string{"ko"}, command.Args[1:]...)
-	pluginArgs = append(pluginArgs, args...)
-	return exec.Command(command.Path, pluginArgs...)
+	pluginArgs = append(pluginArgs, args[1:]...)
+	return exec.Command(command.Path, pluginArgs...), func() {}, nil
+}
+
+func environmentWithKubeconfig(path string) []string {
+	env := os.Environ()
+	filtered := env[:0]
+	for _, value := range env {
+		if !strings.HasPrefix(value, "KUBECONFIG=") {
+			filtered = append(filtered, value)
+		}
+	}
+	return append(filtered, "KUBECONFIG="+path)
 }
 
 func execPodOrDie(kubeContext, namespace, pod, cmd string) string {
