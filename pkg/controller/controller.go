@@ -1830,6 +1830,8 @@ func getWorkItemKey(obj any) string {
 		return cache.MetaObjectToName(obj.(*vpcService).Svc).String()
 	case *AdminNetworkPolicyChangedDelta:
 		return v.key
+	case *ClusterNetworkPolicyChangedDelta:
+		return v.key
 	case *SwitchLBRuleInfo:
 		return v.Name
 	case networkPolicyDeleteRequest:
