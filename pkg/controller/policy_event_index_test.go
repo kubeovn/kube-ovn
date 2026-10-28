@@ -73,6 +73,40 @@ func TestPolicyEventIndexLabelChangeUsesOldAndNewValues(t *testing.T) {
 	}
 }
 
+func TestPolicyEventIndexNamespaceScopedPodCandidates(t *testing.T) {
+	index := policyEventIndex{}
+	index.upsert(policyEventRef{kind: policyEventNetworkPolicy, key: "policy/allow-all"}, []policyEventSelector{{podNamespaceAll: "policy"}})
+
+	got := index.candidatesForPodInNamespace("policy", nil, nil)
+	if len(got) != 1 || got[0] != "policy/allow-all" {
+		t.Fatalf("candidates in policy namespace = %v, want [policy/allow-all]", got)
+	}
+	got = index.candidatesForPodInNamespace("other", nil, nil)
+	if len(got) != 0 {
+		t.Fatalf("candidates in other namespace = %v, want none", got)
+	}
+}
+
+func TestIndexNetworkPolicyEmptyPeerUsesPolicyNamespace(t *testing.T) {
+	controller := &Controller{}
+	controller.indexNetworkPolicy(&netv1.NetworkPolicy{
+		Name: "allow-all", Namespace: "policy",
+		Spec: netv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "server"}},
+			Ingress:     []netv1.NetworkPolicyIngressRule{{From: []netv1.NetworkPolicyPeer{{}}}},
+		},
+	})
+
+	got := controller.policyEventIndex.candidatesForPodInNamespace("policy", nil, map[string]string{"app": "client"})
+	if len(got) != 1 || got[0] != "policy/allow-all" {
+		t.Fatalf("empty peer candidates in policy namespace = %v, want [policy/allow-all]", got)
+	}
+	got = controller.policyEventIndex.candidatesForPodInNamespace("other", nil, map[string]string{"app": "client"})
+	if len(got) != 0 {
+		t.Fatalf("empty peer candidates in other namespace = %v, want none", got)
+	}
+}
+
 func TestPolicyEventIndexBuildsSelectorsForNetworkPolicyKinds(t *testing.T) {
 	controller := &Controller{}
 	npSelector := metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}}
