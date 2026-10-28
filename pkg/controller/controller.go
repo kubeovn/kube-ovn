@@ -850,6 +850,10 @@ func Run(ctx context.Context, config *Configuration) {
 	defer controller.shutdown()
 	klog.Info("Starting OVN controller")
 
+	if err = controller.addNetworkAttachmentEventHandler(netAttachInformer.Informer()); err != nil {
+		util.LogFatalAndExit(err, "failed to add network attachment event handler")
+	}
+
 	// Start and sync NAD informer first, as many resources depend on NAD cache
 	// NAD CRD is optional, so we check if it exists before starting the informer
 	controller.StartNetAttachInformerFactory(ctx)

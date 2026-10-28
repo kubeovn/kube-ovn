@@ -1355,22 +1355,18 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 		if pod.DeletionTimestamp != nil {
 			klog.Infof("handle deletion of vm pod %s", podKey)
 			isOwnerRefToDel = c.isVMToDel(pod, vmName)
-			if !isOwnerRefToDel {
+			// All launcher pods of a VMI share its LSP and IP. Even when the owner is
+			// gone, a live sibling may still be using them during migration cleanup.
+			stage = "listVMPodSiblings"
+			siblings, listErr := c.podsLister.Pods(pod.Namespace).List(labels.Everything())
+			if listErr != nil {
+				klog.Errorf("failed to list pods in namespace %s: %v", pod.Namespace, listErr)
+				return listErr
+			}
+			hasAliveVMSibling = hasAliveSiblingVMPod(siblings, pod, vmName)
+			if !isOwnerRefToDel || hasAliveVMSibling {
 				klog.Infof("try keep ip for vm pod %s", podKey)
 				keepIPCR = true
-				// The VM LSP is shared across every virt-launcher pod of the VM
-				// (ExternalIDs["pod"] is keyed by VM name). Port-group memberships,
-				// however, belong to whichever virt-launcher pod is currently
-				// running the VM. If another live sibling exists (e.g. a
-				// live-migration destination while the completed source is being
-				// GC'd), its memberships must not be wiped out.
-				stage = "listVMPodSiblings"
-				siblings, listErr := c.podsLister.Pods(pod.Namespace).List(labels.Everything())
-				if listErr != nil {
-					klog.Errorf("failed to list pods in namespace %s: %v", pod.Namespace, listErr)
-					return listErr
-				}
-				hasAliveVMSibling = hasAliveSiblingVMPod(siblings, vmName, pod.Name)
 			}
 		}
 		if keepIPCR {
@@ -1380,7 +1376,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				klog.Error(err)
 				return err
 			}
-			if isOwnerRefDeleted || len(ipcrToDelete) != 0 {
+			if (isOwnerRefDeleted || len(ipcrToDelete) != 0) && !hasAliveVMSibling {
 				klog.Infof("not keep ip for vm pod %s", podKey)
 				keepIPCR = false
 			}
@@ -2960,11 +2956,22 @@ func appendCheckPodNetToDel(c *Controller, pod *v1.Pod, ownerRefName, ownerRefKi
 
 	case util.KindVirtualMachineInstance:
 		vm, err := c.config.KubevirtClient.VirtualMachine(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
-		if err != nil {
-			if k8serrors.IsNotFound(err) {
-				klog.Infof("VirtualMachine %s is not found", ownerRefName)
+		if k8serrors.IsNotFound(err) {
+			vmi, vmiErr := c.config.KubevirtClient.VirtualMachineInstance(pod.Namespace).Get(context.Background(), ownerRefName, metav1.GetOptions{})
+			if k8serrors.IsNotFound(vmiErr) {
 				return true, nil, nil
 			}
+			if vmiErr != nil {
+				klog.Errorf("failed to get VirtualMachineInstance %s, %v", ownerRefName, vmiErr)
+				return false, nil, vmiErr
+			}
+			if !vmi.DeletionTimestamp.IsZero() {
+				return true, nil, nil
+			}
+			ownerRefAnnotations = vmi.Annotations
+			break
+		}
+		if err != nil {
 			klog.Errorf("failed to get VirtualMachine %s, %v", ownerRefName, err)
 			return false, nil, err
 		}
@@ -3198,24 +3205,42 @@ func isVMPod(pod *v1.Pod) (bool, string) {
 }
 
 // hasAliveSiblingVMPod reports whether pods contains any alive virt-launcher
-// pod owned by the VMI vmName, excluding the pod with name excludePodName.
-// It is used to decide whether a VM LSP's port-group memberships are still
-// owned by another running sibling (e.g. a live-migration destination) when a
-// completed/GC'd source pod is being processed.
-func hasAliveSiblingVMPod(pods []*v1.Pod, vmName, excludePodName string) bool {
+// pod owned by the same VMI as deletedPod.
+// A live sibling keeps the shared LSP, IP CR, and IPAM address in use, as well
+// as the LSP's port-group memberships, during migration pod cleanup.
+func hasAliveSiblingVMPod(pods []*v1.Pod, deletedPod *v1.Pod, vmName string) bool {
+	ownerUID := vmiPodOwnerUID(deletedPod, vmName)
 	for _, p := range pods {
-		if p == nil || p.Name == excludePodName {
+		if p == nil || p.Name == deletedPod.Name {
 			continue
 		}
-		isVM, name := isVMPod(p)
-		if !isVM || name != vmName {
+		if !isAliveVMPod(p, vmName) {
 			continue
 		}
-		if isPodAlive(p) {
-			return true
+		if siblingUID := vmiPodOwnerUID(p, vmName); ownerUID != "" && siblingUID != "" && siblingUID != ownerUID {
+			continue
 		}
+		return true
 	}
 	return false
+}
+
+func isAliveVMPod(pod *v1.Pod, vmName string) bool {
+	if pod == nil {
+		return false
+	}
+	isVM, name := isVMPod(pod)
+	return isVM && name == vmName && isPodAlive(pod)
+}
+
+func vmiPodOwnerUID(pod *v1.Pod, vmName string) types.UID {
+	for _, owner := range pod.OwnerReferences {
+		if owner.Kind == util.KindVirtualMachineInstance && owner.Name == vmName &&
+			strings.HasPrefix(owner.APIVersion, kubevirtv1.SchemeGroupVersion.Group+"/") {
+			return owner.UID
+		}
+	}
+	return ""
 }
 
 func isOwnsByTheVM(vmi metav1.Object) (bool, string) {

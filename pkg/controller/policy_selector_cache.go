@@ -34,10 +34,13 @@ func (c *Controller) policySelectorCacheGeneration() uint64 {
 	return generation
 }
 
-func (c *Controller) getPolicyAddressCache(key string) ([]string, []string, bool) {
+func (c *Controller) getPolicyAddressCache(key string, generation uint64) ([]string, []string, bool) {
 	c.policySelectorCache.mu.RLock()
+	defer c.policySelectorCache.mu.RUnlock()
+	if generation != c.policySelectorCache.generation {
+		return nil, nil, false
+	}
 	entry, ok := c.policySelectorCache.addresses[key]
-	c.policySelectorCache.mu.RUnlock()
 	if !ok {
 		return nil, nil, false
 	}
@@ -60,10 +63,13 @@ func (c *Controller) setPolicyAddressCache(key string, selected, except []string
 	c.policySelectorCache.mu.Unlock()
 }
 
-func (c *Controller) getPolicyPodScanCache(key string) ([]string, []string, []string, bool) {
+func (c *Controller) getPolicyPodScanCache(key string, generation uint64) ([]string, []string, []string, bool) {
 	c.policySelectorCache.mu.RLock()
+	defer c.policySelectorCache.mu.RUnlock()
+	if generation != c.policySelectorCache.generation {
+		return nil, nil, nil, false
+	}
 	entry, ok := c.policySelectorCache.podScans[key]
-	c.policySelectorCache.mu.RUnlock()
 	if !ok {
 		return nil, nil, nil, false
 	}

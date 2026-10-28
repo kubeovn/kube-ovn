@@ -31,7 +31,7 @@ require (
 	github.com/mdlayher/packet v1.2.0
 	github.com/moby/moby/api v1.56.1
 	github.com/moby/moby/client v0.6.2
-	github.com/moby/sys/mountinfo v0.7.2
+	github.com/moby/sys/mountinfo v0.7.3
 	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 	github.com/osrg/gobgp/v4 v4.10.0

@@ -352,10 +352,26 @@ func (c *Controller) checkIPOwnerExists(ip *kubeovnv1.IP) (bool, error) {
 		return true, err
 	}
 
-	// Check if VM exists
+	// A VM-owned VMI has a VM; a standalone VMI owns its address directly.
 	if ip.Spec.PodType == util.KindVirtualMachine {
 		_, err := c.config.KubevirtClient.VirtualMachine(ip.Spec.Namespace).Get(context.Background(), ip.Spec.PodName, metav1.GetOptions{})
-		if err != nil && k8serrors.IsNotFound(err) {
+		if k8serrors.IsNotFound(err) {
+			vmi, vmiErr := c.config.KubevirtClient.VirtualMachineInstance(ip.Spec.Namespace).Get(context.Background(), ip.Spec.PodName, metav1.GetOptions{})
+			if vmiErr != nil && !k8serrors.IsNotFound(vmiErr) {
+				return false, vmiErr
+			}
+			if vmiErr == nil && vmi.DeletionTimestamp.IsZero() {
+				return true, nil
+			}
+			pods, listErr := c.podsLister.Pods(ip.Spec.Namespace).List(labels.Everything())
+			if listErr != nil {
+				return false, listErr
+			}
+			for _, pod := range pods {
+				if isAliveVMPod(pod, ip.Spec.PodName) {
+					return true, nil
+				}
+			}
 			return false, nil
 		}
 		return true, err
