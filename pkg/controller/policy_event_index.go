@@ -29,13 +29,15 @@ type policyEventRef struct {
 }
 
 type policyEventSelector struct {
-	namespace *metav1.LabelSelector
-	pod       *metav1.LabelSelector
+	namespace       *metav1.LabelSelector
+	pod             *metav1.LabelSelector
+	podNamespaceAll string
 }
 
 type policyEventIndexEntry struct {
 	namespaceTokens []string
 	podTokens       []string
+	podNamespaceAll []string
 	namespaceAll    bool
 	podAll          bool
 }
@@ -44,11 +46,12 @@ type policyEventIndex struct {
 	mu    sync.RWMutex
 	ready bool
 
-	entries      map[policyEventRef]policyEventIndexEntry
-	namespace    map[string]map[policyEventRef]struct{}
-	pod          map[string]map[policyEventRef]struct{}
-	namespaceAll map[policyEventRef]struct{}
-	podAll       map[policyEventRef]struct{}
+	entries         map[policyEventRef]policyEventIndexEntry
+	namespace       map[string]map[policyEventRef]struct{}
+	pod             map[string]map[policyEventRef]struct{}
+	namespaceAll    map[policyEventRef]struct{}
+	podAll          map[policyEventRef]struct{}
+	podNamespaceAll map[string]map[policyEventRef]struct{}
 }
 
 func (index *policyEventIndex) markReady() {
@@ -100,6 +103,9 @@ func policyEventSelectorTokens(selector *metav1.LabelSelector) (tokens []string,
 func policyEventIndexEntryFor(selectors []policyEventSelector) policyEventIndexEntry {
 	var entry policyEventIndexEntry
 	for _, selector := range selectors {
+		if selector.podNamespaceAll != "" {
+			entry.podNamespaceAll = append(entry.podNamespaceAll, selector.podNamespaceAll)
+		}
 		if selector.namespace != nil {
 			tokens, all := policyEventSelectorTokens(selector.namespace)
 			entry.namespaceTokens = append(entry.namespaceTokens, tokens...)
@@ -115,6 +121,8 @@ func policyEventIndexEntryFor(selectors []policyEventSelector) policyEventIndexE
 	entry.namespaceTokens = slices.Compact(entry.namespaceTokens)
 	slices.Sort(entry.podTokens)
 	entry.podTokens = slices.Compact(entry.podTokens)
+	slices.Sort(entry.podNamespaceAll)
+	entry.podNamespaceAll = slices.Compact(entry.podNamespaceAll)
 	return entry
 }
 
@@ -143,6 +151,13 @@ func (index *policyEventIndex) removeLocked(ref policyEventRef) {
 	}
 	index.removeTokensLocked(index.namespace, entry.namespaceTokens, ref)
 	index.removeTokensLocked(index.pod, entry.podTokens, ref)
+	for _, namespace := range entry.podNamespaceAll {
+		refs := index.podNamespaceAll[namespace]
+		delete(refs, ref)
+		if len(refs) == 0 {
+			delete(index.podNamespaceAll, namespace)
+		}
+	}
 	if entry.namespaceAll {
 		delete(index.namespaceAll, ref)
 	}
@@ -167,6 +182,17 @@ func (index *policyEventIndex) addEntryLocked(ref policyEventRef, entry policyEv
 	}
 	index.addTokensLocked(&index.namespace, entry.namespaceTokens, ref)
 	index.addTokensLocked(&index.pod, entry.podTokens, ref)
+	if len(entry.podNamespaceAll) > 0 {
+		if index.podNamespaceAll == nil {
+			index.podNamespaceAll = make(map[string]map[policyEventRef]struct{})
+		}
+		for _, namespace := range entry.podNamespaceAll {
+			if index.podNamespaceAll[namespace] == nil {
+				index.podNamespaceAll[namespace] = make(map[policyEventRef]struct{})
+			}
+			index.podNamespaceAll[namespace][ref] = struct{}{}
+		}
+	}
 }
 
 func (index *policyEventIndex) addTokensLocked(target *map[string]map[policyEventRef]struct{}, tokens []string, ref policyEventRef) {
@@ -205,7 +231,7 @@ func policyEventLabelTokens(labelSets ...map[string]string) []string {
 	return slices.Collect(maps.Keys(seen))
 }
 
-func (index *policyEventIndex) candidates(kind policyEventKind, namespaceLabels, podLabels []map[string]string) []string {
+func (index *policyEventIndex) candidates(kind policyEventKind, namespaceName string, namespaceLabels, podLabels []map[string]string) []string {
 	index.mu.RLock()
 	defer index.mu.RUnlock()
 
@@ -227,6 +253,9 @@ func (index *policyEventIndex) candidates(kind policyEventKind, namespaceLabels,
 	}
 	query(index.namespace, index.namespaceAll, namespaceLabels...)
 	query(index.pod, index.podAll, podLabels...)
+	for ref := range index.podNamespaceAll[namespaceName] {
+		add(ref)
+	}
 
 	result := make([]string, 0, len(refs))
 	for ref := range refs {
@@ -237,15 +266,19 @@ func (index *policyEventIndex) candidates(kind policyEventKind, namespaceLabels,
 }
 
 func (index *policyEventIndex) candidatesForPod(namespaceLabels, podLabels map[string]string) []string {
-	return index.candidates(policyEventNetworkPolicy, []map[string]string{namespaceLabels}, []map[string]string{podLabels})
+	return index.candidatesForPodInNamespace("", namespaceLabels, podLabels)
+}
+
+func (index *policyEventIndex) candidatesForPodInNamespace(namespaceName string, namespaceLabels, podLabels map[string]string) []string {
+	return index.candidates(policyEventNetworkPolicy, namespaceName, []map[string]string{namespaceLabels}, []map[string]string{podLabels})
 }
 
 func (index *policyEventIndex) candidatesForNamespace(namespaceLabels map[string]string) []string {
-	return index.candidates(policyEventNetworkPolicy, []map[string]string{namespaceLabels}, nil)
+	return index.candidates(policyEventNetworkPolicy, "", []map[string]string{namespaceLabels}, nil)
 }
 
 func (index *policyEventIndex) candidatesForChange(kind policyEventKind, change labelChange) []string {
-	return index.candidates(kind,
+	return index.candidates(kind, "",
 		[]map[string]string{change.oldNsLabels, change.newNsLabels},
 		[]map[string]string{change.oldPodLabels, change.newPodLabels},
 	)
@@ -256,14 +289,22 @@ func (c *Controller) indexNetworkPolicy(np *netv1.NetworkPolicy) {
 	for _, rule := range np.Spec.Ingress {
 		for _, peer := range rule.From {
 			if peer.IPBlock == nil {
-				selectors = append(selectors, policyEventSelector{namespace: peer.NamespaceSelector, pod: peer.PodSelector})
+				selector := policyEventSelector{namespace: peer.NamespaceSelector, pod: peer.PodSelector}
+				if peer.NamespaceSelector == nil && peer.PodSelector == nil {
+					selector.podNamespaceAll = np.Namespace
+				}
+				selectors = append(selectors, selector)
 			}
 		}
 	}
 	for _, rule := range np.Spec.Egress {
 		for _, peer := range rule.To {
 			if peer.IPBlock == nil {
-				selectors = append(selectors, policyEventSelector{namespace: peer.NamespaceSelector, pod: peer.PodSelector})
+				selector := policyEventSelector{namespace: peer.NamespaceSelector, pod: peer.PodSelector}
+				if peer.NamespaceSelector == nil && peer.PodSelector == nil {
+					selector.podNamespaceAll = np.Namespace
+				}
+				selectors = append(selectors, selector)
 			}
 		}
 	}
@@ -445,5 +486,5 @@ func (c *Controller) policyEventIndexCandidatesForPod(pod *corev1.Pod, namespace
 	if namespace != nil {
 		namespaceLabels = namespace.Labels
 	}
-	return c.policyEventIndex.candidatesForPod(namespaceLabels, pod.Labels)
+	return c.policyEventIndex.candidatesForPodInNamespace(pod.Namespace, namespaceLabels, pod.Labels)
 }

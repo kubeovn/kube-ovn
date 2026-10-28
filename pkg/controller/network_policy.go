@@ -987,6 +987,7 @@ func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
 	for _, key := range keys {
 		namespace, name, err := cache.SplitMetaNamespaceKey(key)
 		if err != nil {
+			klog.Errorf("failed to split network policy key %q: %v", key, err)
 			continue
 		}
 		np, err := c.npsLister.NetworkPolicies(namespace).Get(name)
@@ -1058,6 +1059,7 @@ func (c *Controller) namespaceMatchNetworkPolicies(ns *corev1.Namespace) []strin
 	for _, key := range keys {
 		namespace, name, err := cache.SplitMetaNamespaceKey(key)
 		if err != nil {
+			klog.Errorf("failed to split network policy key %q: %v", key, err)
 			continue
 		}
 		np, err := c.npsLister.NetworkPolicies(namespace).Get(name)
