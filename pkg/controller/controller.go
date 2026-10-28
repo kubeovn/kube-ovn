@@ -1667,8 +1667,6 @@ func getWorkItemKey(obj any) string {
 		return v.key
 	case *SlrInfo:
 		return v.Name
-	case *SwitchLBRuleInfo:
-		return v.Name
 	case networkPolicyDeleteRequest:
 		return v.key
 	default:
