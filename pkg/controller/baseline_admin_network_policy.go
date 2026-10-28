@@ -17,7 +17,9 @@ import (
 )
 
 func (c *Controller) enqueueAddBanp(obj any) {
-	key := cache.MetaObjectToName(obj.(*v1alpha1.BaselineAdminNetworkPolicy)).String()
+	banp := obj.(*v1alpha1.BaselineAdminNetworkPolicy)
+	c.indexBaselineAdminNetworkPolicy(banp)
+	key := cache.MetaObjectToName(banp).String()
 	klog.V(3).Infof("enqueue add banp %s", key)
 	c.addBanpQueue.Add(key)
 }
@@ -38,6 +40,7 @@ func (c *Controller) enqueueDeleteBanp(obj any) {
 		klog.Warningf("unexpected type: %T", obj)
 		return
 	}
+	c.policyEventIndex.remove(policyEventRef{kind: policyEventBaselineAdminNetworkPolicy, key: bnp.Name})
 
 	klog.V(3).Infof("enqueue delete bnp %s", cache.MetaObjectToName(bnp).String())
 	c.deleteBanpQueue.Add(bnp)
@@ -46,6 +49,7 @@ func (c *Controller) enqueueDeleteBanp(obj any) {
 func (c *Controller) enqueueUpdateBanp(oldObj, newObj any) {
 	oldBanp := oldObj.(*v1alpha1.BaselineAdminNetworkPolicy)
 	newBanp := newObj.(*v1alpha1.BaselineAdminNetworkPolicy)
+	c.indexBaselineAdminNetworkPolicy(newBanp)
 
 	// All the acls should be recreated with the following situations
 	if len(oldBanp.Spec.Ingress) != len(newBanp.Spec.Ingress) || len(oldBanp.Spec.Egress) != len(newBanp.Spec.Egress) {

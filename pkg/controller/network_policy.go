@@ -60,7 +60,9 @@ func (c *Controller) networkPolicyPortGroupInUse(namespace, portGroupName string
 }
 
 func (c *Controller) enqueueAddNp(obj any) {
-	key := cache.MetaObjectToName(obj.(*netv1.NetworkPolicy)).String()
+	np := obj.(*netv1.NetworkPolicy)
+	c.indexNetworkPolicy(np)
+	key := cache.MetaObjectToName(np).String()
 	klog.V(3).Infof("enqueue add network policy %s", key)
 	c.updateNpQueue.Add(key)
 }
@@ -81,6 +83,7 @@ func (c *Controller) enqueueDeleteNp(obj any) {
 		klog.Warningf("unexpected type: %T", obj)
 		return
 	}
+	c.policyEventIndex.remove(policyEventRef{kind: policyEventNetworkPolicy, key: np.Namespace + "/" + np.Name})
 
 	key := cache.MetaObjectToName(np).String()
 	klog.V(3).Infof("enqueue delete network policy %s", key)
@@ -94,6 +97,7 @@ func (c *Controller) enqueueDeleteNp(obj any) {
 func (c *Controller) enqueueUpdateNp(oldObj, newObj any) {
 	oldNp := oldObj.(*netv1.NetworkPolicy)
 	newNp := newObj.(*netv1.NetworkPolicy)
+	c.indexNetworkPolicy(newNp)
 	if !reflect.DeepEqual(oldNp.Spec, newNp.Spec) ||
 		kubeOvnAnnotationsChanged(oldNp.Annotations, newNp.Annotations) {
 		key := cache.MetaObjectToName(newNp).String()
@@ -966,17 +970,35 @@ func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
 		return nil
 	}
 
-	nps, err := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list network policies: %v", err)
-		utilruntime.HandleError(err)
-		return nil
-	}
-
 	match := []string{}
-	for _, np := range nps {
+	keys := c.policyEventIndexCandidatesForPod(pod, podNs)
+	if !c.policyEventIndex.isReady() {
+		policies, err := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list network policies: %v", err)
+			utilruntime.HandleError(err)
+			return nil
+		}
+		keys = make([]string, 0, len(policies))
+		for _, policy := range policies {
+			keys = append(keys, cache.MetaObjectToName(policy).String())
+		}
+	}
+	for _, key := range keys {
+		namespace, name, err := cache.SplitMetaNamespaceKey(key)
+		if err != nil {
+			continue
+		}
+		np, err := c.npsLister.NetworkPolicies(namespace).Get(name)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get network policy %s: %v", key, err)
+				utilruntime.HandleError(err)
+			}
+			continue
+		}
 		if isPodMatchNetworkPolicy(pod, podNs, np, np.Namespace) {
-			match = append(match, cache.MetaObjectToName(np).String())
+			match = append(match, key)
 		}
 	}
 	return match
@@ -1020,11 +1042,33 @@ func isPodMatchPolicyPeer(pod *corev1.Pod, podNs *corev1.Namespace, policyPeer n
 }
 
 func (c *Controller) namespaceMatchNetworkPolicies(ns *corev1.Namespace) []string {
-	nps, _ := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
-	match := make([]string, 0, len(nps))
-	for _, np := range nps {
+	match := make([]string, 0)
+	keys := c.policyEventIndex.candidatesForNamespace(ns.Labels)
+	if !c.policyEventIndex.isReady() {
+		policies, err := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list network policies: %v", err)
+			return nil
+		}
+		keys = make([]string, 0, len(policies))
+		for _, policy := range policies {
+			keys = append(keys, cache.MetaObjectToName(policy).String())
+		}
+	}
+	for _, key := range keys {
+		namespace, name, err := cache.SplitMetaNamespaceKey(key)
+		if err != nil {
+			continue
+		}
+		np, err := c.npsLister.NetworkPolicies(namespace).Get(name)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get network policy %s: %v", key, err)
+			}
+			continue
+		}
 		if isNamespaceMatchNetworkPolicy(ns, np) {
-			match = append(match, cache.MetaObjectToName(np).String())
+			match = append(match, key)
 		}
 	}
 	return match

@@ -265,6 +265,8 @@ type Controller struct {
 
 	npsLister        netv1.NetworkPolicyLister
 	npsSynced        cache.InformerSynced
+	npIndexer        cache.Indexer
+	policyEventIndex policyEventIndex
 	updateNpQueue    workqueue.TypedRateLimitingInterface[string]
 	deleteNpQueue    workqueue.TypedRateLimitingInterface[networkPolicyDeleteRequest]
 	npSamplingQueue  workqueue.TypedRateLimitingInterface[string]
@@ -796,6 +798,9 @@ func Run(ctx context.Context, config *Configuration) {
 
 	if !cache.WaitForCacheSync(ctx.Done(), cacheSyncs...) {
 		util.LogFatalAndExit(nil, "failed to wait for caches to sync")
+	}
+	if err := controller.rebuildPolicyEventIndex(); err != nil {
+		util.LogFatalAndExit(err, "failed to build network policy event index")
 	}
 
 	if _, err = podInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
