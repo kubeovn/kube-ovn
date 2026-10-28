@@ -445,6 +445,47 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
+func subnetManagesCustomVPCRoutes(subnet *kubeovnv1.Subnet) bool {
+	return subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway || subnet.Spec.U2OInterconnection
+}
+
+type subnetRouteOwnership struct {
+	policyV4, policyV6 bool
+	staticV4, staticV6 bool
+}
+
+func subnetRouteOwnershipForLiveSuccessors(subnet *kubeovnv1.Subnet, subnets []*kubeovnv1.Subnet) subnetRouteOwnership {
+	var ownership subnetRouteOwnership
+	v4CIDR, v6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
+	v4Gateway, v6Gateway := util.SplitStringIP(subnet.Spec.Gateway)
+	for _, candidate := range subnets {
+		if candidate.Name == subnet.Name || !candidate.DeletionTimestamp.IsZero() ||
+			candidate.Spec.Vpc != subnet.Spec.Vpc || !subnetManagesCustomVPCRoutes(candidate) {
+			continue
+		}
+
+		candidateV4CIDR, candidateV6CIDR := util.SplitStringIP(candidate.Spec.CIDRBlock)
+		candidateV4Gateway, candidateV6Gateway := util.SplitStringIP(candidate.Spec.Gateway)
+		if v4CIDR != "" && v4CIDR == candidateV4CIDR {
+			ownership.policyV4 = true
+			ownership.staticV4 = ownership.staticV4 || v4Gateway != "" && subnet.Spec.RouteTable == candidate.Spec.RouteTable && v4Gateway == candidateV4Gateway
+		}
+		if v6CIDR != "" && v6CIDR == candidateV6CIDR {
+			ownership.policyV6 = true
+			ownership.staticV6 = ownership.staticV6 || v6Gateway != "" && subnet.Spec.RouteTable == candidate.Spec.RouteTable && v6Gateway == candidateV6Gateway
+		}
+	}
+	return ownership
+}
+
+func (c *Controller) routeOwnershipForLiveSuccessors(subnet *kubeovnv1.Subnet) (subnetRouteOwnership, error) {
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		return subnetRouteOwnership{}, err
+	}
+	return subnetRouteOwnershipForLiveSuccessors(subnet, subnets), nil
+}
+
 // getSubnetMTU returns the effective MTU for DHCP options of the given subnet.
 func (c *Controller) getSubnetMTU(subnet *kubeovnv1.Subnet) (int, error) {
 	if subnet.Spec.Mtu > 0 {
@@ -825,8 +866,13 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		klog.Errorf("failed to delete policy route for underlay to overlay subnet interconnection %s, %v", subnet.Name, err)
 		return err
 	}
+	ownership, err := c.routeOwnershipForLiveSuccessors(subnet)
+	if err != nil {
+		klog.Errorf("failed to check successor subnet for %s, %v", subnet.Name, err)
+		return err
+	}
 	if subnet.Spec.Vpc != c.config.ClusterRouter {
-		if err := c.deleteStaticRouteForU2OInterconn(subnet); err != nil {
+		if err := c.deleteStaticRouteForU2OInterconnExcept(subnet, ownership.staticV4, ownership.staticV6); err != nil {
 			klog.Errorf("failed to delete static route for underlay to overlay subnet interconnection %s, %v", subnet.Name, err)
 			return err
 		}
@@ -841,7 +887,7 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 	}
 
 	if subnet.Spec.Vpc != c.config.ClusterRouter {
-		if err := c.deleteCustomVPCPolicyRoutesForSubnet(subnet); err != nil {
+		if err := c.deleteCustomVPCPolicyRoutesForSubnetExcept(subnet, ownership.policyV4, ownership.policyV6); err != nil {
 			klog.Errorf("failed to delete custom vpc routes subnet %s, %v", subnet.Name, err)
 			return err
 		}
@@ -859,7 +905,7 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) error {
 		}
 	}
 
-	err := c.handleDeleteLogicalSwitch(subnet.Name)
+	err = c.handleDeleteLogicalSwitch(subnet.Name)
 	if err != nil {
 		klog.Errorf("failed to delete logical switch %s %v", subnet.Name, err)
 		return err
@@ -2768,13 +2814,17 @@ func (c *Controller) addCustomVPCStaticRouteForSubnet(subnet *kubeovnv1.Subnet) 
 }
 
 func (c *Controller) deleteStaticRouteForU2OInterconn(subnet *kubeovnv1.Subnet) error {
+	return c.deleteStaticRouteForU2OInterconnExcept(subnet, false, false)
+}
+
+func (c *Controller) deleteStaticRouteForU2OInterconnExcept(subnet *kubeovnv1.Subnet, keepV4, keepV6 bool) error {
 	if subnet.Spec.Vpc == "" {
 		return nil
 	}
 
 	v4Gw, v6Gw := util.SplitStringIP(subnet.Spec.Gateway)
 	v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
-	if v4Gw != "" && v4Cidr != "" {
+	if !keepV4 && v4Gw != "" && v4Cidr != "" {
 		if err := c.deleteStaticRouteFromVpc(
 			subnet.Spec.Vpc,
 			subnet.Spec.RouteTable,
@@ -2787,7 +2837,7 @@ func (c *Controller) deleteStaticRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 		}
 	}
 
-	if v6Gw != "" && v6Cidr != "" {
+	if !keepV6 && v6Gw != "" && v6Cidr != "" {
 		if err := c.deleteStaticRouteFromVpc(
 			subnet.Spec.Vpc,
 			subnet.Spec.RouteTable,
@@ -2831,11 +2881,15 @@ func (c *Controller) reconcileRouteTableForSubnet(subnet *kubeovnv1.Subnet) erro
 	return nil
 }
 
-func (c *Controller) deleteCustomVPCPolicyRoutesForSubnet(subnet *kubeovnv1.Subnet) error {
+func (c *Controller) deleteCustomVPCPolicyRoutesForSubnetExcept(subnet *kubeovnv1.Subnet, keepV4, keepV6 bool) error {
 	if !c.logicalRouterExists(subnet.Spec.Vpc) {
 		return nil
 	}
 	for cidr := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+		if (util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv4 && keepV4) ||
+			(util.CheckProtocol(cidr) == kubeovnv1.ProtocolIPv6 && keepV6) {
+			continue
+		}
 		ipSuffix := getIPSuffix(util.CheckProtocol(cidr))
 		match := fmt.Sprintf("%s.dst == %s", ipSuffix, cidr)
 		klog.Infof("delete policy route for router: %s, priority: %d, match %s", subnet.Spec.Vpc, util.SubnetRouterPolicyPriority, match)
