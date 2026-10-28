@@ -808,21 +808,27 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.anpsLister = anpInformer.Lister()
 		controller.anpsSynced = anpInformer.Informer().HasSynced
 		controller.addAnpQueue = newTypedRateLimitingQueue[string]("AddAdminNetworkPolicy", nil)
-		controller.updateAnpQueue = newTypedRateLimitingQueue[*AdminNetworkPolicyChangedDelta]("UpdateAdminNetworkPolicy", nil)
+		controller.updateAnpQueue = newCoalescingDeltaQueue("UpdateAdminNetworkPolicy", func(delta *AdminNetworkPolicyChangedDelta) string {
+			return delta.key
+		}, mergeAdminNetworkPolicyDelta)
 		controller.deleteAnpQueue = newTypedRateLimitingQueue[*v1alpha1.AdminNetworkPolicy]("DeleteAdminNetworkPolicy", nil)
 		controller.anpKeyMutex = keymutex.NewHashed(numKeyLocks)
 
 		controller.banpsLister = banpInformer.Lister()
 		controller.banpsSynced = banpInformer.Informer().HasSynced
 		controller.addBanpQueue = newTypedRateLimitingQueue[string]("AddBaseAdminNetworkPolicy", nil)
-		controller.updateBanpQueue = newTypedRateLimitingQueue[*AdminNetworkPolicyChangedDelta]("UpdateBaseAdminNetworkPolicy", nil)
+		controller.updateBanpQueue = newCoalescingDeltaQueue("UpdateBaseAdminNetworkPolicy", func(delta *AdminNetworkPolicyChangedDelta) string {
+			return delta.key
+		}, mergeAdminNetworkPolicyDelta)
 		controller.deleteBanpQueue = newTypedRateLimitingQueue[*v1alpha1.BaselineAdminNetworkPolicy]("DeleteBaseAdminNetworkPolicy", nil)
 		controller.banpKeyMutex = keymutex.NewHashed(numKeyLocks)
 
 		controller.cnpsLister = cnpInformer.Lister()
 		controller.cnpsSynced = cnpInformer.Informer().HasSynced
 		controller.addCnpQueue = newTypedRateLimitingQueue[string]("AddClusterNetworkPolicy", nil)
-		controller.updateCnpQueue = newTypedRateLimitingQueue[*ClusterNetworkPolicyChangedDelta]("UpdateClusterNetworkPolicy", nil)
+		controller.updateCnpQueue = newCoalescingDeltaQueue("UpdateClusterNetworkPolicy", func(delta *ClusterNetworkPolicyChangedDelta) string {
+			return delta.key
+		}, mergeClusterNetworkPolicyDelta)
 		controller.deleteCnpQueue = newTypedRateLimitingQueue[*netpolv1alpha2.ClusterNetworkPolicy]("DeleteClusterNetworkPolicy", nil)
 		controller.cnpKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}

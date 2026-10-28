@@ -39,6 +39,9 @@ type ChangedName struct {
 type AdminNetworkPolicyChangedDelta struct {
 	key              string
 	ruleNames        [util.AnpMaxRules]ChangedName
+	ingressRuleNames [util.AnpMaxRules]ChangedName
+	egressRuleNames  [util.AnpMaxRules]ChangedName
+	fields           changedFieldMask
 	field            ChangedField
 	DNSReconcileDone bool
 }
@@ -431,6 +434,8 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	// Only handle updates that do not affect acls.
 	c.anpKeyMutex.LockKey(changed.key)
 	defer func() { _ = c.anpKeyMutex.UnlockKey(changed.key) }()
+	changed.normalizeRuleNames()
+	fields := changed.fieldsMask()
 
 	klog.Infof("handleUpdateAnp: processing ANP %s, field=%s, DNSReconcileDone=%v",
 		changed.key, changed.field, changed.DNSReconcileDone)
@@ -459,7 +464,7 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	pgName := strings.ReplaceAll(anpName, "-", ".")
 
 	// The port-group for anp should be updated
-	if changed.field == ChangedSubject {
+	if fields&changedFieldSubject != 0 {
 		// The port-group must exist when update anp, this check should never be matched.
 		if ok, err := c.OVNNbClient.PortGroupExists(pgName); !ok || err != nil {
 			klog.Errorf("port-group for anp %s does not exist when update anp", desiredAnp.Name)
@@ -479,10 +484,11 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	}
 
 	// Peer selector in ingress/egress rule has changed, so the corresponding address-set need be updated
-	if changed.field == ChangedIngressRule {
+	if fields&changedFieldIngressRule != 0 {
+		ruleNames := changed.ruleNamesFor(ChangedIngressRule)
 		for index, rule := range desiredAnp.Spec.Ingress {
 			// Make sure the rule is changed and go on update
-			if rule.Name == changed.ruleNames[index].curRuleName || changed.ruleNames[index].isMatch {
+			if rule.Name == ruleNames[index].curRuleName || ruleNames[index].isMatch {
 				if err := c.setAddrSetForAnpRule(anpName, pgName, rule.Name, index, rule.From, []v1alpha1.AdminNetworkPolicyEgressPeer{}, true, false); err != nil {
 					klog.Errorf("failed to set ingress address-set for anp rule %s/%s, %v", anpName, rule.Name, err)
 					return err
@@ -491,10 +497,11 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 		}
 	}
 
-	if changed.field == ChangedEgressRule {
+	if fields&changedFieldEgressRule != 0 {
+		ruleNames := changed.ruleNamesFor(ChangedEgressRule)
 		for index, rule := range desiredAnp.Spec.Egress {
 			// Check if we need to update address sets (rule changed or DNS reconciliation needed)
-			needAddrSetUpdate := rule.Name == changed.ruleNames[index].curRuleName || changed.ruleNames[index].isMatch || changed.DNSReconcileDone
+			needAddrSetUpdate := rule.Name == ruleNames[index].curRuleName || ruleNames[index].isMatch || changed.DNSReconcileDone
 
 			// Check if we need to reconcile DNS resolvers (DNS feature enabled and not already done)
 			needDNSReconcile := c.config.EnableDNSNameResolver && !changed.DNSReconcileDone
