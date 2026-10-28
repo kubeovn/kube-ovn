@@ -9,6 +9,7 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/klog/v2"
 
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
@@ -84,6 +85,7 @@ func policyEventSelectorTokens(selector *metav1.LabelSelector) (tokens []string,
 		return nil, true
 	}
 	if _, err := metav1.LabelSelectorAsSelector(selector); err != nil {
+		klog.Errorf("failed to index policy event selector, using all candidates: %v", err)
 		return nil, true
 	}
 
@@ -288,27 +290,26 @@ func (c *Controller) indexNetworkPolicy(np *netv1.NetworkPolicy) {
 	selectors := []policyEventSelector{{pod: &np.Spec.PodSelector}}
 	for _, rule := range np.Spec.Ingress {
 		for _, peer := range rule.From {
-			if peer.IPBlock == nil {
-				selector := policyEventSelector{namespace: peer.NamespaceSelector, pod: peer.PodSelector}
-				if peer.NamespaceSelector == nil && peer.PodSelector == nil {
-					selector.podNamespaceAll = np.Namespace
-				}
-				selectors = append(selectors, selector)
-			}
+			selectors = append(selectors, networkPolicyPeerSelector(peer, np.Namespace))
 		}
 	}
 	for _, rule := range np.Spec.Egress {
 		for _, peer := range rule.To {
-			if peer.IPBlock == nil {
-				selector := policyEventSelector{namespace: peer.NamespaceSelector, pod: peer.PodSelector}
-				if peer.NamespaceSelector == nil && peer.PodSelector == nil {
-					selector.podNamespaceAll = np.Namespace
-				}
-				selectors = append(selectors, selector)
-			}
+			selectors = append(selectors, networkPolicyPeerSelector(peer, np.Namespace))
 		}
 	}
 	c.policyEventIndex.upsert(policyEventRef{kind: policyEventNetworkPolicy, key: np.Namespace + "/" + np.Name}, selectors)
+}
+
+func networkPolicyPeerSelector(peer netv1.NetworkPolicyPeer, namespace string) policyEventSelector {
+	if peer.IPBlock != nil {
+		return policyEventSelector{}
+	}
+	selector := policyEventSelector{namespace: peer.NamespaceSelector, pod: peer.PodSelector}
+	if peer.NamespaceSelector == nil && peer.PodSelector == nil {
+		selector.podNamespaceAll = namespace
+	}
+	return selector
 }
 
 func (c *Controller) indexAdminNetworkPolicy(anp *v1alpha1.AdminNetworkPolicy) {
