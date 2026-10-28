@@ -14,7 +14,6 @@ import (
 	extClientSet "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	versionutil "k8s.io/apimachinery/pkg/util/version"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/utils/ktesting/format"
 	admissionapi "k8s.io/pod-security-admission/api"
@@ -123,29 +122,10 @@ func NewDefaultFramework(baseName string) *Framework {
 	return f
 }
 
-func (f *Framework) useContext() error {
-	if f.KubeContext == "" {
-		return nil
+func (f *Framework) useContext() {
+	if f.KubeContext != "" {
+		framework.TestContext.KubeContext = f.KubeContext
 	}
-
-	pathOptions := clientcmd.NewDefaultPathOptions()
-	pathOptions.GlobalFile = framework.TestContext.KubeConfig
-	pathOptions.EnvVar = ""
-
-	config, err := pathOptions.GetStartingConfig()
-	if err != nil {
-		return err
-	}
-
-	if config.CurrentContext != f.KubeContext {
-		Logf("Switching context to " + f.KubeContext)
-		config.CurrentContext = f.KubeContext
-		if err = clientcmd.ModifyConfig(pathOptions, *config, true); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func NewFrameworkWithContext(baseName, kubeContext string) *Framework {
@@ -193,7 +173,7 @@ func (f *Framework) IsUnderlay() bool {
 // BeforeEach gets a kube-ovn client
 func (f *Framework) BeforeEach() {
 	ginkgo.By("Setting kubernetes context")
-	ExpectNoError(f.useContext())
+	f.useContext()
 
 	if f.KubeOVNClientSet == nil {
 		ginkgo.By("Creating a Kube-OVN client")
