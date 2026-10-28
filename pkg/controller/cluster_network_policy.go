@@ -34,7 +34,9 @@ type ClusterNetworkPolicyChangedDelta struct {
 
 // enqueueAddCnp adds a new ClusterNetworkPolicy to the processing queue for creation
 func (c *Controller) enqueueAddCnp(obj any) {
-	key := cache.MetaObjectToName(obj.(*v1alpha2.ClusterNetworkPolicy)).String()
+	cnp := obj.(*v1alpha2.ClusterNetworkPolicy)
+	c.indexClusterNetworkPolicy(cnp)
+	key := cache.MetaObjectToName(cnp).String()
 	klog.V(3).Infof("enqueue add cnp %s", key)
 	c.addCnpQueue.Add(key)
 }
@@ -43,6 +45,7 @@ func (c *Controller) enqueueAddCnp(obj any) {
 func (c *Controller) enqueueUpdateCnp(oldObj, newObj any) {
 	oldCnp := oldObj.(*v1alpha2.ClusterNetworkPolicy)
 	newCnp := newObj.(*v1alpha2.ClusterNetworkPolicy)
+	c.indexClusterNetworkPolicy(newCnp)
 
 	// If the CNP was modified in a way that needs the ACLs to be re-created, we enqueue the CNP to be re-created
 	// from scratch and skip the update logic entirely.
@@ -97,6 +100,7 @@ func (c *Controller) enqueueDeleteCnp(obj any) {
 		klog.Warningf("unexpected type: %T", obj)
 		return
 	}
+	c.policyEventIndex.remove(policyEventRef{kind: policyEventClusterNetworkPolicy, key: cnp.Name})
 
 	klog.V(3).Infof("enqueue delete cnp %s", cache.MetaObjectToName(cnp).String())
 	c.deleteCnpQueue.Add(cnp)
@@ -809,12 +813,25 @@ func (c *Controller) updateCnpsByLabelsMatch(nsLabels, podLabels map[string]stri
 }
 
 func (c *Controller) updateCnpsByLabelsChange(change labelChange) {
-	cnps, err := c.cnpsLister.List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list cluster network policies for label update: %v", err)
-		return
+	keys := c.policyEventIndex.candidatesForChange(policyEventClusterNetworkPolicy, change)
+	if !c.policyEventIndex.isReady() {
+		cnps, err := c.cnpsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list cluster network policies for label update: %v", err)
+		}
+		keys = make([]string, 0, len(cnps))
+		for _, cnp := range cnps {
+			keys = append(keys, cnp.Name)
+		}
 	}
-	for _, cnp := range cnps {
+	for _, key := range keys {
+		cnp, err := c.cnpsLister.Get(key)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get cluster network policy %s for label update: %v", key, err)
+			}
+			continue
+		}
 		// Pod/namespace that has been updated is the subject of a CNP, update that CNP
 		if doCnpLabelsMatchForChange(cnp.Spec.Subject.Namespaces, cnp.Spec.Subject.Pods, change) {
 			klog.Infof("cnp %s, labels matched for cnp's subject", cnp.Name)
