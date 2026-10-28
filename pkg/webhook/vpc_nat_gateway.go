@@ -947,7 +947,14 @@ func (v *ValidatingHook) ValidateIptablesSnat(ctx context.Context, snat *ovnv1.I
 	if err := v.cache.Get(ctx, key, eip); err != nil {
 		return err
 	}
-	if err := util.CheckCidrs(snat.Spec.InternalCIDR); err != nil {
+	// The controller accepts a bare host address and normalizes it to a /32 prefix
+	// (normalizeSnatInternalCIDR), which is what makes a per-host SNAT rule expressible. Admission
+	// has to accept the same input, otherwise it forbids a shape the data plane implements.
+	internalCIDR := snat.Spec.InternalCIDR
+	if !strings.Contains(internalCIDR, "/") && util.CheckProtocol(internalCIDR) == ovnv1.ProtocolIPv4 {
+		internalCIDR += "/32"
+	}
+	if err := util.CheckCidrs(internalCIDR); err != nil {
 		return fmt.Errorf("invalid cidr %s", snat.Spec.InternalCIDR)
 	}
 

@@ -1075,3 +1075,29 @@ func TestIptablesEIPUpdateHookAllowsQoSChange(t *testing.T) {
 	require.False(t, resp.Allowed, "the gateway of an eip stays immutable")
 	require.Contains(t, resp.Result.Message, "NatGwDp is immutable")
 }
+
+// TestValidateIptablesSnatAcceptsBareHostAddress pins that admission accepts exactly what the
+// controller can program: a bare IPv4 address is a per-host SNAT, which the controller normalizes
+// to a /32 prefix. Anything that is not an address or a CIDR is still rejected.
+func TestValidateIptablesSnatAcceptsBareHostAddress(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, ovnv1.AddToScheme(scheme))
+	v := &ValidatingHook{
+		decoder: admission.NewDecoder(scheme),
+		cache: &mockCache{objects: map[string]runtime.Object{
+			"/eip0": &ovnv1.IptablesEIP{Name: "eip0", Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1", NatGwDp: "gw0"}},
+		}},
+	}
+	snat := func(cidr string) *ovnv1.IptablesSnatRule {
+		return &ovnv1.IptablesSnatRule{
+			Name: "snat0", Spec: ovnv1.IptablesSnatRuleSpec{EIP: "eip0", InternalCIDR: cidr},
+		}
+	}
+
+	require.NoError(t, v.ValidateIptablesSnat(context.Background(), snat("10.0.0.0/24")))
+	require.NoError(t, v.ValidateIptablesSnat(context.Background(), snat("10.0.0.5")), "a bare host address is normalized to /32 by the controller")
+	require.Error(t, v.ValidateIptablesSnat(context.Background(), snat("10.0.0.300")))
+	require.Error(t, v.ValidateIptablesSnat(context.Background(), snat("not-a-cidr")))
+}
