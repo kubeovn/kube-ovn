@@ -2908,8 +2908,15 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		gomega.Consistently(func() int { return len(listRecords()) }, 10*time.Second, 2*time.Second).ShouldNot(gomega.BeZero(),
 			"the protected ledger must survive a deletion request")
 
+		// Two ways the ledger keeps the EIP: the webhook refuses the request outright, and the
+		// controller holds the finalizer. Which one applies depends on whether the webhook is
+		// installed, so the request is allowed to be rejected here and is repeated at the end.
 		ginkgo.By("Requesting deletion of the EIP: it must stay in use while the ledger references it")
-		_ = f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().Delete(context.Background(), lbEipName, metav1.DeleteOptions{})
+		eipDeleteErr := f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().Delete(context.Background(), lbEipName, metav1.DeleteOptions{})
+		if eipDeleteErr != nil {
+			framework.ExpectContainSubstring(eipDeleteErr.Error(), "still in use",
+				"the only acceptable rejection is the webhook protecting the ledger")
+		}
 		gomega.Consistently(func() bool {
 			_, err := f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().Get(context.Background(), lbEipName, metav1.GetOptions{})
 			return err == nil
@@ -2936,11 +2943,15 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		gomega.Eventually(listRecords, 90*time.Second, 2*time.Second).Should(gomega.BeEmpty(),
 			"deleting the service must release the protected records")
 
-		ginkgo.By("The EIP becomes deletable once the service released it")
-		gomega.Eventually(func() error {
-			err := f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().Delete(context.Background(), lbEipName, metav1.DeleteOptions{})
-			return err
-		}, 90*time.Second, 2*time.Second).Should(gomega.Succeed())
+		ginkgo.By("The EIP is released once the service released the ledger")
+		if eipDeleteErr != nil {
+			// Admission refused the request while the ledger held the EIP; it is accepted now.
+			gomega.Eventually(func() error {
+				return f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().Delete(context.Background(), lbEipName, metav1.DeleteOptions{})
+			}, 90*time.Second, 2*time.Second).Should(gomega.Succeed())
+		}
+		// The request the EIP already has has to complete on its own: it converges from its own
+		// state and does not depend on the request being repeated.
 		gomega.Eventually(func() bool {
 			_, err := f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().Get(context.Background(), lbEipName, metav1.GetOptions{})
 			return k8serrors.IsNotFound(err)

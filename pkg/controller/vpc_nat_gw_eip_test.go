@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
@@ -523,4 +524,56 @@ func TestEnqueueAddIptablesEip(t *testing.T) {
 	})
 	require.Equal(t, 1, c.addIptablesEipQueue.Len(), "allocated EIP must not re-enter add")
 	require.Equal(t, 2, c.updateIptablesEipQueue.Len(), "pending QoS credential must resume update")
+}
+
+// TestTerminatingEipKeepsConvergingWhileInUse pins that a terminating EIP does not depend on an
+// external event to notice that the last NAT rule referencing it is gone: the rule controllers
+// notify it through a delaying queue that keeps only the earliest deadline for an item, so a
+// notification scheduled while the rule was being programmed can swallow the one scheduled when it
+// was deleted. The EIP therefore re-queues itself while it is still in use.
+func TestTerminatingEipKeepsConvergingWhileInUse(t *testing.T) {
+	oldEnabled := vpcNatEnabled
+	vpcNatEnabled = "true"
+	t.Cleanup(func() { vpcNatEnabled = oldEnabled })
+
+	now := metav1.Now()
+	eip := &kubeovnv1.IptablesEIP{
+		Name: "eip", UID: "eip-uid", DeletionTimestamp: &now, Finalizers: []string{util.KubeOVNControllerFinalizer},
+		Labels: map[string]string{util.VpcNatGatewayNameLabel: "gw", util.EipV4IpLabel: "2.2.2.2"},
+		Spec:   kubeovnv1.IptablesEIPSpec{V4ip: "2.2.2.2", NatGwDp: "gw", ExternalSubnet: "ext-net"},
+		Status: kubeovnv1.IptablesEIPStatus{IP: "2.2.2.2", Ready: true},
+	}
+	// One record still references the EIP, which is what keeps it in use.
+	record := &kubeovnv1.IptablesDnatRule{
+		Name: "lb-web-abc",
+		Labels: map[string]string{
+			util.VpcNatGatewayNameLabel:  "gw",
+			util.EipV4IpLabel:            "2.2.2.2",
+			util.EipUIDLabel:             "eip-uid",
+			util.NftableLbSvcNsLabel:     "default",
+			util.NftableLbSvcNameLabel:   "web",
+			util.NftableLbSvcRecordLabel: "true",
+		},
+		Spec: kubeovnv1.IptablesDnatRuleSpec{
+			EIP: "eip", ClusterIP: "10.96.1.5", ExternalPort: "80", Protocol: "tcp",
+			InternalIP: "10.0.7.2", InternalPort: "8080", Type: kubeovnv1.DnatRuleTypeShare,
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets:           []*kubeovnv1.Subnet{{Name: "ext-net", Spec: kubeovnv1.SubnetSpec{CIDRBlock: "2.2.2.0/24"}}},
+		VpcNatGateways:    []*kubeovnv1.VpcNatGateway{fakeGw("gw")},
+		IptablesEips:      []*kubeovnv1.IptablesEIP{eip},
+		IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{record},
+	})
+	require.NoError(t, err)
+	c := fc.fakeController
+
+	require.NoError(t, c.handleUpdateIptablesEip("eip"), "an eip in use is not an error, it is not done yet")
+	require.Eventually(t, func() bool { return c.updateIptablesEipQueue.Len() == 1 },
+		5*time.Second, 50*time.Millisecond, "the eip must come back to check whether the rule is gone")
+
+	kept, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Get(context.Background(), "eip", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Contains(t, kept.Finalizers, util.KubeOVNControllerFinalizer,
+		"the finalizer must be held while a rule still references the eip")
 }

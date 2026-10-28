@@ -241,7 +241,13 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			return err
 		}
 		if nat != "" {
+			// The rules are deleted by their own controllers, and a rule that releases this EIP
+			// notifies it. That notification can be lost: the delaying queue keeps the earliest
+			// deadline for an item, so a reset scheduled while the rule was still being programmed
+			// swallows the one scheduled when it was deleted. Keep converging from here instead of
+			// depending on an event that may never come, otherwise the EIP terminates forever.
 			klog.Infof("eip %s is still being used by NAT rules: %s, waiting for them to be deleted", key, nat)
+			c.updateIptablesEipQueue.AddAfter(key, 3*time.Second)
 			return nil
 		}
 
