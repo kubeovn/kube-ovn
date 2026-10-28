@@ -176,7 +176,7 @@ func TestHasLiveSubnetWithOverlappingCIDR(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			require.Equal(t, tc.want, hasLiveSubnetWithOverlappingCIDR(base, []*kubeovnv1.Subnet{base, tc.candidate}))
+			require.Equal(t, tc.want, subnetHasLiveCIDROverlap(base, []*kubeovnv1.Subnet{base, tc.candidate}))
 		})
 	}
 }

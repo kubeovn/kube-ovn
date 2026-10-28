@@ -495,7 +495,7 @@ func (c *Controller) checkSubnetConflict(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
-func hasLiveSubnetWithOverlappingCIDR(subnet *kubeovnv1.Subnet, subnets []*kubeovnv1.Subnet) bool {
+func subnetHasLiveCIDROverlap(subnet *kubeovnv1.Subnet, subnets []*kubeovnv1.Subnet) bool {
 	for _, candidate := range subnets {
 		if candidate.Name == subnet.Name || !candidate.DeletionTimestamp.IsZero() ||
 			candidate.Spec.Vpc != subnet.Spec.Vpc {
@@ -514,7 +514,7 @@ func (c *Controller) hasLiveSubnetWithOverlappingCIDR(subnet *kubeovnv1.Subnet) 
 	if err != nil {
 		return false, err
 	}
-	return hasLiveSubnetWithOverlappingCIDR(subnet, subnets), nil
+	return subnetHasLiveCIDROverlap(subnet, subnets), nil
 }
 
 // getSubnetMTU returns the effective MTU for DHCP options of the given subnet.
