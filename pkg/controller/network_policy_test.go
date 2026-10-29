@@ -82,6 +82,23 @@ func TestNetworkPolicyNamedPortVariantsUseSelectedPodsAndProviders(t *testing.T)
 	variants, err = controller.networkPolicyNamedPortVariants(np, set.New("other.default.ovn"))
 	require.NoError(t, err)
 	require.Empty(t, variants)
+
+	rangePort := intstr.FromString("http")
+	np.Spec.Ingress[0].Ports[0].EndPort = new(int32(9000))
+	np.Spec.Ingress[0].Ports[0].Port = &rangePort
+	variants, err = controller.networkPolicyNamedPortVariants(np, nil)
+	require.NoError(t, err)
+	require.Empty(t, variants)
+
+	require.Equal(t, "http\x00TCP", networkPolicyNamedPortVariantKey("http", corev1.ProtocolTCP))
+}
+
+func TestNetworkPolicyNamedPortVariantsWithoutIndex(t *testing.T) {
+	controller := &Controller{namedPort: NewNamedPort()}
+	np := &netv1.NetworkPolicy{Namespace: metav1.NamespaceDefault}
+	variants, err := controller.networkPolicyNamedPortVariants(np, nil)
+	require.NoError(t, err)
+	require.Empty(t, variants)
 }
 
 func TestParsePolicyFor(t *testing.T) {
