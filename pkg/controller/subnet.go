@@ -30,12 +30,14 @@ import (
 )
 
 func (c *Controller) enqueueAddSubnet(obj any) {
+	c.invalidatePolicySelectorCache()
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.Subnet)).String()
 	klog.V(3).Infof("enqueue add subnet %s", key)
 	c.addOrUpdateSubnetQueue.Add(key)
 }
 
 func (c *Controller) enqueueDeleteSubnet(obj any) {
+	c.invalidatePolicySelectorCache()
 	var subnet *kubeovnv1.Subnet
 	switch t := obj.(type) {
 	case *kubeovnv1.Subnet:
@@ -90,6 +92,10 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 	if oldSubnet.Spec.U2OInterconnection != newSubnet.Spec.U2OInterconnection {
 		klog.Infof("enqueue update vpc %s triggered by u2o interconnection change of subnet %s", newSubnet.Spec.Vpc, key)
 		c.addOrUpdateVpcQueue.Add(newSubnet.Spec.Vpc)
+	}
+
+	if !reflect.DeepEqual(oldSubnet.Spec, newSubnet.Spec) {
+		c.invalidatePolicySelectorCache()
 	}
 
 	if oldSubnet.Spec.Private != newSubnet.Spec.Private ||

@@ -29,6 +29,7 @@ import (
 	"k8s.io/client-go/informers"
 	coreinformers "k8s.io/client-go/informers/core/v1"
 	"k8s.io/client-go/kubernetes/fake"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/utils/keymutex"
 
@@ -63,6 +64,7 @@ type fakeControllerInformers struct {
 	namespaceInformer coreinformers.NamespaceInformer
 	podInformer       coreinformers.PodInformer
 	nodeInformer      coreinformers.NodeInformer
+	netAttachInformer cache.SharedIndexInformer
 }
 
 type fakeController struct {
@@ -199,6 +201,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		namespaceInformer: namespaceInformer,
 		podInformer:       podInformer,
 		nodeInformer:      nodeInformer,
+		netAttachInformer: nadInformer.Informer(),
 	}
 
 	// Create mock OVN clients

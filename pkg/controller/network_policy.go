@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"slices"
@@ -31,7 +32,9 @@ const (
 )
 
 func (c *Controller) enqueueAddNp(obj any) {
-	key := cache.MetaObjectToName(obj.(*netv1.NetworkPolicy)).String()
+	np := obj.(*netv1.NetworkPolicy)
+	c.indexNetworkPolicy(np)
+	key := cache.MetaObjectToName(np).String()
 	klog.V(3).Infof("enqueue add network policy %s", key)
 	c.updateNpQueue.Add(key)
 }
@@ -52,6 +55,7 @@ func (c *Controller) enqueueDeleteNp(obj any) {
 		klog.Warningf("unexpected type: %T", obj)
 		return
 	}
+	c.policyEventIndex.remove(policyEventRef{kind: policyEventNetworkPolicy, key: np.Namespace + "/" + np.Name})
 
 	key := cache.MetaObjectToName(np).String()
 	klog.V(3).Infof("enqueue delete network policy %s", key)
@@ -61,6 +65,7 @@ func (c *Controller) enqueueDeleteNp(obj any) {
 func (c *Controller) enqueueUpdateNp(oldObj, newObj any) {
 	oldNp := oldObj.(*netv1.NetworkPolicy)
 	newNp := newObj.(*netv1.NetworkPolicy)
+	c.indexNetworkPolicy(newNp)
 	if !reflect.DeepEqual(oldNp.Spec, newNp.Spec) ||
 		kubeOvnAnnotationsChanged(oldNp.Annotations, newNp.Annotations) {
 		key := cache.MetaObjectToName(newNp).String()
@@ -619,7 +624,67 @@ func hasEgressRule(np *netv1.NetworkPolicy) bool {
 	return np.Spec.Egress != nil
 }
 
+func policyLabelSelectorCacheKey(selector *metav1.LabelSelector) (string, error) {
+	if selector == nil {
+		return "nil", nil
+	}
+
+	parsed, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		return "", fmt.Errorf("invalid label selector: %w", err)
+	}
+	return "value:" + parsed.String(), nil
+}
+
+func policyIPBlockCacheKey(block *netv1.IPBlock) string {
+	if block == nil {
+		return "nil"
+	}
+	return fmt.Sprintf("value:%#v", *block)
+}
+
+func policyNetworkPolicyPeerCacheKey(peer netv1.NetworkPolicyPeer) (string, error) {
+	podSelector, err := policyLabelSelectorCacheKey(peer.PodSelector)
+	if err != nil {
+		return "", fmt.Errorf("invalid pod selector: %w", err)
+	}
+	namespaceSelector, err := policyLabelSelectorCacheKey(peer.NamespaceSelector)
+	if err != nil {
+		return "", fmt.Errorf("invalid namespace selector: %w", err)
+	}
+	return strings.Join([]string{
+		podSelector,
+		namespaceSelector,
+		policyIPBlockCacheKey(peer.IPBlock),
+	}, "\x00"), nil
+}
+
+const policySelectorCacheScanAttempts = 2
+
 func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, npp netv1.NetworkPolicyPeer) ([]string, []string, error) {
+	for range policySelectorCacheScanAttempts {
+		generation := c.policySelectorCacheGeneration()
+		selectedAddresses, exceptAddresses, err := c.fetchPolicySelectedAddressesOnce(namespace, protocol, npp, generation)
+		if err != nil {
+			return nil, nil, err
+		}
+		if generation == c.policySelectorCacheGeneration() {
+			return selectedAddresses, exceptAddresses, nil
+		}
+	}
+	return nil, nil, errors.New("policy selector cache invalidated during address scan")
+}
+
+func (c *Controller) fetchPolicySelectedAddressesOnce(namespace, protocol string, npp netv1.NetworkPolicyPeer, generation uint64) ([]string, []string, error) {
+	peerKey, err := policyNetworkPolicyPeerCacheKey(npp)
+	if err != nil {
+		return nil, nil, err
+	}
+	cacheKey := fmt.Sprintf("%s\x00%s\x00%s", namespace, protocol, peerKey)
+	if selected, except, ok := c.getPolicyAddressCache(cacheKey, generation); ok {
+		return selected, except, nil
+	}
+
 	selectedAddresses := []string{}
 	exceptAddresses := []string{}
 
@@ -655,7 +720,10 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 	if npp.PodSelector == nil {
 		sel = labels.Everything()
 	} else {
-		sel, _ = metav1.LabelSelectorAsSelector(npp.PodSelector)
+		sel, err = metav1.LabelSelectorAsSelector(npp.PodSelector)
+		if err != nil {
+			return nil, nil, fmt.Errorf("error creating pod label selector, %w", err)
+		}
 	}
 
 	for _, ns := range selectedNs {
@@ -695,6 +763,7 @@ func (c *Controller) fetchPolicySelectedAddresses(namespace, protocol string, np
 			}
 		}
 	}
+	c.setPolicyAddressCache(cacheKey, selectedAddresses, exceptAddresses, generation)
 	return selectedAddresses, exceptAddresses, nil
 }
 
@@ -735,17 +804,36 @@ func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
 		return nil
 	}
 
-	nps, err := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list network policies: %v", err)
-		utilruntime.HandleError(err)
-		return nil
-	}
-
 	match := []string{}
-	for _, np := range nps {
+	keys := c.policyEventIndexCandidatesForPod(pod, podNs)
+	if !c.policyEventIndex.isReady() {
+		policies, err := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list network policies: %v", err)
+			utilruntime.HandleError(err)
+			return nil
+		}
+		keys = make([]string, 0, len(policies))
+		for _, policy := range policies {
+			keys = append(keys, cache.MetaObjectToName(policy).String())
+		}
+	}
+	for _, key := range keys {
+		namespace, name, err := cache.SplitMetaNamespaceKey(key)
+		if err != nil {
+			klog.Errorf("failed to split network policy key %q: %v", key, err)
+			continue
+		}
+		np, err := c.npsLister.NetworkPolicies(namespace).Get(name)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get network policy %s: %v", key, err)
+				utilruntime.HandleError(err)
+			}
+			continue
+		}
 		if isPodMatchNetworkPolicy(pod, podNs, np, np.Namespace) {
-			match = append(match, cache.MetaObjectToName(np).String())
+			match = append(match, key)
 		}
 	}
 	return match
@@ -819,11 +907,34 @@ func isPodMatchPolicyPeer(pod *corev1.Pod, podNs *corev1.Namespace, policyPeer n
 }
 
 func (c *Controller) namespaceMatchNetworkPolicies(ns *corev1.Namespace) []string {
-	nps, _ := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
-	match := make([]string, 0, len(nps))
-	for _, np := range nps {
+	match := make([]string, 0)
+	keys := c.policyEventIndex.candidatesForNamespace(ns.Labels)
+	if !c.policyEventIndex.isReady() {
+		policies, err := c.npsLister.NetworkPolicies(corev1.NamespaceAll).List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list network policies: %v", err)
+			return nil
+		}
+		keys = make([]string, 0, len(policies))
+		for _, policy := range policies {
+			keys = append(keys, cache.MetaObjectToName(policy).String())
+		}
+	}
+	for _, key := range keys {
+		namespace, name, err := cache.SplitMetaNamespaceKey(key)
+		if err != nil {
+			klog.Errorf("failed to split network policy key %q: %v", key, err)
+			continue
+		}
+		np, err := c.npsLister.NetworkPolicies(namespace).Get(name)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get network policy %s: %v", key, err)
+			}
+			continue
+		}
 		if isNamespaceMatchNetworkPolicy(ns, np) {
-			match = append(match, cache.MetaObjectToName(np).String())
+			match = append(match, key)
 		}
 	}
 	return match
