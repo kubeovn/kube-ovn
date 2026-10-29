@@ -1,16 +1,20 @@
 package controller
 
 import (
+	"fmt"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"k8s.io/utils/set"
 
 	"github.com/stretchr/testify/require"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -32,6 +36,52 @@ func TestNetworkPolicyPortVariants(t *testing.T) {
 	if len(named) != 1 || named[0].Port.StrVal != "http" {
 		t.Fatalf("unexpected named ports: %#v", named)
 	}
+}
+
+func TestNetworkPolicyNamedPortVariantsUseSelectedPodsAndProviders(t *testing.T) {
+	port := int32(8080)
+	pod := &corev1.Pod{
+		Name:      "selected",
+		Namespace: metav1.NamespaceDefault,
+		Labels:    map[string]string{"app": "web"},
+		Annotations: map[string]string{
+			util.LogicalSwitchAnnotation:                                    util.DefaultSubnet,
+			fmt.Sprintf(util.AllocatedAnnotationTemplate, util.OvnProvider): "true",
+		},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Ports: []corev1.ContainerPort{{Name: "http", ContainerPort: port}}}}},
+	}
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Pods: []*corev1.Pod{pod},
+		Subnets: []*kubeovnv1.Subnet{{
+			Name: util.DefaultSubnet,
+			Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider, Protocol: kubeovnv1.ProtocolIPv4},
+		}},
+	})
+	require.NoError(t, err)
+	controller := fake.fakeController
+	controller.namedPort = NewNamedPort()
+	controller.namedPort.AddNamedPortByPod(pod)
+	protocol := corev1.ProtocolTCP
+	named := intstr.FromString("http")
+	np := &netv1.NetworkPolicy{
+		Name:      "allow-http",
+		Namespace: metav1.NamespaceDefault,
+		Spec: netv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
+			Ingress:     []netv1.NetworkPolicyIngressRule{{Ports: []netv1.NetworkPolicyPort{{Port: &named, Protocol: &protocol}}}},
+		},
+	}
+
+	variants, err := controller.networkPolicyNamedPortVariants(np, set.New(util.OvnProvider))
+	require.NoError(t, err)
+	require.Len(t, variants, 1)
+	require.Equal(t, "http", variants[0].name)
+	require.Equal(t, port, variants[0].port)
+	require.Equal(t, []string{ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)}, variants[0].ports)
+
+	variants, err = controller.networkPolicyNamedPortVariants(np, set.New("other.default.ovn"))
+	require.NoError(t, err)
+	require.Empty(t, variants)
 }
 
 func TestParsePolicyFor(t *testing.T) {
