@@ -493,6 +493,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 	}
 
 	if hasEgressRule(np) {
+		desiredEgressAddrSets := make(map[string]struct{}, len(np.Spec.Egress)*2)
 		if protocolSet.Size() > 0 {
 			blockACLOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(key, pgName, ovnnb.ACLDirectionFromLport, logEnable, enforcementLax, logRate)
 			if err != nil {
@@ -555,9 +556,12 @@ func (c *Controller) handleUpdateNp(key string) error {
 					klog.Error(err)
 					return err
 				}
+				desiredEgressAddrSets[egressAllowAsName] = struct{}{}
+				desiredEgressAddrSets[egressExceptAsName] = struct{}{}
 
-				if len(selectorAllows) != 0 {
-					ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, npr.Ports, logEnable, logActions, logRate, namedPortMap)
+				numericPorts, namedPorts := networkPolicyPortVariants(npr.Ports)
+				if len(selectorAllows) != 0 && (len(npr.Ports) == 0 || len(numericPorts) != 0) {
+					ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, numericPorts, logEnable, logActions, logRate, nil)
 					if err != nil {
 						klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 						return err
@@ -565,10 +569,47 @@ func (c *Controller) handleUpdateNp(key string) error {
 					egressACLOps = append(egressACLOps, ops...)
 				}
 
+				for _, namedPort := range namedPorts {
+					transportProtocol := corev1.ProtocolTCP
+					if namedPort.Protocol != nil {
+						transportProtocol = *namedPort.Protocol
+					} else {
+						namedPort.Protocol = &transportProtocol
+					}
+
+					namedAddressesByVariant, err := c.fetchPolicySelectedNamedPortAddressesForPeers(np.Namespace, protocol, transportProtocol, npr.To, providers, namedPort.Port.StrVal)
+					if err != nil {
+						return fmt.Errorf("fetch named port addresses for %s: %w", key, err)
+					}
+					for variant, addresses := range namedAddressesByVariant {
+						if len(addresses) == 0 {
+							continue
+						}
+						variantAllowAsName := networkPolicyNamedPortAddressSetName(egressAllowAsNamePrefix, protocol, idx, namedPort.Port.StrVal, variant)
+						if err = c.createAsForNetpol(np.Namespace, npName, "egress", variantAllowAsName, addresses); err != nil {
+							return err
+						}
+						desiredEgressAddrSets[variantAllowAsName] = struct{}{}
+						variantNamedPortMap := map[string]*util.NamedPortInfo{
+							namedPort.Port.StrVal: {
+								PortID:   variant.port,
+								Protocol: string(variant.protocol),
+							},
+						}
+						variantNPR := []netv1.NetworkPolicyPort{namedPort}
+						variantACLName := fmt.Sprintf("%s/named/%s/%d", aclName, namedPort.Port.StrVal, variant.port)
+						ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, variantAllowAsName, egressExceptAsName, protocol, variantACLName, variantNPR, logEnable, logActions, logRate, variantNamedPortMap)
+						if err != nil {
+							return fmt.Errorf("generate named port egress ACLs for %s: %w", key, err)
+						}
+						egressACLOps = append(egressACLOps, ops...)
+					}
+				}
+
 				// Create separate ACL for ipBlock peers with inline per-CIDR except
 				if len(ipBlocks) != 0 {
 					ipBlockACLName := fmt.Sprintf("np/%s.%s/egress/%s/%d/ipBlock", npName, np.Namespace, protocol, idx)
-					ops, err := c.OVNNbClient.UpdateEgressIPBlockACLOps(pgName, protocol, ipBlockACLName, ipBlocks, npr.Ports, logEnable, logActions, logRate, namedPortMap)
+					ops, err := c.OVNNbClient.UpdateEgressIPBlockACLOps(pgName, protocol, ipBlockACLName, ipBlocks, numericPorts, logEnable, logActions, logRate, nil)
 					if err != nil {
 						klog.Errorf("generate operations that add egress ipBlock acls to np %s: %v", key, err)
 						return err
@@ -590,7 +631,9 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, nil, logEnable, logActions, logRate, namedPortMap)
+				desiredEgressAddrSets[egressAllowAsName] = struct{}{}
+				desiredEgressAddrSets[egressExceptAsName] = struct{}{}
+				ops, err := c.OVNNbClient.UpdateEgressACLOps(pgName, egressAllowAsName, egressExceptAsName, protocol, aclName, nil, logEnable, logActions, logRate, nil)
 				if err != nil {
 					klog.Errorf("generate operations that add egress acls to np %s: %v", key, err)
 					return err
@@ -616,19 +659,8 @@ func (c *Controller) handleUpdateNp(key string) error {
 			return err
 		}
 
-		// The format of asName is like "test.network.policy.test.egress.except.0" or "test.network.policy.test.egress.allow.0" for egress
 		for _, as := range ass {
-			values := strings.Split(as.Name, ".")
-			if len(values) <= 1 {
-				continue
-			}
-			idxStr := values[len(values)-1]
-			if idxStr == "all" {
-				continue
-			}
-
-			idx, _ := strconv.Atoi(idxStr)
-			if idx >= len(np.Spec.Egress) {
+			if _, ok := desiredEgressAddrSets[as.Name]; !ok {
 				if err = c.OVNNbClient.DeleteAddressSet(as.Name); err != nil {
 					klog.Errorf("delete np %s address set: %v", key, err)
 					return err
@@ -1195,6 +1227,110 @@ func (c *Controller) fetchPolicySelectedAddressesOnce(namespace, protocol string
 	}
 	c.setPolicyAddressCache(cacheKey, selectedAddresses, exceptAddresses, generation)
 	return selectedAddresses, exceptAddresses, nil
+}
+
+// fetchPolicySelectedNamedPortAddresses returns destination addresses grouped
+// by the concrete protocol/port variant exposed by the selected Pods. Named
+// ports are resolved on the destination side of an egress rule, so the lookup
+// must retain namespace boundaries and cannot use the policy namespace's
+// namespace-wide named-port map.
+func (c *Controller) fetchPolicySelectedNamedPortAddresses(namespace, ipProtocol string, transportProtocol corev1.Protocol, npp netv1.NetworkPolicyPeer, providers set.Set[string], name string) (map[namedPortKey][]string, error) {
+	if npp.IPBlock != nil || (npp.NamespaceSelector == nil && npp.PodSelector == nil) {
+		return nil, nil
+	}
+
+	selectedNamespaces, err := c.policySelectedNamespaces(namespace, npp.NamespaceSelector)
+	if err != nil {
+		return nil, err
+	}
+
+	var podSelector labels.Selector = labels.Everything()
+	if npp.PodSelector != nil {
+		podSelector, err = metav1.LabelSelectorAsSelector(npp.PodSelector)
+		if err != nil {
+			return nil, fmt.Errorf("error creating pod label selector, %w", err)
+		}
+	}
+
+	addresses := make(map[namedPortKey][]string)
+	for _, selectedNamespace := range selectedNamespaces {
+		variants := c.namedPort.GetNamedPortVariantsByNs(selectedNamespace)[name]
+		if len(variants) == 0 {
+			continue
+		}
+		pods, err := c.podsLister.Pods(selectedNamespace).List(podSelector)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list pod, %w", err)
+		}
+
+		for _, pod := range pods {
+			if pod.Spec.HostNetwork {
+				continue
+			}
+			podNets, err := c.getPodKubeovnNets(pod)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get pod nets, %w", err)
+			}
+
+			for variant, podNames := range variants {
+				if variant.protocol != transportProtocol || !podNames.Has(pod.Name) {
+					continue
+				}
+				for _, podNet := range podNets {
+					if !netpolAppliesToProvider(podNet.ProviderName, providers) {
+						continue
+					}
+					podIPAnnotation := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)]
+					for podIP := range strings.SplitSeq(podIPAnnotation, ",") {
+						if podIP != "" && util.CheckProtocol(podIP) == ipProtocol {
+							addresses[variant] = append(addresses[variant], podIP)
+						}
+					}
+				}
+			}
+		}
+	}
+	return addresses, nil
+}
+
+func (c *Controller) fetchPolicySelectedNamedPortAddressesForPeers(namespace, ipProtocol string, transportProtocol corev1.Protocol, peers []netv1.NetworkPolicyPeer, providers set.Set[string], name string) (map[namedPortKey][]string, error) {
+	addresses := make(map[namedPortKey][]string)
+	for _, peer := range peers {
+		selected, err := c.fetchPolicySelectedNamedPortAddresses(namespace, ipProtocol, transportProtocol, peer, providers, name)
+		if err != nil {
+			return nil, err
+		}
+		for variant, values := range selected {
+			addresses[variant] = append(addresses[variant], values...)
+		}
+	}
+	return addresses, nil
+}
+
+func (c *Controller) policySelectedNamespaces(namespace string, selector *metav1.LabelSelector) ([]string, error) {
+	if selector == nil {
+		return []string{namespace}, nil
+	}
+
+	nsSelector, err := metav1.LabelSelectorAsSelector(selector)
+	if err != nil {
+		return nil, fmt.Errorf("error creating namespace label selector, %w", err)
+	}
+	namespaces, err := c.namespacesLister.List(nsSelector)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ns, %w", err)
+	}
+	selected := make([]string, 0, len(namespaces))
+	for _, selectedNamespace := range namespaces {
+		selected = append(selected, selectedNamespace.Name)
+	}
+	return selected, nil
+}
+
+func networkPolicyNamedPortAddressSetName(prefix, protocol string, index int, name string, port namedPortKey) string {
+	key := fmt.Sprintf("%s\x00%s\x00%d\x00%d", name, port.protocol, port.port, index)
+	sum := sha256.Sum256([]byte(key))
+	return fmt.Sprintf("%s.%s.%d.named.%x", prefix, protocol, index, sum[:6])
 }
 
 func (c *Controller) enqueueNamespaceNamedPortNetworkPolicies(namespace string) {

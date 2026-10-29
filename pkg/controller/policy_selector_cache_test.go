@@ -126,6 +126,59 @@ func TestFetchPolicySelectedAddressesUsesCacheUntilPodEvent(t *testing.T) {
 	require.ElementsMatch(t, []string{"10.0.0.1", "10.0.0.2"}, addresses)
 }
 
+func TestFetchPolicySelectedNamedPortAddressesKeepsNamespaceAndPortVariants(t *testing.T) {
+	nsDefault := &corev1.Namespace{Name: metav1.NamespaceDefault, Annotations: map[string]string{util.LogicalSwitchAnnotation: util.DefaultSubnet}}
+	nsRemote := &corev1.Namespace{
+		Name:        "remote",
+		Labels:      map[string]string{"tenant": "remote"},
+		Annotations: map[string]string{util.LogicalSwitchAnnotation: util.DefaultSubnet},
+	}
+	newPod := func(namespace, name, address string, port int32) *corev1.Pod {
+		return &corev1.Pod{
+			Name:      name,
+			Namespace: namespace,
+			Labels:    map[string]string{"app": "backend"},
+			Annotations: map[string]string{
+				util.LogicalSwitchAnnotation:                                    util.DefaultSubnet,
+				fmt.Sprintf(util.AllocatedAnnotationTemplate, util.OvnProvider): "true",
+				fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider): address,
+			},
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{Ports: []corev1.ContainerPort{{Name: "http", Protocol: corev1.ProtocolTCP, ContainerPort: port}}}}},
+		}
+	}
+	pod8080 := newPod("remote", "backend-8080", "10.0.0.8", 8080)
+	pod9090 := newPod("remote", "backend-9090", "10.0.0.9", 9090)
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Namespaces: []*corev1.Namespace{nsDefault, nsRemote},
+		Pods:       []*corev1.Pod{pod8080, pod9090},
+		Subnets: []*kubeovnv1.Subnet{{
+			Name: util.DefaultSubnet,
+			Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider, Protocol: kubeovnv1.ProtocolIPv4},
+		}},
+	})
+	require.NoError(t, err)
+	controller := fake.fakeController
+	controller.namedPort = NewNamedPort()
+	controller.namedPort.AddNamedPortByPod(pod8080)
+	controller.namedPort.AddNamedPortByPod(pod9090)
+
+	peer := netv1.NetworkPolicyPeer{
+		NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"tenant": "remote"}},
+		PodSelector:       &metav1.LabelSelector{MatchLabels: map[string]string{"app": "backend"}},
+	}
+	addresses, err := controller.fetchPolicySelectedNamedPortAddressesForPeers(
+		metav1.NamespaceDefault,
+		kubeovnv1.ProtocolIPv4,
+		corev1.ProtocolTCP,
+		[]netv1.NetworkPolicyPeer{peer},
+		set.New(util.OvnProvider),
+		"http",
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"10.0.0.8"}, addresses[namedPortKey{protocol: corev1.ProtocolTCP, port: 8080}])
+	require.ElementsMatch(t, []string{"10.0.0.9"}, addresses[namedPortKey{protocol: corev1.ProtocolTCP, port: 9090}])
+}
+
 func TestPolicySelectorCacheInvalidatesOnNetworkAttachmentInformerEvents(t *testing.T) {
 	fake, err := newFakeControllerWithOptions(t, nil)
 	require.NoError(t, err)
