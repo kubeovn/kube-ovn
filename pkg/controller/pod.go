@@ -138,7 +138,7 @@ func namedPortsForPod(pod *v1.Pod) map[namedPortRef]struct{} {
 			if protocol == "" {
 				protocol = v1.ProtocolTCP
 			}
-			ports[namedPortRef{name: port.Name, namedPortKey: namedPortKey{protocol: protocol, port: port.ContainerPort}}] = struct{}{}
+			ports[namedPortRef{name: port.Name, protocol: protocol, port: port.ContainerPort}] = struct{}{}
 		}
 	}
 	return ports
