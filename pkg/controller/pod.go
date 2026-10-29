@@ -37,74 +37,90 @@ import (
 
 type NamedPort struct {
 	mutex sync.RWMutex
-	// first key is namespace, second key is portName
-	namedPortMap map[string]map[string]*util.NamedPortInfo
+	// namespace -> port name -> protocol and number -> Pods
+	namedPortMap map[string]map[string]map[namedPortKey]*strset.Set
+}
+
+type namedPortKey struct {
+	protocol v1.Protocol
+	port     int32
+}
+
+type namedPortRef struct {
+	name string
+	namedPortKey
 }
 
 func NewNamedPort() *NamedPort {
 	return &NamedPort{
 		mutex:        sync.RWMutex{},
-		namedPortMap: map[string]map[string]*util.NamedPortInfo{},
+		namedPortMap: map[string]map[string]map[namedPortKey]*strset.Set{},
 	}
 }
 
 func (n *NamedPort) AddNamedPortByPod(pod *v1.Pod) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
+	n.addNamedPortByPodLocked(pod)
+}
+
+func (n *NamedPort) addNamedPortByPodLocked(pod *v1.Pod) {
 	ns := pod.Namespace
 	podName := pod.Name
-
-	restartableInitContainers := make([]v1.Container, 0, len(pod.Spec.InitContainers))
-	for i := range pod.Spec.InitContainers {
-		if pod.Spec.InitContainers[i].RestartPolicy != nil &&
-			*pod.Spec.InitContainers[i].RestartPolicy == v1.ContainerRestartPolicyAlways {
-			restartableInitContainers = append(restartableInitContainers, pod.Spec.InitContainers[i])
+	for ref := range namedPortsForPod(pod) {
+		if n.namedPortMap[ns] == nil {
+			n.namedPortMap[ns] = make(map[string]map[namedPortKey]*strset.Set)
 		}
-	}
-
-	containers := slices.Concat(restartableInitContainers, pod.Spec.Containers)
-	if len(containers) == 0 {
-		return
-	}
-
-	for _, container := range containers {
-		if len(container.Ports) == 0 {
-			continue
+		if n.namedPortMap[ns][ref.name] == nil {
+			n.namedPortMap[ns][ref.name] = make(map[namedPortKey]*strset.Set)
 		}
-
-		for _, port := range container.Ports {
-			if port.Name == "" || port.ContainerPort == 0 {
-				continue
-			}
-
-			if _, ok := n.namedPortMap[ns]; ok {
-				if _, ok := n.namedPortMap[ns][port.Name]; ok {
-					if n.namedPortMap[ns][port.Name].PortID == port.ContainerPort {
-						n.namedPortMap[ns][port.Name].Pods.Add(podName)
-					} else {
-						klog.Warningf("named port %s has already been defined with portID %d",
-							port.Name, n.namedPortMap[ns][port.Name].PortID)
-					}
-					continue
-				}
-			} else {
-				n.namedPortMap[ns] = make(map[string]*util.NamedPortInfo)
-			}
-			n.namedPortMap[ns][port.Name] = &util.NamedPortInfo{
-				PortID: port.ContainerPort,
-				Pods:   strset.New(podName),
-			}
+		if n.namedPortMap[ns][ref.name][ref.namedPortKey] == nil {
+			n.namedPortMap[ns][ref.name][ref.namedPortKey] = strset.New()
 		}
+		n.namedPortMap[ns][ref.name][ref.namedPortKey].Add(podName)
 	}
 }
 
 func (n *NamedPort) DeleteNamedPortByPod(pod *v1.Pod) {
 	n.mutex.Lock()
 	defer n.mutex.Unlock()
+	n.deleteNamedPortByPodLocked(pod.Namespace, pod.Name)
+}
 
-	ns := pod.Namespace
-	podName := pod.Name
+// ReplaceNamedPortByPod replaces all cached named ports for a Pod. A Pod update
+// may rename a port or remove it entirely, so deleting from the new Pod spec
+// cannot clean up the old index entries.
+func (n *NamedPort) ReplaceNamedPortByPod(pod *v1.Pod) {
+	n.mutex.Lock()
+	defer n.mutex.Unlock()
+	n.deleteNamedPortByPodLocked(pod.Namespace, pod.Name)
+	n.addNamedPortByPodLocked(pod)
+}
 
+func (n *NamedPort) deleteNamedPortByPodLocked(namespace, podName string) {
+	nsPorts, ok := n.namedPortMap[namespace]
+	if !ok {
+		return
+	}
+
+	for portName, variants := range nsPorts {
+		for key, pods := range variants {
+			pods.Remove(podName)
+			if pods.Size() == 0 {
+				delete(variants, key)
+			}
+		}
+		if len(variants) == 0 {
+			delete(nsPorts, portName)
+		}
+	}
+	if len(nsPorts) == 0 {
+		delete(n.namedPortMap, namespace)
+	}
+}
+
+func namedPortsForPod(pod *v1.Pod) map[namedPortRef]struct{} {
+	ports := make(map[namedPortRef]struct{})
 	restartableInitContainers := make([]v1.Container, 0, len(pod.Spec.InitContainers))
 	for i := range pod.Spec.InitContainers {
 		if pod.Spec.InitContainers[i].RestartPolicy != nil &&
@@ -113,51 +129,41 @@ func (n *NamedPort) DeleteNamedPortByPod(pod *v1.Pod) {
 		}
 	}
 
-	containers := slices.Concat(restartableInitContainers, pod.Spec.Containers)
-	if len(containers) == 0 {
-		return
-	}
-
-	for _, container := range containers {
-		if len(container.Ports) == 0 {
-			continue
-		}
-
+	for _, container := range slices.Concat(restartableInitContainers, pod.Spec.Containers) {
 		for _, port := range container.Ports {
-			if port.Name == "" {
+			if port.Name == "" || port.ContainerPort == 0 {
 				continue
 			}
-
-			if _, ok := n.namedPortMap[ns]; !ok {
-				continue
+			protocol := port.Protocol
+			if protocol == "" {
+				protocol = v1.ProtocolTCP
 			}
-
-			if _, ok := n.namedPortMap[ns][port.Name]; !ok {
-				continue
-			}
-
-			if !n.namedPortMap[ns][port.Name].Pods.Has(podName) {
-				continue
-			}
-
-			n.namedPortMap[ns][port.Name].Pods.Remove(podName)
-			if n.namedPortMap[ns][port.Name].Pods.Size() == 0 {
-				delete(n.namedPortMap[ns], port.Name)
-				if len(n.namedPortMap[ns]) == 0 {
-					delete(n.namedPortMap, ns)
-				}
-			}
+			ports[namedPortRef{name: port.Name, namedPortKey: namedPortKey{protocol: protocol, port: port.ContainerPort}}] = struct{}{}
 		}
 	}
+	return ports
+}
+
+func namedPortsChanged(oldPod, newPod *v1.Pod) bool {
+	return !maps.Equal(namedPortsForPod(oldPod), namedPortsForPod(newPod))
 }
 
 func (n *NamedPort) GetNamedPortByNs(namespace string) map[string]*util.NamedPortInfo {
 	n.mutex.RLock()
 	defer n.mutex.RUnlock()
 
-	if result, ok := n.namedPortMap[namespace]; ok {
-		klog.V(3).Infof("namespace %s has %d named ports", namespace, len(result))
-		return maps.Clone(result)
+	if nsPorts, ok := n.namedPortMap[namespace]; ok {
+		result := make(map[string]*util.NamedPortInfo, len(nsPorts))
+		for name, variants := range nsPorts {
+			if len(variants) != 1 {
+				klog.Warningf("named port %s in namespace %s resolves to multiple protocol/port values; skipping unsafe namespace-wide ACL", name, namespace)
+				continue
+			}
+			for key, pods := range variants {
+				result[name] = &util.NamedPortInfo{PortID: key.port, Protocol: string(key.protocol), Pods: pods.Copy()}
+			}
+		}
+		return result
 	}
 	return nil
 }
@@ -204,6 +210,9 @@ func (c *Controller) enqueueAddPod(obj any) {
 	// TODO: we need to find a way to reduce duplicated np added to the queue
 	if c.config.EnableNP {
 		c.namedPort.AddNamedPortByPod(p)
+		if len(namedPortsForPod(p)) != 0 {
+			c.enqueueNamespaceNamedPortNetworkPolicies(p.Namespace)
+		}
 		if p.Status.PodIP != "" {
 			for _, np := range c.podMatchNetworkPolicies(p) {
 				klog.V(3).Infof("enqueue update network policy %s", np)
@@ -291,6 +300,9 @@ func (c *Controller) enqueueDeletePod(obj any) {
 
 	if c.config.EnableNP {
 		c.namedPort.DeleteNamedPortByPod(p)
+		if len(namedPortsForPod(p)) != 0 {
+			c.enqueueNamespaceNamedPortNetworkPolicies(p.Namespace)
+		}
 		for _, np := range c.podMatchNetworkPolicies(p) {
 			c.updateNpQueue.Add(np)
 		}
@@ -350,7 +362,30 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		}
 	}
 
-	if newPod.Spec.HostNetwork || oldPod.ResourceVersion == newPod.ResourceVersion {
+	if oldPod.ResourceVersion == newPod.ResourceVersion {
+		return
+	}
+
+	namedPortChanged := false
+	if c.config.EnableNP {
+		namedPortChanged = namedPortsChanged(oldPod, newPod) || oldPod.Spec.HostNetwork != newPod.Spec.HostNetwork
+		if namedPortChanged {
+			if newPod.Spec.HostNetwork {
+				c.namedPort.DeleteNamedPortByPod(newPod)
+			} else {
+				c.namedPort.ReplaceNamedPortByPod(newPod)
+			}
+			c.enqueueNamespaceNamedPortNetworkPolicies(newPod.Namespace)
+		}
+		if namedPortChanged || !maps.Equal(oldPod.Labels, newPod.Labels) {
+			oldNp := c.podMatchNetworkPolicies(oldPod)
+			newNp := c.podMatchNetworkPolicies(newPod)
+			for _, np := range util.UnionStringSlice(oldNp, newNp) {
+				c.updateNpQueue.Add(np)
+			}
+		}
+	}
+	if newPod.Spec.HostNetwork {
 		return
 	}
 
@@ -363,14 +398,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 
 	key := cache.MetaObjectToName(newPod).String()
 	if c.config.EnableNP {
-		c.namedPort.AddNamedPortByPod(newPod)
 		newNp := c.podMatchNetworkPolicies(newPod)
-		if !maps.Equal(oldPod.Labels, newPod.Labels) {
-			oldNp := c.podMatchNetworkPolicies(oldPod)
-			for _, np := range util.UnionStringSlice(oldNp, newNp) {
-				c.updateNpQueue.Add(np)
-			}
-		}
 
 		for _, podNet := range podNets {
 			oldAllocated := oldPod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)]

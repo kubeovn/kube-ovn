@@ -1139,6 +1139,59 @@ func TestDeleteNamedPortByPodWithRestartableInitContainers(t *testing.T) {
 	assert.Empty(t, result, "both regular and sidecar init container named ports should be deleted")
 }
 
+func TestReplaceNamedPortByPodRemovesStaleEntries(t *testing.T) {
+	np := NewNamedPort()
+	oldPod := &corev1.Pod{
+		Namespace: "test-ns",
+		Name:      "test-pod",
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Ports: []corev1.ContainerPort{
+			{Name: "http", ContainerPort: 80},
+			{Name: "metrics", ContainerPort: 9090},
+		}}}},
+	}
+	np.AddNamedPortByPod(oldPod)
+
+	newPod := oldPod.DeepCopy()
+	newPod.Spec.Containers[0].Ports = []corev1.ContainerPort{{Name: "http", ContainerPort: 8080}}
+	np.ReplaceNamedPortByPod(newPod)
+
+	result := np.GetNamedPortByNs("test-ns")
+	require.Len(t, result, 1)
+	require.Contains(t, result, "http")
+	assert.Equal(t, int32(8080), result["http"].PortID)
+	assert.NotContains(t, result, "metrics")
+}
+
+func TestNamedPortConflictFailsClosedAndRecovers(t *testing.T) {
+	np := NewNamedPort()
+	newPod := func(name string, number int32, protocol corev1.Protocol) *corev1.Pod {
+		return &corev1.Pod{
+			Namespace: "test-ns",
+			Name:      name,
+			Spec: corev1.PodSpec{Containers: []corev1.Container{{Ports: []corev1.ContainerPort{{
+				Name: "http", ContainerPort: number, Protocol: protocol,
+			}}}}},
+		}
+	}
+	first := newPod("first", 80, corev1.ProtocolTCP)
+	second := newPod("second", 8080, corev1.ProtocolTCP)
+	np.AddNamedPortByPod(first)
+	np.AddNamedPortByPod(second)
+	assert.NotContains(t, np.GetNamedPortByNs("test-ns"), "http")
+
+	np.DeleteNamedPortByPod(first)
+	result := np.GetNamedPortByNs("test-ns")
+	require.Equal(t, int32(8080), result["http"].PortID)
+	require.Equal(t, "TCP", result["http"].Protocol)
+	require.True(t, result["http"].Pods.Has("second"))
+
+	third := newPod("third", 8080, corev1.ProtocolUDP)
+	np.AddNamedPortByPod(third)
+	assert.NotContains(t, np.GetNamedPortByNs("test-ns"), "http")
+	np.DeleteNamedPortByPod(third)
+	assert.Contains(t, np.GetNamedPortByNs("test-ns"), "http")
+}
+
 func TestHasAliveSiblingVMPod(t *testing.T) {
 	vmiOwner := func(vmName string) []metav1.OwnerReference {
 		return []metav1.OwnerReference{

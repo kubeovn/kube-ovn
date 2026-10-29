@@ -8,6 +8,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	networkinglister "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
 
@@ -129,4 +130,86 @@ func TestEnqueueUpdatePodWhenLabelsStillMatchNetworkPolicy(t *testing.T) {
 		policies = append(policies, item)
 	}
 	require.ElementsMatch(t, []string{"default/allow-selected", "default/allow-old", "default/allow-new"}, policies)
+}
+
+func TestEnqueueUpdatePodWhenNamedPortChanges(t *testing.T) {
+	pod := &corev1.Pod{
+		Name:            "selected",
+		Namespace:       metav1.NamespaceDefault,
+		ResourceVersion: "1",
+		Labels:          map[string]string{"app": "selected"},
+		Annotations: map[string]string{
+			util.LogicalSwitchAnnotation:                                    util.DefaultSubnet,
+			fmt.Sprintf(util.AllocatedAnnotationTemplate, util.OvnProvider): "true",
+		},
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Ports: []corev1.ContainerPort{{Name: "http", ContainerPort: 80}}}}},
+	}
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Pods: []*corev1.Pod{pod},
+		Subnets: []*kubeovnv1.Subnet{{
+			Name: util.DefaultSubnet,
+		}},
+	})
+	require.NoError(t, err)
+	controller := fake.fakeController
+	controller.config.EnableNP = true
+	controller.namedPort = NewNamedPort()
+	controller.namedPort.AddNamedPortByPod(pod)
+	controller.addOrUpdatePodQueue = newTypedRateLimitingQueue[string]("AddOrUpdatePod", nil)
+	controller.updateNpQueue = newTypedRateLimitingQueue[string]("UpdateNetworkPolicy", nil)
+	t.Cleanup(controller.addOrUpdatePodQueue.ShutDown)
+	t.Cleanup(controller.updateNpQueue.ShutDown)
+
+	npIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	require.NoError(t, npIndexer.Add(&networkingv1.NetworkPolicy{
+		Name:      "allow-selected",
+		Namespace: metav1.NamespaceDefault,
+		Spec:      networkingv1.NetworkPolicySpec{PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "selected"}}},
+	}))
+	controller.npsLister = networkinglister.NewNetworkPolicyLister(npIndexer)
+	require.NoError(t, controller.rebuildPolicyEventIndex())
+
+	newPod := pod.DeepCopy()
+	newPod.ResourceVersion = "2"
+	newPod.Spec.Containers[0].Ports[0].ContainerPort = 8080
+	controller.enqueueUpdatePod(pod, newPod)
+
+	require.Equal(t, 1, controller.updateNpQueue.Len())
+	item, shutdown := controller.updateNpQueue.Get()
+	require.False(t, shutdown)
+	controller.updateNpQueue.Done(item)
+	require.Equal(t, "default/allow-selected", item)
+	result := controller.namedPort.GetNamedPortByNs(metav1.NamespaceDefault)
+	require.Equal(t, int32(8080), result["http"].PortID)
+}
+
+func TestEnqueueNamespaceNamedPortPoliciesForUnselectedPod(t *testing.T) {
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	require.NoError(t, indexer.Add(&networkingv1.NetworkPolicy{
+		Name: "named", Namespace: "default",
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{MatchLabels: map[string]string{"app": "selected"}},
+			Ingress: []networkingv1.NetworkPolicyIngressRule{{Ports: []networkingv1.NetworkPolicyPort{{
+				Port: new(intstr.FromString("http")),
+			}}}},
+		},
+	}))
+	require.NoError(t, indexer.Add(&networkingv1.NetworkPolicy{
+		Name: "numeric", Namespace: "default",
+		Spec: networkingv1.NetworkPolicySpec{Egress: []networkingv1.NetworkPolicyEgressRule{{Ports: []networkingv1.NetworkPolicyPort{{
+			Port: new(intstr.FromInt32(80)),
+		}}}}},
+	}))
+	controller := &Controller{
+		npsLister:     networkinglister.NewNetworkPolicyLister(indexer),
+		updateNpQueue: newTypedRateLimitingQueue[string]("UpdateNetworkPolicy", nil),
+	}
+	t.Cleanup(controller.updateNpQueue.ShutDown)
+
+	controller.enqueueNamespaceNamedPortNetworkPolicies("default")
+	require.Equal(t, 1, controller.updateNpQueue.Len())
+	item, shutdown := controller.updateNpQueue.Get()
+	require.False(t, shutdown)
+	controller.updateNpQueue.Done(item)
+	require.Equal(t, "default/named", item)
 }

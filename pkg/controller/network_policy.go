@@ -18,6 +18,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -968,6 +969,37 @@ func (c *Controller) fetchPolicySelectedAddressesOnce(namespace, protocol string
 	}
 	c.setPolicyAddressCache(cacheKey, selectedAddresses, exceptAddresses, generation)
 	return selectedAddresses, exceptAddresses, nil
+}
+
+func (c *Controller) enqueueNamespaceNamedPortNetworkPolicies(namespace string) {
+	policies, err := c.npsLister.NetworkPolicies(namespace).List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list network policies in namespace %s for named port update: %v", namespace, err)
+		return
+	}
+	for _, policy := range policies {
+		if networkPolicyHasNamedPort(policy) {
+			c.updateNpQueue.Add(cache.MetaObjectToName(policy).String())
+		}
+	}
+}
+
+func networkPolicyHasNamedPort(policy *netv1.NetworkPolicy) bool {
+	for _, rule := range policy.Spec.Ingress {
+		for _, port := range rule.Ports {
+			if port.Port != nil && port.Port.Type == intstr.String {
+				return true
+			}
+		}
+	}
+	for _, rule := range policy.Spec.Egress {
+		for _, port := range rule.Ports {
+			if port.Port != nil && port.Port.Type == intstr.String {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (c *Controller) podMatchNetworkPolicies(pod *corev1.Pod) []string {
