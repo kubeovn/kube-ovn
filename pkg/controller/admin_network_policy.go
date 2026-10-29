@@ -38,10 +38,14 @@ type ChangedName struct {
 }
 
 type AdminNetworkPolicyChangedDelta struct {
-	key              string
-	ruleNames        [util.AnpMaxRules]ChangedName
-	field            ChangedField
-	DNSReconcileDone bool
+	key                string
+	ruleNames          [util.AnpMaxRules]ChangedName
+	ingressRuleNames   [util.AnpMaxRules]ChangedName
+	egressRuleNames    [util.AnpMaxRules]ChangedName
+	fields             changedFieldMask
+	field              ChangedField
+	DNSReconcileDone   bool
+	DNSReconcileNeeded bool
 }
 
 type labelChange struct {
@@ -137,7 +141,7 @@ func (c *Controller) enqueueUpdateAnp(oldObj, newObj any) {
 			ruleChanged = true
 		}
 		if !reflect.DeepEqual(oldRule.From, rule.From) {
-			changedIngressRuleNames[index] = ChangedName{curRuleName: rule.Name}
+			changedIngressRuleNames[index] = ChangedName{curRuleName: rule.Name, isMatch: rule.Name == ""}
 			ruleChanged = true
 		}
 	}
@@ -153,7 +157,7 @@ func (c *Controller) enqueueUpdateAnp(oldObj, newObj any) {
 			ruleChanged = true
 		}
 		if !reflect.DeepEqual(oldRule.To, rule.To) {
-			changedEgressRuleNames[index] = ChangedName{curRuleName: rule.Name}
+			changedEgressRuleNames[index] = ChangedName{curRuleName: rule.Name, isMatch: rule.Name == ""}
 			ruleChanged = true
 		}
 	}
@@ -302,19 +306,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 
 	// Reconcile DNSNameResolvers for all collected domain names
 	if c.config.EnableDNSNameResolver {
-		// Collect all domain names from egress rules
-		var allDomainNames []string
-		for _, anpr := range anp.Spec.Egress {
-			for _, anprpeer := range anpr.To {
-				if len(anprpeer.DomainNames) != 0 {
-					for _, domainName := range anprpeer.DomainNames {
-						allDomainNames = append(allDomainNames, string(domainName))
-					}
-				}
-			}
-		}
-
-		if err := c.reconcileDNSNameResolversForANP(anpName, allDomainNames); err != nil {
+		if err := c.reconcileAnpDNSNameResolvers(anpName, anp); err != nil {
 			klog.Errorf("failed to reconcile DNSNameResolvers for ANP %s: %v", anpName, err)
 			return err
 		}
@@ -438,6 +430,8 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	// Only handle updates that do not affect acls.
 	c.anpKeyMutex.LockKey(changed.key)
 	defer func() { _ = c.anpKeyMutex.UnlockKey(changed.key) }()
+	changed.normalizeRuleNames()
+	fields := changed.fieldsMask()
 
 	klog.Infof("handleUpdateAnp: processing ANP %s, field=%s, DNSReconcileDone=%v",
 		changed.key, changed.field, changed.DNSReconcileDone)
@@ -457,7 +451,7 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	pgName := strings.ReplaceAll(anpName, "-", ".")
 
 	// The port-group for anp should be updated
-	if changed.field == ChangedSubject {
+	if fields&changedFieldSubject != 0 {
 		// The port-group must exist when update anp, this check should never be matched.
 		if ok, err := c.OVNNbClient.PortGroupExists(pgName); !ok || err != nil {
 			klog.Errorf("port-group for anp %s does not exist when update anp", desiredAnp.Name)
@@ -477,10 +471,11 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 	}
 
 	// Peer selector in ingress/egress rule has changed, so the corresponding address-set need be updated
-	if changed.field == ChangedIngressRule {
+	if fields&changedFieldIngressRule != 0 {
+		ruleNames := changed.ruleNamesFor(ChangedIngressRule)
 		for index, rule := range desiredAnp.Spec.Ingress {
 			// Make sure the rule is changed and go on update
-			if rule.Name == changed.ruleNames[index].curRuleName || changed.ruleNames[index].isMatch {
+			if changedNameMatches(ruleNames[index], rule.Name) {
 				if err := c.setAddrSetForAnpRule(anpName, pgName, rule.Name, index, rule.From, []v1alpha1.AdminNetworkPolicyEgressPeer{}, true, false); err != nil {
 					klog.Errorf("failed to set ingress address-set for anp rule %s/%s, %v", anpName, rule.Name, err)
 					return err
@@ -504,48 +499,36 @@ func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) er
 		}
 	}
 
-	if changed.field == ChangedEgressRule {
+	if fields&changedFieldEgressRule != 0 {
+		ruleNames := changed.ruleNamesFor(ChangedEgressRule)
+		needDNSReconcile := c.config.EnableDNSNameResolver && (changed.DNSReconcileNeeded || !changed.DNSReconcileDone)
 		for index, rule := range desiredAnp.Spec.Egress {
 			// Check if we need to update address sets (rule changed or DNS reconciliation needed)
-			needAddrSetUpdate := rule.Name == changed.ruleNames[index].curRuleName || changed.ruleNames[index].isMatch || changed.DNSReconcileDone
-
-			// Check if we need to reconcile DNS resolvers (DNS feature enabled and not already done)
-			needDNSReconcile := c.config.EnableDNSNameResolver && !changed.DNSReconcileDone
-
-			if needAddrSetUpdate {
-				if err := c.setAddrSetForAnpRule(anpName, pgName, rule.Name, index, []v1alpha1.AdminNetworkPolicyIngressPeer{}, rule.To, false, false); err != nil {
-					klog.Errorf("failed to set egress address-set for anp rule %s/%s, %v", anpName, rule.Name, err)
-					return err
+			needAddrSetUpdate := changedNameMatches(ruleNames[index], rule.Name) || changed.DNSReconcileDone
+			if !needAddrSetUpdate {
+				continue
+			}
+			if err := c.setAddrSetForAnpRule(anpName, pgName, rule.Name, index, []v1alpha1.AdminNetworkPolicyIngressPeer{}, rule.To, false, false); err != nil {
+				klog.Errorf("failed to set egress address-set for anp rule %s/%s, %v", anpName, rule.Name, err)
+				return err
+			}
+			if changed.ruleNames[index].oldRuleName != "" {
+				oldRuleName := changed.ruleNames[index].oldRuleName
+				// Normally the name can not be changed, but when the name really changes, the old address set should be deleted
+				// There is no description in the Name comments that it cannot be changed
+				oldAsV4Name, oldAsV6Name := getAnpAddressSetName(pgName, oldRuleName, index, false)
+				if err := c.OVNNbClient.DeleteAddressSet(oldAsV4Name); err != nil {
+					klog.Errorf("failed to delete address set %s, %v", oldAsV4Name, err)
 				}
-
-				if needDNSReconcile {
-					var currentDomainNames []string
-					for _, peer := range rule.To {
-						for _, domainName := range peer.DomainNames {
-							currentDomainNames = append(currentDomainNames, string(domainName))
-						}
-					}
-
-					if err := c.reconcileDNSNameResolversForANP(anpName, currentDomainNames); err != nil {
-						klog.Errorf("failed to reconcile DNSNameResolvers for egress rule %s/%s, %v", anpName, rule.Name, err)
-						return err
-					}
+				if err := c.OVNNbClient.DeleteAddressSet(oldAsV6Name); err != nil {
+					klog.Errorf("failed to delete address set %s, %v", oldAsV6Name, err)
 				}
-
-				if changed.ruleNames[index].oldRuleName != "" {
-					oldRuleName := changed.ruleNames[index].oldRuleName
-					// Normally the name can not be changed, but when the name really changes, the old address set should be deleted
-					// There is no description in the Name comments that it cannot be changed
-					oldAsV4Name, oldAsV6Name := getAnpAddressSetName(pgName, oldRuleName, index, false)
-
-					if err := c.OVNNbClient.DeleteAddressSet(oldAsV4Name); err != nil {
-						klog.Errorf("failed to delete address set %s, %v", oldAsV4Name, err)
-						// just record error log
-					}
-					if err := c.OVNNbClient.DeleteAddressSet(oldAsV6Name); err != nil {
-						klog.Errorf("failed to delete address set %s, %v", oldAsV6Name, err)
-					}
-				}
+			}
+		}
+		if needDNSReconcile {
+			if err := c.reconcileAnpDNSNameResolvers(anpName, desiredAnp); err != nil {
+				klog.Errorf("failed to reconcile DNSNameResolvers for ANP %s: %v", anpName, err)
+				return err
 			}
 		}
 	}
@@ -576,6 +559,21 @@ func (c *Controller) validateAnpConfig(anp *v1alpha1.AdminNetworkPolicy) error {
 	}
 
 	return nil
+}
+
+func getAnpDomainNames(anp *v1alpha1.AdminNetworkPolicy) (domainNames []string) {
+	for _, rule := range anp.Spec.Egress {
+		for _, peer := range rule.To {
+			for _, domainName := range peer.DomainNames {
+				domainNames = append(domainNames, string(domainName))
+			}
+		}
+	}
+	return domainNames
+}
+
+func (c *Controller) reconcileAnpDNSNameResolvers(anpName string, anp *v1alpha1.AdminNetworkPolicy) error {
+	return c.reconcileDNSNameResolversForANP(anpName, getAnpDomainNames(anp))
 }
 
 func (c *Controller) fetchSelectedPods(anpSubject *v1alpha1.AdminNetworkPolicySubject) ([]string, error) {

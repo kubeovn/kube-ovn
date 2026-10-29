@@ -44,6 +44,42 @@ func TestValidateAnpConfig(t *testing.T) {
 	})
 }
 
+func prepareAnpQueueTestController(t *testing.T) *Controller {
+	t.Helper()
+
+	fakeCtrl, err := newFakeControllerWithOptions(t, nil)
+	require.NoError(t, err)
+
+	ctrl := fakeCtrl.fakeController
+	ctrl.addAnpQueue = newTypedRateLimitingQueue[string]("AddAdminNetworkPolicy", nil)
+	ctrl.updateAnpQueue = newTypedRateLimitingQueue[*AdminNetworkPolicyChangedDelta]("UpdateAdminNetworkPolicy", nil)
+	return ctrl
+}
+
+func newTestAnp(ingressRuleName, egressRuleName string, peerLabels map[string]string) *v1alpha1.AdminNetworkPolicy {
+	return &v1alpha1.AdminNetworkPolicy{
+		Name: "test-anp",
+		Spec: v1alpha1.AdminNetworkPolicySpec{
+			Priority: 10,
+			Subject:  v1alpha1.AdminNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
+			Ingress: []v1alpha1.AdminNetworkPolicyIngressRule{{
+				Name:   ingressRuleName,
+				Action: v1alpha1.AdminNetworkPolicyRuleActionDeny,
+				From: []v1alpha1.AdminNetworkPolicyIngressPeer{{
+					Namespaces: &metav1.LabelSelector{MatchLabels: peerLabels},
+				}},
+			}},
+			Egress: []v1alpha1.AdminNetworkPolicyEgressRule{{
+				Name:   egressRuleName,
+				Action: v1alpha1.AdminNetworkPolicyRuleActionDeny,
+				To: []v1alpha1.AdminNetworkPolicyEgressPeer{{
+					Namespaces: &metav1.LabelSelector{MatchLabels: peerLabels},
+				}},
+			}},
+		},
+	}
+}
+
 func TestFetchCIDRAddrs(t *testing.T) {
 	t.Parallel()
 
