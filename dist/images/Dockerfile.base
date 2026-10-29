@@ -180,7 +180,7 @@ ARG ARCH
 # renovate: datasource=github-releases depName=cni-plugin packageName=containernetworking/plugins versioning=semver
 ARG CNI_PLUGINS_VERSION=v1.9.1
 # renovate: datasource=github-releases depName=kubectl packageName=kubernetes/kubernetes versioning=semver
-ARG KUBECTL_VERSION=v1.37.1
+ARG KUBECTL_VERSION=v1.37.2
 # renovate: datasource=github-releases depName=gobgp packageName=osrg/gobgp versioning=semver
 ARG GOBGP_VERSION=4.10.0
 # renovate: datasource=github-releases depName=dumb-init packageName=Yelp/dumb-init versioning=semver
