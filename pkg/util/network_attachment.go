@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
@@ -54,4 +55,20 @@ func GetNadInterfaceFromNetworkStatusAnnotation(networkStatus, nadName string) (
 	}
 
 	return interfaceName, nil
+}
+
+// ParseInternalSubnetProvider parses the provider string for an internal subnet and returns the NAD name and namespace.
+func ParseInternalSubnetProvider(provider, subnetName string) (string, string, error) {
+	parts := strings.SplitN(provider, ".", 3)
+	if len(parts) != 3 ||
+		parts[0] == "" ||
+		parts[1] == "" ||
+		parts[2] != OvnProvider {
+		return "", "", fmt.Errorf(
+			"invalid provider %q for internal subnet %s: expected <nad-name>.<nad-namespace>.ovn when non-primary CNI is enabled",
+			provider, subnetName,
+		)
+	}
+
+	return parts[0], parts[1], nil
 }
