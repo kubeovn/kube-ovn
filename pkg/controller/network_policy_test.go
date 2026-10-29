@@ -3,7 +3,9 @@ package controller
 import (
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	netv1 "k8s.io/api/networking/v1"
+	"k8s.io/apimachinery/pkg/util/intstr"
 
 	"k8s.io/utils/set"
 
@@ -11,6 +13,26 @@ import (
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestNetworkPolicyPortVariants(t *testing.T) {
+	tcp := corev1.ProtocolTCP
+	endPort := int32(90)
+	numericPort := intstr.FromInt(80)
+	namedPort := intstr.FromString("http")
+	namedRange := intstr.FromString("https")
+	numeric, named := networkPolicyPortVariants([]netv1.NetworkPolicyPort{
+		{Port: &numericPort, Protocol: &tcp},
+		{Port: &namedPort, Protocol: &tcp},
+		{Port: &namedRange, EndPort: &endPort, Protocol: &tcp},
+		{Protocol: &tcp},
+	})
+	if len(numeric) != 2 || numeric[0].Port.IntVal != 80 || numeric[1].Port != nil {
+		t.Fatalf("unexpected numeric ports: %#v", numeric)
+	}
+	if len(named) != 1 || named[0].Port.StrVal != "http" {
+		t.Fatalf("unexpected named ports: %#v", named)
+	}
+}
 
 func TestParsePolicyFor(t *testing.T) {
 	t.Parallel()
