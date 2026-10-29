@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"time"
 
 	openvswitch "github.com/digitalocean/go-openvswitch/ovs"
@@ -68,18 +69,47 @@ func (c *Controller) syncFlows() {
 }
 
 func (c *Controller) storeFlowCache() map[string][]string {
-	snapshot := make(map[string][]string)
+	snapshot := make(map[string][]LbServiceRules)
 
 	c.flowCacheMutex.RLock()
-	defer c.flowCacheMutex.RUnlock()
-
 	for bridgeName, entries := range c.flowCache {
-		for _, flows := range entries {
-			snapshot[bridgeName] = append(snapshot[bridgeName], flows...)
+		for _, rule := range entries {
+			snapshot[bridgeName] = append(snapshot[bridgeName], rule)
+		}
+	}
+	c.flowCacheMutex.RUnlock()
+
+	type portLookupResult struct {
+		id  int
+		err error
+	}
+	portIDs := make(map[string]portLookupResult)
+	getPortID := func(name string) (int, error) {
+		if result, ok := portIDs[name]; ok {
+			return result.id, result.err
+		}
+		id, err := c.getPortID(name)
+		portIDs[name] = portLookupResult{id: id, err: err}
+		return id, err
+	}
+
+	flowsByBridge := make(map[string][]string, len(snapshot))
+	for bridgeName, rules := range snapshot {
+		for _, rule := range rules {
+			flows, err := rule.flows(getPortID)
+			if err != nil {
+				if errors.Is(err, errUnderlayLocalnetPatchNotReady) {
+					klog.V(4).Infof("underlay service flow for %s:%d on bridge %s is waiting for localnet patch: %v", rule.IP, rule.Port, bridgeName, err)
+				} else {
+					klog.Errorf("failed to generate underlay service flow for %s:%d on bridge %s: %v", rule.IP, rule.Port, bridgeName, err)
+				}
+				continue
+			}
+			flowsByBridge[bridgeName] = append(flowsByBridge[bridgeName], flows...)
 		}
 	}
 
-	return snapshot
+	return flowsByBridge
 }
 
 func filterUnmanagedFlows(flows []string) []string {
@@ -121,17 +151,17 @@ func (c *Controller) runFlowSync(stopCh <-chan struct{}) {
 	}
 }
 
-func (c *Controller) setFlowCache(cache map[string]map[string][]string, bridgeName, key string, flows []string) {
+func (c *Controller) setFlowCache(cache map[string]map[string]LbServiceRules, bridgeName, key string, rule LbServiceRules) {
 	c.flowCacheMutex.Lock()
 	defer c.flowCacheMutex.Unlock()
 
 	if cache[bridgeName] == nil {
-		cache[bridgeName] = make(map[string][]string)
+		cache[bridgeName] = make(map[string]LbServiceRules)
 	}
-	cache[bridgeName][key] = flows
+	cache[bridgeName][key] = rule
 }
 
-func (c *Controller) deleteFlowCache(cache map[string]map[string][]string, bridgeName, key string) {
+func (c *Controller) deleteFlowCache(cache map[string]map[string]LbServiceRules, bridgeName, key string) {
 	c.flowCacheMutex.Lock()
 	defer c.flowCacheMutex.Unlock()
 	delete(cache[bridgeName], key)
