@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net"
@@ -891,13 +892,14 @@ func getAffectedCnpRulesForChange(cnp *v1alpha2.ClusterNetworkPolicy, change lab
 }
 
 func mergeCnpChangedNames(oldNames, newNames [util.CnpMaxRules]ChangedName) (merged [util.CnpMaxRules]ChangedName) {
-	for index := range merged {
-		merged[index].isMatch = oldNames[index].isMatch || newNames[index].isMatch
-		if newNames[index].curRuleName != "" {
-			merged[index].curRuleName = newNames[index].curRuleName
-		} else {
-			merged[index].curRuleName = oldNames[index].curRuleName
+	// All three arrays have the same compile-time length.
+	for index, oldName := range oldNames {
+		newName := newNames[index] // #nosec G602 -- index is bounded by the same array type
+		name := ChangedName{
+			isMatch:     oldName.isMatch || newName.isMatch,
+			curRuleName: cmp.Or(newName.curRuleName, oldName.curRuleName),
 		}
+		merged[index] = name // #nosec G602 -- index is bounded by the same array type
 	}
 	return merged
 }

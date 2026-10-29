@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"net"
@@ -1148,15 +1149,14 @@ func isLabelsMatchBanpRulePeersForChange(ingress []v1alpha1.BaselineAdminNetwork
 }
 
 func mergeChangedNames(oldNames, newNames [util.AnpMaxRules]ChangedName) (merged [util.AnpMaxRules]ChangedName) {
-	for index := range merged {
-		if oldNames[index].isMatch || newNames[index].isMatch {
-			merged[index].isMatch = true
+	// All three arrays have the same compile-time length.
+	for index, oldName := range oldNames {
+		newName := newNames[index] // #nosec G602 -- index is bounded by the same array type
+		name := ChangedName{
+			isMatch:     oldName.isMatch || newName.isMatch,
+			curRuleName: cmp.Or(newName.curRuleName, oldName.curRuleName),
 		}
-		if newNames[index].curRuleName != "" {
-			merged[index].curRuleName = newNames[index].curRuleName
-		} else {
-			merged[index].curRuleName = oldNames[index].curRuleName
-		}
+		merged[index] = name // #nosec G602 -- index is bounded by the same array type
 	}
 	return merged
 }
