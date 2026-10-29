@@ -797,14 +797,18 @@ func TestGenNatGwConntrackdContainer(t *testing.T) {
 	assert.Equal(t, []string{"bash", "/kube-ovn/start-conntrackd.sh"}, container.Command)
 
 	envMap := make(map[string]string, len(container.Env))
-	for _, env := range container.Env {
+	var podIPs *corev1.EnvVar
+	for i, env := range container.Env {
 		envMap[env.Name] = env.Value
-		if env.Name == "POD_IP" {
-			require.NotNil(t, env.ValueFrom)
-			assert.Equal(t, "status.podIP", env.ValueFrom.FieldRef.FieldPath,
-				"entries must be synchronized from the gateway subnet address, not from an EIP")
+		if env.Name == "POD_IPS" {
+			podIPs = &container.Env[i]
 		}
 	}
+	require.NotNil(t, podIPs, "the sidecar needs the gateway subnet addresses to bind to")
+	require.NotNil(t, podIPs.ValueFrom)
+	// Both addresses of a dual-stack subnet, so that the script can keep the IPv4 one; never an
+	// EIP, which moves between replicas.
+	assert.Equal(t, "status.podIPs", podIPs.ValueFrom.FieldRef.FieldPath)
 	assert.Equal(t, "eth0", envMap["CONNTRACK_SYNC_INTERFACE"])
 	assert.Equal(t, "239.1.2.3", envMap["CONNTRACK_SYNC_GROUP"])
 	assert.Equal(t, "3780", envMap["CONNTRACK_SYNC_PORT"])
@@ -844,6 +848,15 @@ func TestConntrackdStartScript(t *testing.T) {
 	// The synchronization traffic must not be tracked, nor marked for the external network.
 	assert.Contains(t, content, "-j CT --notrack")
 	assert.Contains(t, content, "ensure_rule mangle PREROUTING")
+
+	// The gateway NATs IPv4 TCP, UDP and ICMP: everything else stays local to its replica.
+	assert.Contains(t, content, "Filter From Kernelspace")
+	assert.Contains(t, content, "IPv6_address ::/0")
+	for _, protocol := range []string{"tcp", "udp", "icmp"} {
+		assert.Regexp(t, `(?m)^\s+`+protocol+`$`, content, "protocol %s must be synchronized", protocol)
+	}
+	// The channel is bound to the IPv4 address even on a dual-stack gateway subnet.
+	assert.Contains(t, content, `grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'`)
 
 	dockerfile, err := os.ReadFile(filepath.Join(gwDir, "Dockerfile"))
 	require.NoError(t, err)

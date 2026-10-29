@@ -43,6 +43,9 @@ const natGwConntrackSyncInterface = "eth0"
 // receives straight into the kernel table, so that any replica can translate a flow NATed by
 // another one.
 //
+// Only the IPv4 TCP, UDP and ICMP entries are synchronized, over an IPv4 channel: these are the
+// flows the gateway translates.
+//
 // The container shares the Pod network namespace, and therefore the conntrack table, with the
 // vpc-nat-gw container. It runs from the NAT gateway image, which is the one shipping
 // conntrack-tools.
@@ -61,12 +64,14 @@ func genNatGwConntrackdContainer(image, group string, port int32) corev1.Contain
 		Command:         []string{"bash", "/kube-ovn/start-conntrackd.sh"},
 		Env: []corev1.EnvVar{
 			{
-				// Address conntrackd binds the multicast socket to. It is the address of the
-				// gateway subnet interface, never an EIP: EIPs move between replicas.
-				Name: "POD_IP",
+				// Addresses conntrackd picks the source of the multicast socket from. They are
+				// the ones of the gateway subnet interface, never an EIP: EIPs move between
+				// replicas. The script keeps the IPv4 one, which a dual-stack subnet does not
+				// necessarily list first.
+				Name: "POD_IPS",
 				ValueFrom: &corev1.EnvVarSource{
 					FieldRef: &corev1.ObjectFieldSelector{
-						FieldPath: "status.podIP",
+						FieldPath: "status.podIPs",
 					},
 				},
 			},

@@ -14,9 +14,10 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
-// newConntrackSyncCache returns a cache holding what ValidateVpcNatGW resolves: the NAT gateway
-// configuration, the VPC and the subnet of the gateway, plus the gateways to check against.
-func newConntrackSyncCache(gateways ...ovnv1.VpcNatGateway) *mockCache {
+// newConntrackSyncCacheWithCIDR returns a cache holding what ValidateVpcNatGW resolves: the NAT
+// gateway configuration, the VPC and the subnet of the gateway, plus the gateways to check
+// against.
+func newConntrackSyncCacheWithCIDR(cidr string, gateways ...ovnv1.VpcNatGateway) *mockCache {
 	return &mockCache{
 		objects: map[string]runtime.Object{
 			"kube-system/ovn-vpc-nat-config": &corev1.ConfigMap{
@@ -26,11 +27,16 @@ func newConntrackSyncCache(gateways ...ovnv1.VpcNatGateway) *mockCache {
 			"/test-vpc": &ovnv1.Vpc{Name: "test-vpc"},
 			"/test-subnet": &ovnv1.Subnet{
 				Name: "test-subnet",
-				Spec: ovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/24"},
+				Spec: ovnv1.SubnetSpec{CIDRBlock: cidr},
 			},
 		},
 		natGateways: gateways,
 	}
+}
+
+// newConntrackSyncCache returns the same cache with an IPv4 gateway subnet.
+func newConntrackSyncCache(gateways ...ovnv1.VpcNatGateway) *mockCache {
+	return newConntrackSyncCacheWithCIDR("10.0.0.0/24", gateways...)
 }
 
 func newConntrackSyncGateway(name string, replicas int32, conntrackSync ovnv1.VpcNatGatewayConntrackSyncConfig) ovnv1.VpcNatGateway {
@@ -69,6 +75,26 @@ func TestValidateVpcNatGwConntrackSync(t *testing.T) {
 		// An address left over from a previous configuration must not block a disabled gateway.
 		gw := newConntrackSyncGateway("test-gw", 1, ovnv1.VpcNatGatewayConntrackSyncConfig{MulticastGroup: "10.0.0.1"})
 		v := &ValidatingHook{cache: newConntrackSyncCache()}
+		require.NoError(t, v.ValidateVpcNatGW(context.Background(), &gw))
+	})
+
+	t.Run("allowed on a dual-stack subnet", func(t *testing.T) {
+		// The replicas bind the channel to the IPv4 address of a dual-stack gateway subnet.
+		gw := newConntrackSyncGateway("test-gw", 2, ovnv1.VpcNatGatewayConntrackSyncConfig{Enabled: true})
+		v := &ValidatingHook{cache: newConntrackSyncCacheWithCIDR("10.0.0.0/24,fd00::/64")}
+		require.NoError(t, v.ValidateVpcNatGW(context.Background(), &gw))
+	})
+
+	t.Run("rejected on an IPv6-only subnet", func(t *testing.T) {
+		gw := newConntrackSyncGateway("test-gw", 2, ovnv1.VpcNatGatewayConntrackSyncConfig{Enabled: true})
+		v := &ValidatingHook{cache: newConntrackSyncCacheWithCIDR("fd00::/64")}
+		require.ErrorContains(t, v.ValidateVpcNatGW(context.Background(), &gw),
+			"conntrack synchronization requires an IPv4 gateway subnet")
+	})
+
+	t.Run("ignored on an IPv6-only subnet when disabled", func(t *testing.T) {
+		gw := newConntrackSyncGateway("test-gw", 2, ovnv1.VpcNatGatewayConntrackSyncConfig{})
+		v := &ValidatingHook{cache: newConntrackSyncCacheWithCIDR("fd00::/64")}
 		require.NoError(t, v.ValidateVpcNatGW(context.Background(), &gw))
 	})
 

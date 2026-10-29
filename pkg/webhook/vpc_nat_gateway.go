@@ -501,7 +501,7 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 		return fmt.Errorf("BFD is enabled on NAT gateway but VPC %s does not have BFD enabled (vpc.spec.enableBfd must be true)", gw.Spec.Vpc)
 	}
 
-	if err := v.validateNatGwConntrackSync(ctx, gw); err != nil {
+	if err := v.validateNatGwConntrackSync(ctx, gw, subnet); err != nil {
 		return err
 	}
 
@@ -524,11 +524,11 @@ func (v *ValidatingHook) ValidateVpcNatGW(ctx context.Context, gw *ovnv1.VpcNatG
 }
 
 // validateNatGwConntrackSync checks the conntrack synchronization settings of a NAT gateway:
-// synchronization only makes sense between several replicas, the multicast group has to be an
-// IPv4 multicast address that is routable inside the gateway subnet, and no other gateway of the
-// same subnet may already synchronize over the same group and port, which would mix the NAT state
-// of two gateways.
-func (v *ValidatingHook) validateNatGwConntrackSync(ctx context.Context, gw *ovnv1.VpcNatGateway) error {
+// synchronization only makes sense between several replicas, the replicas synchronize over IPv4,
+// the multicast group has to be an IPv4 multicast address that is routable inside the gateway
+// subnet, and no other gateway of the same subnet may already synchronize over the same group and
+// port, which would mix the NAT state of two gateways.
+func (v *ValidatingHook) validateNatGwConntrackSync(ctx context.Context, gw *ovnv1.VpcNatGateway, subnet *ovnv1.Subnet) error {
 	if !gw.Spec.ConntrackSync.Enabled {
 		return nil
 	}
@@ -536,6 +536,13 @@ func (v *ValidatingHook) validateNatGwConntrackSync(ctx context.Context, gw *ovn
 	if !util.IsNatGwHAMode(gw) {
 		return fmt.Errorf("conntrack synchronization requires HA mode: NAT gateway %q has %d replica, set spec.replicas > 1",
 			gw.Name, max(gw.Spec.Replicas, 1))
+	}
+
+	// The replicas bind the synchronization channel to the IPv4 address of the gateway subnet
+	// interface. Only IPv4 entries are synchronized anyway: the gateway NATs IPv4 only, so an
+	// IPv6 flow crossing it is routed and needs no state on the replica handling the reply.
+	if util.CheckProtocol(subnet.Spec.CIDRBlock) == ovnv1.ProtocolIPv6 {
+		return fmt.Errorf("conntrack synchronization requires an IPv4 gateway subnet, %q is IPv6 only", subnet.Name)
 	}
 
 	group := gw.Spec.ConntrackSync.MulticastGroup

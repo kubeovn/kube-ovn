@@ -164,6 +164,12 @@ type VpcNatGatewayBFDConfig struct {
 // conntrackd sidecar that multicasts its NAT conntrack entries to the other replicas over the
 // gateway subnet, so that a flow NATed by one replica can be handled by any other one.
 //
+// The replicas synchronize their IPv4 TCP, UDP and ICMP entries only, over an IPv4 channel bound
+// to the address of the gateway subnet interface. The gateway translates IPv4 alone, so an IPv6
+// flow crossing it is routed rather than NATed and the replica handling its reply needs no state;
+// entries of any other protocol stay local as well. The gateway subnet therefore has to carry
+// IPv4, dual-stack included.
+//
 // conntrackd is designed for failover rather than for real-time sharing between active replicas:
 // when a reply comes back through a replica that has not yet received the entry, the first reply
 // packet may be dropped. TCP recovers through retransmission, single-packet UDP exchanges may not.
