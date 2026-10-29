@@ -1463,6 +1463,9 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 					klog.Errorf("no named port with name %s found in pg %s (%s)", port.Port.StrVal, pgName, direction)
 					continue
 				}
+				if !strings.EqualFold(info.Protocol, protocol) {
+					continue
+				}
 				portID = info.PortID
 			}
 
@@ -1589,6 +1592,9 @@ func newIPBlockACLMatch(pgName, protocol, direction string, ipBlocks []netv1.IPB
 				info, ok := namedPortMap[port.Port.StrVal]
 				if !ok {
 					klog.Errorf("no named port with name %s found in pg %s (%s)", port.Port.StrVal, pgName, direction)
+					continue
+				}
+				if !strings.EqualFold(info.Protocol, protocol) {
 					continue
 				}
 				portID = info.PortID
