@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -14,22 +15,39 @@ import (
 
 const flowKindUnderlayService = "usvc"
 
-func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(serviceIP string, port uint16, protocol, dstMac, underlayNic, bridgeName, subnetName string) error {
-	inPort, err := c.getPortID(underlayNic)
-	if err != nil {
+var errUnderlayLocalnetPatchNotReady = errors.New("underlay localnet patch port is not ready")
+
+func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(rule LbServiceRules) error {
+	if _, err := rule.flows(c.getPortID); err != nil {
+		if errors.Is(err, errUnderlayLocalnetPatchNotReady) {
+			klog.Infof("patch-localnet port for subnet %s not ready on bridge %s, retrying underlay service flow for %s:%d", rule.SubnetName, rule.BridgeName, rule.IP, rule.Port)
+		}
 		return err
 	}
 
-	patchPortName := fmt.Sprintf("patch-localnet.%s-to-br-int", subnetName)
-	outPort, err := c.getPortID(patchPortName)
+	key := buildFlowKey(flowKindUnderlayService, rule.IP, rule.Port, rule.Protocol, "")
+	c.setFlowCache(c.flowCache, rule.BridgeName, key, rule)
+
+	klog.V(5).Infof("updated underlay flow cache for service %s", key)
+	c.requestFlowSync()
+	return nil
+}
+
+func (rule LbServiceRules) flows(getPortID func(string) (int, error)) ([]string, error) {
+	inPort, err := getPortID(rule.UnderlayNic)
 	if err != nil {
-		klog.V(5).Infof("patch-localnet port %s not found on bridge %s, skipping underlay service flow for %s:%d (subnet %s may not have pods on this node yet)", patchPortName, bridgeName, serviceIP, port, subnetName)
-		return nil
+		return nil, err
 	}
 
-	isIPv6 := util.CheckProtocol(serviceIP) == kubeovnv1.ProtocolIPv6
+	patchPortName := fmt.Sprintf("patch-localnet.%s-to-br-int", rule.SubnetName)
+	outPort, err := getPortID(patchPortName)
+	if err != nil {
+		return nil, fmt.Errorf("install underlay service flow for %s:%d on %s: %w: %w", rule.IP, rule.Port, patchPortName, errUnderlayLocalnetPatchNotReady, err)
+	}
+
+	isIPv6 := util.CheckProtocol(rule.IP) == kubeovnv1.ProtocolIPv6
 	protoStr := ""
-	switch strings.ToUpper(protocol) {
+	switch strings.ToUpper(rule.Protocol) {
 	case "TCP":
 		protoStr = "tcp"
 		if isIPv6 {
@@ -41,7 +59,7 @@ func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(serviceIP string
 			protoStr = "udp6"
 		}
 	default:
-		return fmt.Errorf("unsupported protocol %s", protocol)
+		return nil, fmt.Errorf("unsupported protocol %s", rule.Protocol)
 	}
 
 	cookie := fmt.Sprintf("0x%x", util.UnderlaySvcLocalOpenFlowCookieV4)
@@ -50,17 +68,7 @@ func (c *Controller) AddOrUpdateUnderlaySubnetSvcLocalFlowCache(serviceIP string
 		cookie = fmt.Sprintf("0x%x", util.UnderlaySvcLocalOpenFlowCookieV6)
 		nwDst = "ipv6_dst"
 	}
-
-	flow := fmt.Sprintf("cookie=%s,priority=%d,in_port=%d,%s,%s=%s,tp_dst=%d "+
-		"actions=mod_dl_dst:%s,output:%d",
-		cookie, util.UnderlaySvcLocalOpenFlowPriority, inPort, protoStr, nwDst, serviceIP, port, dstMac, outPort)
-
-	key := buildFlowKey(flowKindUnderlayService, serviceIP, port, protocol, "")
-	c.setFlowCache(c.flowCache, bridgeName, key, []string{flow})
-
-	klog.V(5).Infof("updated underlay flow cache for service %s", key)
-	c.requestFlowSync()
-	return nil
+	return underlayServiceLocalFlows(cookie, util.UnderlaySvcLocalOpenFlowPriority, inPort, outPort, protoStr, nwDst, rule.IP, rule.DstMac, rule.Port), nil
 }
 
 func (c *Controller) deleteUnderlaySubnetSvcLocalFlowCache(bridgeName, serviceIP string, port uint16, protocol string) {
@@ -70,6 +78,12 @@ func (c *Controller) deleteUnderlaySubnetSvcLocalFlowCache(bridgeName, serviceIP
 
 	klog.V(5).Infof("deleted underlay flow cache for service %s", key)
 	c.requestFlowSync()
+}
+
+func underlayServiceLocalFlows(cookie string, priority, inPort, outPort int, protoStr, nwDst, serviceIP, dstMac string, port uint16) []string {
+	phy := fmt.Sprintf("cookie=%s,priority=%d,in_port=%d,%s,%s=%s,tp_dst=%d actions=mod_dl_dst:%s,output:%d",
+		cookie, priority, inPort, protoStr, nwDst, serviceIP, port, dstMac, outPort)
+	return []string{phy}
 }
 
 func buildFlowKey(kind, ip string, port uint16, protocol, extra string) string {
@@ -88,6 +102,9 @@ func (c *Controller) getPortID(portName string) (int, error) {
 	portID, err := strconv.Atoi(strings.TrimSpace(ofportStr))
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse ofport %q: %w", ofportStr, err)
+	}
+	if portID <= 0 {
+		return 0, fmt.Errorf("ofport %d for interface %s is not ready", portID, portName)
 	}
 
 	return portID, nil

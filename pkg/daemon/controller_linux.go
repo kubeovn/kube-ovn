@@ -51,7 +51,7 @@ type ControllerRuntime struct {
 	nmSyncer  *networkManagerSyncer
 	ovsClient *ovsutil.Client
 
-	flowCache      map[string]map[string][]string // key: bridgeName -> flowKey -> flow rules
+	flowCache      map[string]map[string]LbServiceRules // key: bridgeName -> flowKey -> service rule
 	flowCacheMutex sync.RWMutex
 	flowChan       chan struct{} // channel to trigger immediate flow sync
 }
@@ -110,7 +110,7 @@ func (c *Controller) initRuntime() error {
 	c.ovsClient = ovsutil.New()
 
 	// Initialize OpenFlow flow cache (ovn-kubernetes style)
-	c.flowCache = make(map[string]map[string][]string)
+	c.flowCache = make(map[string]map[string]LbServiceRules)
 	c.flowChan = make(chan struct{}, 1)
 
 	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
@@ -561,7 +561,11 @@ func (c *Controller) reconcileServices(event *serviceEvent) error {
 	if len(lbServiceRulesToAdd) > 0 {
 		for _, rule := range lbServiceRulesToAdd {
 			klog.Infof("Adding LB service rule: %+v", rule)
-			if err := c.AddOrUpdateUnderlaySubnetSvcLocalFlowCache(rule.IP, rule.Port, rule.Protocol, rule.DstMac, rule.UnderlayNic, rule.BridgeName, rule.SubnetName); err != nil {
+			if err := c.AddOrUpdateUnderlaySubnetSvcLocalFlowCache(rule); err != nil {
+				if errors.Is(err, errUnderlayLocalnetPatchNotReady) {
+					klog.Infof("retry underlay service flow later: %v", err)
+					return err
+				}
 				klog.Errorf("failed to update underlay subnet svc local openflow cache: %v", err)
 				return err
 			}
