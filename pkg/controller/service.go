@@ -36,6 +36,7 @@ type updateSvcObject struct {
 }
 
 func (c *Controller) enqueueAddService(obj any) {
+	c.invalidatePolicySelectorCache()
 	svc := obj.(*v1.Service)
 	key := cache.MetaObjectToName(svc).String()
 
@@ -66,6 +67,7 @@ func (c *Controller) enqueueAddService(obj any) {
 }
 
 func (c *Controller) enqueueDeleteService(obj any) {
+	c.invalidatePolicySelectorCache()
 	var svc *v1.Service
 	switch t := obj.(type) {
 	case *v1.Service:
@@ -116,6 +118,7 @@ func (c *Controller) enqueueDeleteService(obj any) {
 }
 
 func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
+	c.invalidatePolicySelectorCache()
 	if !c.config.EnableLb {
 		return
 	}

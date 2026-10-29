@@ -26,15 +26,21 @@ import (
 
 // ClusterNetworkPolicyChangedDelta is used to determine what changed within a ClusterNetworkPolicy
 type ClusterNetworkPolicyChangedDelta struct {
-	key              string
-	ruleNames        [util.CnpMaxRules]ChangedName
-	field            ChangedField
-	DNSReconcileDone bool
+	key                string
+	ruleNames          [util.CnpMaxRules]ChangedName
+	ingressRuleNames   [util.CnpMaxRules]ChangedName
+	egressRuleNames    [util.CnpMaxRules]ChangedName
+	fields             changedFieldMask
+	field              ChangedField
+	DNSReconcileDone   bool
+	DNSReconcileNeeded bool
 }
 
 // enqueueAddCnp adds a new ClusterNetworkPolicy to the processing queue for creation
 func (c *Controller) enqueueAddCnp(obj any) {
-	key := cache.MetaObjectToName(obj.(*v1alpha2.ClusterNetworkPolicy)).String()
+	cnp := obj.(*v1alpha2.ClusterNetworkPolicy)
+	c.indexClusterNetworkPolicy(cnp)
+	key := cache.MetaObjectToName(cnp).String()
 	klog.V(3).Infof("enqueue add cnp %s", key)
 	c.addCnpQueue.Add(key)
 }
@@ -43,6 +49,7 @@ func (c *Controller) enqueueAddCnp(obj any) {
 func (c *Controller) enqueueUpdateCnp(oldObj, newObj any) {
 	oldCnp := oldObj.(*v1alpha2.ClusterNetworkPolicy)
 	newCnp := newObj.(*v1alpha2.ClusterNetworkPolicy)
+	c.indexClusterNetworkPolicy(newCnp)
 
 	// If the CNP was modified in a way that needs the ACLs to be re-created, we enqueue the CNP to be re-created
 	// from scratch and skip the update logic entirely.
@@ -97,6 +104,7 @@ func (c *Controller) enqueueDeleteCnp(obj any) {
 		klog.Warningf("unexpected type: %T", obj)
 		return
 	}
+	c.policyEventIndex.remove(policyEventRef{kind: policyEventClusterNetworkPolicy, key: cnp.Name})
 
 	klog.V(3).Infof("enqueue delete cnp %s", cache.MetaObjectToName(cnp).String())
 	c.deleteCnpQueue.Add(cnp)
@@ -281,6 +289,8 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 	// Only handle updates that do not affect ACLs.
 	c.cnpKeyMutex.LockKey(changed.key)
 	defer func() { _ = c.cnpKeyMutex.UnlockKey(changed.key) }()
+	changed.normalizeRuleNames()
+	fields := changed.fieldsMask()
 
 	klog.Infof("handleUpdateCnp: processing CNP %s, field=%s, DNSReconcileDone=%v",
 		changed.key, changed.field, changed.DNSReconcileDone)
@@ -309,7 +319,7 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 	pgName := getCnpPortGroupName(desiredCnp)
 
 	// The port group of the CNP must be updated
-	if changed.field == ChangedSubject {
+	if fields&changedFieldSubject != 0 {
 		if err := c.setupCnpPortGroup(desiredCnp); err != nil {
 			klog.Errorf("failed to create port group for cnp %s: %v", desiredCnp.Name, err)
 			return err
@@ -317,10 +327,11 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 	}
 
 	// Peer selector in ingress/egress rule has changed, so the corresponding address-set need be updated
-	if changed.field == ChangedIngressRule {
+	if fields&changedFieldIngressRule != 0 {
+		ruleNames := changed.ruleNamesFor(ChangedIngressRule)
 		for index, rule := range desiredCnp.Spec.Ingress {
 			// Make sure the rule is changed and go on update
-			if rule.Name == changed.ruleNames[index].curRuleName {
+			if changedNameMatches(ruleNames[index], rule.Name) {
 				if err := c.setAddrSetForCnpRule(cnpName, pgName, rule.Name, index, rule.From, []v1alpha2.ClusterNetworkPolicyEgressPeer{}, true, false); err != nil {
 					klog.Errorf("failed to set ingress address-set for cnp rule %s/%s, %v", cnpName, rule.Name, err)
 					return err
@@ -342,39 +353,34 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 		}
 	}
 
-	if changed.field == ChangedEgressRule {
+	if fields&changedFieldEgressRule != 0 {
+		ruleNames := changed.ruleNamesFor(ChangedEgressRule)
+		needDNSReconcile := c.config.EnableDNSNameResolver && (changed.DNSReconcileNeeded || !changed.DNSReconcileDone)
 		for index, rule := range desiredCnp.Spec.Egress {
 			// Check if we need to update address sets (rule changed or DNS reconciliation needed)
-			needAddrSetUpdate := rule.Name == changed.ruleNames[index].curRuleName || changed.DNSReconcileDone
-
-			// Check if we need to reconcile DNS resolvers (DNS feature enabled and not already done)
-			needDNSReconcile := c.config.EnableDNSNameResolver && !changed.DNSReconcileDone
-
-			if needAddrSetUpdate {
-				if err := c.setAddrSetForCnpRule(cnpName, pgName, rule.Name, index, []v1alpha2.ClusterNetworkPolicyIngressPeer{}, rule.To, false, false); err != nil {
-					klog.Errorf("failed to set egress address-set for cnp rule %s/%s, %v", cnpName, rule.Name, err)
-					return err
+			needAddrSetUpdate := changedNameMatches(ruleNames[index], rule.Name) || changed.DNSReconcileDone
+			if !needAddrSetUpdate {
+				continue
+			}
+			if err := c.setAddrSetForCnpRule(cnpName, pgName, rule.Name, index, []v1alpha2.ClusterNetworkPolicyIngressPeer{}, rule.To, false, false); err != nil {
+				klog.Errorf("failed to set egress address-set for cnp rule %s/%s, %v", cnpName, rule.Name, err)
+				return err
+			}
+			if changed.ruleNames[index].oldRuleName != "" {
+				oldRuleName := changed.ruleNames[index].oldRuleName
+				oldAsV4Name, oldAsV6Name := getAnpAddressSetName(pgName, oldRuleName, index, false)
+				if err := c.OVNNbClient.DeleteAddressSet(oldAsV4Name); err != nil {
+					klog.Errorf("failed to delete address set %s, %v", oldAsV4Name, err)
 				}
-
-				if needDNSReconcile {
-					if err := c.reconcileDNSNameResolversForANP(cnpName, getCnpDomainsNames(desiredCnp)); err != nil {
-						klog.Errorf("failed to reconcile DNSNameResolvers for egress rule %s/%s, %v", cnpName, rule.Name, err)
-						return err
-					}
+				if err := c.OVNNbClient.DeleteAddressSet(oldAsV6Name); err != nil {
+					klog.Errorf("failed to delete address set %s, %v", oldAsV6Name, err)
 				}
-
-				if changed.ruleNames[index].oldRuleName != "" {
-					oldRuleName := changed.ruleNames[index].oldRuleName
-					oldAsV4Name, oldAsV6Name := getAnpAddressSetName(pgName, oldRuleName, index, false)
-
-					if err := c.OVNNbClient.DeleteAddressSet(oldAsV4Name); err != nil {
-						klog.Errorf("failed to delete address set %s, %v", oldAsV4Name, err)
-						// just record error log
-					}
-					if err := c.OVNNbClient.DeleteAddressSet(oldAsV6Name); err != nil {
-						klog.Errorf("failed to delete address set %s, %v", oldAsV6Name, err)
-					}
-				}
+			}
+		}
+		if needDNSReconcile {
+			if err := c.reconcileDNSNameResolversForANP(cnpName, getCnpDomainsNames(desiredCnp)); err != nil {
+				klog.Errorf("failed to reconcile DNSNameResolvers for CNP %s: %v", cnpName, err)
+				return err
 			}
 		}
 	}
@@ -805,34 +811,52 @@ func (c *Controller) resolveDomainNamesForCnp(domainNames []v1alpha2.DomainName)
 }
 
 func (c *Controller) updateCnpsByLabelsMatch(nsLabels, podLabels map[string]string) {
-	cnps, _ := c.cnpsLister.List(labels.Everything())
-	for _, cnp := range cnps {
-		changed := &ClusterNetworkPolicyChangedDelta{
-			key: cnp.Name,
-		}
+	c.updateCnpsByLabelsChange(labelChange{nsLabels, nsLabels, podLabels, podLabels})
+}
 
+func (c *Controller) updateCnpsByLabelsChange(change labelChange) {
+	keys := c.policyEventIndex.candidatesForChange(policyEventClusterNetworkPolicy, change)
+	if !c.policyEventIndex.isReady() {
+		cnps, err := c.cnpsLister.List(labels.Everything())
+		if err != nil {
+			klog.Errorf("failed to list cluster network policies for label update: %v", err)
+		}
+		keys = make([]string, 0, len(cnps))
+		for _, cnp := range cnps {
+			keys = append(keys, cnp.Name)
+		}
+	}
+	for _, key := range keys {
+		cnp, err := c.cnpsLister.Get(key)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get cluster network policy %s for label update: %v", key, err)
+			}
+			continue
+		}
 		// Pod/namespace that has been updated is the subject of a CNP, update that CNP
-		if doCnpLabelsMatch(cnp.Spec.Subject.Namespaces, cnp.Spec.Subject.Pods, nsLabels, podLabels) {
-			klog.Infof("cnp %s, labels matched for cnp's subject, nsLabels %s, podLabels %s", cnp.Name, labels.Set(nsLabels).String(), labels.Set(podLabels).String())
-			changed.field = ChangedSubject
-			c.updateCnpQueue.Add(changed)
+		if doCnpLabelsMatchForChange(cnp.Spec.Subject.Namespaces, cnp.Spec.Subject.Pods, change) {
+			klog.Infof("cnp %s, labels matched for cnp's subject", cnp.Name)
+			c.updateCnpQueue.Add(&ClusterNetworkPolicyChangedDelta{key: cnp.Name, field: ChangedSubject})
 		}
 
-		ingressRuleNames, egressRuleNames := getAffectedCnpRules(cnp, nsLabels, podLabels)
+		ingressRuleNames, egressRuleNames := getAffectedCnpRulesForChange(cnp, change)
 		if !isCnpRulesArrayEmpty(ingressRuleNames) {
-			klog.Infof("cnp %s, labels matched for cnp's ingress peer, nsLabels %s, podLabels %s", cnp.Name, labels.Set(nsLabels).String(), labels.Set(podLabels).String())
-			changed.ruleNames = ingressRuleNames
-			changed.field = ChangedIngressRule
-			c.updateCnpQueue.Add(changed)
+			klog.Infof("cnp %s, labels matched for cnp's ingress peer", cnp.Name)
+			c.updateCnpQueue.Add(&ClusterNetworkPolicyChangedDelta{key: cnp.Name, ruleNames: ingressRuleNames, field: ChangedIngressRule})
 		}
 
 		if !isCnpRulesArrayEmpty(egressRuleNames) {
-			klog.Infof("cnp %s, labels matched for cnp's egress peer, nsLabels %s, podLabels %s", cnp.Name, labels.Set(nsLabels).String(), labels.Set(podLabels).String())
-			changed.ruleNames = egressRuleNames
-			changed.field = ChangedEgressRule
-			c.updateCnpQueue.Add(changed)
+			klog.Infof("cnp %s, labels matched for cnp's egress peer", cnp.Name)
+			c.updateCnpQueue.Add(&ClusterNetworkPolicyChangedDelta{key: cnp.Name, ruleNames: egressRuleNames, field: ChangedEgressRule})
 		}
 	}
+}
+
+func doCnpLabelsMatchForChange(namespaces *metav1.LabelSelector, pods *v1alpha2.NamespacedPod, change labelChange) bool {
+	return change.anyMatch(func(nsLabels, podLabels map[string]string) bool {
+		return doCnpLabelsMatch(namespaces, pods, nsLabels, podLabels)
+	})
 }
 
 // getAffectedCnpRules returns the rules affected by a namespace/pod update by looking at the selectors within its peers.
@@ -842,6 +866,7 @@ func getAffectedCnpRules(cnp *v1alpha2.ClusterNetworkPolicy, nsLabels, podLabels
 	for index, rule := range cnp.Spec.Ingress {
 		for _, from := range rule.From {
 			if doCnpLabelsMatch(from.Namespaces, from.Pods, nsLabels, podLabels) {
+				changedIngressRuleNames[index].isMatch = true
 				changedIngressRuleNames[index].curRuleName = rule.Name
 			}
 		}
@@ -850,6 +875,7 @@ func getAffectedCnpRules(cnp *v1alpha2.ClusterNetworkPolicy, nsLabels, podLabels
 	for index, rule := range cnp.Spec.Egress {
 		for _, to := range rule.To {
 			if doCnpLabelsMatch(to.Namespaces, to.Pods, nsLabels, podLabels) {
+				changedEgressRuleNames[index].isMatch = true
 				changedEgressRuleNames[index].curRuleName = rule.Name
 			}
 		}
@@ -858,10 +884,28 @@ func getAffectedCnpRules(cnp *v1alpha2.ClusterNetworkPolicy, nsLabels, podLabels
 	return changedIngressRuleNames, changedEgressRuleNames
 }
 
+func getAffectedCnpRulesForChange(cnp *v1alpha2.ClusterNetworkPolicy, change labelChange) ([util.CnpMaxRules]ChangedName, [util.CnpMaxRules]ChangedName) {
+	oldIngress, oldEgress := getAffectedCnpRules(cnp, change.oldNsLabels, change.oldPodLabels)
+	newIngress, newEgress := getAffectedCnpRules(cnp, change.newNsLabels, change.newPodLabels)
+	return mergeCnpChangedNames(oldIngress, newIngress), mergeCnpChangedNames(oldEgress, newEgress)
+}
+
+func mergeCnpChangedNames(oldNames, newNames [util.CnpMaxRules]ChangedName) (merged [util.CnpMaxRules]ChangedName) {
+	for index := range merged {
+		merged[index].isMatch = oldNames[index].isMatch || newNames[index].isMatch
+		if newNames[index].curRuleName != "" {
+			merged[index].curRuleName = newNames[index].curRuleName
+		} else {
+			merged[index].curRuleName = oldNames[index].curRuleName
+		}
+	}
+	return merged
+}
+
 // isCnpRulesArrayEmpty returns whether an array of changed ClusterNetworkPolicy rules is empty or not
 func isCnpRulesArrayEmpty(rules [util.CnpMaxRules]ChangedName) bool {
 	for _, rule := range rules {
-		if rule.curRuleName != "" {
+		if rule.curRuleName != "" || rule.isMatch {
 			return false
 		}
 	}
@@ -890,6 +934,7 @@ func getCnpAddressSetsToUpdate(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) (i
 
 		if !reflect.DeepEqual(oldRule.From, rule.From) || oldRule.Name != rule.Name {
 			change.curRuleName = rule.Name
+			change.isMatch = rule.Name == ""
 		}
 		if oldRule.Name != rule.Name {
 			change.oldRuleName = oldRule.Name
@@ -905,6 +950,7 @@ func getCnpAddressSetsToUpdate(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) (i
 
 		if !reflect.DeepEqual(oldRule.To, rule.To) || oldRule.Name != rule.Name {
 			change.curRuleName = rule.Name
+			change.isMatch = rule.Name == ""
 		}
 		if oldRule.Name != rule.Name {
 			change.oldRuleName = oldRule.Name
@@ -1200,16 +1246,29 @@ func getCnpACLName(cnpName, protocol, direction string, index int) string {
 // doCnpLabelsMatch returns whether namespace/pod selectors on a ClusterNetworkPolicy match the labels of some pods/namespaces
 // This is used to determine if the "subject" or "rule peers" of a CNP match pods/namespaces
 func doCnpLabelsMatch(namespaces *metav1.LabelSelector, pods *v1alpha2.NamespacedPod, nsLabels, podLabels map[string]string) bool {
+	// A nil podLabels denotes a namespace event; pod events always pass a non-nil map.
 	// Exactly one field of namespaces/pods must be set
 	if namespaces != nil {
-		nsSelector, _ := metav1.LabelSelectorAsSelector(namespaces)
+		nsSelector, err := metav1.LabelSelectorAsSelector(namespaces)
+		if err != nil {
+			klog.Errorf("invalid namespace selector for CNP label update: %v", err)
+			return false
+		}
 		if nsSelector.Matches(labels.Set(nsLabels)) {
 			return true
 		}
 	} else if pods != nil {
-		nsSelector, _ := metav1.LabelSelectorAsSelector(&pods.NamespaceSelector)
-		podSelector, _ := metav1.LabelSelectorAsSelector(&pods.PodSelector)
-		if nsSelector.Matches(labels.Set(nsLabels)) && podSelector.Matches(labels.Set(podLabels)) {
+		nsSelector, err := metav1.LabelSelectorAsSelector(&pods.NamespaceSelector)
+		if err != nil {
+			klog.Errorf("invalid namespace selector for CNP label update: %v", err)
+			return false
+		}
+		podSelector, err := metav1.LabelSelectorAsSelector(&pods.PodSelector)
+		if err != nil {
+			klog.Errorf("invalid pod selector for CNP label update: %v", err)
+			return false
+		}
+		if nsSelector.Matches(labels.Set(nsLabels)) && (podLabels == nil || podSelector.Matches(labels.Set(podLabels))) {
 			return true
 		}
 	}

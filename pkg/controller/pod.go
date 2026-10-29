@@ -192,6 +192,7 @@ func isPodStatusPhaseAlive(p *v1.Pod) bool {
 }
 
 func (c *Controller) enqueueAddPod(obj any) {
+	c.invalidatePolicySelectorCache()
 	p := obj.(*v1.Pod)
 	if p.Spec.HostNetwork {
 		return
@@ -249,7 +250,21 @@ func (c *Controller) enqueueAddPod(obj any) {
 	}
 }
 
+func (c *Controller) getNsLabels(nsName, podName string) map[string]string {
+	podNs, err := c.namespacesLister.Get(nsName)
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			klog.V(3).Infof("namespace %s not found for pod %s, use empty ns labels", nsName, podName)
+		} else {
+			klog.Errorf("failed to get namespace %s: %v, use empty ns labels", nsName, err)
+		}
+		return nil
+	}
+	return podNs.Labels
+}
+
 func (c *Controller) enqueueDeletePod(obj any) {
+	c.invalidatePolicySelectorCache()
 	var p *v1.Pod
 	switch t := obj.(type) {
 	case *v1.Pod:
@@ -281,9 +296,10 @@ func (c *Controller) enqueueDeletePod(obj any) {
 	}
 
 	if c.config.EnableANP {
-		podNs, _ := c.namespacesLister.Get(p.Namespace)
-		c.updateAnpsByLabelsMatch(podNs.Labels, p.Labels)
-		c.updateCnpsByLabelsMatch(podNs.Labels, p.Labels)
+		nsLabels := c.getNsLabels(p.Namespace, p.Name)
+		podLabels := labelsForPodEvent(p.Labels)
+		c.updateAnpsByLabelsMatch(nsLabels, podLabels)
+		c.updateCnpsByLabelsMatch(nsLabels, podLabels)
 	}
 
 	key := cache.MetaObjectToName(p).String()
@@ -293,6 +309,7 @@ func (c *Controller) enqueueDeletePod(obj any) {
 }
 
 func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
+	c.invalidatePolicySelectorCache()
 	oldPod := oldObj.(*v1.Pod)
 	newPod := newObj.(*v1.Pod)
 
@@ -339,7 +356,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		newNp := c.podMatchNetworkPolicies(newPod)
 		if !maps.Equal(oldPod.Labels, newPod.Labels) {
 			oldNp := c.podMatchNetworkPolicies(oldPod)
-			for _, np := range util.DiffStringSlice(oldNp, newNp) {
+			for _, np := range util.UnionStringSlice(oldNp, newNp) {
 				c.updateNpQueue.Add(np)
 			}
 		}
@@ -360,10 +377,13 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	}
 
 	if c.config.EnableANP {
-		podNs, _ := c.namespacesLister.Get(newPod.Namespace)
+		nsLabels := c.getNsLabels(newPod.Namespace, newPod.Name)
+		oldPodLabels := labelsForPodEvent(oldPod.Labels)
+		newPodLabels := labelsForPodEvent(newPod.Labels)
 		if !maps.Equal(oldPod.Labels, newPod.Labels) {
-			c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
-			c.updateCnpsByLabelsMatch(podNs.Labels, newPod.Labels)
+			change := labelChange{nsLabels, nsLabels, oldPodLabels, newPodLabels}
+			c.updateAnpsByLabelsChange(change)
+			c.updateCnpsByLabelsChange(change)
 		}
 
 		for _, podNet := range podNets {
@@ -372,8 +392,8 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 			oldRouted := oldPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)]
 			newRouted := newPod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, podNet.ProviderName)]
 			if oldAllocated != newAllocated || oldRouted != newRouted {
-				c.updateAnpsByLabelsMatch(podNs.Labels, newPod.Labels)
-				c.updateCnpsByLabelsMatch(podNs.Labels, newPod.Labels)
+				c.updateAnpsByLabelsMatch(nsLabels, newPodLabels)
+				c.updateCnpsByLabelsMatch(nsLabels, newPodLabels)
 				break
 			}
 		}
@@ -448,6 +468,14 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 			break
 		}
 	}
+}
+
+// labelsForPodEvent distinguishes an unlabeled pod from a namespace event, which passes nil.
+func labelsForPodEvent(podLabels map[string]string) map[string]string {
+	if podLabels == nil {
+		return map[string]string{}
+	}
+	return podLabels
 }
 
 func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
