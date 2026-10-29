@@ -1,0 +1,17 @@
+Kube-OVN third-party notices
+============================
+
+This image includes the following Go modules. Kube-OVN selects the
+BSD-3-Clause option where the upstream license offers an OR choice.
+
+kernel.org/pub/linux/libs/security/libcap/cap v1.2.78
+  License expression: BSD-3-Clause OR GPL-2.0-only
+  License selected for this distribution: BSD-3-Clause
+  License text: licenses/libcap/cap/License
+  Source: https://kernel.org/pub/linux/libs/security/libcap/
+
+kernel.org/pub/linux/libs/security/libcap/psx v1.2.78
+  License expression: BSD-3-Clause OR GPL-2.0-only
+  License selected for this distribution: BSD-3-Clause
+  License text: licenses/libcap/psx/License
+  Source: https://kernel.org/pub/linux/libs/security/libcap/

@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	clienttesting "k8s.io/client-go/testing"
+	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
@@ -34,6 +36,32 @@ func newTestDNSNameResolver() *kubeovnv1.DNSNameResolver {
 		Labels: map[string]string{adminNetworkPolicyKey: "test-anp"},
 		Spec:   kubeovnv1.DNSNameResolverSpec{Name: "example.com"},
 	}
+}
+
+func TestReconcileAnpDNSNameResolversUsesAllEgressRules(t *testing.T) {
+	const policyName = "test-anp"
+	resolver := &kubeovnv1.DNSNameResolver{
+		Name:   generateDNSNameResolverName(policyName, "a.example"),
+		Labels: map[string]string{adminNetworkPolicyKey: policyName},
+		Spec:   kubeovnv1.DNSNameResolverSpec{Name: "a.example"},
+	}
+	ctrl := newFakeDNSNameResolverController(t, true, resolver)
+	client := kubeovnfake.NewSimpleClientset(resolver)
+	ctrl.config.KubeOvnClient = client
+	anp := &v1alpha1.AdminNetworkPolicy{Spec: v1alpha1.AdminNetworkPolicySpec{
+		Egress: []v1alpha1.AdminNetworkPolicyEgressRule{
+			{To: []v1alpha1.AdminNetworkPolicyEgressPeer{{DomainNames: []v1alpha1.DomainName{"a.example"}}}},
+			{To: []v1alpha1.AdminNetworkPolicyEgressPeer{{DomainNames: []v1alpha1.DomainName{"b.example"}}}},
+		},
+	}}
+
+	require.ElementsMatch(t, []string{"a.example", "b.example"}, getAnpDomainNames(anp))
+	require.NoError(t, ctrl.reconcileAnpDNSNameResolvers(policyName, anp))
+	actions := client.Actions()
+	require.Len(t, actions, 1)
+	require.Equal(t, "create", actions[0].GetVerb())
+	created := actions[0].(clienttesting.CreateAction).GetObject().(*kubeovnv1.DNSNameResolver)
+	require.Equal(t, kubeovnv1.DNSName("b.example"), created.Spec.Name)
 }
 
 func Test_handleAddOrUpdateDNSNameResolver(t *testing.T) {

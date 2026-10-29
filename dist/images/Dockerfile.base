@@ -180,7 +180,7 @@ ARG ARCH
 # renovate: datasource=github-releases depName=cni-plugin packageName=containernetworking/plugins versioning=semver
 ARG CNI_PLUGINS_VERSION=v1.9.1
 # renovate: datasource=github-releases depName=kubectl packageName=kubernetes/kubernetes versioning=semver
-ARG KUBECTL_VERSION=v1.37.1
+ARG KUBECTL_VERSION=v1.37.2
 # renovate: datasource=github-releases depName=gobgp packageName=osrg/gobgp versioning=semver
 ARG GOBGP_VERSION=4.10.0
 # renovate: datasource=github-releases depName=dumb-init packageName=Yelp/dumb-init versioning=semver
@@ -205,6 +205,7 @@ RUN rm -f /usr/lib/apt/methods/mirror
 RUN usermod -s /usr/sbin/nologin sync
 RUN usermod -s /usr/sbin/nologin ubuntu
 RUN apt remove -y --allow-remove-essential --auto-remove login
+RUN rm -f /usr/bin/pebble && rm -rf /var/lib/pebble
 
 FROM scratch
 
@@ -215,6 +216,8 @@ ENV PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 CMD ["/bin/bash"]
 
 COPY --from=ubuntu / /
+
+RUN test ! -e /usr/bin/pebble && test ! -e /var/lib/pebble
 
 ARG ARCH
 ARG DEBIAN_FRONTEND=noninteractive

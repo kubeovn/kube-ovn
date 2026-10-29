@@ -363,13 +363,22 @@ func (c *Controller) reconcileVpcEgressGatewayRoutes(ctx *vpcEgressGatewayReconc
 		{addressFamily: 4, protocol: "IPv4", bfdIP: ctx.bfdIPv4, nexthops: state.nodeNexthopIPv4, sources: state.ipv4Src},
 		{addressFamily: 6, protocol: "IPv6", bfdIP: ctx.bfdIPv6, nexthops: state.nodeNexthopIPv6, sources: state.ipv6Src},
 	}
+	// Reconcile every address family even if one of them fails (e.g. the
+	// unsupported-selectors condition) so that, for dual-stack gateways, a
+	// failure/early-return for one AF never prevents the other AF's address
+	// set, LR policies, BFD sessions, and stale resources from converging to
+	// the current spec. Errors are aggregated and reported once all AFs have
+	// been given a chance to converge.
+	var errs []error
 	for _, route := range routes {
 		if err := c.reconcileVpcEgressGatewayOVNRoutes(ctx.gateway, route.addressFamily, ctx.vpc.Status.Router,
 			ctx.vpc.Status.BFDPort.Name, route.bfdIP, route.nexthops, route.sources); err != nil {
 			klog.Error(err)
-			err = fmt.Errorf("failed to reconcile %s OVN routes: %w", route.protocol, err)
-			return c.failVpcEgressGatewayReconcile(ctx.gateway, "ReconcileOVNRoutesFailed", err)
+			errs = append(errs, fmt.Errorf("failed to reconcile %s OVN routes: %w", route.protocol, err))
 		}
+	}
+	if len(errs) != 0 {
+		return c.failVpcEgressGatewayReconcile(ctx.gateway, "ReconcileOVNRoutesFailed", errors.Join(errs...))
 	}
 	return nil
 }
@@ -469,6 +478,44 @@ func (c *Controller) updateVpcEgressGatewayStatus(gw *kubeovnv1.VpcEgressGateway
 	return updateGateway, nil
 }
 
+// resolveVpcEgressGatewayInternalProvider determines the provider used for the
+// internal network and, when EnableNonPrimaryCNI is set, resolves the
+// net-attach-def name that should become the pod's default network (eth0).
+func (c *Controller) resolveVpcEgressGatewayInternalProvider(intSubnet *kubeovnv1.Subnet) (string, string, error) {
+	intProvider := util.OvnProvider
+	var internalAttachmentNwName string
+
+	// if EnableNonPrimaryCNI is set, the internal network will be the default network (eth0) and provider is internal network provider and not ovn.
+	if c.config.EnableNonPrimaryCNI {
+		provider := intSubnet.Spec.Provider
+
+		intNadName, intNadNamespace, err := util.ParseInternalSubnetProvider(
+			provider, intSubnet.Name,
+		)
+		if err != nil {
+			klog.Error(err)
+			return "", "", err
+		}
+
+		if _, err := c.netAttachLister.
+			NetworkAttachmentDefinitions(intNadNamespace).
+			Get(intNadName); err != nil {
+			klog.Error(err)
+			return "", "", fmt.Errorf(
+				"failed to get net-attach-def %s/%s for internal subnet %s: %w",
+				intNadNamespace, intNadName, intSubnet.Name, err,
+			)
+		}
+
+		intProvider = provider
+		internalAttachmentNwName = fmt.Sprintf(
+			"%s/%s", intNadNamespace, intNadName,
+		)
+	}
+
+	return intProvider, internalAttachmentNwName, nil
+}
+
 // create or update vpc egress gateway workload
 func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGateway, vpc *kubeovnv1.Vpc, bfdIP, bfdIPv4, bfdIPv6 string) (string, set.Set[string], set.Set[string], *appsv1.Deployment, error) {
 	image := c.config.Image
@@ -516,6 +563,13 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		klog.Error(err)
 		return "", nil, nil, nil, err
 	}
+
+	intProvider, internalAttachmentNwName, err := c.resolveVpcEgressGatewayInternalProvider(intSubnet)
+	if err != nil {
+		klog.Error(err)
+		return "", nil, nil, nil, err
+	}
+
 	extSubnet, err := c.subnetsLister.Get(gw.Spec.ExternalSubnet)
 	if err != nil {
 		klog.Error(err)
@@ -600,14 +654,14 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	intGatewayIPv4, intGatewayIPv6 := util.SplitStringIP(intSubnet.Spec.Gateway)
 	extGatewayIPv4, extGatewayIPv6 := util.SplitStringIP(extSubnet.Spec.Gateway)
 	// add routes for the VPC BFD Port so that the egress gateway can establish BFD session(s) with it
-	routes.Add(util.OvnProvider, bfdIPv4, intGatewayIPv4)
-	routes.Add(util.OvnProvider, bfdIPv6, intGatewayIPv6)
+	routes.Add(intProvider, bfdIPv4, intGatewayIPv4)
+	routes.Add(intProvider, bfdIPv6, intGatewayIPv6)
 	// add routes for the internal networks
 	for _, dst := range intRouteDstIPv4.UnsortedList() {
-		routes.Add(util.OvnProvider, dst, intGatewayIPv4)
+		routes.Add(intProvider, dst, intGatewayIPv4)
 	}
 	for _, dst := range intRouteDstIPv6.UnsortedList() {
-		routes.Add(util.OvnProvider, dst, intGatewayIPv6)
+		routes.Add(intProvider, dst, intGatewayIPv6)
 	}
 	// add default routes to forward traffic to the external network
 	routes.Add(extSubnet.Spec.Provider, "0.0.0.0/0", extGatewayIPv4)
@@ -620,10 +674,15 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		return attachmentNetworkName, nil, nil, nil, err
 	}
 	annotations[nadv1.NetworkAttachmentAnnot] = attachmentNetworkName
-	annotations[util.LogicalSwitchAnnotation] = intSubnet.Name
+	// Make the internal network the default network (eth0) when nonPrimaryCNI mode is set.
+	if internalAttachmentNwName != "" {
+		annotations[util.DefaultNetworkAnnotation] = internalAttachmentNwName
+	}
+
+	annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, intProvider)] = intSubnet.Name
 	if len(gw.Spec.InternalIPs) != 0 {
 		// set internal IPs
-		annotations[util.IPPoolAnnotation] = strings.Join(gw.Spec.InternalIPs, ";")
+		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, intProvider)] = strings.Join(gw.Spec.InternalIPs, ";")
 	} else if gw.Spec.InternalIPPool != "" {
 		// allocate the internal IP from the referenced IPPool
 		pool, err := c.ippoolLister.Get(gw.Spec.InternalIPPool)
@@ -636,7 +695,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 			klog.Error(err)
 			return attachmentNetworkName, nil, nil, nil, err
 		}
-		annotations[util.IPPoolAnnotation] = gw.Spec.InternalIPPool
+		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, intProvider)] = gw.Spec.InternalIPPool
 	}
 	if len(gw.Spec.ExternalIPs) != 0 {
 		// set external IPs
@@ -655,7 +714,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		}
 		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)] = gw.Spec.ExternalIPPool
 	}
-	if err := setVpcEgressGatewayBandwidthAnnotations(annotations, gw.Spec.Bandwidth); err != nil {
+	if err := setVpcEgressGatewayBandwidthAnnotations(annotations, gw.Spec.Bandwidth, intProvider); err != nil {
 		return attachmentNetworkName, nil, nil, nil, err
 	}
 
@@ -863,7 +922,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	return attachmentNetworkName, ipv4Src, ipv6Src, deploy, nil
 }
 
-func setVpcEgressGatewayBandwidthAnnotations(annotations map[string]string, bandwidth *kubeovnv1.BandwidthLimit) error {
+func setVpcEgressGatewayBandwidthAnnotations(annotations map[string]string, bandwidth *kubeovnv1.BandwidthLimit, provider string) error {
 	ingressMbps, egressMbps, err := bandwidth.Mbps()
 	if err != nil {
 		return err
@@ -871,12 +930,12 @@ func setVpcEgressGatewayBandwidthAnnotations(annotations map[string]string, band
 	if ingressMbps > 0 {
 		// The 'ingress' on the VpcEgressGateway CRD refers to traffic entering the VPC from external.
 		// From the gateway pod's perspective, this is egress traffic of the primary network interface.
-		annotations[util.EgressRateAnnotation] = strconv.FormatInt(ingressMbps, 10)
+		annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, provider)] = strconv.FormatInt(ingressMbps, 10)
 	}
 	if egressMbps > 0 {
 		// The 'egress' on the VpcEgressGateway CRD refers to traffic leaving the VPC.
 		// From the gateway pod's perspective, this is ingress traffic of the primary network interface.
-		annotations[util.IngressRateAnnotation] = strconv.FormatInt(egressMbps, 10)
+		annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, provider)] = strconv.FormatInt(egressMbps, 10)
 	}
 	return nil
 }
@@ -902,6 +961,32 @@ func vpcEgressGatewayLocalPolicyMatches(af int, localPgName, pgName, asName stri
 }
 
 func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressGateway, af int, lrName, lrpName, bfdIP string, nodeNexthops map[string]set.Set[string], sources set.Set[string]) error {
+	// reconcileVpcEgressGatewayOVNRoutes matches pods via the "ovn" provider
+	// port naming, but when kube-ovn runs as a non-primary CNI, pods are
+	// attached via an internal network provider instead, so pod selectors
+	// cannot be resolved to the right ports. This is not supported in this
+	// version (will be supported in the future).
+	//
+	// IMPORTANT: we must NOT return before the rest of this function runs.
+	// `sources` is derived purely from spec.policies (subnets/ipBlocks) and
+	// is already correctly recomputed on every reconcile independent of
+	// whether selectors are usable. If we bailed out here, a gateway that
+	// previously forwarded subnet A's traffic via policies and then had its
+	// spec changed to use (unsupported) selectors would keep A's CIDR in
+	// the OVN address set and its reroute LR policy active forever, even
+	// though the gateway reports NotReady. Instead, we disable only the
+	// selector/port-group derived portion below and let address-set / LR
+	// policy / BFD reconciliation converge using `sources`, returning the
+	// unsupported error only after that convergence has completed.
+	selectorsRequested := len(gw.Spec.Selectors) > 0
+	selectorsUnsupported := c.config.EnableNonPrimaryCNI && selectorsRequested
+	var deferredErr error
+	if selectorsUnsupported {
+		deferredErr = errors.New("spec.selectors is not supported when kube-ovn runs as a non-primary CNI")
+		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, "SelectorsNotSupported", deferredErr.Error())
+		klog.Error(deferredErr)
+	}
+
 	nextHops := flattenVpcEgressGatewayNexthops(nodeNexthops)
 
 	externalIDs := map[string]string{
@@ -910,10 +995,17 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		"af":                           strconv.Itoa(af),
 	}
 
-	// reconcile OVN port group
+	// reconcile OVN port group. When selectors are requested but unsupported,
+	// treat them as absent so stale selector-derived ports don't linger and
+	// so that matching below falls back to address-set-only (subnet/policy
+	// derived) sources.
 	var err error
 	ports := set.New[string]()
-	for _, selector := range gw.Spec.Selectors {
+	activeSelectors := gw.Spec.Selectors
+	if selectorsUnsupported {
+		activeSelectors = nil
+	}
+	for _, selector := range activeSelectors {
 		sel := labels.Everything()
 		if selector.NamespaceSelector != nil {
 			if sel, err = metav1.LabelSelectorAsSelector(selector.NamespaceSelector); err != nil {
@@ -961,7 +1053,12 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 	// subnet-only gateways, the port-group address-set name is backed by an empty
 	// standalone address set below because no Port Group selector exists.
 	includePortGroup := true
-	hasSelectors := len(gw.Spec.Selectors) > 0
+	// hasSelectors reflects whether selector-derived state should actually be
+	// populated: when selectors are requested but unsupported (non-primary
+	// CNI), activeSelectors is forced to nil above, so this naturally
+	// evaluates to false and OVN state falls back to subnet/policy-only
+	// matching instead of retaining stale selector-based state.
+	hasSelectors := len(activeSelectors) > 0
 	if hasSelectors {
 		if err = c.OVNNbClient.CreatePortGroup(pgName, externalIDs); err != nil {
 			err = fmt.Errorf("failed to create port group %s: %w", pgName, err)
@@ -1157,7 +1254,11 @@ func (c *Controller) reconcileVpcEgressGatewayOVNRoutes(gw *kubeovnv1.VpcEgressG
 		return err
 	}
 
-	return nil
+	// Surface the unsupported-selectors condition only now that OVN state
+	// (address set, port group, LR policies, BFD sessions) has converged to
+	// reflect the current spec.policies-derived sources. This avoids leaving
+	// stale forwarding state active from before the transition to selectors.
+	return deferredErr
 }
 
 func localGatewayPolicyBFDSessions(bfdMap map[string]string, nextHops set.Set[string]) set.Set[string] {
