@@ -4,7 +4,7 @@ go 1.27.3
 
 require (
 	cel.dev/cel-go v0.33.1
-	github.com/brianvoe/gofakeit/v7 v7.18.0
+	github.com/brianvoe/gofakeit/v7 v7.18.1
 	github.com/cenkalti/backoff/v7 v7.0.1
 	github.com/cert-manager/cert-manager v1.21.3
 	github.com/cnf/structhash v0.0.0-20250313080605-df4c6cc74a9a
