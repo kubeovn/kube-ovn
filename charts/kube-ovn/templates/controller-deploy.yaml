@@ -46,7 +46,7 @@ spec:
                   app: kube-ovn-controller
               topologyKey: kubernetes.io/hostname
       priorityClassName: system-cluster-critical
-      serviceAccountName: ovn
+      serviceAccountName: kube-ovn-controller
       automountServiceAccountToken: true
       hostNetwork: true
       securityContext:

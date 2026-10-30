@@ -1,11 +1,34 @@
 {{- /*
 ServiceAccounts. Partitioned by installMode:
-- ovn          : used by kube-ovn-controller / ic-controller   → data plane
+- kube-ovn-controller : used by kube-ovn-controller            → data plane
+- ovn          : used by ic-controller / speaker / webhook     → data plane
 - ovn-ovs      : used by ovn-central AND ovs-ovn               → both planes
 - kube-ovn-cni : used by kube-ovn-cni DaemonSet                → data plane
 - kube-ovn-app : used by kube-ovn-monitor / kube-ovn-pinger    → data plane
 */}}
 {{- if include "kubeovn.renderDataPlane" . }}
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  # Dedicated identity for kube-ovn-controller, distinct from the "ovn" SA shared by the
+  # webhook, ic-controller and speaker, so the validating webhook can recognize requests
+  # that only the controller is trusted to make (the switch_lb_rule vip mac repair in
+  # pkg/webhook/vip.go and the share DNAT accounting records of the nftable LB service
+  # feature). The name is the one the webhook derives its identity from, see
+  # util.KubeOvnControllerServiceAccountName.
+  name: kube-ovn-controller
+  namespace: {{ .Values.namespace }}
+automountServiceAccountToken: true
+{{-  if .Values.global.registry.imagePullSecrets }}
+imagePullSecrets:
+{{- range $index, $secret := .Values.global.registry.imagePullSecrets }}
+{{- if $secret }}
+- name: {{ $secret | quote}}
+{{- end }}
+{{- end }}
+{{- end }}
+
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:

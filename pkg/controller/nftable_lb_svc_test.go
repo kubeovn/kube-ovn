@@ -22,11 +22,13 @@ import (
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	discoverylisters "k8s.io/client-go/listers/discovery/v1"
+	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -1672,6 +1674,72 @@ func Test_enqueueGwNftableLbSvcRecordOwners(t *testing.T) {
 	item, shutdown := c.addOrUpdateGwNftableLbSvcQueue.Get()
 	require.False(t, shutdown)
 	require.Equal(t, f.namespace+"/"+f.svc.Name, item)
+}
+
+// Test_enqueueGwNftableLbSvcRecordOwners_legacy pins the upgrade path: a record written by an
+// earlier version carries only the owner labels and the generic controller finalizer. It must be
+// replayed too, otherwise an orphan from before the upgrade keeps its identity and its EIP
+// reference with nothing left that would ever reclaim them.
+func Test_enqueueGwNftableLbSvcRecordOwners_legacy(t *testing.T) {
+	f := newNftableLbSvcOwnershipFixture()
+	legacy := &kubeovnv1.IptablesDnatRule{
+		Name: "lb-web-legacy",
+		Labels: map[string]string{
+			util.NftableLbSvcNsLabel:   f.namespace,
+			util.NftableLbSvcNameLabel: f.svc.Name,
+		},
+		Finalizers: []string{util.KubeOVNControllerFinalizer},
+		Spec: kubeovnv1.IptablesDnatRuleSpec{
+			Type: kubeovnv1.DnatRuleTypeShare, EIP: f.eip.Name,
+			ExternalPort: "80", Protocol: "tcp", InternalIP: "10.0.7.2", InternalPort: "8080",
+		},
+	}
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{legacy},
+	})
+	require.NoError(t, err)
+	c := fc.fakeController
+	c.addOrUpdateGwNftableLbSvcQueue = newTypedRateLimitingQueue[string]("test", nil)
+
+	require.NoError(t, c.enqueueGwNftableLbSvcRecordOwners())
+	require.Equal(t, 1, c.addOrUpdateGwNftableLbSvcQueue.Len())
+	item, _ := c.addOrUpdateGwNftableLbSvcQueue.Get()
+	require.Equal(t, f.namespace+"/"+f.svc.Name, item)
+}
+
+// TestDeleteNftableLbRecordDropsLegacyFinalizer pins the other half of the upgrade path: nothing
+// removes the generic controller finalizer from a share object any more (the DNAT workers skip
+// them), so the record cleanup has to, or the record stays Terminating and its EIP stays in use.
+func TestDeleteNftableLbRecordDropsLegacyFinalizer(t *testing.T) {
+	legacy := &kubeovnv1.IptablesDnatRule{
+		Name:       "lb-web-legacy",
+		Finalizers: []string{util.KubeOVNControllerFinalizer, "third-party/keep"},
+		Spec: kubeovnv1.IptablesDnatRuleSpec{
+			Type: kubeovnv1.DnatRuleTypeShare, EIP: "eip0",
+			ExternalPort: "80", Protocol: "tcp", InternalIP: "10.0.7.2", InternalPort: "8080",
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{legacy},
+	})
+	require.NoError(t, err)
+	c := fc.fakeController
+	c.resetIptablesEipQueue = newTypedRateLimitingQueue[string]("test-eip", nil)
+	t.Cleanup(c.resetIptablesEipQueue.ShutDown)
+
+	require.NoError(t, c.deleteNftableLbRecord(legacy))
+
+	// The fake client does not honour finalizers, so the Delete alone proves nothing: assert that
+	// the update preceding it stripped the legacy finalizer and kept the third party one.
+	var updated *kubeovnv1.IptablesDnatRule
+	for _, action := range c.config.KubeOvnClient.(*kubeovnfake.Clientset).Actions() {
+		if update, ok := action.(k8stesting.UpdateAction); ok && action.GetResource().Resource == "iptables-dnat-rules" {
+			updated, _ = update.GetObject().(*kubeovnv1.IptablesDnatRule)
+		}
+	}
+	require.NotNil(t, updated, "the record finalizers must be updated before the delete")
+	require.Equal(t, []string{"third-party/keep"}, updated.Finalizers)
 }
 
 func TestBuildNftableLbIdentities(t *testing.T) {

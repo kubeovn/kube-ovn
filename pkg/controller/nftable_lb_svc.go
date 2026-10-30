@@ -119,17 +119,20 @@ func (c *Controller) enqueueGwNftableLbServiceForService(svc *v1.Service) {
 }
 
 // enqueueGwNftableLbSvcRecordOwners replays the accounting records at startup so an orphaned record
-// (its Service already gone) is drained even though share-record events are ignored.
+// (its Service already gone) is drained even though share-record events are ignored. Records written
+// by an earlier version carry neither the record label nor the record finalizer, only the owner
+// labels, so they are matched on those: an upgrade must drain them too, otherwise their identity
+// and their EIP reference survive with nothing left to reclaim them.
 func (c *Controller) enqueueGwNftableLbSvcRecordOwners() error {
 	if c.iptablesDnatRulesLister == nil || c.addOrUpdateGwNftableLbSvcQueue == nil {
 		return nil
 	}
-	records, err := c.iptablesDnatRulesLister.List(labels.SelectorFromSet(labels.Set{util.NftableLbSvcRecordLabel: "true"}))
+	records, err := c.iptablesDnatRulesLister.List(labels.Everything())
 	if err != nil {
 		return err
 	}
 	for _, record := range records {
-		if !slices.Contains(record.Finalizers, util.NftableLbSvcRecordFinalizer) {
+		if record.Spec.Type != kubeovnv1.DnatRuleTypeShare {
 			continue
 		}
 		if key := util.NftableLbSvcOwnerKey(record.Labels); key != "" {
@@ -733,16 +736,20 @@ func (c *Controller) clearNftableLbSvcIngressIP(svc *v1.Service) error {
 	return nil
 }
 
-// deleteNftableLbRecord removes one accounting record for real. The record's finalizer keeps it
-// alive while the Service still programs its identity, so dropping it has to remove the finalizer
-// before the Delete can take effect.
+// deleteNftableLbRecord removes one accounting record for real. A finalizer keeps it alive while
+// the Service still programs its identity, so dropping it has to remove the finalizer before the
+// Delete can take effect. Both finalizers are removed: a record written by an earlier version
+// carries the generic controller one, and nothing else takes it off any more since the DNAT
+// workers skip share objects, which would leave the record stuck in Terminating and its EIP
+// forever in use.
 func (c *Controller) deleteNftableLbRecord(record *kubeovnv1.IptablesDnatRule) error {
 	client := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules()
-	if slices.Contains(record.Finalizers, util.NftableLbSvcRecordFinalizer) {
+	isRecordFinalizer := func(finalizer string) bool {
+		return finalizer == util.NftableLbSvcRecordFinalizer || finalizer == util.KubeOVNControllerFinalizer
+	}
+	if slices.ContainsFunc(record.Finalizers, isRecordFinalizer) {
 		updated := record.DeepCopy()
-		updated.Finalizers = slices.DeleteFunc(updated.Finalizers, func(finalizer string) bool {
-			return finalizer == util.NftableLbSvcRecordFinalizer
-		})
+		updated.Finalizers = slices.DeleteFunc(updated.Finalizers, isRecordFinalizer)
 		if _, err := client.Update(context.Background(), updated, metav1.UpdateOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 			return err
 		}
