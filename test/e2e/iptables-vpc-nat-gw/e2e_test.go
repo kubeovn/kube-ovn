@@ -234,51 +234,105 @@ func waitForIptablesEIPReady(eipClient *framework.IptablesEIPClient, eipName str
 	return nil
 }
 
-// reclaimVpcNatGwLeftovers deletes, in dependency order, the NAT objects a failed spec may have
-// left behind: the rules first, then the EIPs they used, then the gateways those EIPs belong to.
-// Everything it finds is logged, because a leftover is a leak of the spec that owned it; the
-// deletions themselves are best effort, the waits that follow are what decides the outcome.
+// vpcNatGwLeftovers is what a failed spec of this suite may have left behind, scoped to the
+// external subnet the suite owns so that a shared cluster keeps its unrelated tenants.
+type vpcNatGwLeftovers struct {
+	gateways []string
+	eips     []string
+	fips     []string
+	dnats    []string
+	snats    []string
+}
+
+// findVpcNatGwLeftovers collects the NAT objects attached to the given external subnet: the
+// gateways that use it, the EIPs allocated from it, and the rules that reference those EIPs.
+// A rule or EIP is matched through its spec, not its controller-written labels, because an
+// object the controller never reconciled has no labels yet.
+func findVpcNatGwLeftovers(f *framework.Framework, externalSubnetName string) vpcNatGwLeftovers {
+	ginkgo.GinkgoHelper()
+	ctx := context.Background()
+	client := f.KubeOVNClientSet.KubeovnV1()
+	var left vpcNatGwLeftovers
+
+	gws, err := client.VpcNatGateways().List(ctx, metav1.ListOptions{})
+	framework.ExpectNoError(err, "listing vpc nat gateways")
+	gateways := make(map[string]bool, len(gws.Items))
+	for _, gw := range gws.Items {
+		if slices.Contains(gw.Spec.ExternalSubnets, externalSubnetName) {
+			gateways[gw.Name] = true
+			left.gateways = append(left.gateways, gw.Name)
+		}
+	}
+
+	eips, err := client.IptablesEIPs().List(ctx, metav1.ListOptions{})
+	framework.ExpectNoError(err, "listing iptables eips")
+	owned := make(map[string]bool, len(eips.Items))
+	for _, eip := range eips.Items {
+		if eip.Spec.ExternalSubnet != externalSubnetName && !gateways[eip.Spec.NatGwDp] {
+			continue
+		}
+		owned[eip.Name] = true
+		left.eips = append(left.eips, eip.Name)
+	}
+
+	fips, err := client.IptablesFIPRules().List(ctx, metav1.ListOptions{})
+	framework.ExpectNoError(err, "listing iptables fip rules")
+	for _, rule := range fips.Items {
+		if owned[rule.Spec.EIP] {
+			left.fips = append(left.fips, rule.Name)
+		}
+	}
+	dnats, err := client.IptablesDnatRules().List(ctx, metav1.ListOptions{})
+	framework.ExpectNoError(err, "listing iptables dnat rules")
+	for _, rule := range dnats.Items {
+		if owned[rule.Spec.EIP] || gateways[rule.Labels[util.VpcNatGatewayNameLabel]] {
+			left.dnats = append(left.dnats, rule.Name)
+		}
+	}
+	snats, err := client.IptablesSnatRules().List(ctx, metav1.ListOptions{})
+	framework.ExpectNoError(err, "listing iptables snat rules")
+	for _, rule := range snats.Items {
+		if owned[rule.Spec.EIP] {
+			left.snats = append(left.snats, rule.Name)
+		}
+	}
+	return left
+}
+
+// reclaimVpcNatGwLeftovers deletes, in dependency order, the NAT objects of this suite that a
+// failed spec may have left behind: the rules first, then the EIPs they used, then the gateways
+// those EIPs belong to. Everything it finds is logged, because a leftover is a leak of the spec
+// that owned it; a NotFound on delete is the normal race with the spec's own cleanup.
 func reclaimVpcNatGwLeftovers(f *framework.Framework, externalSubnetName string) {
 	ginkgo.GinkgoHelper()
 	ctx := context.Background()
 	client := f.KubeOVNClientSet.KubeovnV1()
+	left := findVpcNatGwLeftovers(f, externalSubnetName)
 
-	fips, err := client.IptablesFIPRules().List(ctx, metav1.ListOptions{})
-	if err == nil {
-		for _, rule := range fips.Items {
-			framework.Logf("reclaiming leftover iptables fip %s", rule.Name)
-			_ = client.IptablesFIPRules().Delete(ctx, rule.Name, metav1.DeleteOptions{})
+	reclaim := func(kind, name string, del func() error) {
+		framework.Logf("reclaiming leftover %s %s", kind, name)
+		if err := del(); err != nil && !k8serrors.IsNotFound(err) {
+			framework.ExpectNoError(err, fmt.Sprintf("deleting leftover %s %s", kind, name))
 		}
 	}
-	dnats, err := client.IptablesDnatRules().List(ctx, metav1.ListOptions{})
-	if err == nil {
-		for _, rule := range dnats.Items {
-			framework.Logf("reclaiming leftover iptables dnat %s", rule.Name)
-			_ = client.IptablesDnatRules().Delete(ctx, rule.Name, metav1.DeleteOptions{})
-		}
+	for _, name := range left.fips {
+		reclaim("iptables fip", name, func() error { return client.IptablesFIPRules().Delete(ctx, name, metav1.DeleteOptions{}) })
 	}
-	snats, err := client.IptablesSnatRules().List(ctx, metav1.ListOptions{})
-	if err == nil {
-		for _, rule := range snats.Items {
-			framework.Logf("reclaiming leftover iptables snat %s", rule.Name)
-			_ = client.IptablesSnatRules().Delete(ctx, rule.Name, metav1.DeleteOptions{})
-		}
+	for _, name := range left.dnats {
+		reclaim("iptables dnat", name, func() error { return client.IptablesDnatRules().Delete(ctx, name, metav1.DeleteOptions{}) })
+	}
+	for _, name := range left.snats {
+		reclaim("iptables snat", name, func() error { return client.IptablesSnatRules().Delete(ctx, name, metav1.DeleteOptions{}) })
 	}
 
 	// The rules hold the EIPs through their records and their finalizers, so give them a moment
 	// to go before asking for the EIPs, and the same for the gateways that own the EIPs.
-	eips, err := client.IptablesEIPs().List(ctx, metav1.ListOptions{})
-	if err == nil && len(eips.Items) != 0 {
-		gomega.Eventually(func() bool {
-			rules, err := client.IptablesDnatRules().List(ctx, metav1.ListOptions{})
-			if err != nil {
-				return false
-			}
-			return len(rules.Items) == 0
-		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(), "leftover dnat rules should be released")
-		for _, eip := range eips.Items {
-			framework.Logf("reclaiming leftover iptables eip %s", eip.Name)
-			_ = client.IptablesEIPs().Delete(ctx, eip.Name, metav1.DeleteOptions{})
+	if len(left.eips) != 0 {
+		gomega.Eventually(func() []string {
+			return findVpcNatGwLeftovers(f, externalSubnetName).dnats
+		}, 60*time.Second, 2*time.Second).Should(gomega.BeEmpty(), "leftover dnat rules should be released")
+		for _, name := range left.eips {
+			reclaim("iptables eip", name, func() error { return client.IptablesEIPs().Delete(ctx, name, metav1.DeleteOptions{}) })
 		}
 	}
 
@@ -287,28 +341,21 @@ func reclaimVpcNatGwLeftovers(f *framework.Framework, externalSubnetName string)
 	// address keeps the external subnet from being deleted. Every spec is done by the time this
 	// runs and the subnet is about to go, so any address still held in it is a leftover.
 	ips, err := client.IPs().List(ctx, metav1.ListOptions{})
-	if err == nil {
-		for _, ip := range ips.Items {
-			if ip.Spec.Subnet != externalSubnetName {
-				continue
-			}
-			framework.Logf("reclaiming leaked ip %s of pod %s/%s", ip.Name, ip.Spec.Namespace, ip.Spec.PodName)
-			_ = client.IPs().Delete(ctx, ip.Name, metav1.DeleteOptions{})
+	framework.ExpectNoError(err, "listing ips")
+	for _, ip := range ips.Items {
+		if ip.Spec.Subnet != externalSubnetName {
+			continue
 		}
+		framework.Logf("leaked ip %s belongs to pod %s/%s", ip.Name, ip.Spec.Namespace, ip.Spec.PodName)
+		reclaim("ip", ip.Name, func() error { return client.IPs().Delete(ctx, ip.Name, metav1.DeleteOptions{}) })
 	}
 
-	gws, err := client.VpcNatGateways().List(ctx, metav1.ListOptions{})
-	if err == nil && len(gws.Items) != 0 {
-		gomega.Eventually(func() bool {
-			left, err := client.IptablesEIPs().List(ctx, metav1.ListOptions{})
-			if err != nil {
-				return false
-			}
-			return len(left.Items) == 0
-		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(), "leftover eips should be released")
-		for _, gw := range gws.Items {
-			framework.Logf("reclaiming leftover vpc nat gateway %s", gw.Name)
-			_ = client.VpcNatGateways().Delete(ctx, gw.Name, metav1.DeleteOptions{})
+	if len(left.gateways) != 0 {
+		gomega.Eventually(func() []string {
+			return findVpcNatGwLeftovers(f, externalSubnetName).eips
+		}, 60*time.Second, 2*time.Second).Should(gomega.BeEmpty(), "leftover eips should be released")
+		for _, name := range left.gateways {
+			reclaim("vpc nat gateway", name, func() error { return client.VpcNatGateways().Delete(ctx, name, metav1.DeleteOptions{}) })
 		}
 	}
 }
@@ -862,15 +909,10 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			// failed spec does not strand the shared subnet here and poison the next run.
 			reclaimVpcNatGwLeftovers(f, networkAttachDefName)
 
-			ginkgo.By("Waiting for the vpc nat gateways to be deleted")
-			gomega.Eventually(func() int {
-				gws, err := f.KubeOVNClientSet.KubeovnV1().VpcNatGateways().List(context.Background(), metav1.ListOptions{})
-				if err != nil {
-					framework.Logf("Failed to list vpc nat gateways: %v", err)
-					return -1
-				}
-				return len(gws.Items)
-			}, 2*time.Minute, time.Second).Should(gomega.Equal(0), "all vpc nat gateways should be deleted before waiting for the EIPs they held")
+			ginkgo.By("Waiting for the vpc nat gateways using subnet " + networkAttachDefName + " to be deleted")
+			gomega.Eventually(func() []string {
+				return findVpcNatGwLeftovers(f, networkAttachDefName).gateways
+			}, 2*time.Minute, time.Second).Should(gomega.BeEmpty(), "all vpc nat gateways should be deleted before waiting for the EIPs they held")
 
 			ginkgo.By("Waiting for all EIPs using subnet " + networkAttachDefName + " to be deleted")
 			// An EIP's finalizer is released as soon as the data plane cleanup ran or was skipped

@@ -378,6 +378,18 @@ func (v *ValidatingHook) iptablesDnatUpdateHook(ctx context.Context, req admissi
 		return ctrlwebhook.Allowed("bypass")
 	}
 
+	// The controller branch above is the only writer of a Service record. Anyone else changing its
+	// spec would forge the ledger that drives data-plane programming and EIP accounting, so reject
+	// the update here: an EIP-only record has an empty ClusterIP and would otherwise fall through to
+	// the ordinary DNAT rules, which allow the EIP and backend fields to change. An empty identity
+	// is the same escape hatch validateNftableLbOwnerLabels uses: without it nobody could write.
+	if v.controllerUserName != "" && util.IsNftableLbSvcRecord(dnatOld.Labels) {
+		return ctrlwebhook.Errored(http.StatusForbidden, fmt.Errorf(
+			"dnat %q is an nftable LB Service record owned by the kube-ovn controller and its spec cannot be changed by %q",
+			dnatNew.Name, req.UserInfo.Username,
+		))
+	}
+
 	// A rule serving a ClusterIP is created and deleted together with the Service it comes
 	// from, and never updated: its identity is its address, so any spec change would silently
 	// reprogram a different VIP. Delete and recreate the rule instead.

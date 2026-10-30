@@ -712,11 +712,31 @@ func TestValidateIptablesDnatClusterIPFlow(t *testing.T) {
 		}
 	}
 
-	tests := []struct {
-		name    string
-		mutate  func(d *ovnv1.IptablesDnatRule)
-		wantErr string
-	}{
+	for _, tt := range clusterIPFlowCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dnat := base()
+			tt.mutate(dnat)
+			err := v.ValidateIptablesDnat(context.Background(), dnat)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+// dnatValidationCase mutates a valid share rule into the shape under test.
+type dnatValidationCase struct {
+	name    string
+	mutate  func(d *ovnv1.IptablesDnatRule)
+	wantErr string
+}
+
+func clusterIPFlowCases() []dnatValidationCase {
+	return []dnatValidationCase{
 		{
 			name: "clusterIP with an explicit gateway label is accepted",
 			mutate: func(d *ovnv1.IptablesDnatRule) {
@@ -787,39 +807,14 @@ func TestValidateIptablesDnatClusterIPFlow(t *testing.T) {
 			},
 		},
 	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			dnat := base()
-			tt.mutate(dnat)
-			err := v.ValidateIptablesDnat(context.Background(), dnat)
-			if tt.wantErr == "" {
-				require.NoError(t, err)
-				return
-			}
-			require.Error(t, err)
-			require.Contains(t, err.Error(), tt.wantErr)
-		})
-	}
 }
 
 // TestNftableLbOwnerLabelsAreControllerOnly pins who may write the accounting metadata: the owner
 // labels decide which Service a record belongs to, so only the controller may set or change them,
 // and a hand-created share object is rejected outright.
-func TestNftableLbOwnerLabelsAreControllerOnly(t *testing.T) {
-	t.Parallel()
-
-	scheme := runtime.NewScheme()
-	require.NoError(t, ovnv1.AddToScheme(scheme))
-	encode := func(dnat *ovnv1.IptablesDnatRule) runtime.RawExtension {
-		raw, err := json.Marshal(dnat)
-		require.NoError(t, err)
-		return runtime.RawExtension{Raw: raw}
-	}
-	const controller = "system:serviceaccount:kube-system:ovn"
-
-	owned := &ovnv1.IptablesDnatRule{
+// ownedNftableLbRecord is an EIP-only accounting record as the controller generates it.
+func ownedNftableLbRecord() *ovnv1.IptablesDnatRule {
+	return &ovnv1.IptablesDnatRule{
 		Name: "test-dnat",
 		Labels: map[string]string{
 			util.NftableLbSvcNsLabel:     "ns1",
@@ -832,6 +827,25 @@ func TestNftableLbOwnerLabelsAreControllerOnly(t *testing.T) {
 			ExternalPort: "80", InternalPort: "8080", InternalIP: "10.0.0.1", Protocol: "tcp",
 		},
 	}
+}
+
+// encodeDnat renders a rule the way the API server submits it to the hook.
+func encodeDnat(t *testing.T, dnat *ovnv1.IptablesDnatRule) runtime.RawExtension {
+	t.Helper()
+	raw, err := json.Marshal(dnat)
+	require.NoError(t, err)
+	return runtime.RawExtension{Raw: raw}
+}
+
+func TestNftableLbOwnerLabelsAreControllerOnly(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, ovnv1.AddToScheme(scheme))
+	encode := func(dnat *ovnv1.IptablesDnatRule) runtime.RawExtension { return encodeDnat(t, dnat) }
+	const controller = "system:serviceaccount:kube-system:ovn"
+
+	owned := ownedNftableLbRecord()
 	unowned := owned.DeepCopy()
 	unowned.Labels = nil
 
@@ -888,6 +902,20 @@ func TestNftableLbOwnerLabelsAreControllerOnly(t *testing.T) {
 		require.True(t, resp.Allowed)
 	})
 
+	t.Run("a spec update of an eip-only record by a non-controller is rejected", func(t *testing.T) {
+		// ClusterIP is empty here, so the ClusterIP immutability rule below cannot catch this.
+		forged := owned.DeepCopy()
+		forged.Spec.InternalIP = "10.0.0.99"
+		resp := v.iptablesDnatUpdateHook(context.Background(), admission.Request{
+			Operation: admissionv1.Update,
+			OldObject: encode(owned),
+			Object:    encode(forged),
+			UserInfo:  authenticationv1.UserInfo{Username: "system:serviceaccount:default:attacker"},
+		})
+		require.False(t, resp.Allowed)
+		require.Contains(t, resp.Result.Message, "owned by the kube-ovn controller")
+	})
+
 	t.Run("the controller may write them", func(t *testing.T) {
 		resp := v.iptablesDnatUpdateHook(context.Background(), admission.Request{
 			Operation: admissionv1.Update,
@@ -927,11 +955,7 @@ func TestNftableLbRecordMayDropItsEip(t *testing.T) {
 	clusterIPOnly := served.DeepCopy()
 	clusterIPOnly.Spec.EIP = ""
 
-	encode := func(dnat *ovnv1.IptablesDnatRule) runtime.RawExtension {
-		raw, err := json.Marshal(dnat)
-		require.NoError(t, err)
-		return runtime.RawExtension{Raw: raw}
-	}
+	encode := func(dnat *ovnv1.IptablesDnatRule) runtime.RawExtension { return encodeDnat(t, dnat) }
 	v := &ValidatingHook{
 		decoder: admission.NewDecoder(scheme),
 		cache: &mockCache{objects: map[string]runtime.Object{

@@ -17,6 +17,7 @@ import (
 	discoveryv1 "k8s.io/api/discovery/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	corelisters "k8s.io/client-go/listers/core/v1"
@@ -899,39 +900,53 @@ func ownedShareRule(name, eip, clusterIP string) *kubeovnv1.IptablesDnatRule {
 	return rule
 }
 
+// vipRouteGw is the gateway every VIP route test reconciles, with one EIP and the external IDs
+// its policies carry.
+var (
+	vipRouteGw  = &kubeovnv1.VpcNatGateway{Name: "gw0", Spec: kubeovnv1.VpcNatGatewaySpec{Vpc: "vpc0"}}
+	vipRouteEip = &kubeovnv1.IptablesEIP{Name: "eip0", Status: kubeovnv1.IptablesEIPStatus{IP: "172.20.0.5"}}
+)
+
+// newVipRouteController builds a controller serving gw0 with the share DNAT feature on, which is
+// the only state syncNatGwVipStateForService reads besides the pods and rules given here.
+func newVipRouteController(t *testing.T, pods []*v1.Pod, rules ...*kubeovnv1.IptablesDnatRule) *fakeController {
+	t.Helper()
+	if len(rules) == 0 {
+		rules = []*kubeovnv1.IptablesDnatRule{ownedShareRule("rule-a", "eip0", "10.96.1.5")}
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		VpcNatGateways:    []*kubeovnv1.VpcNatGateway{vipRouteGw},
+		Pods:              pods,
+		IptablesEips:      []*kubeovnv1.IptablesEIP{vipRouteEip},
+		IptablesDnatRules: rules,
+	})
+	require.NoError(t, err)
+	fc.fakeController.config.EnableGwNftableLbSvc = true
+	return fc
+}
+
+// expectVipRoutesAdded records the matches and next hops of the policies the reconciler adds.
+func expectVipRoutesAdded(fc *fakeController, times int) map[string][]string {
+	added := map[string][]string{}
+	fc.mockOvnClient.EXPECT().AddLogicalRouterPolicy("vpc0", util.NatGatewayVipPolicyPriority, gomock.Any(), string(kubeovnv1.PolicyRouteActionReroute), gomock.Any(), nil, natGwVipRouteExternalIDs("gw0")).
+		DoAndReturn(func(_ string, _ int, match, _ string, nextHops, _ []string, _ map[string]string) error {
+			added[match] = nextHops
+			return nil
+		}).Times(times)
+	return added
+}
+
 func Test_syncNatGwVipStateForService(t *testing.T) {
 	t.Parallel()
 
-	gw := &kubeovnv1.VpcNatGateway{
-		Name: "gw0",
-		Spec: kubeovnv1.VpcNatGatewaySpec{Vpc: "vpc0"},
-	}
-	eip := &kubeovnv1.IptablesEIP{
-		Name:   "eip0",
-		Status: kubeovnv1.IptablesEIPStatus{IP: "172.20.0.5"},
-	}
 	externalIDs := natGwVipRouteExternalIDs("gw0")
 
 	t.Run("creates a route per VIP", func(t *testing.T) {
-		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-			VpcNatGateways:    []*kubeovnv1.VpcNatGateway{gw},
-			Pods:              gatewayPods("gw0", "10.0.7.254"),
-			IptablesEips:      []*kubeovnv1.IptablesEIP{eip},
-			IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{ownedShareRule("rule-a", "eip0", "10.96.1.5")},
-		})
-		require.NoError(t, err)
-		c := fc.fakeController
-		c.config.EnableGwNftableLbSvc = true
-
+		fc := newVipRouteController(t, gatewayPods("gw0", "10.0.7.254"))
 		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).Return(nil, nil)
-		added := map[string][]string{}
-		fc.mockOvnClient.EXPECT().AddLogicalRouterPolicy("vpc0", util.NatGatewayVipPolicyPriority, gomock.Any(), string(kubeovnv1.PolicyRouteActionReroute), gomock.Any(), nil, externalIDs).
-			DoAndReturn(func(_ string, _ int, match, _ string, nextHops, _ []string, _ map[string]string) error {
-				added[match] = nextHops
-				return nil
-			}).Times(2)
+		added := expectVipRoutesAdded(fc, 2)
 
-		require.NoError(t, c.syncNatGwVipStateForService("gw0", "", nil, ""))
+		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
 		require.Equal(t, map[string][]string{
 			"ip4.dst == 172.20.0.5": {"10.0.7.254"},
 			"ip4.dst == 10.96.1.5":  {"10.0.7.254"},
@@ -939,16 +954,7 @@ func Test_syncNatGwVipStateForService(t *testing.T) {
 	})
 
 	t.Run("removes routes that no rule references and refreshes the next hops", func(t *testing.T) {
-		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-			VpcNatGateways:    []*kubeovnv1.VpcNatGateway{gw},
-			Pods:              gatewayPods("gw0", "10.0.7.254"),
-			IptablesEips:      []*kubeovnv1.IptablesEIP{eip},
-			IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{ownedShareRule("rule-a", "eip0", "10.96.1.5")},
-		})
-		require.NoError(t, err)
-		c := fc.fakeController
-		c.config.EnableGwNftableLbSvc = true
-
+		fc := newVipRouteController(t, gatewayPods("gw0", "10.0.7.254"))
 		stale := &ovnnb.LogicalRouterPolicy{UUID: "stale-uuid", Priority: util.NatGatewayVipPolicyPriority, Match: "ip4.dst == 10.96.1.9"}
 		// Keep the expected next hop but drift the action: comparing nexthops alone would leave
 		// this policy as "allow" forever and the VIP would bypass the gateway.
@@ -970,7 +976,7 @@ func Test_syncNatGwVipStateForService(t *testing.T) {
 		fc.mockOvnClient.EXPECT().AddLogicalRouterPolicy("vpc0", util.NatGatewayVipPolicyPriority, "ip4.dst == 172.20.0.5",
 			string(kubeovnv1.PolicyRouteActionReroute), []string{"10.0.7.254"}, nil, externalIDs).Return(nil)
 
-		require.NoError(t, c.syncNatGwVipStateForService("gw0", "", nil, ""))
+		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
 		require.Equal(t, 29210, util.NatGatewayVipPolicyPriority)
 		require.Equal(t, map[string][]string{"ip4.dst == 10.96.1.5": {"10.0.7.254"}}, updated)
 	})
@@ -981,16 +987,7 @@ func Test_syncNatGwVipStateForService(t *testing.T) {
 	t.Run("a rule that moved to another gateway leaves no route behind", func(t *testing.T) {
 		moved := ownedShareRule("rule-a", "eip0", "10.96.1.5")
 		moved.Labels[util.VpcNatGatewayNameLabel] = "gw1"
-		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-			VpcNatGateways:    []*kubeovnv1.VpcNatGateway{gw},
-			Pods:              gatewayPods("gw0", "10.0.7.254"),
-			IptablesEips:      []*kubeovnv1.IptablesEIP{eip},
-			IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{moved},
-		})
-		require.NoError(t, err)
-		c := fc.fakeController
-		c.config.EnableGwNftableLbSvc = true
-
+		fc := newVipRouteController(t, gatewayPods("gw0", "10.0.7.254"), moved)
 		left := []*ovnnb.LogicalRouterPolicy{
 			{UUID: "clusterip-uuid", Priority: util.NatGatewayVipPolicyPriority, Match: "ip4.dst == 10.96.1.5"},
 			{UUID: "eip-uuid", Priority: util.NatGatewayVipPolicyPriority, Match: "ip4.dst == 172.20.0.5"},
@@ -1003,34 +1000,28 @@ func Test_syncNatGwVipStateForService(t *testing.T) {
 				return nil
 			}).Times(2)
 
-		require.NoError(t, c.syncNatGwVipStateForService("gw0", "", nil, ""))
+		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
 		require.ElementsMatch(t, []string{"clusterip-uuid", "eip-uuid"}, deleted)
 	})
+}
+
+// Test_syncNatGwVipStateNextHops pins which gateway instances a VIP route points at: every ready
+// replica with an IPv4 address, and no route at all while there is none.
+func Test_syncNatGwVipStateNextHops(t *testing.T) {
+	t.Parallel()
+
+	externalIDs := natGwVipRouteExternalIDs("gw0")
 
 	t.Run("routes a VIP to every ready instance (ECMP)", func(t *testing.T) {
 		// An HA gateway serves the VIP from any replica, so the route must carry all of them.
-		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-			VpcNatGateways: []*kubeovnv1.VpcNatGateway{gw},
-			Pods: gatewayPodsOnNodes("gw0", map[string]string{
-				"node0": "10.0.7.254",
-				"node1": "10.0.7.253",
-			}),
-			IptablesEips:      []*kubeovnv1.IptablesEIP{eip},
-			IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{ownedShareRule("rule-a", "eip0", "10.96.1.5")},
-		})
-		require.NoError(t, err)
-		c := fc.fakeController
-		c.config.EnableGwNftableLbSvc = true
-
+		fc := newVipRouteController(t, gatewayPodsOnNodes("gw0", map[string]string{
+			"node0": "10.0.7.254",
+			"node1": "10.0.7.253",
+		}))
 		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).Return(nil, nil)
-		added := map[string][]string{}
-		fc.mockOvnClient.EXPECT().AddLogicalRouterPolicy("vpc0", util.NatGatewayVipPolicyPriority, gomock.Any(), string(kubeovnv1.PolicyRouteActionReroute), gomock.Any(), nil, externalIDs).
-			DoAndReturn(func(_ string, _ int, match, _ string, nextHops, _ []string, _ map[string]string) error {
-				added[match] = nextHops
-				return nil
-			}).Times(2)
+		added := expectVipRoutesAdded(fc, 2)
 
-		require.NoError(t, c.syncNatGwVipStateForService("gw0", "", nil, ""))
+		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
 		require.Equal(t, map[string][]string{
 			"ip4.dst == 172.20.0.5": {"10.0.7.253", "10.0.7.254"},
 			"ip4.dst == 10.96.1.5":  {"10.0.7.253", "10.0.7.254"},
@@ -1043,25 +1034,11 @@ func Test_syncNatGwVipStateForService(t *testing.T) {
 			"node1": "10.0.7.253",
 		})
 		pods[1].Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
-		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-			VpcNatGateways:    []*kubeovnv1.VpcNatGateway{gw},
-			Pods:              pods,
-			IptablesEips:      []*kubeovnv1.IptablesEIP{eip},
-			IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{ownedShareRule("rule-a", "eip0", "10.96.1.5")},
-		})
-		require.NoError(t, err)
-		c := fc.fakeController
-		c.config.EnableGwNftableLbSvc = true
-
+		fc := newVipRouteController(t, pods)
 		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).Return(nil, nil)
-		added := map[string][]string{}
-		fc.mockOvnClient.EXPECT().AddLogicalRouterPolicy("vpc0", util.NatGatewayVipPolicyPriority, gomock.Any(), string(kubeovnv1.PolicyRouteActionReroute), gomock.Any(), nil, externalIDs).
-			DoAndReturn(func(_ string, _ int, match, _ string, nextHops, _ []string, _ map[string]string) error {
-				added[match] = nextHops
-				return nil
-			}).Times(2)
+		added := expectVipRoutesAdded(fc, 2)
 
-		require.NoError(t, c.syncNatGwVipStateForService("gw0", "", nil, ""))
+		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
 		ready := added["ip4.dst == 10.96.1.5"]
 		require.Equal(t, []string{"10.0.7.254"}, ready, "a not ready replica must not be a next hop")
 	})
@@ -1072,43 +1049,25 @@ func Test_syncNatGwVipStateForService(t *testing.T) {
 		v6Only := gatewayPods("gw0", "fd00::10")
 		v6Only[0].Status.PodIPs = []v1.PodIP{{IP: "fd00::10"}}
 		v6Only[0].Status.PodIP = "fd00::10"
-		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-			VpcNatGateways:    []*kubeovnv1.VpcNatGateway{gw},
-			Pods:              v6Only,
-			IptablesEips:      []*kubeovnv1.IptablesEIP{eip},
-			IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{ownedShareRule("rule-a", "eip0", "10.96.1.5")},
-		})
-		require.NoError(t, err)
-		c := fc.fakeController
-		c.config.EnableGwNftableLbSvc = true
-
+		fc := newVipRouteController(t, v6Only)
 		existing := &ovnnb.LogicalRouterPolicy{UUID: "u1", Priority: util.NatGatewayVipPolicyPriority, Match: "ip4.dst == 10.96.1.5"}
 		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).
 			Return([]*ovnnb.LogicalRouterPolicy{existing}, nil)
 		fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyByUUID("vpc0", "u1").Return(nil)
 
-		require.NoError(t, c.syncNatGwVipStateForService("gw0", "", nil, ""))
+		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
 	})
 
 	t.Run("drops every route while no instance is reachable", func(t *testing.T) {
 		notReady := gatewayPods("gw0", "10.0.7.254")
 		notReady[0].Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
-		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-			VpcNatGateways:    []*kubeovnv1.VpcNatGateway{gw},
-			Pods:              notReady,
-			IptablesEips:      []*kubeovnv1.IptablesEIP{eip},
-			IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{ownedShareRule("rule-a", "eip0", "10.96.1.5")},
-		})
-		require.NoError(t, err)
-		c := fc.fakeController
-		c.config.EnableGwNftableLbSvc = true
-
+		fc := newVipRouteController(t, notReady)
 		existing := &ovnnb.LogicalRouterPolicy{UUID: "u1", Priority: util.NatGatewayVipPolicyPriority, Match: "ip4.dst == 10.96.1.5"}
 		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).
 			Return([]*ovnnb.LogicalRouterPolicy{existing}, nil)
 		fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyByUUID("vpc0", "u1").Return(nil)
 
-		require.NoError(t, c.syncNatGwVipStateForService("gw0", "", nil, ""))
+		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
 	})
 }
 
@@ -1143,7 +1102,32 @@ func Test_syncNatGwVipStateDisabled(t *testing.T) {
 // TestHandleAddOrUpdateVpcNatGwSyncsVipRoutes pins the gateway side convergence of the share DNAT
 // VIP routes: an HA scale down removes an instance without creating a new one, so no DNAT rule is
 // rewritten and the only chance to drop the gone instance from the routes is the gateway reconcile.
-func TestHandleAddOrUpdateVpcNatGwSyncsVipRoutes(t *testing.T) {
+// natGwInstancePod is a gateway instance Pod the controller accepts as ready and initialized.
+func natGwInstancePod(name, namespace, gwName, ip string, labels map[string]string, stsUID types.UID) *v1.Pod {
+	return &v1.Pod{
+		Name: name, Namespace: namespace, Labels: labels,
+		Annotations: map[string]string{
+			util.IPAddressAnnotation:         ip,
+			util.VpcNatGatewayInitAnnotation: "true",
+			util.VpcNatGatewayAnnotation:     gwName,
+		},
+		OwnerReferences: []metav1.OwnerReference{controllerOwnerReference(appsv1.SchemeGroupVersion.String(), util.KindStatefulSet, util.GenNatGwName(gwName), stsUID)},
+		Spec:            v1.PodSpec{NodeName: "node-1"},
+		Status: v1.PodStatus{
+			Phase:      v1.PodRunning,
+			PodIPs:     []v1.PodIP{{IP: ip}},
+			Conditions: []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionTrue}},
+			ContainerStatuses: []v1.ContainerStatus{{
+				Name: "vpc-nat-gw", ContainerID: "containerd://sync-instance",
+				State: v1.ContainerState{Running: &v1.ContainerStateRunning{}},
+			}},
+		},
+	}
+}
+
+// natGwVipRouteSyncController builds a running gateway that serves one LoadBalancer Service
+// through a share DNAT record, which is the state the gateway reconcile reads.
+func natGwVipRouteSyncController(t *testing.T) (*Controller, string) {
 	const (
 		gwName     = "sync-gw"
 		subnetName = "nat-subnet"
@@ -1167,25 +1151,7 @@ func TestHandleAddOrUpdateVpcNatGwSyncsVipRoutes(t *testing.T) {
 			Template: v1.PodTemplateSpec{Labels: gwLabels, Annotations: map[string]string{util.VpcNatGatewayAnnotation: gwName}},
 		},
 	}
-	pod := &v1.Pod{
-		Name: stsName + "-0", Namespace: namespace, Labels: gwLabels,
-		Annotations: map[string]string{
-			util.IPAddressAnnotation:         liveIP,
-			util.VpcNatGatewayInitAnnotation: "true",
-			util.VpcNatGatewayAnnotation:     gwName,
-		},
-		OwnerReferences: []metav1.OwnerReference{controllerOwnerReference(appsv1.SchemeGroupVersion.String(), util.KindStatefulSet, stsName, sts.UID)},
-		Spec:            v1.PodSpec{NodeName: "node-1"},
-		Status: v1.PodStatus{
-			Phase:      v1.PodRunning,
-			PodIPs:     []v1.PodIP{{IP: liveIP}},
-			Conditions: []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionTrue}},
-			ContainerStatuses: []v1.ContainerStatus{{
-				Name: "vpc-nat-gw", ContainerID: "containerd://sync-instance",
-				State: v1.ContainerState{Running: &v1.ContainerStateRunning{}},
-			}},
-		},
-	}
+	pod := natGwInstancePod(stsName+"-0", namespace, gwName, liveIP, gwLabels, sts.UID)
 	svc := &v1.Service{
 		Namespace: "default", Name: "sync-service",
 		Annotations: map[string]string{util.VpcNatGatewayAnnotation: gwName, util.EipAnnotation: eipName},
@@ -1239,6 +1205,11 @@ func TestHandleAddOrUpdateVpcNatGwSyncsVipRoutes(t *testing.T) {
 	vpcNatEnabled = "true"
 	t.Cleanup(func() { vpcNatEnabled = "unknown" })
 	controller.serviceCIDRStore = util.NewServiceCIDRStore("10.96.0.0/12")
+	return controller, gwName
+}
+
+func TestHandleAddOrUpdateVpcNatGwSyncsVipRoutes(t *testing.T) {
+	controller, gwName := natGwVipRouteSyncController(t)
 
 	// Gateway reconcile only re-enqueues the bound Service. The Service is the sole writer of
 	// share-DNAT VIP routes, so no OVN mock is expected here.
