@@ -89,6 +89,9 @@ func TestFetchPolicySelectedAddressesUsesCacheUntilPodEvent(t *testing.T) {
 	addresses, _, err := controller.fetchPolicySelectedAddresses(metav1.NamespaceDefault, kubeovnv1.ProtocolIPv4, peer, nil)
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.0.0.1"}, addresses)
+	addresses, _, err = controller.fetchPolicySelectedAddresses(metav1.NamespaceDefault, kubeovnv1.ProtocolIPv4, netv1.NetworkPolicyPeer{}, nil)
+	require.NoError(t, err)
+	require.Equal(t, []string{"10.0.0.1"}, addresses)
 	emptyProviderAddresses, _, err := controller.fetchPolicySelectedAddresses(metav1.NamespaceDefault, kubeovnv1.ProtocolIPv4, peer, set.New[string]())
 	require.NoError(t, err)
 	require.Empty(t, emptyProviderAddresses)
@@ -148,9 +151,10 @@ func TestFetchPolicySelectedNamedPortAddressesKeepsNamespaceAndPortVariants(t *t
 	}
 	pod8080 := newPod("remote", "backend-8080", "10.0.0.8", 8080)
 	pod9090 := newPod("remote", "backend-9090", "10.0.0.9", 9090)
+	podLocal := newPod(metav1.NamespaceDefault, "backend-local", "10.0.0.7", 7070)
 	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Namespaces: []*corev1.Namespace{nsDefault, nsRemote},
-		Pods:       []*corev1.Pod{pod8080, pod9090},
+		Pods:       []*corev1.Pod{pod8080, pod9090, podLocal},
 		Subnets: []*kubeovnv1.Subnet{{
 			Name: util.DefaultSubnet,
 			Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider, Protocol: kubeovnv1.ProtocolIPv4},
@@ -161,6 +165,7 @@ func TestFetchPolicySelectedNamedPortAddressesKeepsNamespaceAndPortVariants(t *t
 	controller.namedPort = NewNamedPort()
 	controller.namedPort.AddNamedPortByPod(pod8080)
 	controller.namedPort.AddNamedPortByPod(pod9090)
+	controller.namedPort.AddNamedPortByPod(podLocal)
 
 	peer := netv1.NetworkPolicyPeer{
 		NamespaceSelector: &metav1.LabelSelector{MatchLabels: map[string]string{"tenant": "remote"}},
@@ -189,6 +194,18 @@ func TestFetchPolicySelectedNamedPortAddressesKeepsNamespaceAndPortVariants(t *t
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"10.0.0.8"}, addresses[namedPortKey{protocol: corev1.ProtocolTCP, port: 8080}])
 	require.ElementsMatch(t, []string{"10.0.0.9"}, addresses[namedPortKey{protocol: corev1.ProtocolTCP, port: 9090}])
+	require.ElementsMatch(t, []string{"10.0.0.7"}, addresses[namedPortKey{protocol: corev1.ProtocolTCP, port: 7070}])
+
+	addresses, err = controller.fetchPolicySelectedNamedPortAddressesForPeers(
+		metav1.NamespaceDefault,
+		kubeovnv1.ProtocolIPv4,
+		corev1.ProtocolTCP,
+		[]netv1.NetworkPolicyPeer{{}},
+		set.New(util.OvnProvider),
+		"http",
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"10.0.0.7"}, addresses[namedPortKey{protocol: corev1.ProtocolTCP, port: 7070}])
 }
 
 func TestPolicySelectorCacheInvalidatesOnNetworkAttachmentInformerEvents(t *testing.T) {
