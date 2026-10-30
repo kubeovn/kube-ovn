@@ -62,3 +62,15 @@ func TestValidateProtocolsAllowsDestinationNamedPort(t *testing.T) {
 
 	require.NoError(t, ValidateProtocols(policy))
 }
+
+func TestValidateProtocolsRejectsMixedNamedPortTransport(t *testing.T) {
+	policy := &v1alpha2.ClusterNetworkPolicy{
+		Spec: v1alpha2.ClusterNetworkPolicySpec{
+			Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{{Protocols: []v1alpha2.ClusterNetworkPolicyProtocol{{
+				DestinationNamedPort: "http",
+				TCP:                  &v1alpha2.ClusterNetworkPolicyProtocolTCP{},
+			}}}},
+		},
+	}
+	require.EqualError(t, ValidateProtocols(policy), "ingress[0]: destinationNamedPort cannot be combined with a transport")
+}
