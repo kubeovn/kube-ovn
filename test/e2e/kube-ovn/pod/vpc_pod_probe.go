@@ -234,7 +234,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		framework.ExpectTrue(found, "Pod readiness probe is expected to fail")
 
 		pod = podClient.GetPod(podName)
-		checkTProxyRules(f, pod, port-1, true)
+		checkTProxyRules(f, pod, port-1, false)
 	})
 })
 
