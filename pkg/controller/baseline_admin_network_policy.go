@@ -174,7 +174,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 			return err
 		}
 	}
-	if err := c.ensurePolicyNamedPortGroups(pgName, baselineAdminNetworkPolicyKey, banpName, namedPortVariants); err != nil {
+	if err := c.ensurePolicyNamedPortGroups(baselineAdminNetworkPolicyKey, banpName, namedPortVariants); err != nil {
 		return err
 	}
 
@@ -271,7 +271,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 				if variant.name != *port.NamedPort {
 					continue
 				}
-				variantPort := namedPortNumber(variant.name, variant.protocol, variant.port)
+				variantPort := namedPortNumber(variant.protocol, variant.port)
 				if len(v4Addrs) != 0 {
 					variantACL := fmt.Sprintf("banp/%s/ingress/%s/%d/named/%s/%s/%d", banpName, kubeovnv1.ProtocolIPv4, index, variant.name, variant.protocol, variant.port)
 					ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(variant.pgName, ingressAsV4Name, kubeovnv1.ProtocolIPv4, variantACL, aclPriority, aclAction, logActions, []v1alpha1.AdminNetworkPolicyPort{variantPort}, true, true)
@@ -372,7 +372,7 @@ func (c *Controller) handleAddBanp(key string) (err error) {
 				return err
 			}
 			for variant, selected := range addresses {
-				variantPort := namedPortNumber(*port.NamedPort, variant.protocol, variant.port)
+				variantPort := namedPortNumber(variant.protocol, variant.port)
 				v4Name := networkPolicyNamedPortAddressSetName(fmt.Sprintf("%s.egress", banpName), kubeovnv1.ProtocolIPv4, index, *port.NamedPort, variant)
 				v6Name := networkPolicyNamedPortAddressSetName(fmt.Sprintf("%s.egress", banpName), kubeovnv1.ProtocolIPv6, index, *port.NamedPort, variant)
 				if len(selected.v4) != 0 {

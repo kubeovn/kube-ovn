@@ -11,11 +11,12 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/utils/set"
 
+	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
+	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
-	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 )
 
 // policyNamedPortSelectors describes the Pods selected by a policy subject or
@@ -176,7 +177,7 @@ func cnpNamedPortProtocol(variant namedPortKey) v1alpha2.ClusterNetworkPolicyPro
 	return protocol
 }
 
-func mergeNamedPortAddresses(dst map[namedPortKey]*policyNamedPortAddresses, src map[namedPortKey]*policyNamedPortAddresses) {
+func mergeNamedPortAddresses(dst, src map[namedPortKey]*policyNamedPortAddresses) {
 	for key, addresses := range src {
 		current := dst[key]
 		if current == nil {
@@ -369,7 +370,7 @@ func (c *Controller) namedPortVariantsForSelectors(selectors policyNamedPortSele
 	return variants, nil
 }
 
-func (c *Controller) ensurePolicyNamedPortGroups(baseName, externalID, externalValue string, variants []networkPolicyNamedPortVariant) error {
+func (c *Controller) ensurePolicyNamedPortGroups(externalID, externalValue string, variants []networkPolicyNamedPortVariant) error {
 	desired := make(map[string]struct{}, len(variants))
 	for _, variant := range variants {
 		desired[variant.pgName] = struct{}{}
@@ -414,7 +415,7 @@ func (c *Controller) deletePolicyNamedPortGroups(externalID, externalValue strin
 	return nil
 }
 
-func namedPortNumber(name string, protocol corev1.Protocol, port int32) v1alpha1.AdminNetworkPolicyPort {
+func namedPortNumber(protocol corev1.Protocol, port int32) v1alpha1.AdminNetworkPolicyPort {
 	return v1alpha1.AdminNetworkPolicyPort{PortNumber: &v1alpha1.Port{Protocol: protocol, Port: port}}
 }
 

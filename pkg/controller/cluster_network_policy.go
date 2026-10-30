@@ -177,10 +177,10 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		if err != nil {
 			return err
 		}
-		if err := c.ensurePolicyNamedPortGroups(pgName, clusterNetworkPolicyKey, pgName, namedPortVariants); err != nil {
+		if err := c.ensurePolicyNamedPortGroups(clusterNetworkPolicyKey, pgName, namedPortVariants); err != nil {
 			return err
 		}
-	} else if err := c.ensurePolicyNamedPortGroups(pgName, clusterNetworkPolicyKey, pgName, nil); err != nil {
+	} else if err := c.ensurePolicyNamedPortGroups(clusterNetworkPolicyKey, pgName, nil); err != nil {
 		return err
 	}
 

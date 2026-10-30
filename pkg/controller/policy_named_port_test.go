@@ -174,7 +174,7 @@ func TestPolicyNamedPortHelperVariants(t *testing.T) {
 	})
 	require.Equal(t, []string{"10.0.0.1"}, dst[namedPortKey{protocol: corev1.ProtocolTCP, port: 80}].v4)
 	require.Equal(t, []string{"fd00::1"}, dst[namedPortKey{protocol: corev1.ProtocolTCP, port: 80}].v6)
-	require.Equal(t, int32(80), namedPortNumber(name, corev1.ProtocolTCP, 80).PortNumber.Port)
+	require.Equal(t, int32(80), namedPortNumber(corev1.ProtocolTCP, 80).PortNumber.Port)
 }
 
 func TestPolicyNamedPortGroupLifecycle(t *testing.T) {
@@ -188,7 +188,7 @@ func TestPolicyNamedPortGroupLifecycle(t *testing.T) {
 		adminNetworkPolicyKey:     "anp/example",
 		networkPolicyNamedPortKey: "true",
 	}))
-	require.NoError(t, c.ensurePolicyNamedPortGroups("anp.example", adminNetworkPolicyKey, "anp/example", []networkPolicyNamedPortVariant{variant}))
+	require.NoError(t, c.ensurePolicyNamedPortGroups(adminNetworkPolicyKey, "anp/example", []networkPolicyNamedPortVariant{variant}))
 	groups, err := c.OVNNbClient.ListPortGroups(map[string]string{adminNetworkPolicyKey: "anp/example", networkPolicyNamedPortKey: "true"})
 	require.NoError(t, err)
 	require.Len(t, groups, 1)
@@ -206,4 +206,53 @@ func TestPolicyNamedPortSelectorsRejectInvalidLabelSelectors(t *testing.T) {
 	require.ErrorContains(t, err, "error creating namespace label selector")
 	_, err = c.namedPortSelectors(nil, &metav1.LabelSelector{MatchLabels: map[string]string{"bad/key/extra": "value"}})
 	require.ErrorContains(t, err, "error creating pod label selector")
+}
+
+func TestNamedPortPolicyUpdatesRecreatePolicies(t *testing.T) {
+	portName := "http"
+	anpPorts := []v1alpha1.AdminNetworkPolicyPort{{NamedPort: &portName}}
+	anpOld := &v1alpha1.AdminNetworkPolicy{
+		Name: "anp",
+		Spec: v1alpha1.AdminNetworkPolicySpec{
+			Priority: 10,
+			Subject:  v1alpha1.AdminNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
+			Ingress:  []v1alpha1.AdminNetworkPolicyIngressRule{{Ports: &anpPorts}},
+		},
+	}
+	anpNew := anpOld.DeepCopy()
+	anpNew.Spec.Subject.Namespaces = &metav1.LabelSelector{MatchLabels: map[string]string{"tenant": "prod"}}
+	anpController := prepareAnpQueueTestController(t)
+	t.Cleanup(anpController.addAnpQueue.ShutDown)
+	anpController.enqueueUpdateAnp(anpOld, anpNew)
+	require.Equal(t, 1, anpController.addAnpQueue.Len())
+
+	banpPorts := []v1alpha1.AdminNetworkPolicyPort{{NamedPort: &portName}}
+	banpOld := &v1alpha1.BaselineAdminNetworkPolicy{
+		Name: "banp",
+		Spec: v1alpha1.BaselineAdminNetworkPolicySpec{
+			Subject: v1alpha1.AdminNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
+			Ingress: []v1alpha1.BaselineAdminNetworkPolicyIngressRule{{Ports: &banpPorts}},
+		},
+	}
+	banpNew := banpOld.DeepCopy()
+	banpNew.Spec.Subject.Namespaces = &metav1.LabelSelector{MatchLabels: map[string]string{"tenant": "prod"}}
+	banpController := prepareBanpQueueTestController(t)
+	t.Cleanup(banpController.addBanpQueue.ShutDown)
+	banpController.enqueueUpdateBanp(banpOld, banpNew)
+	require.Equal(t, 1, banpController.addBanpQueue.Len())
+
+	cnpOld := &v1alpha2.ClusterNetworkPolicy{
+		Name: "cnp",
+		Spec: v1alpha2.ClusterNetworkPolicySpec{
+			Subject: v1alpha2.ClusterNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
+			Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{{Protocols: []v1alpha2.ClusterNetworkPolicyProtocol{{DestinationNamedPort: portName}}}},
+		},
+	}
+	cnpNew := cnpOld.DeepCopy()
+	cnpNew.Spec.Subject.Namespaces = &metav1.LabelSelector{MatchLabels: map[string]string{"tenant": "prod"}}
+	cnpController := prepareAnpQueueTestController(t)
+	cnpController.addCnpQueue = newTypedRateLimitingQueue[string]("AddClusterNetworkPolicy", nil)
+	t.Cleanup(cnpController.addCnpQueue.ShutDown)
+	cnpController.enqueueUpdateCnp(cnpOld, cnpNew)
+	require.Equal(t, 1, cnpController.addCnpQueue.Len())
 }
