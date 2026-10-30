@@ -126,7 +126,7 @@ func gatewayForCNIIPFamily(ipAddr, gateway string) string {
 	return strings.Join(filtered, ",")
 }
 
-func (csh cniServerHandler) providerExists(provider, ifName string, annotations map[string]string) (*kubeovnv1.Subnet, bool) {
+func (csh cniServerHandler) providerExists(provider, ifName string, annotations map[string]string, appendIfName bool) (*kubeovnv1.Subnet, bool) {
 	if provider == "" || provider == util.OvnProvider {
 		return nil, true
 	}
@@ -134,7 +134,7 @@ func (csh cniServerHandler) providerExists(provider, ifName string, annotations 
 	// The v1.15 multi-NIC contract allows a named OVN attachment to select a
 	// legacy provider=ovn subnet explicitly through its logical_switch annotation.
 	if util.IsOvnProvider(provider) {
-		logicalSwitch := logicalSwitchAnnotation(annotations, provider, ifName)
+		logicalSwitch := logicalSwitchAnnotation(annotations, provider, ifName, appendIfName)
 		if logicalSwitch != "" {
 			subnet, err := csh.Controller.subnetsLister.Get(logicalSwitch)
 			if err != nil {
@@ -163,16 +163,11 @@ func (csh cniServerHandler) providerExists(provider, ifName string, annotations 
 	return nil, false
 }
 
-func logicalSwitchAnnotation(annotations map[string]string, provider, ifName string) string {
+func logicalSwitchAnnotation(annotations map[string]string, provider, ifName string, appendIfName bool) string {
 	if annotations == nil {
 		return ""
 	}
-	if ifName != "" {
-		if subnet := annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider+"."+ifName)]; subnet != "" {
-			return subnet
-		}
-	}
-	return annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)]
+	return util.GetAnnotationWithIfNameOverride(annotations, provider, ifName, util.LogicalSwitchAnnotationTemplate, appendIfName)
 }
 
 // isMacOnlyAllocation reports whether the controller allocated only a MAC address
@@ -238,8 +233,15 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 		eventPod = pod
+		// Match the effective annotation key used below when building the plan.
+		// This must happen before providerExists so stale interface-specific
+		// annotations cannot select a different subnet for validation.
+		_, ok := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerWithIfName)]
+		if ok {
+			appendIfName = true
+		}
 		var exist bool
-		podSubnet, exist = csh.providerExists(podRequest.Provider, podRequest.IfName, pod.Annotations)
+		podSubnet, exist = csh.providerExists(podRequest.Provider, podRequest.IfName, pod.Annotations, appendIfName)
 		if !exist {
 			errMsg := fmt.Errorf("provider %s is not bound to any subnet", podRequest.Provider)
 			klog.Error(errMsg)
@@ -256,12 +258,6 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 				klog.Errorf("failed to write response: %v", err)
 			}
 			return
-		}
-
-		// in case of multiple nics from same subnet
-		_, ok := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerWithIfName)]
-		if ok {
-			appendIfName = true
 		}
 
 		ip = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.IPAddressAnnotationTemplate, appendIfName)

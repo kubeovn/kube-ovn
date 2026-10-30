@@ -243,15 +243,15 @@ func TestProviderExistsRequiresSubnetForNamedOvnProvider(t *testing.T) {
 
 	handler := cniServerHandler{Controller: &Controller{subnetsLister: subnetInformer.Lister()}}
 
-	_, ok := handler.providerExists(util.OvnProvider, "", nil)
+	_, ok := handler.providerExists(util.OvnProvider, "", nil, false)
 	require.True(t, ok)
 
-	subnet, ok := handler.providerExists("attachnet-a.default.ovn", "", nil)
+	subnet, ok := handler.providerExists("attachnet-a.default.ovn", "", nil, false)
 	require.True(t, ok)
 	require.NotNil(t, subnet)
 	require.Equal(t, "attach-subnet", subnet.Name)
 
-	_, ok = handler.providerExists("attachnet-b.default.ovn", "", nil)
+	_, ok = handler.providerExists("attachnet-b.default.ovn", "", nil, false)
 	require.False(t, ok)
 }
 
@@ -271,14 +271,14 @@ func TestProviderExistsAllowsLegacyOvnSubnetSelectedByLogicalSwitch(t *testing.T
 	annotations := map[string]string{
 		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): subnetName,
 	}
-	resolved, ok := handler.providerExists(provider, "", annotations)
+	resolved, ok := handler.providerExists(provider, "", annotations, false)
 	require.True(t, ok)
 	require.Equal(t, subnetName, resolved.Name)
 
 	interfaceAnnotations := map[string]string{
 		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider+".net1"): subnetName,
 	}
-	resolved, ok = handler.providerExists(provider, "net1", interfaceAnnotations)
+	resolved, ok = handler.providerExists(provider, "net1", interfaceAnnotations, true)
 	require.True(t, ok)
 	require.Equal(t, subnetName, resolved.Name)
 
@@ -289,9 +289,37 @@ func TestProviderExistsAllowsLegacyOvnSubnetSelectedByLogicalSwitch(t *testing.T
 	emptyProviderAnnotations := map[string]string{
 		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, "legacy.default.ovn"): emptyProviderSubnet.Name,
 	}
-	resolved, ok = handler.providerExists("legacy.default.ovn", "", emptyProviderAnnotations)
+	resolved, ok = handler.providerExists("legacy.default.ovn", "", emptyProviderAnnotations, false)
 	require.True(t, ok)
 	require.Equal(t, emptyProviderSubnet.Name, resolved.Name)
+}
+
+func TestProviderExistsUsesEffectiveLogicalSwitchAnnotation(t *testing.T) {
+	const provider = "attachnet.default.ovn"
+	namedSubnet := &kubeovnv1.Subnet{
+		Name: "named-attachment",
+		Spec: kubeovnv1.SubnetSpec{Provider: provider},
+	}
+	legacySubnet := &kubeovnv1.Subnet{
+		Name: "legacy-attachment",
+		Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+	}
+	subnetIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, subnetIndexer.Add(namedSubnet))
+	require.NoError(t, subnetIndexer.Add(legacySubnet))
+	handler := cniServerHandler{Controller: &Controller{subnetsLister: kubeovnlister.NewSubnetLister(subnetIndexer)}}
+
+	annotations := map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider):         namedSubnet.Name,
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider+".net1"): legacySubnet.Name,
+	}
+	resolved, ok := handler.providerExists(provider, "net1", annotations, false)
+	require.True(t, ok)
+	require.Equal(t, namedSubnet.Name, resolved.Name)
+
+	resolved, ok = handler.providerExists(provider, "net1", annotations, true)
+	require.True(t, ok)
+	require.Equal(t, legacySubnet.Name, resolved.Name)
 }
 
 func TestProviderExistsRejectsLogicalSwitchWithDifferentNamedProvider(t *testing.T) {
@@ -310,14 +338,14 @@ func TestProviderExistsRejectsLogicalSwitchWithDifferentNamedProvider(t *testing
 	annotations := map[string]string{
 		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): subnetName,
 	}
-	_, ok := handler.providerExists(provider, "", annotations)
+	_, ok := handler.providerExists(provider, "", annotations, false)
 	require.False(t, ok)
 }
 
 func TestProviderExistsAllowsOnSubnetListError(t *testing.T) {
 	handler := cniServerHandler{Controller: &Controller{subnetsLister: errSubnetLister{}}}
 
-	subnet, ok := handler.providerExists("attachnet-a.default.ovn", "", nil)
+	subnet, ok := handler.providerExists("attachnet-a.default.ovn", "", nil, false)
 	require.True(t, ok)
 	require.Nil(t, subnet)
 }
