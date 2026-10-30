@@ -714,6 +714,10 @@ func TestHandleDeleteNpReturnsMeterError(t *testing.T) {
 	mockOvnClient.EXPECT().DeleteMeter("allow.default_to-lport_meter").Return(meterErr)
 	mockOvnClient.EXPECT().DeleteMeter("allow.default_from-lport_meter").Return(nil)
 	mockOvnClient.EXPECT().DeletePortGroup("allow.default").Return(nil)
+	mockOvnClient.EXPECT().ListPortGroups(map[string]string{
+		networkPolicyKey:          "default/allow",
+		networkPolicyNamedPortKey: "true",
+	}).Return(nil, nil)
 	mockOvnClient.EXPECT().DeleteAddressSets(map[string]string{
 		networkPolicyKey: "default/allow/ingress",
 	}).Return(nil)

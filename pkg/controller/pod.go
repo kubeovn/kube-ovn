@@ -168,6 +168,28 @@ func (n *NamedPort) GetNamedPortByNs(namespace string) map[string]*util.NamedPor
 	return nil
 }
 
+// GetNamedPortVariantsByNs returns every protocol/port variant and a copy of
+// the Pods that expose it. Callers use this snapshot to build per-destination
+// NetworkPolicy port groups without holding the index lock during reconciliation.
+func (n *NamedPort) GetNamedPortVariantsByNs(namespace string) map[string]map[namedPortKey]*strset.Set {
+	n.mutex.RLock()
+	defer n.mutex.RUnlock()
+
+	nsPorts := n.namedPortMap[namespace]
+	if len(nsPorts) == 0 {
+		return nil
+	}
+
+	result := make(map[string]map[namedPortKey]*strset.Set, len(nsPorts))
+	for name, variants := range nsPorts {
+		result[name] = make(map[namedPortKey]*strset.Set, len(variants))
+		for key, pods := range variants {
+			result[name][key] = pods.Copy()
+		}
+	}
+	return result
+}
+
 func isPodAlive(p *v1.Pod) bool {
 	if !p.DeletionTimestamp.IsZero() && p.DeletionGracePeriodSeconds != nil {
 		now := time.Now()

@@ -213,3 +213,29 @@ func TestEnqueueNamespaceNamedPortPoliciesForUnselectedPod(t *testing.T) {
 	controller.updateNpQueue.Done(item)
 	require.Equal(t, "default/named", item)
 }
+
+func TestPodMatchesGlobalNamedEgressPolicy(t *testing.T) {
+	remote := &corev1.Namespace{Name: "remote"}
+	pod := &corev1.Pod{
+		Name: "backend", Namespace: remote.Name,
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{Ports: []corev1.ContainerPort{{Name: "http", ContainerPort: 8080}}}}},
+	}
+	policy := &networkingv1.NetworkPolicy{
+		Name: "allow-http", Namespace: metav1.NamespaceDefault,
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			Egress:      []networkingv1.NetworkPolicyEgressRule{{Ports: []networkingv1.NetworkPolicyPort{{Port: new(intstr.FromString("http"))}}}},
+		},
+	}
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Namespaces: []*corev1.Namespace{{Name: metav1.NamespaceDefault}, remote}})
+	require.NoError(t, err)
+	controller := fake.fakeController
+	controller.config.EnableNP = true
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	require.NoError(t, indexer.Add(policy))
+	controller.npsLister = networkinglister.NewNetworkPolicyLister(indexer)
+	require.NoError(t, controller.rebuildPolicyEventIndex())
+	require.Equal(t, []string{"default/allow-http"}, controller.podMatchNetworkPolicies(pod))
+	pod.Spec.Containers[0].Ports[0].Protocol = corev1.ProtocolUDP
+	require.Empty(t, controller.podMatchNetworkPolicies(pod))
+}
