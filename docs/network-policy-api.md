@@ -15,10 +15,12 @@ protocols:
           end: 9000
 ```
 
-TCP, UDP and SCTP numeric ports and ranges are supported. Omitting `protocols`
-leaves the rule unrestricted by transport or destination port. Named ports
-are rejected before applying OVN changes. Domain-name peers require the DNS
-resolver and an `Accept` action.
+TCP, UDP and SCTP numeric ports and ranges are supported. `destinationNamedPort`
+resolves against the selected destination Pods and supports all protocols and
+port numbers exposed by that name. Named ports must target Pods or Namespaces;
+Node, Network and domain-name peers do not provide named-port resolution.
+Omitting `protocols` leaves the rule unrestricted by transport or destination
+port. Domain-name peers require the DNS resolver and an `Accept` action.
 
 Existing CNP manifests must be converted from `ports` to `protocols` before
 using the v0.2.0 controller and CRD. This release does not provide automatic
