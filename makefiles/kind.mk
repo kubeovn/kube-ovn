@@ -481,6 +481,10 @@ kind-install-ovn-submariner: kind-install
 		base64 > broker-info-internal.subm
 	$(call kind_subctl_join,kube-ovn,cluster0,100.64.0.0/16;10.16.0.0/16)
 	$(call kind_subctl_join,kube-ovn1,cluster1,100.68.0.0/16;10.18.0.0/16)
+	python3 hack/submariner_e2e.py --cluster kube-ovn --remote-cluster kube-ovn1 \
+		--service-cidr 10.96.0.0/12 --remote-service-cidr 10.112.0.0/12
+	python3 hack/submariner_e2e.py --cluster kube-ovn1 --remote-cluster kube-ovn \
+		--service-cidr 10.112.0.0/12 --remote-service-cidr 10.96.0.0/12
 
 .PHONY: kind-install-underlay
 kind-install-underlay: kind-install-underlay-ipv4
