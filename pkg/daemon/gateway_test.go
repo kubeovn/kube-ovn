@@ -261,8 +261,8 @@ func TestProviderExistsAllowsLegacyOvnSubnetSelectedByLogicalSwitch(t *testing.T
 		subnetName = "legacy-attachment"
 	)
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
-		Spec:       kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
 	}
 	subnetIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	require.NoError(t, subnetIndexer.Add(subnet))
@@ -283,7 +283,7 @@ func TestProviderExistsAllowsLegacyOvnSubnetSelectedByLogicalSwitch(t *testing.T
 	require.Equal(t, subnetName, resolved.Name)
 
 	emptyProviderSubnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "legacy-empty-provider"},
+		Name: "legacy-empty-provider",
 	}
 	require.NoError(t, subnetIndexer.Add(emptyProviderSubnet))
 	emptyProviderAnnotations := map[string]string{
@@ -300,8 +300,8 @@ func TestProviderExistsRejectsLogicalSwitchWithDifferentNamedProvider(t *testing
 		subnetName = "other-attachment"
 	)
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: subnetName},
-		Spec:       kubeovnv1.SubnetSpec{Provider: "other.default.ovn"},
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Provider: "other.default.ovn"},
 	}
 	subnetIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	require.NoError(t, subnetIndexer.Add(subnet))
