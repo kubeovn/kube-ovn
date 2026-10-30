@@ -3254,6 +3254,129 @@ jobs:
           name: kube-ovn-anp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-anp-domain-e2e-${{ matrix.mode }}-${{ matrix.ip-family }}-ko-log.tar.gz
 
+  kube-ovn-network-policy-conformance-e2e:
+    name: Kube-OVN ${{ matrix.suite }} Network Policy Conformance E2E
+    needs:
+      - prepare-kind-node-images
+      - build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        suite:
+          - anp
+          - cnp
+    steps:
+      - uses: jlumbroso/free-disk-space@v2.0.0
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        id: setup-go
+        with:
+          go-version-file: test/${{ matrix.suite }}/go.mod
+          check-latest: true
+          cache: false
+
+      - name: Export Go full version
+        run: echo "GO_VERSION=${{ steps.setup-go.outputs.go-version }}" >> "$GITHUB_ENV"
+
+      - name: Go cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cache/go-build
+            ~/go/pkg/mod
+          key: ${{ runner.os }}-netpol-conformance-${{ matrix.suite }}-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('test/{0}/go.sum', matrix.suite)) }}
+          restore-keys: ${{ runner.os }}-netpol-conformance-${{ matrix.suite }}-${{ env.GO_VERSION }}-x86-
+
+      - name: Install kind
+        uses: helm/kind-action@v1.15.1
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download kube-ovn image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load kube-ovn image
+        run: docker load --input kube-ovn.tar
+
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator
+          make kind-init-ipv4
+
+      - name: Install Kube-OVN
+        id: install
+        run: make kind-install-anp
+
+      - name: Run network policy conformance
+        id: e2e
+        run: make kube-ovn-${{ matrix.suite }}-e2e
+
+      - name: Upload conformance report
+        if: always() && steps.e2e.outcome != 'skipped'
+        uses: actions/upload-artifact@v7
+        with:
+          name: kube-ovn-${{ matrix.suite }}-network-policy-conformance-report
+          path: ${{ matrix.suite }}-test-report.yaml
+          if-no-files-found: ignore
+
+      - name: Collect k8s events
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        run: |
+          kubectl get events -A -o yaml > kube-ovn-${{ matrix.suite }}-network-policy-conformance-events.yaml
+          tar zcf kube-ovn-${{ matrix.suite }}-network-policy-conformance-events.tar.gz kube-ovn-${{ matrix.suite }}-network-policy-conformance-events.yaml
+
+      - name: Upload k8s events
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        uses: actions/upload-artifact@v7
+        with:
+          name: kube-ovn-${{ matrix.suite }}-network-policy-conformance-events
+          path: kube-ovn-${{ matrix.suite }}-network-policy-conformance-events.tar.gz
+
+      - name: Check kube ovn pod restarts
+        id: check-restarts
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko logs
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        run: |
+          bash .github/scripts/collect-kubectl-ko-log.sh
+          mv kubectl-ko-log.tar.gz kube-ovn-${{ matrix.suite }}-network-policy-conformance-ko-log.tar.gz
+
+      - name: Upload kubectl ko logs
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        uses: actions/upload-artifact@v7
+        with:
+          name: kube-ovn-${{ matrix.suite }}-network-policy-conformance-ko-log
+          path: kube-ovn-${{ matrix.suite }}-network-policy-conformance-ko-log.tar.gz
+
+      - name: Cleanup
+        if: always()
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
+
   cilium-chaining-e2e:
     name: Cilium Chaining E2E
     needs:
@@ -4760,6 +4883,7 @@ jobs:
       - talos-installation-test
       - kube-ovn-cnp-domain-e2e
       - kube-ovn-anp-domain-e2e
+      - kube-ovn-network-policy-conformance-e2e
       - cilium-chaining-e2e
       - kube-ovn-ha-e2e
       - vpc-egress-gateway-e2e
