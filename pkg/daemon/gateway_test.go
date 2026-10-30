@@ -129,12 +129,10 @@ func TestGetTProxyConditionPodSkipsTerminating(t *testing.T) {
 	require.NoError(t, subnetInformer.Informer().GetStore().Add(subnet))
 
 	pod := &v1.Pod{
-		ObjectMeta: metav1.ObjectMeta{
-			Namespace: "default",
-			Name:      "live",
-			Annotations: map[string]string{
-				fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider): subnet.Name,
-			},
+		Namespace: "default",
+		Name:      "live",
+		Annotations: map[string]string{
+			fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider): subnet.Name,
 		},
 	}
 	terminating := pod.DeepCopy()
