@@ -42,6 +42,7 @@ func TestGetTProxyRulePorts(t *testing.T) {
 		}},
 	}
 	const podIP = "10.30.0.2"
+	t.Cleanup(func() { customVPCPodIPToNs.Delete(podIP) })
 	for _, port := range []int32{8080, 8081, 8083} {
 		key := util.JoinHostPort(podIP, port)
 		t.Cleanup(func() { customVPCPodTCPProbeIPPort.Delete(key) })
@@ -50,6 +51,11 @@ func TestGetTProxyRulePorts(t *testing.T) {
 	allPorts, tcpPorts := getProbePorts(pod)
 	require.Equal(t, []int32{8080, 8081, 8082, 8083, 8084}, allPorts.SortedList())
 	require.Equal(t, []int32{8080, 8081, 8083}, tcpPorts.SortedList())
+	require.Equal(t, []int32{8082, 8084}, getTProxyRulePorts(pod, podIP).SortedList())
+
+	customVPCPodIPToNs.Store(podIP, podNetworkNamespace{podUID: "uid-old", namespace: "old-ns"})
+	require.Empty(t, getTProxyRulePorts(pod, podIP))
+	customVPCPodIPToNs.Store(podIP, podNetworkNamespace{podUID: pod.UID, namespace: "pod-ns"})
 	require.Equal(t, []int32{8082, 8084}, getTProxyRulePorts(pod, podIP).SortedList())
 
 	customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, 8080), tcpProbeResult{podUID: pod.UID, reachable: true})
@@ -65,6 +71,6 @@ func TestGetTProxyRulePorts(t *testing.T) {
 
 	oldUID := pod.UID
 	pod.UID = "uid-recreated"
-	require.Equal(t, []int32{8082, 8084}, getTProxyRulePorts(pod, podIP).SortedList())
+	require.Empty(t, getTProxyRulePorts(pod, podIP))
 	pod.UID = oldUID
 }

@@ -34,6 +34,11 @@ type tcpProbeResult struct {
 	reachable bool
 }
 
+type podNetworkNamespace struct {
+	podUID    types.UID
+	namespace string
+}
+
 func (c *Controller) StartTProxyForwarding() {
 	for _, addr := range util.GetDefaultListenAddr() {
 		protocol := "tcp"
@@ -67,6 +72,13 @@ func (c *Controller) StartTProxyForwarding() {
 }
 
 func getTProxyRulePorts(pod *corev1.Pod, podIP string) set.Set[int32] {
+	if value, ok := customVPCPodIPToNs.Load(podIP); ok {
+		mapping, valid := value.(podNetworkNamespace)
+		if !valid || mapping.podUID != pod.UID {
+			return set.New[int32]()
+		}
+	}
+
 	ports, tcpPorts := getProbePorts(pod)
 	for port := range tcpPorts {
 		value, ok := customVPCPodTCPProbeIPPort.Load(util.JoinHostPort(podIP, port))
@@ -157,7 +169,14 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 
 		if err != nil || nsName == "" {
 			for _, podIP := range util.PodIPs(*pod) {
-				customVPCPodIPToNs.Delete(podIP)
+				if nsName == "" {
+					customVPCPodIPToNs.Delete(podIP)
+				} else if value, ok := customVPCPodIPToNs.Load(podIP); ok {
+					mapping, valid := value.(podNetworkNamespace)
+					if !valid || mapping.podUID != pod.UID {
+						customVPCPodIPToNs.Delete(podIP)
+					}
+				}
 				for _, port := range tcpPorts.UnsortedList() {
 					customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, port), tcpProbeResult{podUID: pod.UID})
 				}
@@ -166,7 +185,7 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 		}
 
 		for _, podIP := range util.PodIPs(*pod) {
-			customVPCPodIPToNs.Store(podIP, nsName)
+			customVPCPodIPToNs.Store(podIP, podNetworkNamespace{podUID: pod.UID, namespace: nsName})
 			for _, port := range tcpPorts.UnsortedList() {
 				key := util.JoinHostPort(podIP, port)
 				reachable := probePortInNs(podIP, port, true, nil)
@@ -364,13 +383,18 @@ func handleRedirectFlow(conn net.Conn) {
 }
 
 func probePortInNs(podIP string, probePort int32, isTProxyProbe bool, conn net.Conn) bool {
-	podNs, ok := customVPCPodIPToNs.Load(podIP)
+	value, ok := customVPCPodIPToNs.Load(podIP)
 	if !ok {
 		klog.V(3).Infof("failed to get netns for pod with ip %s", podIP)
 		return false
 	}
+	mapping, ok := value.(podNetworkNamespace)
+	if !ok {
+		klog.V(3).Infof("invalid netns mapping for pod with ip %s", podIP)
+		return false
+	}
 
-	remoteConn, err := goTProxy.DialNamespace(goTProxy.NamespaceSocket, goTProxy.NamespaceRequest{NetNS: podNs.(string), PodIP: podIP, Port: probePort})
+	remoteConn, err := goTProxy.DialNamespace(goTProxy.NamespaceSocket, goTProxy.NamespaceRequest{NetNS: mapping.namespace, PodIP: podIP, Port: probePort})
 	if err != nil {
 		klog.V(3).Infof("failed to dial Pod %s:%d through namespace helper: %v", podIP, probePort, err)
 		return false
