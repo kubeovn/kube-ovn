@@ -200,7 +200,6 @@ func (c *Controller) handleUpdateNp(key string) (err error) {
 }
 
 func (c *Controller) reconcileNetworkPolicy(key string, np *netv1.NetworkPolicy) (err error) {
-
 	logEnable := np.Annotations[util.NetworkPolicyLogAnnotation] == "true"
 
 	var logActions []string
