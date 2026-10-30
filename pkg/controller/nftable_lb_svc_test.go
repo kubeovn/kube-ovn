@@ -1680,7 +1680,7 @@ func Test_enqueueGwNftableLbSvcRecordOwners(t *testing.T) {
 // earlier version carries only the owner labels and the generic controller finalizer. It must be
 // replayed too, otherwise an orphan from before the upgrade keeps its identity and its EIP
 // reference with nothing left that would ever reclaim them.
-func Test_enqueueGwNftableLbSvcRecordOwners_legacy(t *testing.T) {
+func TestEnqueueGwNftableLbSvcRecordOwnersLegacy(t *testing.T) {
 	f := newNftableLbSvcOwnershipFixture()
 	legacy := &kubeovnv1.IptablesDnatRule{
 		Name: "lb-web-legacy",

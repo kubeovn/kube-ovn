@@ -42,21 +42,7 @@ const (
 	vpcNatConfigName       = "ovn-vpc-nat-config"
 	networkAttachDefName   = "ovn-vpc-external-network"
 	externalSubnetProvider = "ovn-vpc-external-network.kube-system"
-
-	// e2eRunLabel marks the gateways this run created. The suite shares a cluster-wide fixed
-	// external network name with anything else that uses it, so the recovery path needs an
-	// ownership mark of its own instead of inferring one from that name.
-	e2eRunLabel = "e2e.kube-ovn.io/iptables-vpc-nat-gw-run"
 )
-
-// e2eRunID identifies this run of the suite. The specs of this suite all run in one process (they
-// share one Ordered container), so a package variable set in BeforeAll is the whole run.
-var e2eRunID string
-
-// vpcNatGwRunLabels marks a gateway as created by this run, for the leftover recovery.
-func vpcNatGwRunLabels() map[string]string {
-	return map[string]string{e2eRunLabel: e2eRunID}
-}
 
 // externalNetworkOwnership records which halves of the external network this suite created. Both
 // carry a cluster-wide fixed name, so a half that was already there belongs to somebody else and is
@@ -249,7 +235,6 @@ func setupVpcNatGwTestEnvironment(
 
 	ginkgo.By("Creating custom vpc nat gw " + vpcNatGwName)
 	vpcNatGw := framework.MakeVpcNatGatewayWithAnnotations(vpcNatGwName, vpcName, overlaySubnetName, lanIP, externalNetworkName, natGwQosPolicy, annotations)
-	vpcNatGw.Labels = vpcNatGwRunLabels()
 	if gwNamespace != "" {
 		vpcNatGw.Spec.Namespace = gwNamespace
 	}
@@ -278,172 +263,6 @@ func waitForIptablesEIPReady(eipClient *framework.IptablesEIPClient, eipName str
 	}
 	framework.Failf("Timeout waiting for IptablesEIP %s to be ready", eipName)
 	return nil
-}
-
-// vpcNatGwLeftovers is what a failed spec of this suite may have left behind, scoped to the
-// external subnet the suite owns so that a shared cluster keeps its unrelated tenants.
-type vpcNatGwLeftovers struct {
-	gateways []string
-	eips     []string
-	fips     []string
-	dnats    []string
-	snats    []string
-}
-
-// findVpcNatGwLeftovers collects the NAT objects of this run: the gateways it created, the EIPs
-// belonging to those gateways, and the rules that reference those EIPs. Gateways carry an explicit
-// run label, which is the only ownership mark that does not depend on the cluster-wide external
-// network name, and everything else is reached from them.
-//
-// ownedSubnet widens the EIP search to the addresses allocated from that subnet, which catches an
-// EIP whose gateway was never created. The caller passes it only for a subnet this run created, so
-// nothing that predates the run can be selected; it is "" otherwise.
-//
-// A rule or EIP is matched through its spec, not its controller-written labels, because an object
-// the controller never reconciled has none yet.
-func findVpcNatGwLeftovers(f *framework.Framework, ownedSubnet string) vpcNatGwLeftovers {
-	ginkgo.GinkgoHelper()
-	ctx := context.Background()
-	client := f.KubeOVNClientSet.KubeovnV1()
-	var left vpcNatGwLeftovers
-
-	gws, err := client.VpcNatGateways().List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s=%s", e2eRunLabel, e2eRunID),
-	})
-	framework.ExpectNoError(err, "listing vpc nat gateways")
-	gateways := make(map[string]bool, len(gws.Items))
-	for _, gw := range gws.Items {
-		gateways[gw.Name] = true
-		left.gateways = append(left.gateways, gw.Name)
-	}
-
-	eips, err := client.IptablesEIPs().List(ctx, metav1.ListOptions{})
-	framework.ExpectNoError(err, "listing iptables eips")
-	owned := make(map[string]bool, len(eips.Items))
-	for _, eip := range eips.Items {
-		fromOwnedSubnet := ownedSubnet != "" && eip.Spec.ExternalSubnet == ownedSubnet
-		if !fromOwnedSubnet && !gateways[eip.Spec.NatGwDp] {
-			continue
-		}
-		owned[eip.Name] = true
-		left.eips = append(left.eips, eip.Name)
-	}
-
-	fips, err := client.IptablesFIPRules().List(ctx, metav1.ListOptions{})
-	framework.ExpectNoError(err, "listing iptables fip rules")
-	for _, rule := range fips.Items {
-		if owned[rule.Spec.EIP] {
-			left.fips = append(left.fips, rule.Name)
-		}
-	}
-	dnats, err := client.IptablesDnatRules().List(ctx, metav1.ListOptions{})
-	framework.ExpectNoError(err, "listing iptables dnat rules")
-	for _, rule := range dnats.Items {
-		if owned[rule.Spec.EIP] || gateways[rule.Labels[util.VpcNatGatewayNameLabel]] {
-			left.dnats = append(left.dnats, rule.Name)
-		}
-	}
-	snats, err := client.IptablesSnatRules().List(ctx, metav1.ListOptions{})
-	framework.ExpectNoError(err, "listing iptables snat rules")
-	for _, rule := range snats.Items {
-		if owned[rule.Spec.EIP] {
-			left.snats = append(left.snats, rule.Name)
-		}
-	}
-	return left
-}
-
-// reclaimVpcNatGwLeftovers deletes, in dependency order, the NAT objects of this suite that a
-// failed spec may have left behind: the rules first, then the EIPs they used, then the gateways
-// those EIPs belong to. Everything it finds is logged, because a leftover is a leak of the spec
-// that owned it; a NotFound on delete is the normal race with the spec's own cleanup.
-func reclaimVpcNatGwLeftovers(f *framework.Framework, ownedSubnet string) {
-	ginkgo.GinkgoHelper()
-	ctx := context.Background()
-	client := f.KubeOVNClientSet.KubeovnV1()
-	left := findVpcNatGwLeftovers(f, ownedSubnet)
-
-	reclaim := func(kind, name string, del func() error) {
-		framework.Logf("reclaiming leftover %s %s", kind, name)
-		if err := del(); err != nil && !k8serrors.IsNotFound(err) {
-			framework.ExpectNoError(err, fmt.Sprintf("deleting leftover %s %s", kind, name))
-		}
-	}
-	for _, name := range left.fips {
-		reclaim("iptables fip", name, func() error { return client.IptablesFIPRules().Delete(ctx, name, metav1.DeleteOptions{}) })
-	}
-	for _, name := range left.dnats {
-		reclaim("iptables dnat", name, func() error { return client.IptablesDnatRules().Delete(ctx, name, metav1.DeleteOptions{}) })
-	}
-	for _, name := range left.snats {
-		reclaim("iptables snat", name, func() error { return client.IptablesSnatRules().Delete(ctx, name, metav1.DeleteOptions{}) })
-	}
-
-	// The rules hold the EIPs through their records and their finalizers, so give them a moment to
-	// go before asking for the EIPs. The EIP admission hook rejects a deletion while any FIP, SNAT
-	// or DNAT still references the EIP, so all three have to drain, not just the DNAT records.
-	if len(left.eips) != 0 {
-		gomega.Eventually(func() []string {
-			leftover := findVpcNatGwLeftovers(f, ownedSubnet)
-			return slices.Concat(leftover.fips, leftover.dnats, leftover.snats)
-		}, 60*time.Second, 2*time.Second).Should(gomega.BeEmpty(), "leftover nat rules should be released")
-		for _, name := range left.eips {
-			reclaim("iptables eip", name, func() error { return client.IptablesEIPs().Delete(ctx, name, metav1.DeleteOptions{}) })
-		}
-	}
-
-	// A gateway Pod that never finished starting, and was then removed with its namespace, can
-	// leave its address behind: the release path reads annotations such a Pod never got. The
-	// address keeps the external subnet from being deleted. Every spec is done by the time this
-	// runs and the subnet is about to go, so any address still held in it is a leftover. This runs
-	// only for a subnet this run created, so an address in it cannot predate the run either.
-	if ownedSubnet != "" {
-		ips, err := client.IPs().List(ctx, metav1.ListOptions{})
-		framework.ExpectNoError(err, "listing ips")
-		for _, ip := range ips.Items {
-			if ip.Spec.Subnet != ownedSubnet {
-				continue
-			}
-			framework.Logf("leaked ip %s belongs to pod %s/%s", ip.Name, ip.Spec.Namespace, ip.Spec.PodName)
-			reclaim("ip", ip.Name, func() error { return client.IPs().Delete(ctx, ip.Name, metav1.DeleteOptions{}) })
-		}
-	}
-
-	if len(left.gateways) != 0 {
-		gomega.Eventually(func() []string {
-			return findVpcNatGwLeftovers(f, ownedSubnet).eips
-		}, 60*time.Second, 2*time.Second).Should(gomega.BeEmpty(), "leftover eips should be released")
-		for _, name := range left.gateways {
-			reclaim("vpc nat gateway", name, func() error { return client.VpcNatGateways().Delete(ctx, name, metav1.DeleteOptions{}) })
-		}
-	}
-}
-
-// cleanupVpcNatGwRun reclaims what the specs of this run left behind. The specs delete their
-// gateways in their own cleanups, which run before this one; a spec that failed may not have gotten
-// that far, and its leftovers cannot be removed in any order: admission refuses to delete an EIP a
-// NAT rule still uses, and a gateway that still has EIPs.
-//
-// ownedSubnet is the external subnet when this run created it, and "" when it found it already
-// there. It widens the search to the addresses of that subnet, which is safe only on a subnet this
-// run created: nothing that predates the run can be allocated from it. Without it the run is still
-// reclaimed, through the gateways it labelled as its own.
-func cleanupVpcNatGwRun(f *framework.Framework, ownedSubnet string) {
-	ginkgo.GinkgoHelper()
-
-	reclaimVpcNatGwLeftovers(f, ownedSubnet)
-
-	ginkgo.By("Waiting for the vpc nat gateways of this run to be deleted")
-	gomega.Eventually(func() []string {
-		return findVpcNatGwLeftovers(f, ownedSubnet).gateways
-	}, 2*time.Minute, time.Second).Should(gomega.BeEmpty(), "all vpc nat gateways should be deleted before waiting for the EIPs they held")
-
-	ginkgo.By("Waiting for the EIPs of this run to be deleted")
-	// An EIP's finalizer is released as soon as the data plane cleanup ran or was skipped
-	// because the gateway it belongs to is gone (natGwDeleted).
-	gomega.Eventually(func() []string {
-		return findVpcNatGwLeftovers(f, ownedSubnet).eips
-	}, 2*time.Minute, time.Second).Should(gomega.BeEmpty(), "all EIPs should be deleted before cleaning up subnet")
 }
 
 // deleteSharedExternalSubnet removes the external subnet this run created, once its addresses are
@@ -870,6 +689,8 @@ func snatRulePosition(natGwPodName, eip, internalCIDR string) int {
 	return 0
 }
 
+// This suite requires exclusive use of its kind cluster: specs share the external network,
+// which is removed only after their individual cleanups have finished.
 var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	f := framework.NewDefaultFramework("iptables-vpc-nat-gw")
 
@@ -998,9 +819,6 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			return nil
 		}, 30*time.Second, 500*time.Millisecond).Should(gomega.Succeed(), "timed out waiting for all nodes to have their network interfaces ready")
 
-		e2eRunID = framework.RandomSuffix()
-		framework.Logf("iptables-vpc-nat-gw run id %s", e2eRunID)
-
 		ginkgo.By("Creating shared NAD and subnet for all tests")
 		ownership := setupNetworkAttachmentDefinition(
 			f, dockerExtNet1Network, attachNetClient,
@@ -1022,17 +840,8 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				}
 			}()
 
-			// What this run created is always reclaimed, whoever owns the external network: the
-			// specs put their gateways, EIPs and addresses on it either way. Only the subnet
-			// itself is conditional, and finding it already there also narrows the reclaim to
-			// the gateways this run labelled as its own.
-			ownedSubnet := ""
-			if ownership.subnet {
-				ownedSubnet = networkAttachDefName
-			} else {
-				framework.Logf("external subnet %s already existed, reclaiming only what this run created", networkAttachDefName)
-			}
-			cleanupVpcNatGwRun(f, ownedSubnet)
+			// Specs clean up their own named resources before this shared network is removed.
+			// If they leave allocations behind, report the failure rather than deleting by subnet.
 			if ownership.subnet {
 				deleteSharedExternalSubnet(subnetClient, networkAttachDefName)
 			}
@@ -3819,7 +3628,6 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("4. Creating custom vpc nat gw with noDefaultEIP=true " + vpcNatGwName)
 		vpcNatGw := framework.MakeVpcNatGatewayWithNoDefaultEIP(vpcNatGwName, vpcName, overlaySubnetName, lanIP, networkAttachDefName, natgwQoS, true)
-		vpcNatGw.Labels = vpcNatGwRunLabels()
 		_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Cleaning up custom vpc nat gw " + vpcNatGwName)
@@ -3932,7 +3740,6 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("Creating custom vpc nat gw " + haVpcNatGwName)
 		vpcNatGw := framework.MakeVpcNatGatewayWithAnnotations(haVpcNatGwName, haVpcName, haOverlaySubnetName, "", networkAttachDefName, "", nil)
-		vpcNatGw.Labels = vpcNatGwRunLabels()
 		vpcNatGw.Spec.Replicas = 2
 		_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 
