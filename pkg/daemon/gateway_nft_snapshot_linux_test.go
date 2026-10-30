@@ -237,3 +237,95 @@ func nftFamilySnapshotForTest(t *testing.T, snapshot gatewayNFTSnapshot, family 
 	require.FailNow(t, "nftables family not found", string(family))
 	return nftFamilySnapshot{}
 }
+
+func TestBuildNFTGatewaySnapshot_MultiEncapNodes(t *testing.T) {
+	nodeSelf := &corev1.Node{
+		Name: "node-self",
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{Type: corev1.NodeInternalIP, Address: "192.168.1.100"},
+			},
+		},
+	}
+	nodePeer := &corev1.Node{
+		Name: "node-peer",
+		Annotations: map[string]string{
+			util.NodeNetworksAnnotation: `{"storage": "10.0.1.200", "v6net": "fd00::200"}`,
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{Type: corev1.NodeInternalIP, Address: "192.168.1.200"},
+			},
+		},
+	}
+
+	snapshot, err := buildNFTGatewaySnapshot(nftSnapshotInput{
+		Protocol:   kubeovnv1.ProtocolDual,
+		NodeName:   "node-self",
+		Nodes:      []*corev1.Node{nodeSelf, nodePeer},
+		TunnelPort: 6081,
+	})
+	require.NoError(t, err)
+
+	v4 := nftFamilySnapshotForTest(t, snapshot, knftables.IPv4Family)
+	require.Equal(t, "192.168.1.100", v4.NodeInternalIP)
+	require.Equal(t, 6081, v4.TunnelPort)
+	require.NotContains(t, v4.OtherNodeIPs, "192.168.1.100")
+	require.Contains(t, v4.OtherNodeIPs, "192.168.1.200")
+	require.Contains(t, v4.OtherNodeIPs, "10.0.1.200")
+
+	v6 := nftFamilySnapshotForTest(t, snapshot, knftables.IPv6Family)
+	require.Equal(t, 6081, v6.TunnelPort)
+	require.Equal(t, []string{"fd00::200"}, v6.OtherNodeIPs)
+}
+
+func TestNFTSnapshotTunnelPeerAddresses(t *testing.T) {
+	snapshot, err := buildNFTGatewaySnapshot(nftSnapshotInput{
+		Protocol:      kubeovnv1.ProtocolDual,
+		TunnelPeerIPs: []string{"172.18.0.2", "fd00::2", "172.18.0.2"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"172.18.0.2"}, nftFamilySnapshotForTest(t, snapshot, knftables.IPv4Family).OtherNodeIPs)
+	require.Equal(t, []string{"fd00::2"}, nftFamilySnapshotForTest(t, snapshot, knftables.IPv6Family).OtherNodeIPs)
+}
+
+func TestNFTSnapshotLocalEncapAddresses(t *testing.T) {
+	snapshot, err := buildNFTGatewaySnapshot(nftSnapshotInput{
+		Protocol:       kubeovnv1.ProtocolDual,
+		LocalAddresses: []string{"192.0.2.99", "2001:db8::99"}, // Service VIPs are not tunnel addresses.
+		LocalEncapIPs:  []string{"192.0.2.10", "2001:db8::10", "192.0.2.10"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"192.0.2.10"}, nftFamilySnapshotForTest(t, snapshot, knftables.IPv4Family).LocalEncapIPs)
+	require.Equal(t, []string{"2001:db8::10"}, nftFamilySnapshotForTest(t, snapshot, knftables.IPv6Family).LocalEncapIPs)
+	clone := cloneGatewayNFTSnapshot(snapshot)
+	snapshot.Families[0].LocalEncapIPs[0] = "192.0.2.20"
+	require.Equal(t, []string{"192.0.2.10"}, clone.Families[0].LocalEncapIPs)
+}
+
+func TestNFTSnapshotMixedOverlayAndTunnelFamilies(t *testing.T) {
+	for _, tc := range []struct {
+		overlay string
+		local   string
+		peer    string
+		outer   knftables.Family
+	}{
+		{kubeovnv1.ProtocolIPv6, "192.0.2.10", "192.0.2.20", knftables.IPv4Family},
+		{kubeovnv1.ProtocolIPv4, "2001:db8::10", "2001:db8::20", knftables.IPv6Family},
+	} {
+		t.Run(tc.overlay+"-overlay-"+string(tc.outer)+"-tunnel", func(t *testing.T) {
+			snapshot, err := buildNFTGatewaySnapshot(nftSnapshotInput{
+				Protocol: tc.overlay, TunnelPort: 6081,
+				LocalEncapIPs: []string{tc.local}, TunnelPeerIPs: []string{tc.peer},
+			})
+			require.NoError(t, err)
+			outer := nftFamilySnapshotForTest(t, snapshot, tc.outer)
+			require.True(t, outer.TunnelOnly)
+			require.Equal(t, []string{tc.local}, outer.LocalEncapIPs)
+			require.Equal(t, []string{tc.peer}, outer.OtherNodeIPs)
+			dump := newNFTGatewayBackendForTest(knftables.NewFake("", "")).renderFull(snapshot).String()
+			require.Contains(t, dump, "add rule "+string(tc.outer)+" kube-ovn raw-prerouting udp dport 6081")
+			require.NotContains(t, dump, "add rule "+string(tc.outer)+" kube-ovn nat-postrouting")
+		})
+	}
+}

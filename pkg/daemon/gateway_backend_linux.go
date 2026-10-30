@@ -253,6 +253,7 @@ func (b *iptablesGatewayBackend) Reconcile(context.Context) error {
 	if err := b.controller.setIPSet(); err != nil {
 		return err
 	}
+	b.controller.reconcileTunnelIptables()
 	if err := b.controller.setIptables(); err != nil {
 		return err
 	}
