@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"slices"
 
 	v1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -49,6 +50,19 @@ func (v *ValidatingHook) ServiceUpdateHook(ctx context.Context, req admission.Re
 			return ctrlwebhook.Errored(http.StatusBadRequest,
 				fmt.Errorf("service %s/%s eip cannot change; delete and recreate the service", newSvc.Namespace, newSvc.Name))
 		}
+	} else if newSvc.Annotations[util.VpcNatGatewayAnnotation] != "" &&
+		slices.Contains(oldSvc.Finalizers, util.KubeOVNControllerFinalizer) {
+		// Clearing the annotation and then naming another gateway are two allowed writes, but the
+		// Service queue can observe only the latest object. The reconcile would program the new
+		// gateway and rewrite the records of the old one to it (record names do not encode the
+		// gateway), leaving the old nft identity, hairpin rule and VIP route with nothing that
+		// still names the gateway they are on. The finalizer is the claim this feature holds over
+		// the Service and the opt-out drops it as the last step of the release, so it is exactly
+		// the condition under which a rebinding has to wait.
+		return ctrlwebhook.Errored(http.StatusBadRequest, fmt.Errorf(
+			"service %s/%s has not released its previous vpc nat gateway yet (finalizer %q is still set); wait for the release to finish before binding another gateway",
+			newSvc.Namespace, newSvc.Name, util.KubeOVNControllerFinalizer,
+		))
 	}
 	if nftableLbServiceIntentChanged(&oldSvc, &newSvc) {
 		if err := v.validateNftableLbService(ctx, &newSvc); err != nil {

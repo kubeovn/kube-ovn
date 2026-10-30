@@ -1624,7 +1624,7 @@ false
 false
 </pre>
 </td>
-			<td>Enable ClusterIP services through nftable share DNAT on a VPC NAT gateway. Mutually exclusive with enableLoadbalancer and enableLoadbalancerService.</td>
+			<td>Enable ClusterIP services through nftable share DNAT on a VPC NAT gateway. Mutually exclusive with enableLoadbalancer.</td>
 		</tr>
 		<tr>
 			<td>features.enableHardwareOffload</td>
@@ -1678,7 +1678,7 @@ true
 false
 </pre>
 </td>
-			<td>Enable Kube-OVN loadbalancer services. Mutually exclusive with enableGwNftableLoadbalancerService and enableGwNftableServiceClusterIp.</td>
+			<td>Enable Kube-OVN loadbalancer services (one forwarding Pod per LoadBalancer Service). Mutually exclusive with enableGwNftableLoadbalancerService; it needs a ClusterIP data plane behind it, either enableLoadbalancer or enableGwNftableServiceClusterIp.</td>
 		</tr>
 		<tr>
 			<td>features.enableNatGateways</td>

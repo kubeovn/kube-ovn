@@ -225,13 +225,13 @@ features:
   # -- Enable hardware offloads
   # @section -- Opt-in/out Features
   enableHardwareOffload: false
-  # -- Enable Kube-OVN loadbalancer services. Mutually exclusive with enableGwNftableLoadbalancerService and enableGwNftableServiceClusterIp.
+  # -- Enable Kube-OVN loadbalancer services (one forwarding Pod per LoadBalancer Service). Mutually exclusive with enableGwNftableLoadbalancerService; it needs a ClusterIP data plane behind it, either enableLoadbalancer or enableGwNftableServiceClusterIp.
   # @section -- Opt-in/out Features
   enableLoadbalancerService: false
   # -- Enable Kube-OVN nftable share DNAT based loadbalancer services on vpc nat gateway. Mutually exclusive with enableLoadbalancerService.
   # @section -- Opt-in/out Features
   enableGwNftableLoadbalancerService: false
-  # -- Enable ClusterIP services through nftable share DNAT on a VPC NAT gateway. Mutually exclusive with enableLoadbalancer and enableLoadbalancerService.
+  # -- Enable ClusterIP services through nftable share DNAT on a VPC NAT gateway. Mutually exclusive with enableLoadbalancer.
   # @section -- Opt-in/out Features
   enableGwNftableServiceClusterIp: false
   # -- Enable persistent VM IPs

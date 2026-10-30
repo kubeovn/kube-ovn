@@ -164,6 +164,26 @@ func TestServiceUpdateHook(t *testing.T) {
 		require.True(t, resp.Allowed, "expected allowed, got: %+v", resp.Result)
 	})
 
+	t.Run("rejects rebinding before the previous binding was released", func(t *testing.T) {
+		// Clearing the annotation and naming another gateway are two allowed writes, but the queue
+		// can observe only the latest object. The reconcile would then rewrite the records of the
+		// old gateway to the new one, leaving the old data plane with no owner left to clean it up.
+		hook := newServiceHook(t)
+		releasing := service("", "")
+		releasing.Finalizers = []string{util.KubeOVNControllerFinalizer}
+		rebound := service("gw-b", "eip-b")
+		rebound.Finalizers = []string{util.KubeOVNControllerFinalizer}
+		resp := hook.ServiceUpdateHook(context.Background(), updateRequest(t, releasing, rebound))
+		require.False(t, resp.Allowed)
+		require.Contains(t, resp.Result.Message, "has not released its previous vpc nat gateway yet")
+	})
+
+	t.Run("allows rebinding once the previous binding is released", func(t *testing.T) {
+		hook := newServiceHook(t)
+		resp := hook.ServiceUpdateHook(context.Background(), updateRequest(t, service("", ""), service("gw-b", "eip-b")))
+		require.True(t, resp.Allowed, "expected allowed, got: %+v", resp.Result)
+	})
+
 	t.Run("rejects a port change that collides with another service", func(t *testing.T) {
 		other := nftableLbService("other", 81, v1.ProtocolTCP, nil)
 		hook := newServiceHook(t, nftableLbService("web", 80, v1.ProtocolTCP, nil), other)

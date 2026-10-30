@@ -44,6 +44,9 @@ const (
 	externalSubnetProvider = "ovn-vpc-external-network.kube-system"
 )
 
+// setupNetworkAttachmentDefinition makes the external network this suite runs on available, and
+// reports whether it had to create it. The external network is a cluster-wide fixed name: when it
+// was already there it belongs to somebody else, and the caller must not reclaim or delete it.
 func setupNetworkAttachmentDefinition(
 	f *framework.Framework,
 	dockerExtNetNetwork *dockernetwork.Inspect,
@@ -53,7 +56,7 @@ func setupNetworkAttachmentDefinition(
 	nicName string,
 	provider string,
 	dockerExtNetName string,
-) {
+) bool {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Getting docker network " + dockerExtNetName)
@@ -145,9 +148,10 @@ func setupNetworkAttachmentDefinition(
 		// Subnet doesn't exist, create it
 		macvlanSubnet := framework.MakeSubnet(externalNetworkName, "", strings.Join(cidr, ","), strings.Join(gateway, ","), "", provider, excludeIPs, nil, nil)
 		_ = subnetClient.CreateSync(macvlanSubnet)
-	} else {
-		framework.ExpectNoError(err, "getting subnet "+externalNetworkName)
+		return true
 	}
+	framework.ExpectNoError(err, "getting subnet "+externalNetworkName)
+	return false
 }
 
 func setupVpcNatGwTestEnvironment(
@@ -176,7 +180,7 @@ func setupVpcNatGwTestEnvironment(
 	ginkgo.GinkgoHelper()
 
 	if !skipNADSetup {
-		setupNetworkAttachmentDefinition(
+		_ = setupNetworkAttachmentDefinition(
 			f, dockerExtNetNetwork, attachNetClient,
 			subnetClient, externalNetworkName, nicName, provider, dockerExtNetName,
 		)
@@ -325,12 +329,14 @@ func reclaimVpcNatGwLeftovers(f *framework.Framework, externalSubnetName string)
 		reclaim("iptables snat", name, func() error { return client.IptablesSnatRules().Delete(ctx, name, metav1.DeleteOptions{}) })
 	}
 
-	// The rules hold the EIPs through their records and their finalizers, so give them a moment
-	// to go before asking for the EIPs, and the same for the gateways that own the EIPs.
+	// The rules hold the EIPs through their records and their finalizers, so give them a moment to
+	// go before asking for the EIPs. The EIP admission hook rejects a deletion while any FIP, SNAT
+	// or DNAT still references the EIP, so all three have to drain, not just the DNAT records.
 	if len(left.eips) != 0 {
 		gomega.Eventually(func() []string {
-			return findVpcNatGwLeftovers(f, externalSubnetName).dnats
-		}, 60*time.Second, 2*time.Second).Should(gomega.BeEmpty(), "leftover dnat rules should be released")
+			leftover := findVpcNatGwLeftovers(f, externalSubnetName)
+			return slices.Concat(leftover.fips, leftover.dnats, leftover.snats)
+		}, 60*time.Second, 2*time.Second).Should(gomega.BeEmpty(), "leftover nat rules should be released")
 		for _, name := range left.eips {
 			reclaim("iptables eip", name, func() error { return client.IptablesEIPs().Delete(ctx, name, metav1.DeleteOptions{}) })
 		}
@@ -895,13 +901,35 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		}, 30*time.Second, 500*time.Millisecond).Should(gomega.Succeed(), "timed out waiting for all nodes to have their network interfaces ready")
 
 		ginkgo.By("Creating shared NAD and subnet for all tests")
-		setupNetworkAttachmentDefinition(
+		ownsExternalNetwork := setupNetworkAttachmentDefinition(
 			f, dockerExtNet1Network, attachNetClient,
 			subnetClient, networkAttachDefName, net1NicName,
 			externalSubnetProvider, dockerExtNet1Name,
 		)
 
 		ginkgo.DeferCleanup(func() {
+			// The nodes were connected to the docker network by this suite whatever the state of
+			// the external network, so they are disconnected again in either case.
+			defer func() {
+				ginkgo.By("Getting nodes")
+				nodes, err := kind.ListNodes(clusterName, "")
+				framework.ExpectNoError(err, "getting nodes in cluster")
+				if dockerExtNet1Network != nil {
+					ginkgo.By("Disconnecting nodes from the docker network")
+					err = kind.NetworkDisconnect(dockerExtNet1Network.ID, nodes)
+					framework.ExpectNoError(err, "disconnecting nodes from network "+dockerExtNet1Name)
+				}
+			}()
+
+			// The reclaim and the deletions below act on the external network, which is a
+			// cluster-wide fixed name. This suite only owns it when it created it; finding it
+			// already there means another tenant does, and neither its leftovers nor the network
+			// itself are ours to remove.
+			if !ownsExternalNetwork {
+				framework.Logf("external network %s already existed, leaving it and its resources untouched", networkAttachDefName)
+				return
+			}
+
 			// The specs delete their gateways in their own cleanups, which run before this one.
 			// A spec that failed may not have gotten that far, and its leftovers cannot be removed
 			// in any order: admission refuses to delete an EIP a NAT rule still uses, and a
@@ -944,17 +972,6 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			subnetClient.DeleteSync(networkAttachDefName)
 			ginkgo.By("Cleaning up shared nad " + networkAttachDefName)
 			attachNetClient.Delete(networkAttachDefName)
-
-			// Clean up docker network infrastructure after all resources are deleted
-			ginkgo.By("Getting nodes")
-			nodes, err := kind.ListNodes(clusterName, "")
-			framework.ExpectNoError(err, "getting nodes in cluster")
-
-			if dockerExtNet1Network != nil {
-				ginkgo.By("Disconnecting nodes from the docker network")
-				err = kind.NetworkDisconnect(dockerExtNet1Network.ID, nodes)
-				framework.ExpectNoError(err, "disconnecting nodes from network "+dockerExtNet1Name)
-			}
 		})
 	})
 
