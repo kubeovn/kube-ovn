@@ -175,12 +175,12 @@ func TestHandleAddAllowsLegacyOvnProviderWithLogicalSwitch(t *testing.T) {
 		},
 	}
 	handler := cniEventTestHandler(t, pod, &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: subnet},
-		Spec:       kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+		Name: subnet,
+		Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
 	}, &cniEventRecorder{})
 	handler.KubeOvnClient = kubeovnfake.NewSimpleClientset(&kubeovnv1.IP{
-		ObjectMeta: metav1.ObjectMeta{Name: ovs.PodNameToPortName(pod.Name, pod.Namespace, provider)},
-		Spec:       kubeovnv1.IPSpec{NodeName: "node-a"},
+		Name: ovs.PodNameToPortName(pod.Name, pod.Namespace, provider),
+		Spec: kubeovnv1.IPSpec{NodeName: "node-a"},
 	})
 
 	response := serveCNIRequest(t, handler, "/api/v1/add", request.CniRequest{
