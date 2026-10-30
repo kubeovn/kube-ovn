@@ -234,7 +234,9 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		framework.ExpectTrue(found, "Pod readiness probe is expected to fail")
 
 		pod = podClient.GetPod(podName)
-		checkTProxyRules(f, pod, port-1, false)
+		// The TCP reachability gate is fixed in v1.16 and master; older
+		// versions keep the interception rule when the backend port is closed.
+		checkTProxyRules(f, pod, port-1, f.VersionPriorTo(1, 16))
 	})
 })
 
