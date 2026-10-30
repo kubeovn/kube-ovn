@@ -1034,9 +1034,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	if c.config.EnableTProxy {
 		go c.StartTProxyForwarding()
 		go wait.Until(c.runTProxyConfigWorker, 3*time.Second, stopCh)
-		// Using the tproxy method, kubelet's TCP probe packets cannot reach the namespace of the pod of the custom VPC,
-		// so tproxy itself probes the pod of the custom VPC, if probe failed remove the iptable rules from
-		// kubelet to tproxy, if probe success recover the iptable rules
+		// A TCP probe only checks connection establishment. Intercept it only while
+		// the Pod port is reachable, so the listener cannot make a closed port appear healthy.
 		go wait.Until(c.StartTProxyTCPPortProbe, 1*time.Second, stopCh)
 	} else {
 		c.cleanTProxyConfig()

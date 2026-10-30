@@ -7,6 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -208,8 +209,13 @@ func TestGetTProxyConditionPod(t *testing.T) {
 		fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider):     "10.18.0.5",
 		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider): "missing-subnet",
 	}, "10.18.0.5")
+	terminatingPod := mkTProxyPod("default", "terminating", map[string]string{
+		fmt.Sprintf(util.IPAddressAnnotationTemplate, util.OvnProvider):     "10.16.0.7",
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider): "custom-subnet",
+	}, "10.16.0.7")
+	terminatingPod.DeletionTimestamp = new(metav1.Time)
 
-	pods := []*corev1.Pod{secondaryPod, primaryPod, defaultVpcPod, attachPod, staleSubnetPod}
+	pods := []*corev1.Pod{secondaryPod, primaryPod, defaultVpcPod, attachPod, staleSubnetPod, terminatingPod}
 	filtered, err := c.getTProxyConditionPod(pods, true)
 	require.NoError(t, err)
 	require.Len(t, filtered, 2)
