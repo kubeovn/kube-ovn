@@ -42,11 +42,32 @@ const (
 	vpcNatConfigName       = "ovn-vpc-nat-config"
 	networkAttachDefName   = "ovn-vpc-external-network"
 	externalSubnetProvider = "ovn-vpc-external-network.kube-system"
+
+	// e2eRunLabel marks the gateways this run created. The suite shares a cluster-wide fixed
+	// external network name with anything else that uses it, so the recovery path needs an
+	// ownership mark of its own instead of inferring one from that name.
+	e2eRunLabel = "e2e.kube-ovn.io/iptables-vpc-nat-gw-run"
 )
 
-// setupNetworkAttachmentDefinition makes the external network this suite runs on available, and
-// reports whether it had to create it. The external network is a cluster-wide fixed name: when it
-// was already there it belongs to somebody else, and the caller must not reclaim or delete it.
+// e2eRunID identifies this run of the suite. The specs of this suite all run in one process (they
+// share one Ordered container), so a package variable set in BeforeAll is the whole run.
+var e2eRunID string
+
+// vpcNatGwRunLabels marks a gateway as created by this run, for the leftover recovery.
+func vpcNatGwRunLabels() map[string]string {
+	return map[string]string{e2eRunLabel: e2eRunID}
+}
+
+// externalNetworkOwnership records which halves of the external network this suite created. Both
+// carry a cluster-wide fixed name, so a half that was already there belongs to somebody else and is
+// neither ours to reclaim nor ours to delete.
+type externalNetworkOwnership struct {
+	nad    bool
+	subnet bool
+}
+
+// setupNetworkAttachmentDefinition makes the external network this suite runs on available and
+// reports what it had to create.
 func setupNetworkAttachmentDefinition(
 	f *framework.Framework,
 	dockerExtNetNetwork *dockernetwork.Inspect,
@@ -56,12 +77,24 @@ func setupNetworkAttachmentDefinition(
 	nicName string,
 	provider string,
 	dockerExtNetName string,
-) bool {
+) externalNetworkOwnership {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Getting docker network " + dockerExtNetName)
 	network, err := docker.NetworkInspect(dockerExtNetName)
 	framework.ExpectNoError(err, "getting docker network "+dockerExtNetName)
+
+	ownership := externalNetworkOwnership{
+		nad: setupExternalNetworkNad(attachNetClient, externalNetworkName, nicName, provider),
+	}
+	ownership.subnet = setupExternalNetworkSubnet(f, subnetClient, dockerExtNetNetwork, network, externalNetworkName, provider)
+	return ownership
+}
+
+// setupExternalNetworkNad creates the macvlan NAD of the external network unless it is already
+// there, and reports whether it created it.
+func setupExternalNetworkNad(attachNetClient *framework.NetworkAttachmentDefinitionClient, externalNetworkName, nicName, provider string) bool {
+	ginkgo.GinkgoHelper()
 	ginkgo.By("Getting or creating network attachment definition " + externalNetworkName)
 
 	// Create network attachment configuration using structured data
@@ -92,19 +125,29 @@ func setupNetworkAttachmentDefinition(
 
 	attachConfBytes, err := json.Marshal(config)
 	framework.ExpectNoError(err, "marshaling network attachment configuration")
-	attachConf := string(attachConfBytes)
 
-	// Try to get existing NAD first
 	nad, err := attachNetClient.NetworkAttachmentDefinitionInterface.Get(context.TODO(), externalNetworkName, metav1.GetOptions{})
 	if err != nil && k8serrors.IsNotFound(err) {
-		// NAD doesn't exist, create it
-		attachNet := framework.MakeNetworkAttachmentDefinition(externalNetworkName, framework.KubeOvnNamespace, attachConf)
+		attachNet := framework.MakeNetworkAttachmentDefinition(externalNetworkName, framework.KubeOvnNamespace, string(attachConfBytes))
 		nad = attachNetClient.Create(attachNet)
-	} else {
-		framework.ExpectNoError(err, "getting network attachment definition "+externalNetworkName)
+		ginkgo.By("Created network attachment definition " + nad.Name)
+		return true
 	}
-
+	framework.ExpectNoError(err, "getting network attachment definition "+externalNetworkName)
 	ginkgo.By("Got network attachment definition " + nad.Name)
+	return false
+}
+
+// setupExternalNetworkSubnet creates the underlay subnet of the external network unless it is
+// already there, and reports whether it created it.
+func setupExternalNetworkSubnet(
+	f *framework.Framework,
+	subnetClient *framework.SubnetClient,
+	dockerExtNetNetwork *dockernetwork.Inspect,
+	network *dockernetwork.Inspect,
+	externalNetworkName, provider string,
+) bool {
+	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Creating underlay macvlan subnet " + externalNetworkName)
 	var cidrV4, cidrV6, gatewayV4, gatewayV6 string
@@ -142,10 +185,8 @@ func setupNetworkAttachmentDefinition(
 		}
 	}
 
-	// Check if subnet already exists
-	_, err = subnetClient.SubnetInterface.Get(context.TODO(), externalNetworkName, metav1.GetOptions{})
+	_, err := subnetClient.SubnetInterface.Get(context.TODO(), externalNetworkName, metav1.GetOptions{})
 	if err != nil && k8serrors.IsNotFound(err) {
-		// Subnet doesn't exist, create it
 		macvlanSubnet := framework.MakeSubnet(externalNetworkName, "", strings.Join(cidr, ","), strings.Join(gateway, ","), "", provider, excludeIPs, nil, nil)
 		_ = subnetClient.CreateSync(macvlanSubnet)
 		return true
@@ -208,6 +249,7 @@ func setupVpcNatGwTestEnvironment(
 
 	ginkgo.By("Creating custom vpc nat gw " + vpcNatGwName)
 	vpcNatGw := framework.MakeVpcNatGatewayWithAnnotations(vpcNatGwName, vpcName, overlaySubnetName, lanIP, externalNetworkName, natGwQosPolicy, annotations)
+	vpcNatGw.Labels = vpcNatGwRunLabels()
 	if gwNamespace != "" {
 		vpcNatGw.Spec.Namespace = gwNamespace
 	}
@@ -248,24 +290,27 @@ type vpcNatGwLeftovers struct {
 	snats    []string
 }
 
-// findVpcNatGwLeftovers collects the NAT objects attached to the given external subnet: the
-// gateways that use it, the EIPs allocated from it, and the rules that reference those EIPs.
-// A rule or EIP is matched through its spec, not its controller-written labels, because an
-// object the controller never reconciled has no labels yet.
+// findVpcNatGwLeftovers collects the NAT objects of this run: the gateways it created, the EIPs
+// allocated from the external subnet it created or belonging to one of those gateways, and the
+// rules that reference those EIPs. Gateways carry an explicit run label, which is the only
+// ownership mark that does not depend on the cluster-wide external network name. The EIPs and
+// addresses are scoped by that subnet, which the caller only passes in when this run created it,
+// so nothing that predates the run can be selected. A rule or EIP is matched through its spec, not
+// its controller-written labels, because an object the controller never reconciled has none yet.
 func findVpcNatGwLeftovers(f *framework.Framework, externalSubnetName string) vpcNatGwLeftovers {
 	ginkgo.GinkgoHelper()
 	ctx := context.Background()
 	client := f.KubeOVNClientSet.KubeovnV1()
 	var left vpcNatGwLeftovers
 
-	gws, err := client.VpcNatGateways().List(ctx, metav1.ListOptions{})
+	gws, err := client.VpcNatGateways().List(ctx, metav1.ListOptions{
+		LabelSelector: fmt.Sprintf("%s=%s", e2eRunLabel, e2eRunID),
+	})
 	framework.ExpectNoError(err, "listing vpc nat gateways")
 	gateways := make(map[string]bool, len(gws.Items))
 	for _, gw := range gws.Items {
-		if slices.Contains(gw.Spec.ExternalSubnets, externalSubnetName) {
-			gateways[gw.Name] = true
-			left.gateways = append(left.gateways, gw.Name)
-		}
+		gateways[gw.Name] = true
+		left.gateways = append(left.gateways, gw.Name)
 	}
 
 	eips, err := client.IptablesEIPs().List(ctx, metav1.ListOptions{})
@@ -345,7 +390,9 @@ func reclaimVpcNatGwLeftovers(f *framework.Framework, externalSubnetName string)
 	// A gateway Pod that never finished starting, and was then removed with its namespace, can
 	// leave its address behind: the release path reads annotations such a Pod never got. The
 	// address keeps the external subnet from being deleted. Every spec is done by the time this
-	// runs and the subnet is about to go, so any address still held in it is a leftover.
+	// runs and the subnet is about to go, so any address still held in it is a leftover. The
+	// subnet was created by this run (the caller only reclaims one it owns), so an address in it
+	// cannot predate the run either.
 	ips, err := client.IPs().List(ctx, metav1.ListOptions{})
 	framework.ExpectNoError(err, "listing ips")
 	for _, ip := range ips.Items {
@@ -364,6 +411,40 @@ func reclaimVpcNatGwLeftovers(f *framework.Framework, externalSubnetName string)
 			reclaim("vpc nat gateway", name, func() error { return client.VpcNatGateways().Delete(ctx, name, metav1.DeleteOptions{}) })
 		}
 	}
+}
+
+// cleanupSharedExternalSubnet reclaims what the specs left on the shared external subnet and then
+// deletes it. The specs delete their gateways in their own cleanups, which run before this one; a
+// spec that failed may not have gotten that far, and its leftovers cannot be removed in any order:
+// admission refuses to delete an EIP a NAT rule still uses, and a gateway that still has EIPs.
+func cleanupSharedExternalSubnet(f *framework.Framework, subnetClient *framework.SubnetClient, externalSubnetName string) {
+	ginkgo.GinkgoHelper()
+
+	reclaimVpcNatGwLeftovers(f, externalSubnetName)
+
+	ginkgo.By("Waiting for the vpc nat gateways of this run to be deleted")
+	gomega.Eventually(func() []string {
+		return findVpcNatGwLeftovers(f, externalSubnetName).gateways
+	}, 2*time.Minute, time.Second).Should(gomega.BeEmpty(), "all vpc nat gateways should be deleted before waiting for the EIPs they held")
+
+	ginkgo.By("Waiting for the EIPs of this run to be deleted")
+	// An EIP's finalizer is released as soon as the data plane cleanup ran or was skipped
+	// because the gateway it belongs to is gone (natGwDeleted).
+	gomega.Eventually(func() []string {
+		return findVpcNatGwLeftovers(f, externalSubnetName).eips
+	}, 2*time.Minute, time.Second).Should(gomega.BeEmpty(), "all EIPs should be deleted before cleaning up subnet")
+
+	// The gateway Pods release their attachment addresses asynchronously after they are gone, and a
+	// subnet cannot be deleted while any of its addresses is still in use.
+	ginkgo.By("Waiting for the addresses of subnet " + externalSubnetName + " to be released")
+	gomega.Eventually(func() bool {
+		subnet := subnetClient.Get(externalSubnetName)
+		return subnet.Status.V4UsingIPs.EqualInt64(0) && subnet.Status.V6UsingIPs.EqualInt64(0)
+	}, 2*time.Minute, 2*time.Second).Should(gomega.BeTrue(),
+		"the shared subnet should have no address in use before it is deleted")
+
+	ginkgo.By("Cleaning up shared macvlan underlay subnet " + externalSubnetName)
+	subnetClient.DeleteSync(externalSubnetName)
 }
 
 // subnetIPsChangedBy reports whether the subnet address counters moved by delta addresses compared
@@ -900,8 +981,11 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 			return nil
 		}, 30*time.Second, 500*time.Millisecond).Should(gomega.Succeed(), "timed out waiting for all nodes to have their network interfaces ready")
 
+		e2eRunID = framework.RandomSuffix()
+		framework.Logf("iptables-vpc-nat-gw run id %s", e2eRunID)
+
 		ginkgo.By("Creating shared NAD and subnet for all tests")
-		ownsExternalNetwork := setupNetworkAttachmentDefinition(
+		ownership := setupNetworkAttachmentDefinition(
 			f, dockerExtNet1Network, attachNetClient,
 			subnetClient, networkAttachDefName, net1NicName,
 			externalSubnetProvider, dockerExtNet1Name,
@@ -921,57 +1005,21 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 				}
 			}()
 
-			// The reclaim and the deletions below act on the external network, which is a
-			// cluster-wide fixed name. This suite only owns it when it created it; finding it
-			// already there means another tenant does, and neither its leftovers nor the network
-			// itself are ours to remove.
-			if !ownsExternalNetwork {
-				framework.Logf("external network %s already existed, leaving it and its resources untouched", networkAttachDefName)
-				return
+			// The subnet is what every gateway, EIP and address of this suite hangs off, so the
+			// reclaim and the waits below are only ours to run when we created it. Finding it
+			// already there means another tenant owns it and its resources.
+			if !ownership.subnet {
+				framework.Logf("external subnet %s already existed, leaving it and its resources untouched", networkAttachDefName)
+			} else {
+				cleanupSharedExternalSubnet(f, subnetClient, networkAttachDefName)
 			}
-
-			// The specs delete their gateways in their own cleanups, which run before this one.
-			// A spec that failed may not have gotten that far, and its leftovers cannot be removed
-			// in any order: admission refuses to delete an EIP a NAT rule still uses, and a
-			// gateway that still has EIPs. Reclaim what is left in dependency order first, so one
-			// failed spec does not strand the shared subnet here and poison the next run.
-			reclaimVpcNatGwLeftovers(f, networkAttachDefName)
-
-			ginkgo.By("Waiting for the vpc nat gateways using subnet " + networkAttachDefName + " to be deleted")
-			gomega.Eventually(func() []string {
-				return findVpcNatGwLeftovers(f, networkAttachDefName).gateways
-			}, 2*time.Minute, time.Second).Should(gomega.BeEmpty(), "all vpc nat gateways should be deleted before waiting for the EIPs they held")
-
-			ginkgo.By("Waiting for all EIPs using subnet " + networkAttachDefName + " to be deleted")
-			// An EIP's finalizer is released as soon as the data plane cleanup ran or was skipped
-			// because the gateway it belongs to is gone (natGwDeleted).
-			gomega.Eventually(func() int {
-				eips, err := f.KubeOVNClientSet.KubeovnV1().IptablesEIPs().List(context.Background(), metav1.ListOptions{
-					LabelSelector: fmt.Sprintf("%s=%s", util.SubnetNameLabel, networkAttachDefName),
-				})
-				if err != nil {
-					framework.Logf("Failed to list EIPs: %v", err)
-					return -1
-				}
-				if len(eips.Items) > 0 {
-					framework.Logf("Still waiting for %d EIP(s) to be deleted", len(eips.Items))
-				}
-				return len(eips.Items)
-			}, 2*time.Minute, time.Second).Should(gomega.Equal(0), "All EIPs should be deleted before cleaning up subnet")
-
-			// The gateway Pods release their attachment addresses asynchronously after they are
-			// gone, and a subnet cannot be deleted while any of its addresses is still in use.
-			ginkgo.By("Waiting for the addresses of subnet " + networkAttachDefName + " to be released")
-			gomega.Eventually(func() bool {
-				subnet := subnetClient.Get(networkAttachDefName)
-				return subnet.Status.V4UsingIPs.EqualInt64(0) && subnet.Status.V6UsingIPs.EqualInt64(0)
-			}, 2*time.Minute, 2*time.Second).Should(gomega.BeTrue(),
-				"the shared subnet should have no address in use before it is deleted")
-
-			ginkgo.By("Cleaning up shared macvlan underlay subnet " + networkAttachDefName)
-			subnetClient.DeleteSync(networkAttachDefName)
-			ginkgo.By("Cleaning up shared nad " + networkAttachDefName)
-			attachNetClient.Delete(networkAttachDefName)
+			// The NAD is tracked separately: the two halves can be created by different runs.
+			if ownership.nad {
+				ginkgo.By("Cleaning up shared nad " + networkAttachDefName)
+				attachNetClient.Delete(networkAttachDefName)
+			} else {
+				framework.Logf("external nad %s already existed, leaving it untouched", networkAttachDefName)
+			}
 		})
 	})
 
@@ -3748,6 +3796,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("4. Creating custom vpc nat gw with noDefaultEIP=true " + vpcNatGwName)
 		vpcNatGw := framework.MakeVpcNatGatewayWithNoDefaultEIP(vpcNatGwName, vpcName, overlaySubnetName, lanIP, networkAttachDefName, natgwQoS, true)
+		vpcNatGw.Labels = vpcNatGwRunLabels()
 		_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Cleaning up custom vpc nat gw " + vpcNatGwName)
@@ -3860,6 +3909,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 
 		ginkgo.By("Creating custom vpc nat gw " + haVpcNatGwName)
 		vpcNatGw := framework.MakeVpcNatGatewayWithAnnotations(haVpcNatGwName, haVpcName, haOverlaySubnetName, "", networkAttachDefName, "", nil)
+		vpcNatGw.Labels = vpcNatGwRunLabels()
 		vpcNatGw.Spec.Replicas = 2
 		_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
 

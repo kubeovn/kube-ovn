@@ -118,7 +118,9 @@ func TestServiceCreateHookEipPortConflict(t *testing.T) {
 	})
 }
 
-func TestServiceUpdateHook(t *testing.T) {
+// TestServiceUpdateHookBinding pins how the gateway and EIP binding of a Service may change: not
+// into another binding, but out of the feature, and not back in before the release converged.
+func TestServiceUpdateHookBinding(t *testing.T) {
 	service := func(gateway, eip string) *v1.Service {
 		return &v1.Service{
 			Namespace: "default",
@@ -183,7 +185,11 @@ func TestServiceUpdateHook(t *testing.T) {
 		resp := hook.ServiceUpdateHook(context.Background(), updateRequest(t, service("", ""), service("gw-b", "eip-b")))
 		require.True(t, resp.Allowed, "expected allowed, got: %+v", resp.Result)
 	})
+}
 
+// TestServiceUpdateHookValidation pins the checks that run when an update changes what the Service
+// would program, as opposed to the binding immutability pinned above.
+func TestServiceUpdateHookValidation(t *testing.T) {
 	t.Run("rejects a port change that collides with another service", func(t *testing.T) {
 		other := nftableLbService("other", 81, v1.ProtocolTCP, nil)
 		hook := newServiceHook(t, nftableLbService("web", 80, v1.ProtocolTCP, nil), other)
