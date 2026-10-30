@@ -230,12 +230,15 @@ func (c *Controller) enqueueAddPod(obj any) {
 	c.enqueueStaticEndpointUpdateInNamespace(p.Namespace)
 
 	// TODO: we need to find a way to reduce duplicated np added to the queue
-	if c.config.EnableNP {
+	if (c.config.EnableNP || c.config.EnableANP) && c.namedPort != nil {
 		c.namedPort.AddNamedPortByPod(p)
 		if len(namedPortsForPod(p)) != 0 {
-			c.enqueueNamespaceNamedPortNetworkPolicies(p.Namespace)
+			if c.config.EnableNP {
+				c.enqueueNamespaceNamedPortNetworkPolicies(p.Namespace)
+			}
+			c.enqueueNamedPortPolicies()
 		}
-		if p.Status.PodIP != "" {
+		if c.config.EnableNP && p.Status.PodIP != "" {
 			for _, np := range c.podMatchNetworkPolicies(p) {
 				klog.V(3).Infof("enqueue update network policy %s", np)
 				c.updateNpQueue.Add(np)
@@ -320,13 +323,18 @@ func (c *Controller) enqueueDeletePod(obj any) {
 	// Pod might be targeted by manual endpoints and we need to recompute its port mappings
 	c.enqueueStaticEndpointUpdateInNamespace(p.Namespace)
 
-	if c.config.EnableNP {
+	if (c.config.EnableNP || c.config.EnableANP) && c.namedPort != nil {
 		c.namedPort.DeleteNamedPortByPod(p)
 		if len(namedPortsForPod(p)) != 0 {
-			c.enqueueNamespaceNamedPortNetworkPolicies(p.Namespace)
+			if c.config.EnableNP {
+				c.enqueueNamespaceNamedPortNetworkPolicies(p.Namespace)
+			}
+			c.enqueueNamedPortPolicies()
 		}
-		for _, np := range c.podMatchNetworkPolicies(p) {
-			c.updateNpQueue.Add(np)
+		if c.config.EnableNP {
+			for _, np := range c.podMatchNetworkPolicies(p) {
+				c.updateNpQueue.Add(np)
+			}
 		}
 	}
 
@@ -389,7 +397,7 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 	}
 
 	namedPortChanged := false
-	if c.config.EnableNP {
+	if (c.config.EnableNP || c.config.EnableANP) && c.namedPort != nil {
 		namedPortChanged = namedPortsChanged(oldPod, newPod) || oldPod.Spec.HostNetwork != newPod.Spec.HostNetwork
 		if namedPortChanged {
 			if newPod.Spec.HostNetwork {
@@ -397,9 +405,12 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 			} else {
 				c.namedPort.ReplaceNamedPortByPod(newPod)
 			}
-			c.enqueueNamespaceNamedPortNetworkPolicies(newPod.Namespace)
+			if c.config.EnableNP {
+				c.enqueueNamespaceNamedPortNetworkPolicies(newPod.Namespace)
+			}
+			c.enqueueNamedPortPolicies()
 		}
-		if namedPortChanged || !maps.Equal(oldPod.Labels, newPod.Labels) {
+		if c.config.EnableNP && (namedPortChanged || !maps.Equal(oldPod.Labels, newPod.Labels)) {
 			oldNp := c.podMatchNetworkPolicies(oldPod)
 			newNp := c.podMatchNetworkPolicies(newPod)
 			for _, np := range util.UnionStringSlice(oldNp, newNp) {
@@ -445,6 +456,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 			change := labelChange{nsLabels, nsLabels, oldPodLabels, newPodLabels}
 			c.updateAnpsByLabelsChange(change)
 			c.updateCnpsByLabelsChange(change)
+			if c.namedPort != nil {
+				c.enqueueNamedPortPolicies()
+			}
 		}
 
 		for _, podNet := range podNets {
@@ -455,6 +469,9 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 			if oldAllocated != newAllocated || oldRouted != newRouted {
 				c.updateAnpsByLabelsMatch(nsLabels, newPodLabels)
 				c.updateCnpsByLabelsMatch(nsLabels, newPodLabels)
+				if c.namedPort != nil && len(namedPortsForPod(newPod)) != 0 {
+					c.enqueueNamedPortPolicies()
+				}
 				break
 			}
 		}
@@ -1720,7 +1737,8 @@ func stalePortNetworkDetails(pod *v1.Pod, podName string, port ovnnb.LogicalSwit
 			return "", "", fmt.Errorf("logical switch port %q does not match pod prefix %q", port.Name, portPrefix)
 		}
 	}
-	details := fmt.Sprintf("provider=%s subnet=%s ip=%s mac=%s logicalSwitchPort=%s",
+	details := fmt.Sprintf(
+		"provider=%s subnet=%s ip=%s mac=%s logicalSwitchPort=%s",
 		providerName,
 		port.ExternalIDs["ls"],
 		pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerName)],
