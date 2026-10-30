@@ -199,3 +199,11 @@ func TestPolicyNamedPortGroupLifecycle(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, groups)
 }
+
+func TestPolicyNamedPortSelectorsRejectInvalidLabelSelectors(t *testing.T) {
+	c := &Controller{}
+	_, err := c.namedPortSelectors(&metav1.LabelSelector{MatchLabels: map[string]string{"bad/key/extra": "value"}}, nil)
+	require.ErrorContains(t, err, "error creating namespace label selector")
+	_, err = c.namedPortSelectors(nil, &metav1.LabelSelector{MatchLabels: map[string]string{"bad/key/extra": "value"}})
+	require.ErrorContains(t, err, "error creating pod label selector")
+}
