@@ -789,19 +789,27 @@ func TestDesiredNatGwVipStateKeepsUnobservedServiceVips(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.96.1.5", "10.96.1.6"}, clusterIPs)
 
-	// An observed owner stays authoritative even when all its records are terminating: it is
-	// releasing its VIP, and the floor must not resurrect it.
+	// A record deleted from outside stays terminating while its Service still programs the identity,
+	// and nothing re-enqueues that Service (record events are ignored). Such a record must therefore
+	// not make its owner look authoritative: the floor keeps speaking for it.
 	now := metav1.Now()
 	peerRecord.DeletionTimestamp = &now
 	peerRecord.Finalizers = []string{"keep"}
 	require.NoError(t, indexer.Update(peerRecord))
 	_, clusterIPs, err = controller.desiredNatGwVipStateForService(gwName, selfOwner, self, "")
 	require.NoError(t, err)
+	require.Equal(t, []string{"10.96.1.5", "10.96.1.6"}, clusterIPs,
+		"an externally deleted record must not drop the vips its owner still programs")
+
+	// An owner that is really leaving drops its floor first (cleanupNftableLbSvcGateway calls
+	// forgetNatGwVipState before it deletes the records), which is what releases its VIPs.
+	controller.forgetNatGwVipState(gwName, peer)
+	_, clusterIPs, err = controller.desiredNatGwVipStateForService(gwName, selfOwner, self, "")
+	require.NoError(t, err)
 	require.Equal(t, []string{"10.96.1.5"}, clusterIPs)
 
-	// The peer's cleanup drops its floor, so a deleted Service cannot keep its VIPs forever.
+	// And the state stays released once the records are gone.
 	require.NoError(t, indexer.Delete(peerRecord))
-	controller.forgetNatGwVipState(gwName, peer)
 	require.Empty(t, controller.nftableLbVipSnapshot)
 	_, clusterIPs, err = controller.desiredNatGwVipStateForService(gwName, selfOwner, self, "")
 	require.NoError(t, err)
@@ -2320,4 +2328,15 @@ func TestNftableLbIdentityKeyIsSingleSourced(t *testing.T) {
 	for key, identity := range existing {
 		require.Equal(t, key, nftableLbIdentityKey(identity))
 	}
+}
+
+// TestHandleAddOrUpdateVpcNatGwSyncsVipRoutesOnInstanceChange pins the convergence point of the
+// instance set: a replica that goes away produces only a workload event, which lands in the
+// gateway reconcile. The share-DNAT VIP routes are written by the bound Services alone, so that
+// reconcile has to wake them or a removed instance stays a next hop.
+func TestHandleAddOrUpdateVpcNatGwSyncsVipRoutesOnInstanceChange(t *testing.T) {
+	controller, gwName := natGwVipRouteSyncController(t)
+
+	require.NoError(t, controller.handleAddOrUpdateVpcNatGw(gwName))
+	require.Equal(t, 1, controller.addOrUpdateGwNftableLbSvcQueue.Len())
 }

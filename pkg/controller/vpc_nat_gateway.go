@@ -589,6 +589,13 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 	c.recordResourceEvent(gw, corev1.EventTypeNormal, "ReconcileSuccess",
 		fmt.Sprintf("VpcNatGateway %s reconciled successfully", gw.Name))
 
+	// This reconcile is the convergence point of the instance set: an instance that goes away (its
+	// node is gone or cannot take it back) only produces a workload event, never a gateway init.
+	// reconcileVpcNatGatewayOVNRoutes above re-points the gateway's own policy routes; the VIP routes
+	// of the share DNAT Services are written by their Services alone, so tell them too or a dead
+	// instance stays an ECMP next hop until an unrelated Service event arrives.
+	c.enqueueGwNftableLbServicesForNatGw(gw.Name)
+
 	return nil
 }
 

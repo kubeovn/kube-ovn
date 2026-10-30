@@ -1974,7 +1974,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("[nftable-lb-svc-clusterip] a ClusterIP service is served by its gateway, through the internal VIP alone", func() {
-		f.SkipVersionPriorTo(1, 17, "nftable ClusterIP service on vpc nat gateway (--enable-gw-nftable-lb-svc) was introduced in v1.17")
+		f.SkipVersionPriorTo(1, 17, "nftable ClusterIP service on vpc nat gateway (--enable-gw-nftable-svc-cluster-ip) was introduced in v1.17")
 
 		randomSuffix := framework.RandomSuffix()
 		svcName := "nftcip-svc-" + randomSuffix
@@ -2144,7 +2144,7 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 	})
 
 	framework.ConformanceIt("[nftable-lb-svc-clusterip-ha] an HA gateway holds and serves a ClusterIP service on every instance", func() {
-		f.SkipVersionPriorTo(1, 17, "nftable ClusterIP service on vpc nat gateway (--enable-gw-nftable-lb-svc) was introduced in v1.17")
+		f.SkipVersionPriorTo(1, 17, "nftable ClusterIP service on vpc nat gateway (--enable-gw-nftable-svc-cluster-ip) was introduced in v1.17")
 
 		randomSuffix := framework.RandomSuffix()
 		svcName := "nftcipha-svc-" + randomSuffix

@@ -142,7 +142,7 @@ spec:
           - --ls-dnat-mod-dl-dst={{- .Values.features.LS_DNAT_MOD_DL_DST }}
           - --ls-ct-skip-dst-lport-ips={{- .Values.features.LS_CT_SKIP_DST_LPORT_IPS }}
           - --pod-nic-type={{- .Values.networking.podNicType }}
-          - --enable-lb={{ ternary false .Values.features.enableLoadbalancer .Values.features.enableGwNftableServiceClusterIp }}
+          - --enable-lb={{ .Values.features.enableLoadbalancer }}
           - --enable-np={{- .Values.features.enableNetworkPolicies }}
           {{- if .Values.aclSampling.enabled }}
           - --enable-acl-sampling=true

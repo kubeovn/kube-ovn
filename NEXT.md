@@ -20,6 +20,19 @@ This document lists the features merged into the master branch for the next mino
 - Allow Helm installations to use externally managed webhook certificates. [#7727](https://github.com/kubeovn/kube-ovn/pull/7727)
 - Initialize single-instance OVN central deployments with standalone NB and SB databases. [#7725](https://github.com/kubeovn/kube-ovn/pull/7725)
 
+- VPC NAT Gateway
+  - A `vpc-nat-gw` can now serve Kubernetes Services through nftables share DNAT: a `LoadBalancer`
+    Service is published on its EIP, and a Service ClusterIP can be served from the gateway. See
+    [docs/vpc-nat-gateway-service.md](docs/vpc-nat-gateway-service.md). [#7451](https://github.com/kubeovn/kube-ovn/pull/7451)
+  - **Breaking**: the flag `--enable-nftable-lb-svc` (default `true`) is replaced by
+    `--enable-gw-nftable-lb-svc` and `--enable-gw-nftable-svc-cluster-ip`, both default `false`.
+    There is no alias: a controller started with the old flag fails on an unknown flag. Update the
+    Deployment arguments, the `install.sh` variables (`ENABLE_GW_NFTABLE_LB_SVC`,
+    `ENABLE_GW_NFTABLE_SVC_CLUSTER_IP`) or the Helm values before upgrading.
+  - **Breaking**: `IptablesDnatRule` objects of `type: share` are now controller-owned accounting
+    records of such a Service. Creating one by hand is rejected by the webhook, and the controller
+    no longer programs or removes NAT state from them. [#7451](https://github.com/kubeovn/kube-ovn/pull/7451)
+
 ## v1.16.0
 
 - NetworkPolicy now supports provider-scoped policies for multi-network pods using the `ovn.kubernetes.io/policy-for` annotation. [#6223](https://github.com/kubeovn/kube-ovn/pull/6223)

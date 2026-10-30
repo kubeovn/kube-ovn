@@ -696,12 +696,11 @@ func (v *ValidatingHook) validateNewEipReferences(ctx context.Context, eip, oldE
 	return nil
 }
 
-// validateNewRuleEipReferences is the DNAT/SNAT/FIP counterpart of validateNewEipReferences.
-// Those rules point at an eip by name and inherit its gateway, so both the eip and its gateway
-// are references of the rule. eipChanged is false when the rule keeps pointing at its eip.
-// validateNewRuleEipReferences checks that the EIP a rule starts referencing exists and that its
-// gateway does too. An empty name is not a reference: only a share DNAT accounting record can
-// reach this with no EIP, which is exactly what a Service that stops serving its EIP writes, and
+// validateNewRuleEipReferences is the DNAT/SNAT/FIP counterpart of validateNewEipReferences: it
+// checks that the eip a rule starts referencing exists and that its gateway does too, since such a
+// rule points at an eip by name and inherits its gateway. eipChanged is false when the rule keeps
+// pointing at its eip. An empty name is not a reference either: only a share DNAT accounting record
+// can reach this with no eip, which is exactly what a Service that stops serving its eip writes, and
 // rejecting it would strand the Service with an identity it no longer declares.
 func (v *ValidatingHook) validateNewRuleEipReferences(ctx context.Context, eipName string, eipChanged bool) error {
 	if !eipChanged || eipName == "" {

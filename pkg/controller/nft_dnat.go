@@ -227,8 +227,10 @@ func (c *Controller) forgetNatGwVipState(gwName, owner string) {
 // by the caller: a Service whose records were just created through the API is invisible to this
 // List, and dropping its VIPs here would tear down a data plane that nothing re-enqueues (the
 // informers run without resync). The snapshot of what each Service last programmed is therefore
-// used as a floor for every owner the lister cannot see at all. An owner the lister does see,
-// even with only terminating records, is authoritative and gets no floor.
+// used as a floor for every owner the lister cannot see at all. An owner the lister sees with at
+// least one live record is authoritative and gets no floor; terminating records alone do not make
+// it authoritative, because a record deleted from outside stays terminating while its Service keeps
+// the identity programmed.
 func (c *Controller) desiredNatGwVipStateForService(gwName, owner string,
 	desired map[string]*kubeovnv1.IptablesDnatRule, eipIP string,
 ) (map[string]string, []string, error) {
@@ -247,18 +249,20 @@ func (c *Controller) desiredNatGwVipStateForService(gwName, owner string,
 		if rule.Spec.Type != kubeovnv1.DnatRuleTypeShare || !util.IsNftableLbSvcRecord(rule.Labels) {
 			continue
 		}
-		// The lister holds a record of this owner, live or terminating, so its state is known here
-		// and the floor below must not speak for it.
 		ruleOwner := util.NftableLbSvcOwnerKey(rule.Labels)
-		observed.Insert(ruleOwner)
 		if ruleOwner == owner {
 			// Replaced by the desired records below.
 			continue
 		}
 		if !rule.DeletionTimestamp.IsZero() {
-			// A terminating record is releasing its addresses.
+			// A terminating record is releasing its addresses, and says nothing about its owner's
+			// state: a record deleted from outside stays terminating while its Service keeps the
+			// identity programmed. Leave that owner unobserved so its floor still speaks for it; an
+			// owner that is really leaving dropped its floor first (forgetNatGwVipState).
 			continue
 		}
+		// A live record of another owner: its state is known here, so the floor must not speak for it.
+		observed.Insert(ruleOwner)
 		// The internal VIP of a rule is held on lo and routed to the gateway.
 		if clusterIP := rule.Spec.ClusterIP; util.CheckProtocol(clusterIP) == kubeovnv1.ProtocolIPv4 {
 			vips[natGwVipRouteMatch(clusterIP)] = clusterIP
