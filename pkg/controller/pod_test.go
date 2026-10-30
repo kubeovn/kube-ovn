@@ -1102,6 +1102,38 @@ func TestGetNamedPortByNsReturnsCopy(t *testing.T) {
 	assert.Contains(t, result2, "http", "internal map should not be affected by mutation of returned copy")
 }
 
+func TestGetNamedPortVariantsByNsReturnsAllVariants(t *testing.T) {
+	np := NewNamedPort()
+	first := &corev1.Pod{
+		Name:      "first",
+		Namespace: "test-ns",
+		Spec:      corev1.PodSpec{Containers: []corev1.Container{{Ports: []corev1.ContainerPort{{Name: "http", ContainerPort: 80, Protocol: corev1.ProtocolTCP}}}}},
+	}
+	second := &corev1.Pod{
+		Name:      "second",
+		Namespace: "test-ns",
+		Spec:      corev1.PodSpec{Containers: []corev1.Container{{Ports: []corev1.ContainerPort{{Name: "http", ContainerPort: 8080, Protocol: corev1.ProtocolTCP}}}}},
+	}
+	np.AddNamedPortByPod(first)
+	np.AddNamedPortByPod(second)
+
+	variants := np.GetNamedPortVariantsByNs("test-ns")
+	if len(variants["http"]) != 2 {
+		t.Fatalf("expected two named port variants, got %#v", variants)
+	}
+	if !variants["http"][namedPortKey{protocol: corev1.ProtocolTCP, port: 80}].Has("first") {
+		t.Fatalf("expected port 80 variant to contain first pod")
+	}
+	if !variants["http"][namedPortKey{protocol: corev1.ProtocolTCP, port: 8080}].Has("second") {
+		t.Fatalf("expected port 8080 variant to contain second pod")
+	}
+
+	variants["http"][namedPortKey{protocol: corev1.ProtocolTCP, port: 80}].Remove("first")
+	if !np.GetNamedPortVariantsByNs("test-ns")["http"][namedPortKey{protocol: corev1.ProtocolTCP, port: 80}].Has("first") {
+		t.Fatalf("named port variant snapshot was not independent")
+	}
+}
+
 func TestDeleteNamedPortByPodWithRestartableInitContainers(t *testing.T) {
 	restartAlways := corev1.ContainerRestartPolicyAlways
 	np := NewNamedPort()

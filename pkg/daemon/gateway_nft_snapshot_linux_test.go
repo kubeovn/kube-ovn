@@ -93,13 +93,18 @@ func TestBuildNFTGatewaySnapshot(t *testing.T) {
 		},
 	}
 	tproxyPod := &corev1.Pod{
-		Name: "probe", Namespace: "default",
+		Name: "probe", Namespace: "default", UID: "uid-probe",
 		Spec: corev1.PodSpec{Containers: []corev1.Container{{
 			LivenessProbe: &corev1.Probe{
 				TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt32(8080)},
 			},
 		}}},
 		Status: corev1.PodStatus{PodIPs: []corev1.PodIP{{IP: "10.30.0.2"}, {IP: "fd00:30::2"}}},
+	}
+	for _, ip := range []string{"10.30.0.2", "fd00:30::2"} {
+		key := util.JoinHostPort(ip, 8080)
+		customVPCPodTCPProbeIPPort.Store(key, tcpProbeResult{podUID: tproxyPod.UID, reachable: true})
+		t.Cleanup(func() { customVPCPodTCPProbeIPPort.Delete(key) })
 	}
 
 	snapshot, err := buildNFTGatewaySnapshot(nftSnapshotInput{
@@ -137,6 +142,29 @@ func TestBuildNFTGatewaySnapshot(t *testing.T) {
 	require.Equal(t, []string{"fd00::11"}, v6.OtherNodeIPs)
 	require.Equal(t, []string{"fd00:10:16::/120"}, v6.Subnets)
 	require.Contains(t, v6.TProxyTargets, nftTProxyTarget{Address: "fd00:30::2", Port: 8080})
+}
+
+func TestBuildNFTGatewaySnapshotOmitsUnreachableTCPProbe(t *testing.T) {
+	pod := &corev1.Pod{
+		Name: "probe", Namespace: "default", UID: "uid-probe",
+		Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			ReadinessProbe: &corev1.Probe{TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt32(8080)}},
+		}}},
+		Status: corev1.PodStatus{PodIPs: []corev1.PodIP{{IP: "10.30.0.2"}, {IP: "fd00:30::2"}}},
+	}
+	for _, ip := range []string{"10.30.0.2", "fd00:30::2"} {
+		key := util.JoinHostPort(ip, 8080)
+		customVPCPodTCPProbeIPPort.Store(key, tcpProbeResult{podUID: pod.UID})
+		t.Cleanup(func() { customVPCPodTCPProbeIPPort.Delete(key) })
+	}
+
+	snapshot, err := buildNFTGatewaySnapshot(nftSnapshotInput{
+		Protocol:   kubeovnv1.ProtocolDual,
+		TProxyPods: []*corev1.Pod{pod},
+	})
+	require.NoError(t, err)
+	require.Empty(t, nftFamilySnapshotForTest(t, snapshot, knftables.IPv4Family).TProxyTargets)
+	require.Empty(t, nftFamilySnapshotForTest(t, snapshot, knftables.IPv6Family).TProxyTargets)
 }
 
 func TestBuildNFTGatewaySnapshotPreservesNATPolicyOrder(t *testing.T) {

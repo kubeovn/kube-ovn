@@ -289,10 +289,6 @@ func addNFTNodes(snapshot *nftFamilySnapshot, input nftSnapshotInput) {
 
 func addNFTTProxyTargets(snapshot *nftFamilySnapshot, pods []*corev1.Pod) {
 	for _, pod := range pods {
-		ports := getProbePorts(pod).SortedList()
-		if len(ports) == 0 {
-			continue
-		}
 		addresses := make([]string, 0, len(pod.Status.PodIPs)+1)
 		for _, podIP := range pod.Status.PodIPs {
 			addresses = append(addresses, podIP.IP)
@@ -304,6 +300,7 @@ func addNFTTProxyTargets(snapshot *nftFamilySnapshot, pods []*corev1.Pod) {
 			if !isNFTAddressFamily(address, snapshot.Family) {
 				continue
 			}
+			ports := getTProxyRulePorts(pod, address).SortedList()
 			for _, port := range ports {
 				snapshot.TProxyTargets = append(snapshot.TProxyTargets, nftTProxyTarget{Address: address, Port: port})
 			}
