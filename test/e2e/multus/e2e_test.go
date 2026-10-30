@@ -534,6 +534,42 @@ var _ = framework.SerialDescribe("[group:multus]", func() {
 		framework.ExpectEmpty(pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)], "attachment should not fall back to the default subnet")
 	})
 
+	framework.ConformanceIt("should honor legacy ovn subnet selected by logical switch", func() {
+		f.SkipVersionPriorTo(1, 15, "legacy ovn provider subnet selection requires v1.15+")
+
+		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
+
+		ginkgo.By("Creating network attachment definition " + nadName)
+		nad := framework.MakeOVNNetworkAttachmentDefinition(nadName, namespaceName, provider, nil)
+		nad = nadClient.Create(nad)
+		framework.Logf("created network attachment definition config:\n%s", nad.Spec.Config)
+
+		ginkgo.By("Creating legacy provider=ovn subnet " + subnetName)
+		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", util.OvnProvider, nil, nil, nil)
+		subnet = subnetClient.CreateSync(subnet)
+
+		ginkgo.By("Creating pod with an explicit logical switch selection")
+		annotations := map[string]string{
+			nadv1.NetworkAttachmentAnnot:                                fmt.Sprintf("%s/%s", nad.Namespace, nad.Name),
+			fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): subnetName,
+		}
+		pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, []string{"sleep", "infinity"}, nil)
+		pod = podClient.CreateSync(pod)
+
+		ginkgo.By("Validating the selected subnet and attachment status")
+		framework.ExpectHaveKey(pod.Annotations, nadv1.NetworkStatusAnnot)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider), subnetName)
+		ip := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)]
+		cidr := pod.Annotations[fmt.Sprintf(util.CidrAnnotationTemplate, provider)]
+		framework.ExpectIPInCIDR(ip, cidr)
+
+		ipName := ovs.PodNameToPortName(podName, namespaceName, provider)
+		ipCR := ipClient.Get(ipName)
+		framework.ExpectEqual(ipCR.Spec.Subnet, subnetName)
+		framework.ExpectEqual(ipCR.Spec.PodName, podName)
+		framework.ExpectEqual(ipCR.Spec.Namespace, namespaceName)
+	})
+
 	framework.ConformanceIt("should be able to create attachment interface with custom routes", func() {
 		provider := fmt.Sprintf("%s.%s.%s", nadName, namespaceName, util.OvnProvider)
 
