@@ -359,7 +359,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 					return err
 				}
 
-				if len(selectorAllows) != 0 {
+				if len(selectorAllows) != 0 && (len(npr.Ports) == 0 || len(numericPorts) != 0) {
 					ops, err := c.OVNNbClient.UpdateIngressACLOps(pgName, ingressAllowAsName, ingressExceptAsName, protocol, aclName, numericPorts, logEnable, logActions, logRate, nil)
 					if err != nil {
 						klog.Errorf("generate operations that add ingress acls to np %s: %v", key, err)
@@ -370,7 +370,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 
 				// Create separate ACL for ipBlock peers with inline per-CIDR except
 				ipBlockACLName := fmt.Sprintf("np/%s.%s/ingress/%s/%d/ipBlock", npName, np.Namespace, protocol, idx)
-				if len(ipBlocks) != 0 {
+				if len(ipBlocks) != 0 && (len(npr.Ports) == 0 || len(numericPorts) != 0) {
 					ops, err := c.OVNNbClient.UpdateIngressIPBlockACLOps(pgName, protocol, ipBlockACLName, ipBlocks, numericPorts, logEnable, logActions, logRate, nil)
 					if err != nil {
 						klog.Errorf("generate operations that add ingress ipBlock acls to np %s: %v", key, err)
@@ -607,7 +607,7 @@ func (c *Controller) handleUpdateNp(key string) error {
 				}
 
 				// Create separate ACL for ipBlock peers with inline per-CIDR except
-				if len(ipBlocks) != 0 {
+				if len(ipBlocks) != 0 && (len(npr.Ports) == 0 || len(numericPorts) != 0) {
 					ipBlockACLName := fmt.Sprintf("np/%s.%s/egress/%s/%d/ipBlock", npName, np.Namespace, protocol, idx)
 					ops, err := c.OVNNbClient.UpdateEgressIPBlockACLOps(pgName, protocol, ipBlockACLName, ipBlocks, numericPorts, logEnable, logActions, logRate, nil)
 					if err != nil {
@@ -1294,6 +1294,9 @@ func (c *Controller) fetchPolicySelectedNamedPortAddresses(namespace, ipProtocol
 }
 
 func (c *Controller) fetchPolicySelectedNamedPortAddressesForPeers(namespace, ipProtocol string, transportProtocol corev1.Protocol, peers []netv1.NetworkPolicyPeer, providers set.Set[string], name string) (map[namedPortKey][]string, error) {
+	if len(peers) == 0 {
+		peers = []netv1.NetworkPolicyPeer{{NamespaceSelector: &metav1.LabelSelector{}}}
+	}
 	addresses := make(map[namedPortKey][]string)
 	for _, peer := range peers {
 		selected, err := c.fetchPolicySelectedNamedPortAddresses(namespace, ipProtocol, transportProtocol, peer, providers, name)
@@ -1420,6 +1423,22 @@ func isPodMatchNetworkPolicy(pod *corev1.Pod, podNs *corev1.Namespace, policy *n
 		}
 	}
 	for _, npr := range policy.Spec.Egress {
+		if len(npr.To) == 0 {
+			for _, port := range npr.Ports {
+				if port.Port == nil || port.Port.Type != intstr.String {
+					continue
+				}
+				protocol := corev1.ProtocolTCP
+				if port.Protocol != nil {
+					protocol = *port.Protocol
+				}
+				for ref := range namedPortsForPod(pod) {
+					if ref.name == port.Port.StrVal && ref.protocol == protocol {
+						return true
+					}
+				}
+			}
+		}
 		for _, npp := range npr.To {
 			if isPodMatchPolicyPeer(pod, podNs, npp, policyNs) {
 				return true

@@ -177,6 +177,18 @@ func TestFetchPolicySelectedNamedPortAddressesKeepsNamespaceAndPortVariants(t *t
 	require.NoError(t, err)
 	require.ElementsMatch(t, []string{"10.0.0.8"}, addresses[namedPortKey{protocol: corev1.ProtocolTCP, port: 8080}])
 	require.ElementsMatch(t, []string{"10.0.0.9"}, addresses[namedPortKey{protocol: corev1.ProtocolTCP, port: 9090}])
+
+	addresses, err = controller.fetchPolicySelectedNamedPortAddressesForPeers(
+		metav1.NamespaceDefault,
+		kubeovnv1.ProtocolIPv4,
+		corev1.ProtocolTCP,
+		nil,
+		set.New(util.OvnProvider),
+		"http",
+	)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"10.0.0.8"}, addresses[namedPortKey{protocol: corev1.ProtocolTCP, port: 8080}])
+	require.ElementsMatch(t, []string{"10.0.0.9"}, addresses[namedPortKey{protocol: corev1.ProtocolTCP, port: 9090}])
 }
 
 func TestPolicySelectorCacheInvalidatesOnNetworkAttachmentInformerEvents(t *testing.T) {
