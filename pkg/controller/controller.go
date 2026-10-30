@@ -147,7 +147,10 @@ type Controller struct {
 	// ChassisAnnotation, let alone before initResourceOnce's initNodeChassis
 	// pass (which runs after startWorkers returns) has tagged its chassis.
 	// Without this gate, that chassis looks orphaned on the very first tick
-	// and gets deleted. Set once, at the end of initNodeChassis.
+	// and gets deleted. Set once, at the end of initNodeChassis, which also
+	// flushes one gcChassis pass right after opening the gate so a reactive
+	// call that no-op'd while the gate was closed (or the ticker's first,
+	// skipped tick) doesn't sit stale until the next periodic tick.
 	nodeChassisInitialized atomic.Bool
 
 	routerLBRuleLister      kubeovnlister.RouterLBRuleLister
