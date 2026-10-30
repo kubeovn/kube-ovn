@@ -1307,7 +1307,7 @@ func (c *Controller) policySelectedNamespaces(namespace string, selector *metav1
 func networkPolicyNamedPortAddressSetName(prefix, protocol string, index int, name string, port namedPortKey) string {
 	key := fmt.Sprintf("%s\x00%s\x00%d\x00%d", name, port.protocol, port.port, index)
 	sum := sha256.Sum256([]byte(key))
-	return fmt.Sprintf("%s.%s.%d.named.%x", prefix, protocol, index, sum[:6])
+	return fmt.Sprintf("%s.%s.%d.named.%x", strings.ReplaceAll(prefix, "-", "."), protocol, index, sum[:6])
 }
 
 func (c *Controller) enqueueNamespaceNamedPortNetworkPolicies(namespace string) {
