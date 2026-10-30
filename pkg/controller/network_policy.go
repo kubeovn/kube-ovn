@@ -1244,7 +1244,7 @@ func (c *Controller) fetchPolicySelectedNamedPortAddresses(namespace, ipProtocol
 		return nil, err
 	}
 
-	var podSelector labels.Selector = labels.Everything()
+	podSelector := labels.Everything()
 	if npp.PodSelector != nil {
 		podSelector, err = metav1.LabelSelectorAsSelector(npp.PodSelector)
 		if err != nil {
