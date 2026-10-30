@@ -13,6 +13,7 @@ import (
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
@@ -27,6 +28,16 @@ var (
 	customVPCPodIPToNs         sync.Map
 	customVPCPodTCPProbeIPPort sync.Map
 )
+
+type tcpProbeResult struct {
+	podUID    types.UID
+	reachable bool
+}
+
+type podNetworkNamespace struct {
+	podUID    types.UID
+	namespace string
+}
 
 func (c *Controller) StartTProxyForwarding() {
 	for _, addr := range util.GetDefaultListenAddr() {
@@ -60,8 +71,32 @@ func (c *Controller) StartTProxyForwarding() {
 	}
 }
 
-func getProbePorts(pod *corev1.Pod) set.Set[int32] {
+func getTProxyRulePorts(pod *corev1.Pod, podIP string) set.Set[int32] {
+	if value, ok := customVPCPodIPToNs.Load(podIP); ok {
+		mapping, valid := value.(podNetworkNamespace)
+		if !valid || mapping.podUID != pod.UID {
+			return set.New[int32]()
+		}
+	}
+
+	ports, tcpPorts := getProbePorts(pod)
+	for port := range tcpPorts {
+		value, ok := customVPCPodTCPProbeIPPort.Load(util.JoinHostPort(podIP, port))
+		if !ok {
+			ports.Delete(port)
+			continue
+		}
+		result, ok := value.(tcpProbeResult)
+		if !ok || result.podUID != pod.UID || !result.reachable {
+			ports.Delete(port)
+		}
+	}
+	return ports
+}
+
+func getProbePorts(pod *corev1.Pod) (set.Set[int32], set.Set[int32]) {
 	ports := set.New[int32]()
+	tcpPorts := set.New[int32]()
 	for _, container := range pod.Spec.Containers {
 		for _, probe := range [...]*corev1.Probe{container.LivenessProbe, container.ReadinessProbe} {
 			if probe == nil {
@@ -78,22 +113,28 @@ func getProbePorts(pod *corev1.Pod) set.Set[int32] {
 			default:
 				continue
 			}
+			var resolvedPort int32
 			if port.Type == intstr.Int {
-				ports.Insert(port.IntVal)
-				continue
+				resolvedPort = port.IntVal
+			} else {
+				for _, p := range container.Ports {
+					if p.Name == port.StrVal {
+						resolvedPort = p.ContainerPort
+						break
+					}
+				}
 			}
-			for _, p := range container.Ports {
-				if p.Name == port.StrVal {
-					ports.Insert(p.ContainerPort)
-					break
+			if resolvedPort != 0 {
+				ports.Insert(resolvedPort)
+				if probe.TCPSocket != nil {
+					tcpPorts.Insert(resolvedPort)
 				}
 			}
 		}
 	}
 
-	ports.Delete(0)
 	klog.V(3).Infof("probe ports for pod %s/%s: %v", pod.Namespace, pod.Name, ports.SortedList())
-	return ports
+	return ports, tcpPorts
 }
 
 func (c *Controller) StartTProxyTCPPortProbe() {
@@ -109,20 +150,35 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 		}
 		iface := ovs.PodNameToPortName(podName, pod.Namespace, util.OvnProvider)
 		nsName, err := ovs.GetInterfacePodNs(iface)
+		_, tcpPorts := getProbePorts(pod)
 		if err != nil {
 			klog.Errorf("failed to get netns for pod %s/%s: %v", pod.Namespace, pod.Name, err)
-			continue
-		}
-		if nsName == "" {
+		} else if nsName == "" {
 			klog.Infof("netns for pod %s/%s not found", pod.Namespace, pod.Name)
+		}
+		if err != nil || nsName == "" {
+			for _, podIP := range util.PodIPs(*pod) {
+				if nsName == "" {
+					customVPCPodIPToNs.Delete(podIP)
+				} else if value, ok := customVPCPodIPToNs.Load(podIP); ok {
+					mapping, valid := value.(podNetworkNamespace)
+					if !valid || mapping.podUID != pod.UID {
+						customVPCPodIPToNs.Delete(podIP)
+					}
+				}
+				for _, port := range tcpPorts.UnsortedList() {
+					customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, port), tcpProbeResult{podUID: pod.UID})
+				}
+			}
 			continue
 		}
 
-		ports := getProbePorts(pod)
-		for _, podIP := range pod.Status.PodIPs {
-			customVPCPodIPToNs.Store(podIP.IP, nsName)
-			for _, port := range ports.UnsortedList() {
-				probePortInNs(podIP.IP, port, true, nil)
+		for _, podIP := range util.PodIPs(*pod) {
+			customVPCPodIPToNs.Store(podIP, podNetworkNamespace{podUID: pod.UID, namespace: nsName})
+			for _, port := range tcpPorts.UnsortedList() {
+				key := util.JoinHostPort(podIP, port)
+				reachable := probePortInNs(podIP, port, true, nil)
+				customVPCPodTCPProbeIPPort.Store(key, tcpProbeResult{podUID: pod.UID, reachable: reachable})
 			}
 		}
 	}
@@ -315,20 +371,26 @@ func handleRedirectFlow(conn net.Conn) {
 	probePortInNs(podIP, int32(port), false, conn) // #nosec G115
 }
 
-func probePortInNs(podIP string, probePort int32, isTProxyProbe bool, conn net.Conn) {
-	podNs, ok := customVPCPodIPToNs.Load(podIP)
+func probePortInNs(podIP string, probePort int32, isTProxyProbe bool, conn net.Conn) bool {
+	value, ok := customVPCPodIPToNs.Load(podIP)
 	if !ok {
 		klog.V(3).Infof("failed to get netns for pod with ip %s", podIP)
-		return
+		return false
+	}
+	mapping, ok := value.(podNetworkNamespace)
+	if !ok {
+		klog.V(3).Infof("invalid netns mapping for pod with ip %s", podIP)
+		return false
 	}
 
-	podNS, err := ns.GetNS(podNs.(string))
+	podNS, err := ns.GetNS(mapping.namespace)
 	if err != nil {
 		customVPCPodIPToNs.Delete(podIP)
-		klog.V(3).Infof("netns %s not found", podNs)
-		return
+		klog.V(3).Infof("netns %s not found", mapping.namespace)
+		return false
 	}
 
+	reachable := false
 	_ = ns.WithNetNSPath(podNS.Path(), func(_ ns.NetNS) error {
 		// Packet's src and dst IP are both PodIP in netns
 		localpodTCPAddr := net.TCPAddr{IP: net.ParseIP(podIP)}
@@ -336,14 +398,11 @@ func probePortInNs(podIP string, probePort int32, isTProxyProbe bool, conn net.C
 
 		remoteConn, err := goTProxy.DialTCP(&localpodTCPAddr, &remotepodTCPAddr, !isTProxyProbe)
 		if err != nil {
-			if isTProxyProbe {
-				customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, probePort), false)
-			}
 			return nil
 		}
 
 		if isTProxyProbe {
-			customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, probePort), true)
+			reachable = true
 			return nil
 		}
 
@@ -368,8 +427,10 @@ func probePortInNs(podIP string, probePort int32, isTProxyProbe bool, conn net.C
 		go streamConn(conn, remoteConn)
 
 		streamWait.Wait()
+		reachable = true
 		return nil
 	})
+	return reachable
 }
 
 func getProtocols(protocol string) []string {

@@ -2,10 +2,15 @@ package daemon
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	listerv1 "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
@@ -111,4 +116,41 @@ func TestProviderExistsAllowsOnSubnetListError(t *testing.T) {
 	subnet, ok := handler.providerExists("attachnet-a.default.ovn", "")
 	require.True(t, ok)
 	require.Nil(t, subnet)
+}
+
+func TestGetTProxyConditionPodSkipsTerminating(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		Name: "custom-subnet",
+		Spec: kubeovnv1.SubnetSpec{Vpc: "custom-vpc"},
+	}
+	kubeovnClient := kubeovnfake.NewSimpleClientset()
+	informerFactory := kubeovninformerfactory.NewSharedInformerFactory(kubeovnClient, 0)
+	subnetInformer := informerFactory.Kubeovn().V1().Subnets()
+	require.NoError(t, subnetInformer.Informer().GetStore().Add(subnet))
+
+	pod := &v1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: "default",
+			Name:      "live",
+			Annotations: map[string]string{
+				fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider): subnet.Name,
+			},
+		},
+	}
+	terminating := pod.DeepCopy()
+	terminating.Name = "terminating"
+	terminating.DeletionTimestamp = new(metav1.Time)
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	require.NoError(t, indexer.Add(pod))
+	require.NoError(t, indexer.Add(terminating))
+
+	c := &Controller{
+		podsLister:    listerv1.NewPodLister(indexer),
+		subnetsLister: subnetInformer.Lister(),
+		config:        &Configuration{ClusterRouter: util.DefaultVpc},
+	}
+	filtered, err := c.getTProxyConditionPod(true)
+	require.NoError(t, err)
+	require.Len(t, filtered, 1)
+	require.Equal(t, "live", filtered[0].Name)
 }
