@@ -5,6 +5,7 @@ import (
 
 	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 
@@ -96,27 +97,42 @@ var _ = framework.Describe("[group:webhook-service]", func() {
 		name := "webhook-svc-bind-" + framework.RandomSuffix()
 		ginkgo.By("Creating service " + name)
 		framework.ExpectNoError(create(gwService(name, 80, corev1.ProtocolTCP)))
-		svc := serviceClient.Get(name)
+
+		// The controller writes to a LoadBalancer Service of its own accord, so every update here
+		// starts from the latest object and retries a conflict. Without that, a reconcile landing
+		// between the read and the write answers with a conflict instead of the admission verdict
+		// the assertion is about.
+		update := func(mutate func(*corev1.Service)) error {
+			var err error
+			for range 5 {
+				modified := serviceClient.Get(name).DeepCopy()
+				mutate(modified)
+				if _, err = f.ClientSet.CoreV1().Services(f.Namespace.Name).Update(context.Background(), modified, metav1.UpdateOptions{}); !k8serrors.IsConflict(err) {
+					return err
+				}
+			}
+			return err
+		}
 
 		ginkgo.By("Rebinding the service to another gateway is rejected")
-		modified := svc.DeepCopy()
-		modified.Annotations[util.VpcNatGatewayAnnotation] = gatewayName + "-other"
-		_, err := f.ClientSet.CoreV1().Services(f.Namespace.Name).Update(context.Background(), modified, metav1.UpdateOptions{})
+		err := update(func(svc *corev1.Service) {
+			svc.Annotations[util.VpcNatGatewayAnnotation] = gatewayName + "-other"
+		})
 		framework.ExpectError(err, "the gateway of a service must be immutable")
 		framework.ExpectContainSubstring(err.Error(), "vpc nat gateway cannot change")
 
 		ginkgo.By("Rebinding the service to another eip is rejected")
-		modified = svc.DeepCopy()
-		modified.Annotations[util.EipAnnotation] = eipName + "-other"
-		_, err = f.ClientSet.CoreV1().Services(f.Namespace.Name).Update(context.Background(), modified, metav1.UpdateOptions{})
+		err = update(func(svc *corev1.Service) {
+			svc.Annotations[util.EipAnnotation] = eipName + "-other"
+		})
 		framework.ExpectError(err, "the eip of a service must be immutable")
 		framework.ExpectContainSubstring(err.Error(), "eip cannot change")
 
 		ginkgo.By("Clearing the binding is allowed")
-		modified = svc.DeepCopy()
-		delete(modified.Annotations, util.EipAnnotation)
-		delete(modified.Annotations, util.VpcNatGatewayAnnotation)
-		_, err = f.ClientSet.CoreV1().Services(f.Namespace.Name).Update(context.Background(), modified, metav1.UpdateOptions{})
+		err = update(func(svc *corev1.Service) {
+			delete(svc.Annotations, util.EipAnnotation)
+			delete(svc.Annotations, util.VpcNatGatewayAnnotation)
+		})
 		framework.ExpectNoError(err, "opting out releases the service, it is not a rebinding")
 	})
 
