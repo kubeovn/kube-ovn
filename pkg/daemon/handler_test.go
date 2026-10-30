@@ -160,6 +160,41 @@ func TestHandleAddPrepareOnlyReturnsPlanWithoutExecutingHostNetworking(t *testin
 	require.Contains(t, response.Body.String(), "terminating")
 }
 
+func TestHandleAddAllowsLegacyOvnProviderWithLogicalSwitch(t *testing.T) {
+	const (
+		provider = "attachnet.default.ovn"
+		subnet   = "legacy-attachment"
+	)
+	pod := &v1.Pod{
+		Name: "pod", Namespace: "ns", UID: types.UID("real-uid"),
+		Annotations: map[string]string{
+			fmt.Sprintf(util.IPAddressAnnotationTemplate, provider):     "10.0.0.2",
+			fmt.Sprintf(util.CidrAnnotationTemplate, provider):          "10.0.0.0/24",
+			fmt.Sprintf(util.MacAddressAnnotationTemplate, provider):    "00:00:00:00:00:02",
+			fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): subnet,
+		},
+	}
+	handler := cniEventTestHandler(t, pod, &kubeovnv1.Subnet{
+		Name: subnet,
+		Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+	}, &cniEventRecorder{})
+	handler.KubeOvnClient = kubeovnfake.NewSimpleClientset(&kubeovnv1.IP{
+		Name: ovs.PodNameToPortName(pod.Name, pod.Namespace, provider),
+		Spec: kubeovnv1.IPSpec{NodeName: "node-a"},
+	})
+
+	response := serveCNIRequest(t, handler, "/api/v1/add", request.CniRequest{
+		CniType: util.CniTypeName, PodName: pod.Name, PodNamespace: pod.Namespace,
+		Provider: provider, IfName: "net1", ContainerID: "1234567890abcdef",
+		NetNs: "/missing/netns", PrepareOnly: true,
+	})
+	require.Equal(t, http.StatusOK, response.Code)
+	var cniResponse request.CniResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &cniResponse))
+	require.NotNil(t, cniResponse.Plan)
+	require.Equal(t, subnet, cniResponse.Plan.Subnet)
+}
+
 func TestHandleCommitRecordsSuccessEvent(t *testing.T) {
 	pod := &v1.Pod{Name: "pod", Namespace: "ns", UID: types.UID("real-uid")}
 	recorder := &cniEventRecorder{}

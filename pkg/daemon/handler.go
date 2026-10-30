@@ -126,9 +126,26 @@ func gatewayForCNIIPFamily(ipAddr, gateway string) string {
 	return strings.Join(filtered, ",")
 }
 
-func (csh cniServerHandler) providerExists(provider, ifName string) (*kubeovnv1.Subnet, bool) {
+func (csh cniServerHandler) providerExists(provider, ifName string, annotations map[string]string, appendIfName bool) (*kubeovnv1.Subnet, bool) {
 	if provider == "" || provider == util.OvnProvider {
 		return nil, true
+	}
+	providerName, _ := strings.CutSuffix(provider, fmt.Sprintf(".%s", ifName))
+	// The v1.15 multi-NIC contract allows a named OVN attachment to select a
+	// legacy provider=ovn subnet explicitly through its logical_switch annotation.
+	if util.IsOvnProvider(provider) {
+		logicalSwitch := logicalSwitchAnnotation(annotations, provider, ifName, appendIfName)
+		if logicalSwitch != "" {
+			subnet, err := csh.Controller.subnetsLister.Get(logicalSwitch)
+			if err != nil {
+				klog.Errorf("failed to get subnet %s while checking provider %s: %v", logicalSwitch, provider, err)
+				return nil, false
+			}
+			if subnet.Spec.Provider == "" || subnet.Spec.Provider == util.OvnProvider || subnet.Spec.Provider == providerName {
+				return subnet.DeepCopy(), true
+			}
+			return nil, false
+		}
 	}
 	subnets, err := csh.Controller.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -138,13 +155,19 @@ func (csh cniServerHandler) providerExists(provider, ifName string) (*kubeovnv1.
 	// for multi interface attachments the ifname is included in provider, for example, vm-overlay.default.ovn.net1
 	// as a result if ifname is set, we need to append it to subnet provider when comparing with request provider
 	// else no subnet will be found
-	providerName, _ := strings.CutSuffix(provider, fmt.Sprintf(".%s", ifName))
 	for _, subnet := range subnets {
 		if subnet.Spec.Provider == providerName {
 			return subnet.DeepCopy(), true
 		}
 	}
 	return nil, false
+}
+
+func logicalSwitchAnnotation(annotations map[string]string, provider, ifName string, appendIfName bool) string {
+	if annotations == nil {
+		return ""
+	}
+	return util.GetAnnotationWithIfNameOverride(annotations, provider, ifName, util.LogicalSwitchAnnotationTemplate, appendIfName)
 }
 
 // isMacOnlyAllocation reports whether the controller allocated only a MAC address
@@ -177,16 +200,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		csh.recordCNIPodEvent(eventPod, &podRequest, v1.EventTypeWarning, "PodNetworkConfigureFailed", fmt.Sprintf("stage=%s error=%v", stage, err))
 	}
 	klog.V(5).Infof("request body is %v", podRequest)
-	podSubnet, exist := csh.providerExists(podRequest.Provider, podRequest.IfName)
-	if !exist {
-		errMsg := fmt.Errorf("provider %s is not bound to any subnet", podRequest.Provider)
-		klog.Error(errMsg)
-		recordFailure("provider", errMsg)
-		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
-			klog.Errorf("failed to write response, %v", err)
-		}
-		return
-	}
+	var podSubnet *kubeovnv1.Subnet
 
 	klog.Infof("add port request: %v", podRequest)
 	if err := csh.validatePodRequest(&podRequest); err != nil {
@@ -219,6 +233,24 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 		eventPod = pod
+		// Match the effective annotation key used below when building the plan.
+		// This must happen before providerExists so stale interface-specific
+		// annotations cannot select a different subnet for validation.
+		_, ok := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerWithIfName)]
+		if ok {
+			appendIfName = true
+		}
+		var exist bool
+		podSubnet, exist = csh.providerExists(podRequest.Provider, podRequest.IfName, pod.Annotations, appendIfName)
+		if !exist {
+			errMsg := fmt.Errorf("provider %s is not bound to any subnet", podRequest.Provider)
+			klog.Error(errMsg)
+			recordFailure("provider", errMsg)
+			if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
+				klog.Errorf("failed to write response, %v", err)
+			}
+			return
+		}
 		if !pod.DeletionTimestamp.IsZero() {
 			err := fmt.Errorf("pod %s/%s is terminating", podRequest.PodNamespace, podRequest.PodName)
 			recordFailure("prepare-terminating-pod", err)
@@ -226,12 +258,6 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 				klog.Errorf("failed to write response: %v", err)
 			}
 			return
-		}
-
-		// in case of multiple nics from same subnet
-		_, ok := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerWithIfName)]
-		if ok {
-			appendIfName = true
 		}
 
 		ip = util.GetAnnotationWithIfNameOverride(pod.Annotations, podRequest.Provider, podRequest.IfName, util.IPAddressAnnotationTemplate, appendIfName)

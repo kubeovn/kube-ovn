@@ -9,10 +9,12 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovninformerfactory "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
+	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -241,22 +243,109 @@ func TestProviderExistsRequiresSubnetForNamedOvnProvider(t *testing.T) {
 
 	handler := cniServerHandler{Controller: &Controller{subnetsLister: subnetInformer.Lister()}}
 
-	_, ok := handler.providerExists(util.OvnProvider, "")
+	_, ok := handler.providerExists(util.OvnProvider, "", nil, false)
 	require.True(t, ok)
 
-	subnet, ok := handler.providerExists("attachnet-a.default.ovn", "")
+	subnet, ok := handler.providerExists("attachnet-a.default.ovn", "", nil, false)
 	require.True(t, ok)
 	require.NotNil(t, subnet)
 	require.Equal(t, "attach-subnet", subnet.Name)
 
-	_, ok = handler.providerExists("attachnet-b.default.ovn", "")
+	_, ok = handler.providerExists("attachnet-b.default.ovn", "", nil, false)
+	require.False(t, ok)
+}
+
+func TestProviderExistsAllowsLegacyOvnSubnetSelectedByLogicalSwitch(t *testing.T) {
+	const (
+		provider   = "attachnet.default.ovn"
+		subnetName = "legacy-attachment"
+	)
+	subnet := &kubeovnv1.Subnet{
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+	}
+	subnetIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, subnetIndexer.Add(subnet))
+	handler := cniServerHandler{Controller: &Controller{subnetsLister: kubeovnlister.NewSubnetLister(subnetIndexer)}}
+
+	annotations := map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): subnetName,
+	}
+	resolved, ok := handler.providerExists(provider, "", annotations, false)
+	require.True(t, ok)
+	require.Equal(t, subnetName, resolved.Name)
+
+	interfaceAnnotations := map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider+".net1"): subnetName,
+	}
+	resolved, ok = handler.providerExists(provider, "net1", interfaceAnnotations, true)
+	require.True(t, ok)
+	require.Equal(t, subnetName, resolved.Name)
+
+	emptyProviderSubnet := &kubeovnv1.Subnet{
+		Name: "legacy-empty-provider",
+	}
+	require.NoError(t, subnetIndexer.Add(emptyProviderSubnet))
+	emptyProviderAnnotations := map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, "legacy.default.ovn"): emptyProviderSubnet.Name,
+	}
+	resolved, ok = handler.providerExists("legacy.default.ovn", "", emptyProviderAnnotations, false)
+	require.True(t, ok)
+	require.Equal(t, emptyProviderSubnet.Name, resolved.Name)
+}
+
+func TestProviderExistsUsesEffectiveLogicalSwitchAnnotation(t *testing.T) {
+	const provider = "attachnet.default.ovn"
+	namedSubnet := &kubeovnv1.Subnet{
+		Name: "named-attachment",
+		Spec: kubeovnv1.SubnetSpec{Provider: provider},
+	}
+	legacySubnet := &kubeovnv1.Subnet{
+		Name: "legacy-attachment",
+		Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+	}
+	subnetIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, subnetIndexer.Add(namedSubnet))
+	require.NoError(t, subnetIndexer.Add(legacySubnet))
+	handler := cniServerHandler{Controller: &Controller{subnetsLister: kubeovnlister.NewSubnetLister(subnetIndexer)}}
+
+	annotations := map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider):         namedSubnet.Name,
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider+".net1"): legacySubnet.Name,
+	}
+	resolved, ok := handler.providerExists(provider, "net1", annotations, false)
+	require.True(t, ok)
+	require.Equal(t, namedSubnet.Name, resolved.Name)
+
+	resolved, ok = handler.providerExists(provider, "net1", annotations, true)
+	require.True(t, ok)
+	require.Equal(t, legacySubnet.Name, resolved.Name)
+}
+
+func TestProviderExistsRejectsLogicalSwitchWithDifferentNamedProvider(t *testing.T) {
+	const (
+		provider   = "attachnet.default.ovn"
+		subnetName = "other-attachment"
+	)
+	subnet := &kubeovnv1.Subnet{
+		Name: subnetName,
+		Spec: kubeovnv1.SubnetSpec{Provider: "other.default.ovn"},
+	}
+	subnetIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, subnetIndexer.Add(subnet))
+	handler := cniServerHandler{Controller: &Controller{subnetsLister: kubeovnlister.NewSubnetLister(subnetIndexer)}}
+
+	annotations := map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): subnetName,
+	}
+	_, ok := handler.providerExists(provider, "", annotations, false)
 	require.False(t, ok)
 }
 
 func TestProviderExistsAllowsOnSubnetListError(t *testing.T) {
 	handler := cniServerHandler{Controller: &Controller{subnetsLister: errSubnetLister{}}}
 
-	subnet, ok := handler.providerExists("attachnet-a.default.ovn", "")
+	subnet, ok := handler.providerExists("attachnet-a.default.ovn", "", nil, false)
 	require.True(t, ok)
 	require.Nil(t, subnet)
 }
