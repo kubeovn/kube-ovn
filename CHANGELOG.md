@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.16.16 (2026-10-29)
+
+ * [b311ad0c5](https://github.com/kubeovn/kube-ovn/commit/b311ad0c51913abf9bcac64ad7612f0adb247221) release v1.16.16
+ * [4989ff376](https://github.com/kubeovn/kube-ovn/commit/4989ff376de2c9ec753948b6c88b1e97256f9691) [release-1.16] fix(daemon): refresh underlay Service flows when OVS ofports change (#7789)
+ * [4814ac717](https://github.com/kubeovn/kube-ovn/commit/4814ac7178bb5cc2f42c94186513c86450d9d557) fix(deps): update Kubernetes and Go x modules (#7786)
+ * [17ee03529](https://github.com/kubeovn/kube-ovn/commit/17ee03529553fb45bea580129d25b6acc76d2739) [release-1.16] fix(controller): coalesce admin policy update deltas (#7785)
+ * [4f17d2f06](https://github.com/kubeovn/kube-ovn/commit/4f17d2f06b107f37b52dc618db46bd8b23d2d11c) [release-1.16] fix(controller): index NetworkPolicy label events (#7780)
+ * [3000858d9](https://github.com/kubeovn/kube-ovn/commit/3000858d93dd0b4e712b47775848d595ec62c703) fix(controller): preserve successor subnet routes (#7777)
+ * [fdc59b821](https://github.com/kubeovn/kube-ovn/commit/fdc59b821feff1cf811e7c54aebc6abbd25e4ce7) [release-1.16] Fix standalone VMI network loss after failed live migration (#7773)
+ * [bc1285276](https://github.com/kubeovn/kube-ovn/commit/bc12852765932b3f0c2fbbdc8529ced7d7c4c61e) fix(deps): update module golang.org/x/net to v0.62.0 (#7770)
+ * [245eeb8f2](https://github.com/kubeovn/kube-ovn/commit/245eeb8f2836a71d9dcc7dbe2c910b6cd7b1e2ea) fix(controller): cache repeated network policy selector scans (#7759)
+ * [a83bc17bc](https://github.com/kubeovn/kube-ovn/commit/a83bc17bcf40888a7cba1bdf4c7aac84ed74a8fc) fix(controller): answer ARP for switch_lb_vip via router port arp_proxy (#7626) (#7752)
+ * [ff86c1e6e](https://github.com/kubeovn/kube-ovn/commit/ff86c1e6e10a1340eff04ff94919bb130dae8eff) [release-1.16] feat(helm): allow externally managed webhook certificates (#7750)
+ * [c4bb8b17a](https://github.com/kubeovn/kube-ovn/commit/c4bb8b17a461c5f3f6af71f4738ed345428e28a6) [release-1.16] Include licenses for bundled image binaries (#7744)
+ * [c2334d73a](https://github.com/kubeovn/kube-ovn/commit/c2334d73afec867aa6a3f7075d45707fbde6e609) prepare for next release
+
+### Contributors
+
+ * renovate[bot]
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.15 (2026-10-21)
 
  * [02fccb4e1](https://github.com/kubeovn/kube-ovn/commit/02fccb4e162d28ec6db6120c89e5f11e9ad138e0) release v1.16.15
