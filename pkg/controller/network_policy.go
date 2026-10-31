@@ -999,7 +999,7 @@ func (c *Controller) fetchSelectedNamedPortLSPs(namespace string, selector *meta
 }
 
 func (c *Controller) networkPolicyNamedPortVariants(np *netv1.NetworkPolicy, providers set.Set[string]) ([]networkPolicyNamedPortVariant, error) {
-	indexed := c.namedPort.GetNamedPortVariantsByNs(np.Namespace)
+	indexed := c.namedPort.getNamedPortVariantsByNs(np.Namespace)
 	if len(indexed) == 0 {
 		return nil, nil
 	}
@@ -1228,7 +1228,7 @@ func (c *Controller) fetchPolicySelectedNamedPortAddresses(namespace, ipProtocol
 
 	addresses := make(map[namedPortKey][]string)
 	for _, selectedNamespace := range selectedNamespaces {
-		variants := c.namedPort.GetNamedPortVariantsByNs(selectedNamespace)[name]
+		variants := c.namedPort.getNamedPortVariantsByNs(selectedNamespace)[name]
 		if len(variants) == 0 {
 			continue
 		}
@@ -1314,6 +1314,19 @@ func (c *Controller) enqueueNamespaceNamedPortNetworkPolicies(namespace string) 
 	policies, err := c.npsLister.NetworkPolicies(namespace).List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list network policies in namespace %s for named port update: %v", namespace, err)
+		return
+	}
+	for _, policy := range policies {
+		if networkPolicyHasNamedPort(policy) {
+			c.updateNpQueue.Add(cache.MetaObjectToName(policy).String())
+		}
+	}
+}
+
+func (c *Controller) enqueueNamedPortNetworkPolicies() {
+	policies, err := c.npsLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list network policies for named port update: %v", err)
 		return
 	}
 	for _, policy := range policies {
