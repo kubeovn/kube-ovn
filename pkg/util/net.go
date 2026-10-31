@@ -955,6 +955,12 @@ func ValidateCanonicalPort(port string) error {
 }
 
 // ValidateProtocol checks if the protocol is valid (tcp or udp).
+//
+// TODO: accept sctp. Nothing in the share DNAT data plane is protocol specific (the gateway's nft
+// service map keys on inet_proto and reads the port from the transport header, like kube-proxy's
+// nftables proxier), so extending it means allowing the name here and in the gateway script's
+// whitelists, and dropping the tcp/udp filters the Service controller applies when it derives
+// identities from the Service ports.
 func ValidateProtocol(protocol string) error {
 	p := strings.ToLower(protocol)
 	if p != ProtocolTCP && p != ProtocolUDP {

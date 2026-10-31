@@ -9,13 +9,16 @@ import (
 
 	"github.com/stretchr/testify/require"
 	admissionv1 "k8s.io/api/admission/v1"
+	authenticationv1 "k8s.io/api/authentication/v1"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
 	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -25,6 +28,7 @@ import (
 type mockCache struct {
 	objects   map[string]runtime.Object
 	dnatRules []ovnv1.IptablesDnatRule
+	services  []corev1.Service
 }
 
 func (m *mockCache) Get(_ context.Context, key client.ObjectKey, obj client.Object, _ ...client.GetOption) error {
@@ -54,12 +58,24 @@ func (m *mockCache) Get(_ context.Context, key client.ObjectKey, obj client.Obje
 }
 
 func (m *mockCache) List(_ context.Context, list client.ObjectList, opts ...client.ListOption) error {
-	// The validation code lists every share DNAT rule only for the unlabelled owner/affinity
-	// conflict check; labelled lookups (which use ListOptions) keep returning an empty result
-	// so existing tests that do not exercise the new check stay unchanged.
-	if len(opts) == 0 {
-		if dnats, ok := list.(*ovnv1.IptablesDnatRuleList); ok {
-			dnats.Items = m.dnatRules
+	// Labelled DNAT lookups (which use ListOptions) keep returning an empty result so existing
+	// tests that do not exercise them stay unchanged.
+	if dnats, ok := list.(*ovnv1.IptablesDnatRuleList); ok && len(opts) == 0 {
+		dnats.Items = m.dnatRules
+	}
+	// Services are read through the nftable lb eip index, which the hook registers on the real
+	// cache; apply the same field selection here so the mock answers what the index would.
+	if svcs, ok := list.(*corev1.ServiceList); ok {
+		listOpts := &client.ListOptions{}
+		for _, opt := range opts {
+			opt.ApplyToList(listOpts)
+		}
+		for _, svc := range m.services {
+			if listOpts.FieldSelector != nil &&
+				!listOpts.FieldSelector.Matches(fields.Set{nftableLbSvcEipIndex: svc.Annotations[util.EipAnnotation]}) {
+				continue
+			}
+			svcs.Items = append(svcs.Items, svc)
 		}
 	}
 	return nil
@@ -208,6 +224,30 @@ func TestVpcNatGwCreateOrUpdateHook(t *testing.T) {
 		resp := v.VpcNatGwCreateOrUpdateHook(context.Background(), req)
 		require.False(t, resp.Allowed)
 		require.Contains(t, resp.Result.Message, "spec.namespace is immutable")
+	})
+
+	t.Run("Update - Immutable VPC", func(t *testing.T) {
+		gwOld := ovnv1.VpcNatGateway{
+			Name: "test-gw",
+			Spec: ovnv1.VpcNatGatewaySpec{Vpc: "old-vpc"},
+		}
+		gwNew := ovnv1.VpcNatGateway{
+			Name: "test-gw",
+			Spec: ovnv1.VpcNatGatewaySpec{Vpc: "new-vpc"},
+		}
+		gwOldRaw, _ := json.Marshal(gwOld)
+		gwNewRaw, _ := json.Marshal(gwNew)
+
+		req := admission.Request{
+			Operation: admissionv1.Update,
+			Object:    runtime.RawExtension{Raw: gwNewRaw},
+			OldObject: runtime.RawExtension{Raw: gwOldRaw},
+		}
+
+		v := &ValidatingHook{decoder: decoder}
+		resp := v.VpcNatGwCreateOrUpdateHook(context.Background(), req)
+		require.False(t, resp.Allowed)
+		require.Contains(t, resp.Result.Message, "spec.vpc is immutable")
 	})
 
 	t.Run("Update - HA to non-HA Reduction", func(t *testing.T) {
@@ -511,7 +551,7 @@ func TestValidateIptablesDnatProtocolCanonical(t *testing.T) {
 		"/test-eip": &ovnv1.IptablesEIP{Name: "test-eip", Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1"}},
 	}}}
 
-	for _, protocol := range []string{"TCP", "Udp", "SCTP"} {
+	for _, protocol := range []string{"TCP", "Udp"} {
 		dnat := &ovnv1.IptablesDnatRule{Spec: ovnv1.IptablesDnatRuleSpec{
 			EIP: "test-eip", ExternalPort: "80", InternalPort: "80", InternalIP: "10.0.0.10", Protocol: protocol,
 		}}
@@ -611,80 +651,6 @@ func TestValidateIptablesDnatSessionAffinity(t *testing.T) {
 	}
 }
 
-func TestValidateIptablesDnatShareIdentityConflict(t *testing.T) {
-	newDnat := func(ownerNS, ownerName, affinity string, affinityTimeout int32) *ovnv1.IptablesDnatRule {
-		dnat := &ovnv1.IptablesDnatRule{
-			Name: "new-dnat",
-			Spec: ovnv1.IptablesDnatRuleSpec{
-				Type:                          ovnv1.DnatRuleTypeShare,
-				EIP:                           "test-eip",
-				ExternalPort:                  "80",
-				InternalPort:                  "8080",
-				InternalIP:                    "10.0.0.10",
-				Protocol:                      "tcp",
-				SessionAffinity:               affinity,
-				SessionAffinityTimeoutSeconds: affinityTimeout,
-			},
-		}
-		if ownerNS != "" || ownerName != "" {
-			dnat.Labels = map[string]string{
-				util.NftableLbSvcNsLabel:   ownerNS,
-				util.NftableLbSvcNameLabel: ownerName,
-			}
-		}
-		return dnat
-	}
-
-	newCache := func(existing *ovnv1.IptablesDnatRule) *mockCache {
-		cache := &mockCache{
-			objects: map[string]runtime.Object{
-				"/test-eip": &ovnv1.IptablesEIP{
-					Name: "test-eip",
-					Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1"},
-				},
-			},
-		}
-		if existing != nil {
-			cache.dnatRules = []ovnv1.IptablesDnatRule{*existing}
-		}
-		return cache
-	}
-
-	t.Run("different service owners conflict", func(t *testing.T) {
-		existing := newDnat("ns1", "svc-a", ovnv1.DnatSessionAffinityNone, 0)
-		existing.Name = "existing-dnat"
-		v := &ValidatingHook{cache: newCache(existing)}
-		err := v.ValidateIptablesDnat(context.Background(), newDnat("ns1", "svc-b", ovnv1.DnatSessionAffinityNone, 0))
-		require.ErrorContains(t, err, "already in use by service ns1/svc-a")
-	})
-
-	t.Run("manual rule conflicts with service owner", func(t *testing.T) {
-		existing := newDnat("", "", ovnv1.DnatSessionAffinityNone, 0)
-		existing.Name = "manual-dnat"
-		v := &ValidatingHook{cache: newCache(existing)}
-		err := v.ValidateIptablesDnat(context.Background(), newDnat("ns1", "svc", ovnv1.DnatSessionAffinityNone, 0))
-		require.ErrorContains(t, err, "already in use by a manually-created share DNAT rule")
-	})
-
-	t.Run("same owner must keep identity affinity consistent", func(t *testing.T) {
-		existing := newDnat("ns1", "svc", ovnv1.DnatSessionAffinityClientIP, 600)
-		existing.Name = "existing-dnat"
-		v := &ValidatingHook{cache: newCache(existing)}
-		err := v.ValidateIptablesDnat(context.Background(), newDnat("ns1", "svc", ovnv1.DnatSessionAffinityNone, 0))
-		require.ErrorContains(t, err, "must use identical sessionAffinity settings")
-	})
-
-	t.Run("terminating rule does not block replacement", func(t *testing.T) {
-		existing := newDnat("ns1", "svc", ovnv1.DnatSessionAffinityClientIP, 600)
-		existing.Name = "existing-dnat"
-		now := metav1.Now()
-		existing.DeletionTimestamp = &now
-		v := &ValidatingHook{cache: newCache(existing)}
-		err := v.ValidateIptablesDnat(context.Background(), newDnat("ns1", "svc", ovnv1.DnatSessionAffinityClientIP, 600))
-		require.NoError(t, err)
-	})
-}
-
 func TestIptablesDnatAffinityImmutableOnUpdate(t *testing.T) {
 	scheme := runtime.NewScheme()
 	require.NoError(t, ovnv1.AddToScheme(scheme))
@@ -719,4 +685,443 @@ func TestIptablesDnatAffinityImmutableOnUpdate(t *testing.T) {
 	resp := v.iptablesDnatUpdateHook(context.Background(), req)
 	require.False(t, resp.Allowed)
 	require.Contains(t, resp.Result.Message, "sessionAffinity is immutable")
+}
+
+// TestValidateIptablesDnatClusterIPFlow pins the webhook contract of the two VIP flows: a rule
+// addresses one or both VIPs, and a ClusterIP-only record uses its gateway label because there is
+// no EIP to derive it from.
+func TestValidateIptablesDnatClusterIPFlow(t *testing.T) {
+	t.Parallel()
+
+	cache := &mockCache{objects: map[string]runtime.Object{
+		"/test-eip": &ovnv1.IptablesEIP{Name: "test-eip", Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1", NatGwDp: "gw1"}},
+		"/gw0":      &ovnv1.VpcNatGateway{Name: "gw0"},
+		"/gw1":      &ovnv1.VpcNatGateway{Name: "gw1"},
+		"/gw-gone":  &ovnv1.VpcNatGateway{Name: "gw-gone"},
+	}}
+	v := &ValidatingHook{cache: cache}
+
+	base := func() *ovnv1.IptablesDnatRule {
+		return &ovnv1.IptablesDnatRule{
+			Name: "test-dnat",
+			Spec: ovnv1.IptablesDnatRuleSpec{
+				ExternalPort: "80", InternalPort: "8080",
+				InternalIP: "10.0.0.10", Protocol: "tcp",
+				Type: ovnv1.DnatRuleTypeShare,
+			},
+		}
+	}
+
+	for _, tt := range clusterIPFlowCases() {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			dnat := base()
+			tt.mutate(dnat)
+			err := v.ValidateIptablesDnat(context.Background(), dnat)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+// dnatValidationCase mutates a valid share rule into the shape under test.
+type dnatValidationCase struct {
+	name    string
+	mutate  func(d *ovnv1.IptablesDnatRule)
+	wantErr string
+}
+
+func clusterIPFlowCases() []dnatValidationCase {
+	return []dnatValidationCase{
+		{
+			name: "clusterIP with an explicit gateway label is accepted",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.ClusterIP = "10.96.1.5"
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "gw0"}
+			},
+		},
+		{
+			name:    "clusterIP without a gateway label is rejected",
+			mutate:  func(d *ovnv1.IptablesDnatRule) { d.Spec.ClusterIP = "10.96.1.5" },
+			wantErr: "gateway label is required with clusterIP when there is no eip",
+		},
+		{
+			// A Service handled by the nftable LB service feature carries its ingress IP and its
+			// ClusterIP aligned on one rule, so both fields together is the normal case there.
+			name: "eip and clusterIP together are accepted",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.EIP = "test-eip"
+				d.Spec.ClusterIP = "10.96.1.5"
+			},
+		},
+		{
+			name: "clusterIP with a gateway label that does not serve the eip is rejected",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.EIP = "test-eip"
+				d.Spec.ClusterIP = "10.96.1.5"
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "gw0"}
+			},
+			wantErr: "does not serve eip",
+		},
+		{
+			name: "clusterIP with a missing gateway label target is rejected",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.ClusterIP = "10.96.1.5"
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "absent"}
+			},
+			wantErr: "not found",
+		},
+		{
+			name: "clusterIP must be an IPv4 address",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.ClusterIP = "fd00::1"
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "gw0"}
+			},
+			wantErr: "must be an IPv4 address",
+		},
+		{
+			name: "clusterIP is not accepted on an exclusive rule",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.ClusterIP = "10.96.1.5"
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "gw0"}
+				d.Spec.Type = ""
+			},
+			wantErr: "clusterIP requires type=share",
+		},
+		{
+			name:    "neither eip nor clusterIP is rejected",
+			mutate:  func(*ovnv1.IptablesDnatRule) {},
+			wantErr: `"eip" or "clusterIP" cannot be empty`,
+		},
+		{
+			// An EIP plus ClusterIP record identifies its gateway with the controller-owned label.
+			name: "gateway label matching the eip gateway is accepted",
+			mutate: func(d *ovnv1.IptablesDnatRule) {
+				d.Spec.EIP = "test-eip"
+				d.Spec.ClusterIP = "10.96.1.5"
+				d.Labels = map[string]string{util.VpcNatGatewayNameLabel: "gw1"}
+			},
+		},
+	}
+}
+
+// TestNftableLbOwnerLabelsAreControllerOnly pins who may write the accounting metadata: the owner
+// labels decide which Service a record belongs to, so only the controller may set or change them,
+// and a hand-created share object is rejected outright.
+// ownedNftableLbRecord is an EIP-only accounting record as the controller generates it.
+func ownedNftableLbRecord() *ovnv1.IptablesDnatRule {
+	return &ovnv1.IptablesDnatRule{
+		Name: "test-dnat",
+		Labels: map[string]string{
+			util.NftableLbSvcNsLabel:     "ns1",
+			util.NftableLbSvcNameLabel:   "svc",
+			util.NftableLbSvcUIDLabel:    "uid-1",
+			util.NftableLbSvcRecordLabel: "true",
+		},
+		Spec: ovnv1.IptablesDnatRuleSpec{
+			Type: ovnv1.DnatRuleTypeShare, EIP: "test-eip",
+			ExternalPort: "80", InternalPort: "8080", InternalIP: "10.0.0.1", Protocol: "tcp",
+		},
+	}
+}
+
+// encodeDnat renders a rule the way the API server submits it to the hook.
+func encodeDnat(t *testing.T, dnat *ovnv1.IptablesDnatRule) runtime.RawExtension {
+	t.Helper()
+	raw, err := json.Marshal(dnat)
+	require.NoError(t, err)
+	return runtime.RawExtension{Raw: raw}
+}
+
+func TestNftableLbOwnerLabelsAreControllerOnly(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, ovnv1.AddToScheme(scheme))
+	encode := func(dnat *ovnv1.IptablesDnatRule) runtime.RawExtension { return encodeDnat(t, dnat) }
+	const controller = "system:serviceaccount:kube-system:ovn"
+
+	owned := ownedNftableLbRecord()
+	unowned := owned.DeepCopy()
+	unowned.Labels = nil
+
+	v := &ValidatingHook{
+		decoder: admission.NewDecoder(scheme),
+		cache: &mockCache{objects: map[string]runtime.Object{
+			"/test-eip": &ovnv1.IptablesEIP{Name: "test-eip", Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1"}},
+		}},
+		controllerUserName: controller,
+	}
+
+	t.Run("manual share create is rejected", func(t *testing.T) {
+		manual := owned.DeepCopy()
+		manual.Labels = nil
+		resp := v.iptablesDnatCreateHook(context.Background(), admission.Request{
+			Operation: admissionv1.Create,
+			Object:    encode(manual),
+			UserInfo:  authenticationv1.UserInfo{Username: controller},
+		})
+		require.False(t, resp.Allowed)
+		require.Contains(t, resp.Result.Message, "reserved for nftable LB Service accounting records")
+	})
+
+	t.Run("create with forged owner labels is rejected", func(t *testing.T) {
+		resp := v.iptablesDnatCreateHook(context.Background(), admission.Request{
+			Operation: admissionv1.Create,
+			Object:    encode(owned),
+			UserInfo:  authenticationv1.UserInfo{Username: "system:serviceaccount:default:attacker"},
+		})
+		require.False(t, resp.Allowed)
+		require.Contains(t, resp.Result.Message, "owned by the kube-ovn controller")
+	})
+
+	t.Run("owner labels added by an update are rejected", func(t *testing.T) {
+		resp := v.iptablesDnatUpdateHook(context.Background(), admission.Request{
+			Operation: admissionv1.Update,
+			OldObject: encode(unowned),
+			Object:    encode(owned),
+			UserInfo:  authenticationv1.UserInfo{Username: "system:serviceaccount:default:attacker"},
+		})
+		require.False(t, resp.Allowed)
+		require.Contains(t, resp.Result.Message, "owned by the kube-ovn controller")
+	})
+
+	t.Run("an unrelated metadata update by any user is allowed", func(t *testing.T) {
+		annotated := owned.DeepCopy()
+		annotated.Annotations = map[string]string{"example.com/note": "hi"}
+		resp := v.iptablesDnatUpdateHook(context.Background(), admission.Request{
+			Operation: admissionv1.Update,
+			OldObject: encode(owned),
+			Object:    encode(annotated),
+			UserInfo:  authenticationv1.UserInfo{Username: "system:serviceaccount:default:attacker"},
+		})
+		require.True(t, resp.Allowed)
+	})
+
+	t.Run("a spec update of an eip-only record by a non-controller is rejected", func(t *testing.T) {
+		// ClusterIP is empty here, so the ClusterIP immutability rule below cannot catch this.
+		forged := owned.DeepCopy()
+		forged.Spec.InternalIP = "10.0.0.99"
+		resp := v.iptablesDnatUpdateHook(context.Background(), admission.Request{
+			Operation: admissionv1.Update,
+			OldObject: encode(owned),
+			Object:    encode(forged),
+			UserInfo:  authenticationv1.UserInfo{Username: "system:serviceaccount:default:attacker"},
+		})
+		require.False(t, resp.Allowed)
+		require.Contains(t, resp.Result.Message, "owned by the kube-ovn controller")
+	})
+
+	t.Run("the controller may write them", func(t *testing.T) {
+		resp := v.iptablesDnatUpdateHook(context.Background(), admission.Request{
+			Operation: admissionv1.Update,
+			OldObject: encode(unowned),
+			Object:    encode(owned),
+			UserInfo:  authenticationv1.UserInfo{Username: controller},
+		})
+		require.True(t, resp.Allowed)
+	})
+}
+
+// TestNftableLbRecordMayDropItsEip pins the opt-out path of a Service that stops serving its EIP:
+// the controller rewrites the record to serve the ClusterIP alone, and an empty EIP is not a
+// reference to validate. Rejecting it strands the Service, which keeps retrying an update it can
+// never land while its ingress IP stays published.
+func TestNftableLbRecordMayDropItsEip(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, ovnv1.AddToScheme(scheme))
+	const controller = "system:serviceaccount:kube-system:ovn"
+
+	served := &ovnv1.IptablesDnatRule{
+		Name: "lb-web-abc",
+		Labels: map[string]string{
+			util.NftableLbSvcNsLabel:     "ns1",
+			util.NftableLbSvcNameLabel:   "web",
+			util.NftableLbSvcUIDLabel:    "uid-1",
+			util.NftableLbSvcRecordLabel: "true",
+			util.VpcNatGatewayNameLabel:  "gw0",
+		},
+		Spec: ovnv1.IptablesDnatRuleSpec{
+			Type: ovnv1.DnatRuleTypeShare, EIP: "test-eip", ClusterIP: "10.96.1.5",
+			ExternalPort: "80", InternalPort: "8080", InternalIP: "10.0.7.2", Protocol: "tcp",
+		},
+	}
+	clusterIPOnly := served.DeepCopy()
+	clusterIPOnly.Spec.EIP = ""
+
+	encode := func(dnat *ovnv1.IptablesDnatRule) runtime.RawExtension { return encodeDnat(t, dnat) }
+	v := &ValidatingHook{
+		decoder: admission.NewDecoder(scheme),
+		cache: &mockCache{objects: map[string]runtime.Object{
+			"/test-eip": &ovnv1.IptablesEIP{Name: "test-eip", Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1", NatGwDp: "gw0"}},
+			"/gw0":      &ovnv1.VpcNatGateway{Name: "gw0"},
+		}},
+		controllerUserName: controller,
+	}
+
+	resp := v.iptablesDnatUpdateHook(context.Background(), admission.Request{
+		Operation: admissionv1.Update,
+		OldObject: encode(served),
+		Object:    encode(clusterIPOnly),
+		UserInfo:  authenticationv1.UserInfo{Username: controller},
+	})
+	require.True(t, resp.Allowed, "expected allowed, got: %+v", resp.Result)
+}
+
+// TestVpcNatGwDeleteHookBlocksClusterIPRules pins that a gateway cannot be deleted while a record
+// serves a ClusterIP on it: such a record has no EIP, so the EIP-based check cannot see it, and the
+// gateway would be removed with its data plane still programmed.
+func TestVpcNatGwDeleteHookBlocksClusterIPRules(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, ovnv1.AddToScheme(scheme))
+
+	clusterIPRule := &ovnv1.IptablesDnatRule{
+		Name: "lb-web-abc", Labels: map[string]string{util.VpcNatGatewayNameLabel: "gw0"},
+		Spec: ovnv1.IptablesDnatRuleSpec{
+			Type: ovnv1.DnatRuleTypeShare, ClusterIP: "10.96.1.5",
+			ExternalPort: "80", InternalPort: "8080", InternalIP: "10.0.7.2", Protocol: "tcp",
+		},
+	}
+	req := admission.Request{Operation: admissionv1.Delete, Name: "gw0"}
+
+	hook := func(objects ...client.Object) *ValidatingHook {
+		return &ValidatingHook{client: fake.NewClientBuilder().WithScheme(scheme).WithObjects(objects...).Build()}
+	}
+
+	resp := hook(clusterIPRule).VpcNatGwDeleteHook(context.Background(), req)
+	require.False(t, resp.Allowed)
+	require.Contains(t, resp.Result.Message, "serves clusterIP 10.96.1.5")
+
+	// Another gateway's rule, and a rule reached through an EIP (covered by the EIP check), do not block.
+	otherGw := clusterIPRule.DeepCopy()
+	otherGw.Name, otherGw.Labels[util.VpcNatGatewayNameLabel] = "lb-web-other", "gw1"
+	eipRule := clusterIPRule.DeepCopy()
+	eipRule.Name, eipRule.Spec.EIP = "lb-web-eip", "eip0"
+	require.True(t, hook(otherGw, eipRule).VpcNatGwDeleteHook(context.Background(), req).Allowed)
+
+	// A rule that is already terminating must not block the gateway forever.
+	terminating := clusterIPRule.DeepCopy()
+	now := metav1.Now()
+	terminating.DeletionTimestamp = &now
+	terminating.Finalizers = []string{"kubeovn.io/keep"}
+	require.True(t, hook(terminating).VpcNatGwDeleteHook(context.Background(), req).Allowed)
+}
+
+// TestNftableLbOwnerLabelsCheckDisabled pins the escape hatch: a deployment whose controller
+// authenticates as a user this webhook cannot be told about disables the check with an empty
+// identity, instead of locking the controller out of its own labels.
+func TestNftableLbOwnerLabelsCheckDisabled(t *testing.T) {
+	t.Parallel()
+
+	v := &ValidatingHook{}
+	require.NoError(t, v.validateNftableLbOwnerLabels(
+		admission.Request{
+			UserInfo: authenticationv1.UserInfo{Username: "system:serviceaccount:default:anyone"},
+		},
+		nil, map[string]string{util.NftableLbSvcNsLabel: "ns1", util.NftableLbSvcNameLabel: "svc"},
+	))
+}
+
+// TestIptablesEIPUpdateHookAllowsQoSChange pins what a ready EIP may still change: its QoS policy,
+// which the controller reconciles in place, and nothing else. Rejecting the QoS field would make
+// the eip QoS feature unusable, because an EIP is only ever used once it is ready.
+func TestIptablesEIPUpdateHookAllowsQoSChange(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, ovnv1.AddToScheme(scheme))
+	encode := func(eip *ovnv1.IptablesEIP) runtime.RawExtension {
+		raw, err := json.Marshal(eip)
+		require.NoError(t, err)
+		return runtime.RawExtension{Raw: raw}
+	}
+
+	ready := &ovnv1.IptablesEIP{
+		Name:   "eip0",
+		Spec:   ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1", NatGwDp: "gw0", ExternalSubnet: "ext"},
+		Status: ovnv1.IptablesEIPStatus{IP: "192.168.0.1", Ready: true},
+	}
+	v := &ValidatingHook{
+		decoder: admission.NewDecoder(scheme),
+		cache: &mockCache{objects: map[string]runtime.Object{
+			"kube-system/ovn-vpc-nat-config": &corev1.ConfigMap{
+				Name: util.VpcNatConfig, Namespace: metav1.NamespaceSystem,
+				Data: map[string]string{"image": "test-image"},
+			},
+			"kube-system/ovn-vpc-nat-gw-config": &corev1.ConfigMap{
+				Name: util.VpcNatGatewayConfig, Namespace: metav1.NamespaceSystem,
+				Data: map[string]string{"enable-vpc-nat-gw": "true"},
+			},
+			"/ext":  &ovnv1.Subnet{Name: "ext", Spec: ovnv1.SubnetSpec{CIDRBlock: "192.168.0.0/24"}},
+			"/gw0":  &ovnv1.VpcNatGateway{Name: "gw0"},
+			"/qos0": &ovnv1.QoSPolicy{Name: "qos0"},
+		}},
+	}
+	update := func(newEip *ovnv1.IptablesEIP) admission.Response {
+		return v.iptablesEIPUpdateHook(context.Background(), admission.Request{
+			Operation: admissionv1.Update,
+			OldObject: encode(ready),
+			Object:    encode(newEip),
+		})
+	}
+
+	withQoS := ready.DeepCopy()
+	withQoS.Spec.QoSPolicy = "qos0"
+	resp := update(withQoS)
+	require.True(t, resp.Allowed, "attaching a qos policy to a ready eip must be allowed, got: %+v", resp.Result)
+
+	detached := withQoS.DeepCopy()
+	detached.Spec.QoSPolicy = ""
+	resp = v.iptablesEIPUpdateHook(context.Background(), admission.Request{
+		Operation: admissionv1.Update,
+		OldObject: encode(withQoS),
+		Object:    encode(detached),
+	})
+	require.True(t, resp.Allowed, "detaching the qos policy must be allowed, got: %+v", resp.Result)
+
+	readdressed := ready.DeepCopy()
+	readdressed.Spec.V4ip = "192.168.0.2"
+	resp = update(readdressed)
+	require.False(t, resp.Allowed, "the address of a ready eip stays immutable")
+	require.Contains(t, resp.Result.Message, "is ready, does not support change")
+
+	moved := ready.DeepCopy()
+	moved.Spec.NatGwDp = "gw1"
+	resp = update(moved)
+	require.False(t, resp.Allowed, "the gateway of an eip stays immutable")
+	require.Contains(t, resp.Result.Message, "NatGwDp is immutable")
+}
+
+// TestValidateIptablesSnatAcceptsBareHostAddress pins that admission accepts exactly what the
+// controller can program: a bare IPv4 address is a per-host SNAT, which the controller normalizes
+// to a /32 prefix. Anything that is not an address or a CIDR is still rejected.
+func TestValidateIptablesSnatAcceptsBareHostAddress(t *testing.T) {
+	t.Parallel()
+
+	scheme := runtime.NewScheme()
+	require.NoError(t, ovnv1.AddToScheme(scheme))
+	v := &ValidatingHook{
+		decoder: admission.NewDecoder(scheme),
+		cache: &mockCache{objects: map[string]runtime.Object{
+			"/eip0": &ovnv1.IptablesEIP{Name: "eip0", Spec: ovnv1.IptablesEIPSpec{V4ip: "192.168.0.1", NatGwDp: "gw0"}},
+		}},
+	}
+	snat := func(cidr string) *ovnv1.IptablesSnatRule {
+		return &ovnv1.IptablesSnatRule{
+			Name: "snat0", Spec: ovnv1.IptablesSnatRuleSpec{EIP: "eip0", InternalCIDR: cidr},
+		}
+	}
+
+	require.NoError(t, v.ValidateIptablesSnat(context.Background(), snat("10.0.0.0/24")))
+	require.NoError(t, v.ValidateIptablesSnat(context.Background(), snat("10.0.0.5")), "a bare host address is normalized to /32 by the controller")
+	require.Error(t, v.ValidateIptablesSnat(context.Background(), snat("10.0.0.300")))
+	require.Error(t, v.ValidateIptablesSnat(context.Background(), snat("not-a-cidr")))
 }

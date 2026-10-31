@@ -2,8 +2,10 @@ package webhook
 
 import (
 	"context"
+	"fmt"
 
 	admissionv1 "k8s.io/api/admission/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/klog/v2"
@@ -26,7 +28,8 @@ type ValidatingHook struct {
 
 	// controllerUserName is the identity (system:serviceaccount:<ns>:<name>) kube-ovn
 	// components authenticate as. It is used to recognize requests from the controller
-	// itself, e.g. for the one-time switch_lb_rule vip mac repair in VipUpdateHook.
+	// itself, e.g. for the one-time switch_lb_rule vip mac repair in VipUpdateHook and
+	// for the share DNAT owner labels (see validateNftableLbOwnerLabels).
 	controllerUserName string
 }
 
@@ -38,6 +41,12 @@ func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache
 		controllerUserName: controllerUserName,
 	}
 
+	// The Service hooks look up the Services of one EIP on every Service write; without this index
+	// that is a scan of every Service in the cluster.
+	if err := cache.IndexField(context.Background(), &corev1.Service{}, nftableLbSvcEipIndex, nftableLbSvcEipIndexValue); err != nil {
+		return nil, fmt.Errorf("failed to index services by nftable lb eip: %w", err)
+	}
+
 	// initialize hook handlers mapping
 	createHooks[deploymentGVK] = v.DeploymentCreateHook
 	createHooks[statefulSetGVK] = v.StatefulSetCreateHook
@@ -45,6 +54,8 @@ func NewValidatingHook(client client.Client, scheme *runtime.Scheme, cache cache
 	createHooks[cronJobGVK] = v.CronJobCreateHook
 	createHooks[jobGVK] = v.JobCreateHook
 	createHooks[podGVK] = v.PodCreateHook
+	createHooks[serviceGVK] = v.ServiceCreateHook
+	updateHooks[serviceGVK] = v.ServiceUpdateHook
 
 	createHooks[subnetGVK] = v.SubnetCreateHook
 	updateHooks[subnetGVK] = v.SubnetUpdateHook

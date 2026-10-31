@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -79,6 +80,9 @@ func (c *Controller) enqueueDelIptablesFip(obj any) {
 
 func (c *Controller) enqueueAddIptablesDnatRule(obj any) {
 	dnat := obj.(*kubeovnv1.IptablesDnatRule)
+	if dnat.Spec.Type == kubeovnv1.DnatRuleTypeShare {
+		return
+	}
 	key := cache.MetaObjectToName(dnat).String()
 	// A terminating object reconciles via the update queue for cleanup (handleAdd skips it; resync=0).
 	if enqueueUpdateIfTerminating(c.updateIptablesDnatRuleQueue, key, "dnat", dnat.DeletionTimestamp) {
@@ -91,10 +95,8 @@ func (c *Controller) enqueueAddIptablesDnatRule(obj any) {
 func (c *Controller) enqueueUpdateIptablesDnatRule(oldObj, newObj any) {
 	oldDnat := oldObj.(*kubeovnv1.IptablesDnatRule)
 	newDnat := newObj.(*kubeovnv1.IptablesDnatRule)
-	// A generated rule is controller-owned state: if its Spec is edited out-of-band, notify
-	// the owning nftable LB service so it can detect the drift and restore the desired rule.
-	if owner := util.NftableLbSvcOwnerKey(newDnat.Labels); owner != "" && oldDnat.Spec != newDnat.Spec {
-		c.enqueueNftableLbService(owner)
+	if oldDnat.Spec.Type == kubeovnv1.DnatRuleTypeShare || newDnat.Spec.Type == kubeovnv1.DnatRuleTypeShare {
+		return
 	}
 	key := cache.MetaObjectToName(newDnat).String()
 	if !newDnat.DeletionTimestamp.IsZero() {
@@ -138,10 +140,8 @@ func (c *Controller) enqueueDelIptablesDnatRule(obj any) {
 		return
 	}
 
-	// A generated rule was deleted out from under its owning service (or a stale delete raced
-	// a service re-creation); ask the service to recreate it on its next reconcile.
-	if owner := util.NftableLbSvcOwnerKey(dnat.Labels); owner != "" {
-		c.enqueueNftableLbService(owner)
+	if dnat.Spec.Type == kubeovnv1.DnatRuleTypeShare {
+		return
 	}
 
 	key := cache.MetaObjectToName(dnat).String()
@@ -541,6 +541,9 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		return err
 	}
 
+	if dnat.Spec.Type == kubeovnv1.DnatRuleTypeShare {
+		return nil
+	}
 	if vpcNatEnabled != "true" {
 		return errors.New("iptables nat gw not enable")
 	}
@@ -568,9 +571,12 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if dup, err := c.isDnatDuplicated(eip.Spec.NatGwDp, dnat.Spec.EIP, dnat.Name, dnat.Spec.ExternalPort, dnat.Spec.Protocol, dnat.Spec.Type); dup || err != nil {
-		klog.Error(err)
-		return err
+	if dup, duplicateErr := c.isDnatDuplicated(eip.Spec.NatGwDp, dnat); dup || duplicateErr != nil {
+		if dup {
+			c.recorder.Event(dnat, corev1.EventTypeWarning, "DnatIdentityConflict", duplicateErr.Error())
+		}
+		klog.Error(duplicateErr)
+		return duplicateErr
 	}
 	// Add the finalizer **before** creating rules in Pod. If we added it after,
 	// the DNAT could be deleted after createDnatInPod but before the finalizer,
@@ -587,28 +593,12 @@ func (c *Controller) handleAddIptablesDnatRule(key string) error {
 		return err
 	}
 
-	switch dnat.Spec.Type {
-	case kubeovnv1.DnatRuleTypeShare:
-		// Share type: use nft map-based DNAT
-		backends, _, _, err := c.getShareBackends(eip.Spec.NatGwDp, dnat.Spec.EIP, dnat.Spec.ExternalPort, dnat.Spec.Protocol, dnat.Name)
-		if err != nil {
-			klog.Errorf("failed to get share backends for dnat %s: %v", key, err)
-			return err
-		}
-		// Add current DNAT's backend
-		backends = append(backends, fmt.Sprintf("%s:%s", dnat.Spec.InternalIP, dnat.Spec.InternalPort))
-		if err = c.createNftDnatMapInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol, eip.Status.IP, dnat.Spec.ExternalPort, backends, dnat.Spec.SessionAffinity, dnat.Spec.SessionAffinityTimeoutSeconds); err != nil {
-			klog.Errorf("failed to create nft dnat map, %v", err)
-			return err
-		}
-	default:
-		// Exclusive type (default): use iptables DNAT
-		if err = c.createDnatInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol,
-			eip.Status.IP, dnat.Spec.InternalIP,
-			dnat.Spec.ExternalPort, dnat.Spec.InternalPort); err != nil {
-			klog.Errorf("failed to create dnat, %v", err)
-			return err
-		}
+	// Only exclusive DNAT reaches this worker. Share objects are Service accounting records.
+	if err = c.createDnatInPod(eip.Spec.NatGwDp, dnat.Spec.Protocol,
+		eip.Status.IP, dnat.Spec.InternalIP,
+		dnat.Spec.ExternalPort, dnat.Spec.InternalPort); err != nil {
+		klog.Errorf("failed to create dnat, %v", err)
+		return err
 	}
 	if err = c.patchDnatStatus(key, eip.Status.IP, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
 		klog.Errorf("failed to patch status for dnat %s, %v", key, err)
@@ -656,6 +646,9 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		return err
 	}
 
+	if cachedDnat.Spec.Type == kubeovnv1.DnatRuleTypeShare {
+		return nil
+	}
 	c.vpcNatGwKeyMutex.LockKey(key)
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(key) }()
 	klog.Infof("handle update iptables dnat %s", key)
@@ -693,9 +686,17 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		klog.Errorf("failed to get eip, %v", err)
 		return err
 	}
-	if dup, err := c.isDnatDuplicated(eip.Spec.NatGwDp, cachedDnat.Spec.EIP, cachedDnat.Name, cachedDnat.Spec.ExternalPort, cachedDnat.Spec.Protocol, cachedDnat.Spec.Type); dup || err != nil {
-		klog.Errorf("failed to update dnat, %v", err)
-		return err
+	if dup, duplicateErr := c.isDnatDuplicated(eip.Spec.NatGwDp, cachedDnat); dup || duplicateErr != nil {
+		if dup && cachedDnat.Status.Ready {
+			if err = c.patchDnatStatus(key, "", "", "", "", false); err != nil {
+				return err
+			}
+		}
+		if dup {
+			c.recorder.Event(cachedDnat, corev1.EventTypeWarning, "DnatIdentityConflict", duplicateErr.Error())
+		}
+		klog.Errorf("failed to update dnat, %v", duplicateErr)
+		return duplicateErr
 	}
 
 	if eip.Spec.NatGwDp == "" {
@@ -760,27 +761,12 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 			return err
 		}
 
-		switch cachedDnat.Spec.Type {
-		case kubeovnv1.DnatRuleTypeShare:
-			// Share type: rebuild nft rule with updated backends
-			backends, _, _, err := c.getShareBackends(eip.Spec.NatGwDp, cachedDnat.Spec.EIP, newExternalPort, newProtocol, cachedDnat.Name)
-			if err != nil {
-				klog.Errorf("failed to get share backends for dnat %s: %v", key, err)
-				return err
-			}
-			backends = append(backends, fmt.Sprintf("%s:%s", newInternalIP, newInternalPort))
-			if err = c.createNftDnatMapInPod(eip.Spec.NatGwDp, newProtocol, newV4ip, newExternalPort, backends, cachedDnat.Spec.SessionAffinity, cachedDnat.Spec.SessionAffinityTimeoutSeconds); err != nil {
-				klog.Errorf("failed to create nft dnat map for %s, %v", key, err)
-				return err
-			}
-		default:
-			// Exclusive type: use iptables DNAT
-			if err = c.createDnatInPod(eip.Spec.NatGwDp, newProtocol,
-				newV4ip, newInternalIP,
-				newExternalPort, newInternalPort); err != nil {
-				klog.Errorf("failed to create dnat %s, %v", key, err)
-				return err
-			}
+		// Only exclusive DNAT reaches this worker.
+		if err = c.createDnatInPod(eip.Spec.NatGwDp, newProtocol,
+			newV4ip, newInternalIP,
+			newExternalPort, newInternalPort); err != nil {
+			klog.Errorf("failed to create dnat %s, %v", key, err)
+			return err
 		}
 		if err = c.patchDnatStatus(key, newV4ip, eip.Spec.V6ip, eip.Spec.NatGwDp, "", true); err != nil {
 			klog.Errorf("failed to patch status for dnat %s, %v", key, err)
@@ -810,32 +796,11 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		cachedDnat.Status.V4ip != "" &&
 		cachedDnat.DeletionTimestamp.IsZero() {
 		klog.V(3).Infof("reapply dnat in pod for %s", key)
-		switch cachedDnat.Spec.Type {
-		case kubeovnv1.DnatRuleTypeShare:
-			// Share type: rebuild nft rule with all backends.
-			// Identity fields are read from Status (redo replays the last successfully-applied
-			// state after a gateway pod restart), except eipName which uses Spec.EIP on purpose:
-			// getShareBackends filters siblings by their Spec.EIP, so the lookup key must also be
-			// Spec.EIP to match. In the normal redo case Spec.EIP == Status EIP; they can only
-			// diverge in the rare "EIP renamed while not-yet-Ready + pod restart" corner case.
-			backends, _, _, err := c.getShareBackends(cachedDnat.Status.NatGwDp, cachedDnat.Spec.EIP, cachedDnat.Status.ExternalPort, cachedDnat.Status.Protocol, cachedDnat.Name)
-			if err != nil {
-				klog.Errorf("failed to get share backends for dnat %s: %v", key, err)
-				return err
-			}
-			backends = append(backends, fmt.Sprintf("%s:%s", cachedDnat.Status.InternalIP, cachedDnat.Status.InternalPort))
-			if err = c.createNftDnatMapInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol, cachedDnat.Status.V4ip, cachedDnat.Status.ExternalPort, backends, cachedDnat.Spec.SessionAffinity, cachedDnat.Spec.SessionAffinityTimeoutSeconds); err != nil {
-				klog.Errorf("failed to create nft dnat map for %s, %v", key, err)
-				return err
-			}
-		default:
-			// Exclusive type: use iptables DNAT
-			if err = c.createDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
-				cachedDnat.Status.V4ip, cachedDnat.Status.InternalIP,
-				cachedDnat.Status.ExternalPort, cachedDnat.Status.InternalPort); err != nil {
-				klog.Errorf("failed to create dnat %s, %v", key, err)
-				return err
-			}
+		if err = c.createDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
+			cachedDnat.Status.V4ip, cachedDnat.Status.InternalIP,
+			cachedDnat.Status.ExternalPort, cachedDnat.Status.InternalPort); err != nil {
+			klog.Errorf("failed to create dnat %s, %v", key, err)
+			return err
 		}
 		if err = c.patchDnatStatus(key, "", "", "", "", true); err != nil {
 			klog.Errorf("failed to patch status for dnat %s, %v", key, err)
@@ -1482,6 +1447,8 @@ func (c *Controller) redoFip(key, redo string, eipReady bool) error {
 // patchDnatLabel records the gateway, port and eip references of the dnat, including the UID of
 // the eip generation it uses (ovn.kubernetes.io/eip_uid). The claim is written before the rule is
 // created in the pod, and rewritten only after the rule of the previous eip generation is gone.
+// The labels are what the rule consumers (redo, VIP state) select on, so they are reconciled on
+// every pass rather than only at creation.
 func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) error {
 	oriDnat, err := c.iptablesDnatRulesLister.Get(key)
 	if err != nil {
@@ -1900,12 +1867,6 @@ func (c *Controller) finalDeleteDnatInPod(key string, cachedDnat *kubeovnv1.Ipta
 	}
 	if statusV4ip == "" || statusNatGwDp == "" {
 		klog.Warningf("dnat %s: skip status-based cleanup due to incomplete identity (v4ip=%q, natGwDp=%q)", key, statusV4ip, statusNatGwDp)
-	} else if cachedDnat.Spec.Type == kubeovnv1.DnatRuleTypeShare {
-		// Share type: rebuild nft rule with remaining backends, or delete if none are left
-		if err := c.cleanupShareDnatInPod(key, statusNatGwDp, cachedDnat.Spec.EIP, statusProtocol, statusV4ip, statusExternalPort, cachedDnat.Name); err != nil {
-			klog.Error(err)
-			firstErr = err
-		}
 	} else if err := c.deleteDnatInPod(statusNatGwDp, statusProtocol,
 		statusV4ip, statusExternalPort); err != nil {
 		klog.Errorf("failed to delete dnat %s, %v", key, err)
@@ -1933,16 +1894,7 @@ func (c *Controller) finalDeleteDnatInPod(key string, cachedDnat *kubeovnv1.Ipta
 			return firstErr
 		}
 		if specV4ip != statusV4ip || specNatGwDp != statusNatGwDp || specProtocol != statusProtocol || specExternalPort != statusExternalPort {
-			if cachedDnat.Spec.Type == kubeovnv1.DnatRuleTypeShare {
-				// Share type: the stale rule lives in nftables, not iptables.
-				// Rebuild the nft map without this DNAT's backend, or delete entirely.
-				if err = c.cleanupShareDnatInPod(key, specNatGwDp, cachedDnat.Spec.EIP, specProtocol, specV4ip, specExternalPort, cachedDnat.Name); err != nil {
-					klog.Errorf("failed spec-based nft cleanup for dnat %s, %v", key, err)
-					if firstErr == nil {
-						firstErr = err
-					}
-				}
-			} else if err = c.deleteDnatInPod(specNatGwDp, specProtocol, specV4ip, specExternalPort); err != nil {
+			if err = c.deleteDnatInPod(specNatGwDp, specProtocol, specV4ip, specExternalPort); err != nil {
 				klog.Errorf("failed spec-based cleanup for dnat %s, %v", key, err)
 				if firstErr == nil {
 					firstErr = err
@@ -2024,10 +1976,9 @@ func (c *Controller) finalDeleteSnatInPod(key string, cachedSnat *kubeovnv1.Ipta
 }
 
 func (c *Controller) deleteFipInPod(dp, v4ip string) error {
-	// If the NAT gateway CRD is gone the gateway (and its pod) have been deleted;
-	// there is nothing to clean up. If the CRD still exists but the pod is
-	// temporarily absent (e.g. being recreated), return the error so the
-	// reconciler retries until the pod is ready.
+	// If the NAT gateway CRD is gone the gateway (and its pod) have been deleted; there is nothing
+	// to clean up. If the CRD still exists but the pod is temporarily absent (e.g. being recreated),
+	// return the error so the reconciler retries until the pod is ready.
 	deleted, err := c.natGwDeleted(dp)
 	if err != nil {
 		klog.Error(err)
@@ -2084,10 +2035,9 @@ func (c *Controller) createDnatInPod(dp, protocol, v4ip, internalIP, externalPor
 }
 
 func (c *Controller) deleteDnatInPod(dp, protocol, v4ip, externalPort string) error {
-	// If the NAT gateway CRD is gone the gateway (and its pod) have been deleted;
-	// there is nothing to clean up. If the CRD still exists but the pod is
-	// temporarily absent (e.g. being recreated), return the error so the
-	// reconciler retries until the pod is ready.
+	// If the NAT gateway CRD is gone the gateway (and its pod) have been deleted; there is nothing
+	// to clean up. If the CRD still exists but the pod is temporarily absent (e.g. being recreated),
+	// return the error so the reconciler retries until the pod is ready.
 	deleted, err := c.natGwDeleted(dp)
 	if err != nil {
 		klog.Error(err)
@@ -2159,10 +2109,9 @@ func (c *Controller) createSnatInPod(dp, v4ip, internalCIDR string) error {
 func (c *Controller) deleteSnatInPod(dp, v4ip, internalCIDR string) error {
 	internalCIDR = normalizeSnatInternalCIDR(internalCIDR)
 
-	// If the NAT gateway CRD is gone the gateway (and its pod) have been deleted;
-	// there is nothing to clean up. If the CRD still exists but the pod is
-	// temporarily absent (e.g. being recreated), return the error so the
-	// reconciler retries until the pod is ready.
+	// If the NAT gateway CRD is gone the gateway (and its pod) have been deleted; there is nothing
+	// to clean up. If the CRD still exists but the pod is temporarily absent (e.g. being recreated),
+	// return the error so the reconciler retries until the pod is ready.
 	deleted, err := c.natGwDeleted(dp)
 	if err != nil {
 		klog.Error(err)
@@ -2257,6 +2206,9 @@ func (c *Controller) patchIptableInfo(name, natType, patchPayload string) error 
 // validateDnatRule validates IptablesDnatRule fields to prevent malformed iptables commands.
 func (c *Controller) validateDnatRule(dnat *kubeovnv1.IptablesDnatRule) error {
 	var err error
+	// Only exclusive rules reach this worker, and their external address is always an EIP: a rule
+	// that serves a ClusterIP is a Service accounting record (type=share), which the webhook and
+	// the handlers above keep out of the data-plane path.
 	if dnat.Spec.EIP == "" {
 		err = fmt.Errorf("%s: eip cannot be empty", dnat.Name)
 		klog.Error(err)
