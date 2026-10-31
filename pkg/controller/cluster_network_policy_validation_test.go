@@ -19,12 +19,6 @@ func TestCnpRejectsUnsupportedRulesBeforeOVNChanges(t *testing.T) {
 		wantError string
 	}{
 		{
-			name:      "named port",
-			protocols: []v1alpha2.ClusterNetworkPolicyProtocol{{DestinationNamedPort: "https"}},
-			peers:     []v1alpha2.ClusterNetworkPolicyEgressPeer{{Namespaces: &metav1.LabelSelector{}}},
-			wantError: "destinationNamedPort is not supported",
-		},
-		{
 			name:      "disabled DNS resolver",
 			peers:     []v1alpha2.ClusterNetworkPolicyEgressPeer{{DomainNames: []v1alpha2.DomainName{"example.test."}}},
 			wantError: "DNSNameResolver is disabled",

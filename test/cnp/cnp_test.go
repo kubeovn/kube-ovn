@@ -86,6 +86,7 @@ func TestClusterNetworkPolicyConformance(t *testing.T) {
 	t.Log("Starting the admin network policy conformance test suite")
 	profiles := sets.Set[suite.ConformanceProfileName]{}
 	profiles.Insert(suite.CNPConformanceProfileName)
+	supportedFeatures := suite.StandardFeatures.Union(sets.New(suite.SupportClusterNetworkPolicyNamedPorts))
 	cSuite, err := suite.NewConformanceProfileTestSuite(
 		suite.ConformanceProfileOptions{
 			Options: suite.Options{
@@ -94,12 +95,13 @@ func TestClusterNetworkPolicyConformance(t *testing.T) {
 				KubeConfig:           *cfg,
 				Debug:                true,
 				CleanupBaseResources: true,
-				SupportedFeatures:    suite.StandardFeatures,
+				SupportedFeatures:    supportedFeatures,
 				BaseManifests:        manifestsURL,
 				TimeoutConfig:        netpolv1config.TimeoutConfig{GetTimeout: 300 * time.Second},
 			},
 			ConformanceProfiles: profiles,
-		})
+		},
+	)
 	if err != nil {
 		t.Fatalf("error creating conformance test suite: %v", err)
 	}

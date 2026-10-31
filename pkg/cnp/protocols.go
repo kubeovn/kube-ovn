@@ -8,7 +8,7 @@ import (
 )
 
 // ProtocolPort returns the transport and optional numeric destination match.
-// Named ports must be rejected before changing any existing OVN resources.
+// Named ports are resolved by the policy controller before this helper is called.
 func ProtocolPort(p v1alpha2.ClusterNetworkPolicyProtocol) (string, *v1alpha2.Port, error) {
 	count, transport := 0, ""
 	var port *v1alpha2.Port
@@ -46,6 +46,12 @@ func ProtocolPort(p v1alpha2.ClusterNetworkPolicyProtocol) (string, *v1alpha2.Po
 func ValidateProtocols(policy *v1alpha2.ClusterNetworkPolicy) error {
 	for i, rule := range policy.Spec.Ingress {
 		for _, p := range rule.Protocols {
+			if p.DestinationNamedPort != "" {
+				if p.TCP != nil || p.UDP != nil || p.SCTP != nil {
+					return fmt.Errorf("ingress[%d]: destinationNamedPort cannot be combined with a transport", i)
+				}
+				continue
+			}
 			if _, _, err := ProtocolPort(p); err != nil {
 				return fmt.Errorf("ingress[%d]: %w", i, err)
 			}
@@ -53,6 +59,12 @@ func ValidateProtocols(policy *v1alpha2.ClusterNetworkPolicy) error {
 	}
 	for i, rule := range policy.Spec.Egress {
 		for _, p := range rule.Protocols {
+			if p.DestinationNamedPort != "" {
+				if p.TCP != nil || p.UDP != nil || p.SCTP != nil {
+					return fmt.Errorf("egress[%d]: destinationNamedPort cannot be combined with a transport", i)
+				}
+				continue
+			}
 			if _, _, err := ProtocolPort(p); err != nil {
 				return fmt.Errorf("egress[%d]: %w", i, err)
 			}
