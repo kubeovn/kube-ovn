@@ -1,10 +1,17 @@
 package controller
 
 import (
+	"errors"
 	"testing"
+
+	"go.uber.org/mock/gomock"
 
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
+
+	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestHasAllocatedAnnotation(t *testing.T) {
@@ -70,4 +77,163 @@ func TestHasAllocatedAnnotation(t *testing.T) {
 			require.Equal(t, tt.expected, hasAllocatedAnnotation(pod))
 		})
 	}
+}
+
+// TestInitNodeChassisGatesGcChassis covers the nodeChassisInitialized gate:
+// it opens only after a full pass over every node, tolerating a chassis that
+// isn't registered yet, and stays closed on any other failure so gcChassis
+// keeps skipping. It also covers the flush that runs immediately once the
+// gate opens, so a reactive gcChassis call that no-op'd during the loop
+// (chassis not registered yet) doesn't sit stale until the next periodic
+// tick - see TestInitNodeChassisFlushesPendingGcAfterGateOpens for a case
+// where that flush actually has something to clean up. The fake controller
+// defaults to GC enabled (GCInterval != 0), since this test is about the
+// gate, not the GCInterval contract - see
+// TestInitNodeChassisSkipsFlushWhenGcDisabled for that.
+func TestInitNodeChassisGatesGcChassis(t *testing.T) {
+	errBoom := errors.New("boom")
+	kubeOvnTag := map[string]string{"vendor": util.CniTypeName}
+	annotatedNode := &v1.Node{Name: "node-1", Annotations: map[string]string{util.ChassisAnnotation: "chassis-1"}}
+
+	tests := []struct {
+		name     string
+		nodes    []*v1.Node
+		setup    func(*mockovs.MockSbClient)
+		wantErr  bool
+		wantGate bool
+	}{
+		{
+			name:  "clean pass opens the gate",
+			nodes: []*v1.Node{annotatedNode, {Name: "node-not-ready"}},
+			setup: func(m *mockovs.MockSbClient) {
+				m.EXPECT().GetChassis("chassis-1", true).Return(&ovnsb.Chassis{Name: "chassis-1", Hostname: "node-1", ExternalIDs: kubeOvnTag}, nil)
+				// Gate-open flush: chassis-1 is already claimed by its live,
+				// correctly-annotated node, so nothing more happens.
+				m.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{{Name: "chassis-1", Hostname: "node-1", ExternalIDs: kubeOvnTag}}, nil)
+			},
+			wantGate: true,
+		},
+		{
+			name:  "chassis not registered yet is tolerated and opens the gate",
+			nodes: []*v1.Node{annotatedNode},
+			setup: func(m *mockovs.MockSbClient) {
+				// The reactive gcChassis inside UpdateChassisTag no-ops
+				// because the gate is still closed, so no ListChassis here.
+				m.EXPECT().GetChassis("chassis-1", true).Return(nil, nil)
+				// Gate-open flush: chassis-1 still isn't registered, so the
+				// flush's own ListChassis legitimately comes back empty too.
+				m.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{}, nil)
+			},
+			wantGate: true,
+		},
+		{
+			name:  "chassis tag error keeps the gate closed",
+			nodes: []*v1.Node{annotatedNode},
+			setup: func(m *mockovs.MockSbClient) {
+				m.EXPECT().GetChassis("chassis-1", true).Return(nil, errBoom)
+			},
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Nodes: tt.nodes})
+			require.NoError(t, err)
+			ctrl := fakeController.fakeController
+			ctrl.nodeChassisInitialized.Store(false)
+			tt.setup(fakeController.mockOvnSbClient)
+
+			err = ctrl.initNodeChassis()
+			if tt.wantErr {
+				require.ErrorIs(t, err, errBoom)
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.wantGate, ctrl.nodeChassisInitialized.Load())
+		})
+	}
+}
+
+// TestInitNodeChassisFlushesPendingGcAfterGateOpens covers a reviewer finding:
+// node.go's UpdateChassisTag calls gcChassis reactively when a node's
+// ChassisAnnotation names a chassis that isn't registered, but gcChassis
+// no-ops while nodeChassisInitialized is still false - which it always is
+// during initNodeChassis's own node loop, since the gate only opens after
+// that loop finishes. Without a flush right after the gate opens, that
+// reactive cleanup (and any periodic tick that fired during the same window)
+// would stay stranded until the next periodic tick, GCInterval later (360s
+// by default) instead of running immediately.
+//
+// node-1 triggers exactly that reactive no-op (its annotation names a
+// not-yet-registered chassis). A second, unrelated orphan chassis
+// (chassis-orphan, belonging to a node that no longer exists) is only
+// cleaned up if the post-loop flush actually runs a real gcChassis pass -
+// proving the flush happened here, synchronously, rather than being left for
+// a separate periodic tick. The fake controller defaults to GC enabled
+// (GCInterval != 0), since this test is about the flush timing, not the
+// GCInterval contract - see TestInitNodeChassisSkipsFlushWhenGcDisabled for
+// that.
+func TestInitNodeChassisFlushesPendingGcAfterGateOpens(t *testing.T) {
+	kubeOvnTag := map[string]string{"vendor": util.CniTypeName}
+	nodes := []*v1.Node{
+		{Name: "node-1", Annotations: map[string]string{util.ChassisAnnotation: "chassis-missing"}},
+	}
+
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Nodes: nodes})
+	require.NoError(t, err)
+	ctrl := fakeController.fakeController
+	ctrl.nodeChassisInitialized.Store(false)
+	m := fakeController.mockOvnSbClient
+
+	// node-1's own loop iteration: chassis-missing isn't registered yet, so
+	// UpdateChassisTag calls gcChassis reactively; the gate is still closed
+	// at this point, so it must no-op (no ListChassis/DeleteChassis here).
+	m.EXPECT().GetChassis("chassis-missing", true).Return(nil, nil)
+
+	// The flush after the gate opens: a real gcChassis pass that finds and
+	// deletes the unrelated orphan, proving it ran synchronously instead of
+	// being deferred to the next periodic tick.
+	m.EXPECT().ListChassis().Return(&[]ovnsb.Chassis{
+		{Name: "chassis-orphan", Hostname: "deleted-node", ExternalIDs: kubeOvnTag},
+	}, nil)
+	m.EXPECT().DeleteChassis("chassis-orphan").Return(nil)
+
+	err = ctrl.initNodeChassis()
+	require.NoError(t, err)
+	require.True(t, ctrl.nodeChassisInitialized.Load())
+}
+
+// TestInitNodeChassisSkipsFlushWhenGcDisabled covers a reviewer finding:
+// pkg/controller/config.go documents GCInterval=0 as disabling GC entirely,
+// and gc() honors that contract, but initNodeChassis's post-loop flush
+// called gcChassis directly with no such guard - so a controller started
+// with --gc-interval=0 would still list and could delete stale chassis
+// during startup initialization. gcChassis itself now checks GCInterval==0
+// first, before even consulting nodeChassisInitialized, so this flush (and
+// every other gcChassis call site) no-ops instead.
+//
+// node-1's annotation names a chassis that was never registered - exactly
+// the condition that fed a real gcChassis pass in
+// TestInitNodeChassisFlushesPendingGcAfterGateOpens - but with GC disabled
+// neither the reactive call from UpdateChassisTag nor the post-loop flush
+// may call ListChassis or DeleteChassis.
+func TestInitNodeChassisSkipsFlushWhenGcDisabled(t *testing.T) {
+	nodes := []*v1.Node{
+		{Name: "node-1", Annotations: map[string]string{util.ChassisAnnotation: "chassis-missing"}},
+	}
+
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Nodes: nodes})
+	require.NoError(t, err)
+	ctrl := fakeController.fakeController
+	ctrl.nodeChassisInitialized.Store(false)
+	ctrl.config.GCInterval = 0
+	m := fakeController.mockOvnSbClient
+
+	m.EXPECT().GetChassis("chassis-missing", true).Return(nil, nil)
+	m.EXPECT().ListChassis().Times(0)
+	m.EXPECT().DeleteChassis(gomock.Any()).Times(0)
+
+	err = ctrl.initNodeChassis()
+	require.NoError(t, err)
+	require.True(t, ctrl.nodeChassisInitialized.Load())
 }

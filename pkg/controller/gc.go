@@ -22,6 +22,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -34,10 +35,11 @@ func (c *Controller) gc() error {
 	}
 	gcFunctions := []func() error{
 		c.gcNode,
-		c.gcChassis,
 		c.gcLogicalSwitch,
 		c.gcCustomLogicalRouter,
 		// The lsp gc is processed periodically by markAndCleanLSP, will not gc lsp when init
+		// The chassis gc is processed periodically (with the same run-once-at-startup
+		// guarantee from wait.Until), will not gc chassis here.
 		c.gcLoadBalancer,
 		c.gcNetworkPolicy,
 		c.gcAdminNetworkPolicy,
@@ -60,6 +62,21 @@ func (c *Controller) gc() error {
 		}
 	}
 	return nil
+}
+
+// periodicGC runs the gc passes that are re-evaluated on every GCInterval
+// tick rather than once at startup. gcChassis runs here instead of in
+// c.gc()'s gcFunctions so a renamed node's stale chassis is picked up on the
+// next tick; wait.Until runs this immediately on the first iteration,
+// preserving the previous run-once-at-startup behavior. A failure in one pass
+// does not skip the other.
+func (c *Controller) periodicGC() {
+	if err := c.markAndCleanLSP(); err != nil {
+		klog.Errorf("gc lsp error: %v", err)
+	}
+	if err := c.gcChassis(); err != nil {
+		klog.Errorf("gc chassis error: %v", err)
+	}
 }
 
 func (c *Controller) gcLogicalRouterPort() error {
@@ -1246,23 +1263,115 @@ func (c *Controller) gcStaticRoute() error {
 	return nil
 }
 
+// gcChassisCandidates applies the --enable-external-vpc vendor filter and
+// returns the chassis/hostname pairs gcChassis's caller should consider for
+// deletion. An untagged chassis is normally treated as externally managed
+// (e.g. a non-k8s KVM hypervisor bridged into this OVN deployment) and never
+// a candidate - except when its hostname matches a *current* k8s Node that
+// has not already claimed a different chassis via its ChassisAnnotation. In
+// that narrow case it's treated as a kube-ovn chassis that predates vendor
+// tagging (an upgrade) or raced initNodeChassis/UpdateChassisTag, and is
+// self-healed (tagged) and included like any other kube-ovn chassis instead
+// of being permanently excluded from GC.
+//
+// A hostname match is not, by itself, proof of ownership: a genuinely
+// external OVN host can coincidentally share a Node's hostname. Once a Node
+// has an authoritative claim - its ChassisAnnotation names a chassis that
+// exists with a matching hostname - any other untagged chassis sharing that
+// hostname is left completely untouched (no tag, no deletion) rather than
+// assumed to be a stale kube-ovn duplicate.
+func (c *Controller) gcChassisCandidates(chassises []ovnsb.Chassis, nodes []*corev1.Node) (map[string]string, error) {
+	nodeNames := make(map[string]struct{}, len(nodes))
+	for _, node := range nodes {
+		nodeNames[node.Name] = struct{}{}
+	}
+	chassisByName := make(map[string]ovnsb.Chassis, len(chassises))
+	for _, chassis := range chassises {
+		chassisByName[chassis.Name] = chassis
+	}
+	// claimedChassis maps a live node's name to the chassis name its
+	// ChassisAnnotation authoritatively claims - computed from the raw
+	// chassis list so a chassis self-healed below can never retroactively
+	// count as claiming its own node's slot.
+	claimedChassis := make(map[string]string, len(nodes))
+	for _, node := range nodes {
+		chassisName := node.Annotations[util.ChassisAnnotation]
+		if chassisName == "" {
+			continue
+		}
+		if chassis, ok := chassisByName[chassisName]; ok && chassis.Hostname == node.Name {
+			claimedChassis[node.Name] = chassisName
+		}
+	}
+
+	chassisNodes := make(map[string]string, len(chassises))
+	for _, chassis := range chassises {
+		if c.config.EnableExternalVpc && (chassis.ExternalIDs == nil || chassis.ExternalIDs["vendor"] != util.CniTypeName) {
+			if _, isLiveNode := nodeNames[chassis.Hostname]; !isLiveNode {
+				continue
+			}
+			if claimed, ok := claimedChassis[chassis.Hostname]; ok && claimed != chassis.Name {
+				klog.Infof("chassis %s shares hostname %s with a node that already claims a different chassis, leaving it untouched", chassis.Name, chassis.Hostname)
+				continue
+			}
+			klog.Infof("chassis %s matches live node %s but is missing the vendor tag, tagging it", chassis.Name, chassis.Hostname)
+			if err := c.OVNSbClient.UpdateChassisTag(chassis.Name, chassis.Hostname); err != nil {
+				klog.Errorf("failed to tag chassis %s for node %s: %v", chassis.Name, chassis.Hostname, err)
+				return nil, err
+			}
+		}
+		chassisNodes[chassis.Name] = chassis.Hostname
+	}
+	return chassisNodes, nil
+}
+
 func (c *Controller) gcChassis() error {
+	if c.config.GCInterval == 0 {
+		// Same contract as gc(): GCInterval=0 disables GC entirely. Checked
+		// here, not at each call site, so the periodic ticker, the reactive
+		// call from UpdateChassisTag, and initNodeChassis's startup flush all
+		// honor it without having to remember to guard it themselves.
+		klog.Infof("skip gc chassis: gc is disabled")
+		return nil
+	}
+	if !c.nodeChassisInitialized.Load() {
+		// The periodic GC ticker starts (and fires once immediately) before
+		// initResourceOnce's initNodeChassis pass has tagged every live
+		// node's chassis and before kube-ovn-cni may have even patched a
+		// just-ready node's ChassisAnnotation. Running the full sweep this
+		// early can treat a live node's not-yet-recognized chassis as an
+		// orphan and delete it. Skip this tick; the next one (GCInterval
+		// later) runs well after initNodeChassis has completed.
+		klog.Infof("skip gc chassis: node chassis not initialized yet")
+		return nil
+	}
+	// gcChassis now runs from both the periodic GC ticker and the reactive
+	// UpdateChassisTag path; serialize them so they don't race on
+	// ListChassis/DeleteChassis.
+	c.gcChassisMu.Lock()
+	defer c.gcChassisMu.Unlock()
+
 	klog.Infof("start to gc chassis")
 	chassises, err := c.OVNSbClient.ListChassis()
 	if err != nil {
 		klog.Errorf("failed to get all chassis, %v", err)
 		return err
 	}
-	chassisNodes := make(map[string]string, len(*chassises))
-	for _, chassis := range *chassises {
-		chassisNodes[chassis.Name] = chassis.Hostname
-	}
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list nodes, %v", err)
 		return err
 	}
+	chassisNodes, err := c.gcChassisCandidates(*chassises, nodes)
+	if err != nil {
+		return err
+	}
+	liveNodeNames := make(map[string]struct{}, len(nodes))
+	// claimedNodes holds live nodes whose ChassisAnnotation already resolves
+	// to an existing chassis with a matching hostname.
+	claimedNodes := make(map[string]struct{}, len(nodes))
 	for _, node := range nodes {
+		liveNodeNames[node.Name] = struct{}{}
 		chassisName := node.Annotations[util.ChassisAnnotation]
 		if chassisName == "" {
 			// kube-ovn-cni not ready to set chassis annotation
@@ -1272,6 +1381,7 @@ func (c *Controller) gcChassis() error {
 			if hostname == node.Name {
 				// node is alive, matched chassis should be alive
 				delete(chassisNodes, chassisName)
+				claimedNodes[node.Name] = struct{}{}
 				continue
 			}
 			// maybe node name changed, delete chassis
@@ -1284,6 +1394,29 @@ func (c *Controller) gcChassis() error {
 	}
 
 	for chassisName, hostname := range chassisNodes {
+		_, isLiveNode := liveNodeNames[hostname]
+		_, isClaimed := claimedNodes[hostname]
+		if isLiveNode && !isClaimed {
+			// This chassis's hostname is a current k8s Node that has not yet
+			// claimed any chassis - the node is either not yet annotated or
+			// still carries a stale annotation pointing elsewhere. Deleting
+			// here could remove a live node's own chassis mid-convergence
+			// (an upgrade/migration race), so defer instead; it's picked up
+			// on a later tick once the annotation catches up.
+			//
+			// Once the node has claimed a different chassis, any other
+			// chassis reaching this point still shares its hostname - but
+			// gcChassisCandidates only lets that survive here if it already
+			// carried the kube-ovn vendor tag (an untagged one is left
+			// completely untouched once a claim exists, since a hostname
+			// match alone can't prove it's kube-ovn's - an external OVN host
+			// can coincidentally share a Node's hostname). A confirmed
+			// kube-ovn chassis no longer claimed by its node is a stale
+			// duplicate (ErrOneNodeMultiChassis) and falls through to
+			// deletion below.
+			klog.Infof("defer gc of chassis %s: hostname %s matches a live node pending chassis annotation convergence", chassisName, hostname)
+			continue
+		}
 		klog.Infof("gc node %s chassis %s", hostname, chassisName)
 		if err := c.OVNSbClient.DeleteChassis(chassisName); err != nil {
 			klog.Errorf("failed to delete node %s chassis %s %v", hostname, chassisName, err)

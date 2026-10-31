@@ -136,6 +136,26 @@ type Controller struct {
 	evpnConfLister atomic.Pointer[kubeovnlister.EvpnConfLister]
 	evpnConfSynced cache.InformerSynced
 
+	// gcChassisMu serializes gcChassis against its call sites: the periodic
+	// GC ticker, the reactive call from UpdateChassisTag, and the startup
+	// flush in initNodeChassis. gcChassis itself also honors
+	// GCInterval==0 (same contract as gc()), so all three no-op when GC is
+	// disabled.
+	gcChassisMu sync.Mutex
+	// nodeChassisInitialized guards gcChassis against running before
+	// initNodeChassis has had a chance to tag every live node's chassis. The
+	// periodic GC ticker starts (and fires once immediately) inside
+	// startWorkers, which only waits for AllocatedAnnotation on each node -
+	// a node can pass that barrier before kube-ovn-cni has patched its
+	// ChassisAnnotation, let alone before initResourceOnce's initNodeChassis
+	// pass (which runs after startWorkers returns) has tagged its chassis.
+	// Without this gate, that chassis looks orphaned on the very first tick
+	// and gets deleted. Set once, at the end of initNodeChassis, which also
+	// flushes one gcChassis pass right after opening the gate so a reactive
+	// call that no-op'd while the gate was closed (or the ticker's first,
+	// skipped tick) doesn't sit stale until the next periodic tick.
+	nodeChassisInitialized atomic.Bool
+
 	routerLBRuleLister      kubeovnlister.RouterLBRuleLister
 	routerLBRuleSynced      cache.InformerSynced
 	addRouterLBRuleQueue    workqueue.TypedRateLimitingInterface[string]
@@ -1649,11 +1669,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}, time.Second, ctx.Done())
 
 	if c.config.GCInterval != 0 {
-		go wait.Until(func() {
-			if err := c.markAndCleanLSP(); err != nil {
-				klog.Errorf("gc lsp error: %v", err)
-			}
-		}, time.Duration(c.config.GCInterval)*time.Second, ctx.Done())
+		go wait.Until(c.periodicGC, time.Duration(c.config.GCInterval)*time.Second, ctx.Done())
 	}
 
 	go wait.Until(func() {
