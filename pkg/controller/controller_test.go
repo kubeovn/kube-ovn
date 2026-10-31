@@ -491,6 +491,11 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		AttachNetClient:       nadClient,
 		EnableANP:             opts.EnableANP,
 		EnableDNSNameResolver: opts.EnableDNSNameResolver,
+		// GCInterval=0 disables GC entirely (see gcChassis/gc()); tests that
+		// cover that contract override this explicitly, so default to a
+		// running controller's non-zero interval like the
+		// nodeChassisInitialized default below.
+		GCInterval: 360,
 	}
 
 	if err := ctrl.setupIndexers(vpcInformer.Informer(), podInformer.Informer(), endpointSliceInformer.Informer(), ipInformer.Informer(), serviceInformer.Informer()); err != nil {

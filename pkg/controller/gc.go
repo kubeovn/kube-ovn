@@ -1326,6 +1326,14 @@ func (c *Controller) gcChassisCandidates(chassises []ovnsb.Chassis, nodes []*cor
 }
 
 func (c *Controller) gcChassis() error {
+	if c.config.GCInterval == 0 {
+		// Same contract as gc(): GCInterval=0 disables GC entirely. Checked
+		// here, not at each call site, so the periodic ticker, the reactive
+		// call from UpdateChassisTag, and initNodeChassis's startup flush all
+		// honor it without having to remember to guard it themselves.
+		klog.Infof("skip gc chassis: gc is disabled")
+		return nil
+	}
 	if !c.nodeChassisInitialized.Load() {
 		// The periodic GC ticker starts (and fires once immediately) before
 		// initResourceOnce's initNodeChassis pass has tagged every live

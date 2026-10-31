@@ -136,8 +136,11 @@ type Controller struct {
 	evpnConfLister atomic.Pointer[kubeovnlister.EvpnConfLister]
 	evpnConfSynced cache.InformerSynced
 
-	// gcChassisMu serializes gcChassis against its two call sites: the
-	// periodic GC ticker and the reactive call from UpdateChassisTag.
+	// gcChassisMu serializes gcChassis against its call sites: the periodic
+	// GC ticker, the reactive call from UpdateChassisTag, and the startup
+	// flush in initNodeChassis. gcChassis itself also honors
+	// GCInterval==0 (same contract as gc()), so all three no-op when GC is
+	// disabled.
 	gcChassisMu sync.Mutex
 	// nodeChassisInitialized guards gcChassis against running before
 	// initNodeChassis has had a chance to tag every live node's chassis. The
