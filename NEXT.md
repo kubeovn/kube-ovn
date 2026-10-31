@@ -9,7 +9,7 @@ This document lists the features merged into the master branch for the next mino
 - Load BGP speaker parameters from a YAML configuration file. [#6933](https://github.com/kubeovn/kube-ovn/pull/6933)
 - Add Kubernetes warning and lifecycle Events for IP, VPC, VPC NAT Gateway, and VPC DNS resources. [#7200](https://github.com/kubeovn/kube-ovn/pull/7200) [#7202](https://github.com/kubeovn/kube-ovn/pull/7202)
 - VPC Egress Gateway now supports dynamic NAT gateway LAN IPs, image pull secrets, an optional `priorityClassName`, and an internal tenant network by default. [#7237](https://github.com/kubeovn/kube-ovn/pull/7237) [#7326](https://github.com/kubeovn/kube-ovn/pull/7326) [#7635](https://github.com/kubeovn/kube-ovn/pull/7635) [#7425](https://github.com/kubeovn/kube-ovn/pull/7425)
-- VPC NAT Gateway can back `LoadBalancer` Services through shared nftables DNAT, and nftables load balancing is enabled by default. [#7047](https://github.com/kubeovn/kube-ovn/pull/7047) [#7403](https://github.com/kubeovn/kube-ovn/pull/7403)
+- VPC NAT Gateway can back `LoadBalancer` Services through shared nftables DNAT. [#7047](https://github.com/kubeovn/kube-ovn/pull/7047) [#7403](https://github.com/kubeovn/kube-ovn/pull/7403)
 - Add service-scoped OVN load balancers for `ClusterIP` and `LoadBalancer` Services, including ClientIP session affinity, `internalTrafficPolicy`, and traffic distribution. `PreferSameNode` honors EndpointSlice node hints. [#7378](https://github.com/kubeovn/kube-ovn/pull/7378) [#7457](https://github.com/kubeovn/kube-ovn/pull/7457)
 - Upgrade `ClusterNetworkPolicy` to `network-policy-api` v0.2.0. [#7585](https://github.com/kubeovn/kube-ovn/pull/7585)
 - Resolve NetworkPolicy named ports per destination Pod and fail closed when a named port is ambiguous. [#7795](https://github.com/kubeovn/kube-ovn/pull/7795) [#7796](https://github.com/kubeovn/kube-ovn/pull/7796)
@@ -21,8 +21,8 @@ This document lists the features merged into the master branch for the next mino
 - Initialize single-instance OVN central deployments with standalone NB and SB databases. [#7725](https://github.com/kubeovn/kube-ovn/pull/7725)
 
 - VPC NAT Gateway
-  - A `vpc-nat-gw` can now serve Kubernetes Services through nftables share DNAT: a `LoadBalancer`
-    Service is published on its EIP, and a Service ClusterIP can be served from the gateway. See
+  - Extend nftables share DNAT with independent gates for the `LoadBalancer` Service EIP and
+    Service ClusterIP data planes. See
     [docs/vpc-nat-gateway-service.md](docs/vpc-nat-gateway-service.md). [#7451](https://github.com/kubeovn/kube-ovn/pull/7451)
   - **Breaking**: the flag `--enable-nftable-lb-svc` (default `true`) is replaced by
     `--enable-gw-nftable-lb-svc` and `--enable-gw-nftable-svc-cluster-ip`, both default `false`.
