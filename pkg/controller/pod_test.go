@@ -1117,7 +1117,7 @@ func TestGetNamedPortVariantsByNsReturnsAllVariants(t *testing.T) {
 	np.AddNamedPortByPod(first)
 	np.AddNamedPortByPod(second)
 
-	variants := np.GetNamedPortVariantsByNs("test-ns")
+	variants := np.getNamedPortVariantsByNs("test-ns")
 	if len(variants["http"]) != 2 {
 		t.Fatalf("expected two named port variants, got %#v", variants)
 	}
@@ -1129,7 +1129,7 @@ func TestGetNamedPortVariantsByNsReturnsAllVariants(t *testing.T) {
 	}
 
 	variants["http"][namedPortKey{protocol: corev1.ProtocolTCP, port: 80}].Remove("first")
-	if !np.GetNamedPortVariantsByNs("test-ns")["http"][namedPortKey{protocol: corev1.ProtocolTCP, port: 80}].Has("first") {
+	if !np.getNamedPortVariantsByNs("test-ns")["http"][namedPortKey{protocol: corev1.ProtocolTCP, port: 80}].Has("first") {
 		t.Fatalf("named port variant snapshot was not independent")
 	}
 }

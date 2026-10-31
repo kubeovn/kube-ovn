@@ -339,7 +339,7 @@ func (c *Controller) namedPortVariantsForSelectors(selectors policyNamedPortSele
 	}
 	byName := make(map[string]*networkPolicyNamedPortVariant)
 	for _, namespace := range namespaces {
-		indexed := c.namedPort.GetNamedPortVariantsByNs(namespace.Name)
+		indexed := c.namedPort.getNamedPortVariantsByNs(namespace.Name)
 		for name, nameVariants := range indexed {
 			for key, podNames := range nameVariants {
 				if _, ok := requested[name]; !ok {
@@ -459,7 +459,7 @@ func (c *Controller) namedPortAddressesForSelectors(selectors policyNamedPortSel
 	}
 	result := make(map[namedPortKey]*policyNamedPortAddresses)
 	for _, namespace := range namespaces {
-		variants := c.namedPort.GetNamedPortVariantsByNs(namespace.Name)[name]
+		variants := c.namedPort.getNamedPortVariantsByNs(namespace.Name)[name]
 		if len(variants) == 0 {
 			continue
 		}
