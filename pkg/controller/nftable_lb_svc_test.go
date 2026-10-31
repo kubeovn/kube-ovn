@@ -1315,22 +1315,26 @@ func TestNftableLbServiceCreatedBeforeEip(t *testing.T) {
 			t.Cleanup(c.addOrUpdateGwNftableLbSvcQueue.ShutDown)
 			key := f.namespace + "/" + f.svc.Name
 
-			require.NoError(t, c.handleAddOrUpdateGwNftableLbService(key))
-			require.Eventually(t, func() bool { return c.addOrUpdateGwNftableLbSvcQueue.Len() == 1 },
-				5*time.Second, 10*time.Millisecond, "a missing EIP schedules a retry even after cleanup")
-			retryKey, shutdown := c.addOrUpdateGwNftableLbSvcQueue.Get()
-			require.False(t, shutdown)
-			require.Equal(t, key, retryKey)
-			defer c.addOrUpdateGwNftableLbSvcQueue.Done(retryKey)
+			queue := c.addOrUpdateGwNftableLbSvcQueue
+			queue.Add(key)
+			require.True(t, processNextWorkItem("service-before-eip", queue, c.handleAddOrUpdateGwNftableLbService, getWorkItemKey))
+			require.Zero(t, queue.NumRequeues(key), "cleanup succeeds without a rate-limited error retry")
+			require.Eventually(t, func() bool { return queue.Len() == 1 },
+				5*time.Second, 10*time.Millisecond, "worker Forget/Done must preserve the delayed retry")
+			require.True(t, processNextWorkItem("service-before-eip", queue, c.handleAddOrUpdateGwNftableLbService, getWorkItemKey))
+			require.Zero(t, queue.NumRequeues(key))
+			require.Eventually(t, func() bool { return queue.Len() == 1 },
+				5*time.Second, 10*time.Millisecond, "keep retrying while the EIP is still missing")
 
 			// Make the EIP visible without delivering any EIP, Service or EndpointSlice event.
 			require.NoError(t, eipIndexer.Add(f.eip))
-			require.NoError(t, c.handleAddOrUpdateGwNftableLbService(retryKey))
+			require.True(t, processNextWorkItem("service-before-eip", queue, c.handleAddOrUpdateGwNftableLbService, getWorkItemKey))
+			require.Zero(t, queue.NumRequeues(key))
 			updated, err := c.config.KubeClient.CoreV1().Services(f.namespace).Get(context.Background(), f.svc.Name, metav1.GetOptions{})
 			require.NoError(t, err)
 			require.Contains(t, updated.Finalizers, util.KubeOVNControllerFinalizer, "the queued retry resumes programming")
 
-			program, cleanup, err := c.resolveNftableLbSvcProgram(retryKey, updated, true, serveClusterIP)
+			program, cleanup, err := c.resolveNftableLbSvcProgram(key, updated, true, serveClusterIP)
 			require.NoError(t, err)
 			require.False(t, cleanup)
 			require.Equal(t, f.eip.Status.IP, program.eipIP)
