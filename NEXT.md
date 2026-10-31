@@ -4,6 +4,22 @@ This document lists the features merged into the master branch for the next mino
 
 ## Post-v1.16.0
 
+- Upgrade `OVN` to 26.03 and `OVS` to 3.7. [#7357](https://github.com/kubeovn/kube-ovn/pull/7357)
+- Add an option to cap the MTU for default and custom subnets. [#7442](https://github.com/kubeovn/kube-ovn/pull/7442)
+- Load BGP speaker parameters from a YAML configuration file. [#6933](https://github.com/kubeovn/kube-ovn/pull/6933)
+- Add Kubernetes warning and lifecycle Events for IP, VPC, VPC NAT Gateway, and VPC DNS resources. [#7200](https://github.com/kubeovn/kube-ovn/pull/7200) [#7202](https://github.com/kubeovn/kube-ovn/pull/7202)
+- VPC Egress Gateway now supports dynamic NAT gateway LAN IPs, image pull secrets, an optional `priorityClassName`, and an internal tenant network by default. [#7237](https://github.com/kubeovn/kube-ovn/pull/7237) [#7326](https://github.com/kubeovn/kube-ovn/pull/7326) [#7635](https://github.com/kubeovn/kube-ovn/pull/7635) [#7425](https://github.com/kubeovn/kube-ovn/pull/7425)
+- VPC NAT Gateway can back `LoadBalancer` Services through shared nftables DNAT, and nftables load balancing is enabled by default. [#7047](https://github.com/kubeovn/kube-ovn/pull/7047) [#7403](https://github.com/kubeovn/kube-ovn/pull/7403)
+- Add service-scoped OVN load balancers for `ClusterIP` and `LoadBalancer` Services, including ClientIP session affinity, `internalTrafficPolicy`, and traffic distribution. `PreferSameNode` honors EndpointSlice node hints. [#7378](https://github.com/kubeovn/kube-ovn/pull/7378) [#7457](https://github.com/kubeovn/kube-ovn/pull/7457)
+- Upgrade `ClusterNetworkPolicy` to `network-policy-api` v0.2.0. [#7585](https://github.com/kubeovn/kube-ovn/pull/7585)
+- Resolve NetworkPolicy named ports per destination Pod and fail closed when a named port is ambiguous. [#7795](https://github.com/kubeovn/kube-ovn/pull/7795) [#7796](https://github.com/kubeovn/kube-ovn/pull/7796)
+- Clarify IP and VIP ownership: `IP` handles Pod address allocation, while `Vip` handles allowed address pairs and host VM VIPs through `kube_host_vm_vip`. [#7721](https://github.com/kubeovn/kube-ovn/pull/7721)
+- Rewrite `kubectl-ko` as a cross-platform Go CLI with an independent node agent. It now supports workload-style `exec`, VM/VMI packet capture across live migration, and native packet diagnostics. [#7606](https://github.com/kubeovn/kube-ovn/pull/7606) [#7621](https://github.com/kubeovn/kube-ovn/pull/7636) [#7639](https://github.com/kubeovn/kube-ovn/pull/7639)
+- Build ACL sampling as a standalone binary. [#7602](https://github.com/kubeovn/kube-ovn/pull/7602)
+- The CNI installer can skip bundled standard CNI plugins, and periodic CNI recomputation is optional. TProxy namespace dialing can run in an optional CNI container. [#7694](https://github.com/kubeovn/kube-ovn/pull/7694) [#7714](https://github.com/kubeovn/kube-ovn/pull/7714) [#7594](https://github.com/kubeovn/kube-ovn/pull/7594)
+- Allow Helm installations to use externally managed webhook certificates. [#7727](https://github.com/kubeovn/kube-ovn/pull/7727)
+- Initialize single-instance OVN central deployments with standalone NB and SB databases. [#7725](https://github.com/kubeovn/kube-ovn/pull/7725)
+
 ## v1.16.0
 
 - NetworkPolicy now supports provider-scoped policies for multi-network pods using the `ovn.kubernetes.io/policy-for` annotation. [#6223](https://github.com/kubeovn/kube-ovn/pull/6223)
