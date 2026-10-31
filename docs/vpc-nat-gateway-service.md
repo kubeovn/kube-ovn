@@ -88,10 +88,14 @@ kubectl ko nbctl lr-policy-list <vpc>
   the same EIP and port is rejected by the webhook; if one slips past admission, the controller
   gives the identity to the deterministic winner (the lexicographically smaller Service key) and
   the loser publishes nothing and is retried.
+- **The EIP must belong to the annotated gateway.** The webhook rejects a mismatching
+  `IptablesEIP.spec.natGwDp` when the Service is created or its forwarding intent changes.
+  The EIP does not have to be Ready or exist yet at admission; the controller checks its
+  availability and readiness before programming.
 - **The binding is immutable, opting out is not.** The gateway and the EIP of a Service cannot be
   changed; delete and recreate it instead. Clearing the annotations is allowed and is the
   supported way to leave the mode: the controller releases the identities, the lo addresses, the
-  VIP routes, the records and finally the Service finalizer.
+  VIP routes, the records and finally the Service finalizer (`kubeovn.io/kube-ovn-controller`).
 - **An EIP in use cannot be deleted.** The accounting records keep the EIP in use; delete the
   Service first. The two controllers are otherwise independent: an EIP event never reconciles a
   Service.

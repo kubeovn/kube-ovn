@@ -10,6 +10,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -41,6 +42,66 @@ func newServiceHook(t *testing.T, existing ...*v1.Service) *ValidatingHook {
 		cache.services = append(cache.services, *svc)
 	}
 	return &ValidatingHook{decoder: admission.NewDecoder(scheme), cache: cache}
+}
+
+func TestServiceHookEipGateway(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		eipGateway string
+		eipExists  bool
+		allowed    bool
+	}{
+		{name: "matching gateway with unready eip", eipGateway: "gw-a", eipExists: true, allowed: true},
+		{name: "different gateway", eipGateway: "gw-b", eipExists: true},
+		{name: "unbound eip", eipExists: true, allowed: true},
+		{name: "missing eip", allowed: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			hook := newServiceHook(t)
+			if tt.eipExists {
+				hook.cache.(*mockCache).objects = map[string]runtime.Object{
+					"/eip-a": &ovnv1.IptablesEIP{Spec: ovnv1.IptablesEIPSpec{NatGwDp: tt.eipGateway}},
+				}
+			}
+			svc := nftableLbService("web", 80, v1.ProtocolTCP, nil)
+			resp := hook.ServiceCreateHook(context.Background(), createRequest(t, svc))
+			require.Equal(t, tt.allowed, resp.Allowed, "create: %+v", resp.Result)
+			if !tt.allowed {
+				require.Contains(t, resp.Result.Message, `eip "eip-a" belongs to vpc nat gateway "gw-b"`)
+			}
+			unbound := svc.DeepCopy()
+			unbound.Annotations = nil
+			resp = hook.ServiceUpdateHook(context.Background(), updateRequest(t, unbound, svc))
+			require.Equal(t, tt.allowed, resp.Allowed, "initial binding: %+v", resp.Result)
+			updated := svc.DeepCopy()
+			updated.Spec.Ports[0].Port = 81
+			resp = hook.ServiceUpdateHook(context.Background(), updateRequest(t, svc, updated))
+			require.Equal(t, tt.allowed, resp.Allowed, "port update: %+v", resp.Result)
+		})
+	}
+
+	t.Run("allows release despite mismatching eip", func(t *testing.T) {
+		hook := newServiceHook(t)
+		hook.cache.(*mockCache).objects = map[string]runtime.Object{
+			"/eip-a": &ovnv1.IptablesEIP{Spec: ovnv1.IptablesEIPSpec{NatGwDp: "gw-b"}},
+		}
+		svc := nftableLbService("web", 80, v1.ProtocolTCP, nil)
+		svc.Finalizers = []string{util.KubeOVNControllerFinalizer}
+		updated := svc.DeepCopy()
+		updated.Finalizers = nil
+		resp := hook.ServiceUpdateHook(context.Background(), updateRequest(t, svc, updated))
+		require.True(t, resp.Allowed, "finalizer bookkeeping: %+v", resp.Result)
+		updated = svc.DeepCopy()
+		delete(updated.Annotations, util.VpcNatGatewayAnnotation)
+		resp = hook.ServiceUpdateHook(context.Background(), updateRequest(t, svc, updated))
+		require.True(t, resp.Allowed, "opt-out: %+v", resp.Result)
+		now := metav1.Now()
+		svc.DeletionTimestamp = &now
+		updated = svc.DeepCopy()
+		updated.Spec.Ports[0].Port = 81
+		resp = hook.ServiceUpdateHook(context.Background(), updateRequest(t, svc, updated))
+		require.True(t, resp.Allowed, "terminating service: %+v", resp.Result)
+	})
 }
 
 func TestServiceCreateHookEipPortConflict(t *testing.T) {

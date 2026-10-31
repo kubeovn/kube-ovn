@@ -8,10 +8,12 @@ import (
 	"slices"
 
 	v1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	ctrlwebhook "sigs.k8s.io/controller-runtime/pkg/webhook"
 	"sigs.k8s.io/controller-runtime/pkg/webhook/admission"
 
+	ovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -98,6 +100,17 @@ func (v *ValidatingHook) validateNftableLbService(ctx context.Context, svc *v1.S
 	if svc.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
 		return fmt.Errorf("service %s/%s cannot combine %s with %s: both publish the LoadBalancer ingress IP",
 			svc.Namespace, svc.Name, util.VpcNatGatewayAnnotation, util.ServiceExternalIPFromSubnetAnnotation)
+	}
+	eipName := svc.Annotations[util.EipAnnotation]
+	eip := &ovnv1.IptablesEIP{}
+	if err := v.cache.Get(ctx, client.ObjectKey{Name: eipName}, eip); err != nil {
+		// Preserve admission before EIP creation; availability is checked by the controller.
+		if !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("failed to get eip %q: %w", eipName, err)
+		}
+	} else if gateway := svc.Annotations[util.VpcNatGatewayAnnotation]; eip.Spec.NatGwDp != "" && eip.Spec.NatGwDp != gateway {
+		return fmt.Errorf("service %s/%s: eip %q belongs to vpc nat gateway %q, not to the annotated gateway %q",
+			svc.Namespace, svc.Name, eipName, eip.Spec.NatGwDp, gateway)
 	}
 	return v.validateNftableLbServiceEipPort(ctx, svc)
 }
