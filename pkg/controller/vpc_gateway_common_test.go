@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -783,4 +784,82 @@ func TestReconcileNatGatewayPolicies(t *testing.T) {
 		assert.NoError(t, err)
 		m.AssertExpectations(t)
 	})
+}
+
+func TestGenNatGwConntrackdContainer(t *testing.T) {
+	image := "kubeovn/vpc-nat-gateway:v1.12.0"
+
+	container := genNatGwConntrackdContainer(image, "239.1.2.3", 3780)
+
+	assert.Equal(t, "conntrackd", container.Name)
+	assert.Equal(t, image, container.Image, "conntrackd ships in the NAT gateway image")
+	assert.Equal(t, corev1.PullIfNotPresent, container.ImagePullPolicy)
+	assert.Equal(t, []string{"bash", "/kube-ovn/start-conntrackd.sh"}, container.Command)
+
+	envMap := make(map[string]string, len(container.Env))
+	var podIPs *corev1.EnvVar
+	for i, env := range container.Env {
+		envMap[env.Name] = env.Value
+		if env.Name == "POD_IPS" {
+			podIPs = &container.Env[i]
+		}
+	}
+	require.NotNil(t, podIPs, "the sidecar needs the gateway subnet addresses to bind to")
+	require.NotNil(t, podIPs.ValueFrom)
+	// Both addresses of a dual-stack subnet, so that the script can keep the IPv4 one; never an
+	// EIP, which moves between replicas.
+	assert.Equal(t, "status.podIPs", podIPs.ValueFrom.FieldRef.FieldPath)
+	assert.Equal(t, "eth0", envMap["CONNTRACK_SYNC_INTERFACE"])
+	assert.Equal(t, "239.1.2.3", envMap["CONNTRACK_SYNC_GROUP"])
+	assert.Equal(t, "3780", envMap["CONNTRACK_SYNC_PORT"])
+
+	require.NotNil(t, container.ReadinessProbe)
+	assert.Equal(t, []string{"conntrackd", "-s"}, container.ReadinessProbe.Exec.Command)
+
+	assert.Equal(t, gwConntrackdResourceCPU, container.Resources.Requests[corev1.ResourceCPU])
+	assert.Equal(t, gwConntrackdResourceMemory, container.Resources.Requests[corev1.ResourceMemory])
+	assert.Equal(t, gwResourceEphemeralStorage, container.Resources.Limits[corev1.ResourceEphemeralStorage])
+
+	// Writing entries into the conntrack table and tuning the netfilter sysctls of the namespace
+	// both need full privileges.
+	require.NotNil(t, container.SecurityContext)
+	assert.True(t, *container.SecurityContext.Privileged)
+}
+
+func TestConntrackdStartScript(t *testing.T) {
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to get current filename")
+	}
+	gwDir := filepath.Join(filepath.Dir(filename), "..", "..", "dist", "images", "vpcnatgateway")
+
+	script, err := os.ReadFile(filepath.Join(gwDir, "start-conntrackd.sh"))
+	require.NoError(t, err)
+	content := string(script)
+
+	// Every replica is active: entries have to reach the kernel table as they arrive, and a
+	// replacement Pod has to ask its peers for the table it was started without.
+	assert.Contains(t, content, "DisableExternalCache on")
+	assert.Contains(t, content, "StartupResync on")
+	assert.Contains(t, content, "Mode FTFW")
+	// A synchronized entry carries the TCP window state of another replica.
+	assert.Contains(t, content, "net.netfilter.nf_conntrack_tcp_be_liberal")
+	assert.Contains(t, content, "net.netfilter.nf_conntrack_tcp_loose")
+	// The synchronization traffic must not be tracked, nor marked for the external network.
+	assert.Contains(t, content, "-j CT --notrack")
+	assert.Contains(t, content, "ensure_rule mangle PREROUTING")
+
+	// The gateway NATs IPv4 TCP, UDP and ICMP: everything else stays local to its replica.
+	assert.Contains(t, content, "Filter From Kernelspace")
+	assert.Contains(t, content, "IPv6_address ::/0")
+	for _, protocol := range []string{"tcp", "udp", "icmp"} {
+		assert.Regexp(t, `(?m)^\s+`+protocol+`$`, content, "protocol %s must be synchronized", protocol)
+	}
+	// The channel is bound to the IPv4 address even on a dual-stack gateway subnet.
+	assert.Contains(t, content, `grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$'`)
+
+	dockerfile, err := os.ReadFile(filepath.Join(gwDir, "Dockerfile"))
+	require.NoError(t, err)
+	assert.Contains(t, string(dockerfile), "COPY start-conntrackd.sh /kube-ovn/")
+	assert.Contains(t, string(dockerfile), "conntrack-tools")
 }

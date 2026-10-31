@@ -1736,6 +1736,14 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 		deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, bfdContainer)
 	}
 
+	// Synchronize the conntrack entries between the replicas so that a flow NATed by one of them
+	// can be translated back by any other one. Unlike bfdd, conntrackd ships in the NAT gateway
+	// image, so the sidecar runs from the same image as the gateway container.
+	if util.IsNatGwConntrackSyncEnabled(gw) {
+		conntrackdContainer := genNatGwConntrackdContainer(vpcNatImage, util.NatGwConntrackSyncGroup(gw), util.NatGwConntrackSyncPort(gw))
+		deploy.Spec.Template.Spec.Containers = append(deploy.Spec.Template.Spec.Containers, conntrackdContainer)
+	}
+
 	// BGP speaker is enabled on this instance
 	if gw.Spec.BgpSpeaker.Enabled {
 		deploy.Spec.Template.Spec.ServiceAccountName = "vpc-nat-gw"
@@ -2125,6 +2133,43 @@ func (c *Controller) persistNatGwLanIP(gw *kubeovnv1.VpcNatGateway, observedLanI
 	return nil
 }
 
+// natGwConntrackSyncStatus reports the conntrack synchronization settings in use on a NAT gateway
+// and whether the conntrackd container is ready on every replica. Synchronization is only
+// complete when it is: a replica whose daemon is not running yet keeps its own NAT state.
+func natGwConntrackSyncStatus(gw *kubeovnv1.VpcNatGateway, pods []*corev1.Pod) kubeovnv1.VpcNatGatewayConntrackSyncStatus {
+	if !util.IsNatGwConntrackSyncEnabled(gw) {
+		return kubeovnv1.VpcNatGatewayConntrackSyncStatus{}
+	}
+
+	status := kubeovnv1.VpcNatGatewayConntrackSyncStatus{
+		Enabled:        true,
+		MulticastGroup: util.NatGwConntrackSyncGroup(gw),
+		Port:           util.NatGwConntrackSyncPort(gw),
+		Ready:          len(pods) == int(getNatGwReplicas(gw)),
+	}
+	for _, pod := range pods {
+		if !isNatGwContainerReady(pod, "conntrackd") {
+			status.Ready = false
+			break
+		}
+	}
+	return status
+}
+
+// isNatGwContainerReady returns true if the named container of a NAT gateway Pod passes its
+// readiness probe.
+func isNatGwContainerReady(pod *corev1.Pod, name string) bool {
+	if pod.DeletionTimestamp != nil {
+		return false
+	}
+	for _, status := range pod.Status.ContainerStatuses {
+		if status.Name == name {
+			return status.Ready
+		}
+	}
+	return false
+}
+
 // patchNatGwStatus publishes the observed gateway state and pins a dynamically allocated
 // address into spec.lanIp. pods must be the freshly read gateway Pods, see listNatGwPods.
 func (c *Controller) patchNatGwStatus(oriGw *kubeovnv1.VpcNatGateway, pods []*corev1.Pod) error {
@@ -2179,6 +2224,10 @@ func (c *Controller) patchNatGwStatus(oriGw *kubeovnv1.VpcNatGateway, pods []*co
 	}
 	if gw.Status.LanIP != lanIP {
 		gw.Status.LanIP = lanIP
+		changed = true
+	}
+	if conntrackSync := natGwConntrackSyncStatus(gw, pods); conntrackSync != gw.Status.ConntrackSync {
+		gw.Status.ConntrackSync = conntrackSync
 		changed = true
 	}
 	if updateNatGwWorkloadStatus(gw, pods, c.deploymentsLister, c.statefulSetsLister, c.natGwNamespace(gw)) {

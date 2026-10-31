@@ -1,6 +1,7 @@
 package util
 
 import (
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"maps"
@@ -16,6 +17,10 @@ import (
 
 // VpcNatGwNameDefaultPrefix is the default prefix appended to the name of the NAT gateways
 const VpcNatGwNameDefaultPrefix = "vpc-nat-gw"
+
+// NatGwConntrackSyncDefaultPort is the UDP port the NAT gateway replicas synchronize their
+// conntrack entries over when spec.conntrackSync.port is unset. It matches the CRD default.
+const NatGwConntrackSyncDefaultPort = 3780
 
 // VpcNatGwNamePrefix is appended to the name of the StatefulSet and Pods for NAT gateways
 var VpcNatGwNamePrefix = VpcNatGwNameDefaultPrefix
@@ -283,6 +288,41 @@ func GenNatGwBgpSpeakerContainer(speakerParams kubeovnv1.VpcBgpSpeaker, speakerI
 // IsNatGwHAMode returns true if the NAT gateway should use HA mode (Deployment with replicas > 1).
 func IsNatGwHAMode(gw *kubeovnv1.VpcNatGateway) bool {
 	return gw.Spec.Replicas > 1
+}
+
+// IsNatGwConntrackSyncEnabled returns true if the NAT gateway replicas must synchronize their
+// conntrack entries. Synchronization only makes sense in HA mode, where several replicas NAT the
+// traffic of the same VPC.
+func IsNatGwConntrackSyncEnabled(gw *kubeovnv1.VpcNatGateway) bool {
+	return IsNatGwHAMode(gw) && gw.Spec.ConntrackSync.Enabled
+}
+
+// GenNatGwConntrackSyncGroup derives a multicast group from a NAT gateway UID. The group is stable
+// for a given gateway and spreads over 239.0.0.0/8, the administratively scoped block, so that two
+// gateways sharing a subnet do not exchange their conntrack entries.
+func GenNatGwConntrackSyncGroup(uid string) string {
+	sum := sha256.Sum256([]byte(uid))
+	// Keep the second octet out of the 239.255.0.0/16 local scope, which carries well-known
+	// groups such as SSDP, and the last octet out of the reserved .0 and .255 addresses.
+	return fmt.Sprintf("239.%d.%d.%d", sum[0]%255, sum[1], sum[2]%254+1)
+}
+
+// NatGwConntrackSyncGroup returns the multicast group the replicas of a NAT gateway synchronize
+// their conntrack entries over, deriving one from the gateway UID when none is configured.
+func NatGwConntrackSyncGroup(gw *kubeovnv1.VpcNatGateway) string {
+	if group := gw.Spec.ConntrackSync.MulticastGroup; group != "" {
+		return group
+	}
+	return GenNatGwConntrackSyncGroup(string(gw.UID))
+}
+
+// NatGwConntrackSyncPort returns the UDP port the replicas of a NAT gateway synchronize their
+// conntrack entries over.
+func NatGwConntrackSyncPort(gw *kubeovnv1.VpcNatGateway) int32 {
+	if port := gw.Spec.ConntrackSync.Port; port != 0 {
+		return port
+	}
+	return NatGwConntrackSyncDefaultPort
 }
 
 // GroupInternalCIDRsAndNextHops groups internal CIDRs and next hops by address family.

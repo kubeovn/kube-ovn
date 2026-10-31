@@ -3093,6 +3093,184 @@ var _ = framework.OrderedDescribe("[group:iptables-vpc-nat-gw]", func() {
 		vpcClient.DeleteSync(haVpcName)
 	})
 
+	framework.ConformanceIt("[6a] HA VPC NAT Gateway conntrack synchronization between replicas", func() {
+		f.SkipVersionPriorTo(1, 18, "Conntrack synchronization between HA NAT gateway replicas was introduced in v1.18")
+
+		// NAT gateway pods are in kube-system namespace
+		natGwPodClient := f.PodClientNS(framework.KubeOvnNamespace)
+		deploymentClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
+
+		overlaySubnetV4Cidr := "10.0.7.0/24"
+		overlaySubnetV4Gw := "10.0.7.1"
+		ctVpcName := "ct-test-vpc-" + framework.RandomSuffix()
+		ctOverlaySubnetName := "ct-test-overlay-subnet-" + framework.RandomSuffix()
+		ctVpcNatGwName := "ct-test-natgw-" + framework.RandomSuffix()
+
+		// Running gateway pods, sorted by name so that the replicas can be told apart.
+		runningNatGwPods := func() []corev1.Pod {
+			deploy := deploymentClient.Get(util.GenNatGwName(ctVpcNatGwName))
+			pods, err := deploymentClient.GetAllPods(deploy)
+			if err != nil {
+				framework.Logf("Failed to get pods for deployment: %v", err)
+				return nil
+			}
+			var running []corev1.Pod
+			for _, pod := range pods.Items {
+				if pod.Status.Phase == corev1.PodRunning && pod.DeletionTimestamp == nil {
+					running = append(running, pod)
+				}
+			}
+			slices.SortFunc(running, func(a, b corev1.Pod) int { return strings.Compare(a.Name, b.Name) })
+			return running
+		}
+
+		// A replica synchronizes once its conntrackd container answers its readiness probe.
+		conntrackdReady := func(pod corev1.Pod) bool {
+			if pod.Annotations[util.VpcNatGatewayInitAnnotation] != "true" {
+				framework.Logf("Pod %s not initialized yet", pod.Name)
+				return false
+			}
+			for _, status := range pod.Status.ContainerStatuses {
+				if status.Name == "conntrackd" {
+					return status.Ready
+				}
+			}
+			framework.Logf("Pod %s has no conntrackd container", pod.Name)
+			return false
+		}
+
+		ginkgo.By("Creating custom HA VPC " + ctVpcName)
+		vpc := framework.MakeVpc(ctVpcName, "", false, false, nil)
+		_ = vpcClient.CreateSync(vpc)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up custom vpc " + ctVpcName)
+			vpcClient.DeleteSync(ctVpcName)
+		})
+
+		ginkgo.By("Creating custom overlay subnet " + ctOverlaySubnetName)
+		overlaySubnet := framework.MakeSubnet(ctOverlaySubnetName, "", overlaySubnetV4Cidr, overlaySubnetV4Gw, ctVpcName, "", nil, nil, nil)
+		_ = subnetClient.CreateSync(overlaySubnet)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up custom overlay subnet " + ctOverlaySubnetName)
+			subnetClient.DeleteSync(ctOverlaySubnetName)
+		})
+
+		ginkgo.By("1. Creating HA vpc nat gw with conntrack synchronization " + ctVpcNatGwName)
+		vpcNatGw := framework.MakeVpcNatGatewayWithAnnotations(ctVpcNatGwName, ctVpcName, ctOverlaySubnetName, "", networkAttachDefName, "", nil)
+		vpcNatGw.Spec.Replicas = 2
+		vpcNatGw.Spec.ConntrackSync.Enabled = true
+		_ = vpcNatGwClient.CreateSync(vpcNatGw, f.ClientSet)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up custom vpc nat gw " + ctVpcNatGwName)
+			vpcNatGwClient.DeleteSync(ctVpcNatGwName)
+		})
+
+		ginkgo.By("2. Waiting for both replicas to run conntrackd")
+		gomega.Eventually(func() bool {
+			pods := runningNatGwPods()
+			if len(pods) != 2 {
+				framework.Logf("Expected 2 running pods, got %d", len(pods))
+				return false
+			}
+			for _, pod := range pods {
+				if !conntrackdReady(pod) {
+					return false
+				}
+			}
+			return true
+		}, 4*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
+			"Both NAT gateway replicas should run a ready conntrackd container")
+
+		ginkgo.By("3. Verifying the gateway reports its synchronization settings")
+		gomega.Eventually(func() bool {
+			gw := vpcNatGwClient.Get(ctVpcNatGwName)
+			framework.Logf("Conntrack sync status of %s: %+v", ctVpcNatGwName, gw.Status.ConntrackSync)
+			return gw.Status.ConntrackSync.Enabled && gw.Status.ConntrackSync.Ready &&
+				gw.Status.ConntrackSync.MulticastGroup == util.GenNatGwConntrackSyncGroup(string(gw.UID)) &&
+				gw.Status.ConntrackSync.Port == util.NatGwConntrackSyncDefaultPort
+		}, 2*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
+			"The gateway should report the derived multicast group and a ready synchronization")
+
+		ginkgo.By("4. Creating an EIP and a SNAT rule for the overlay subnet")
+		randomSuffix := framework.RandomSuffix()
+		eipName := "ct-eip-" + randomSuffix
+		eip := framework.MakeIptablesEIP(eipName, "", "", "", ctVpcNatGwName, "", "")
+		_ = iptablesEIPClient.CreateSync(eip)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up eip " + eipName)
+			iptablesEIPClient.DeleteSync(eipName)
+		})
+		eip = iptablesEIPClient.Get(eipName)
+
+		snatName := "ct-snat-" + randomSuffix
+		snat := framework.MakeIptablesSnatRule(snatName, eipName, overlaySubnetV4Cidr)
+		_ = iptablesSnatRuleClient.CreateSync(snat)
+		ginkgo.DeferCleanup(func() {
+			ginkgo.By("Cleaning up snat " + snatName)
+			iptablesSnatRuleClient.DeleteSync(snatName)
+		})
+
+		// The conntrack table is shared with the gateway container, which is the one kubectl exec
+		// lands in: the entries conntrackd receives are visible from there.
+		internalIP, remoteIP, natPort := "10.0.7.100", "10.99.0.2", "54321"
+		flowSynced := func(podName string) bool {
+			stdout, _, err := framework.KubectlExec(framework.KubeOvnNamespace, podName,
+				"conntrack", "-L", "-p", "tcp", "--orig-src", internalIP)
+			if err != nil {
+				framework.Logf("Failed to list conntrack entries on pod %s: %v", podName, err)
+				return false
+			}
+			framework.Logf("Conntrack entries of pod %s: %s", podName, string(stdout))
+			return strings.Contains(string(stdout), "dst="+eip.Status.IP)
+		}
+
+		ginkgo.By("5. Opening a NATed flow on the first replica")
+		pods := runningNatGwPods()
+		framework.ExpectEqual(len(pods), 2, "Both NAT gateway replicas should be running")
+		flowOwner, peer := pods[0].Name, pods[1].Name
+		// The entry an SNATed connection leaves behind: the reply comes back to the EIP.
+		_, _, err := framework.KubectlExec(framework.KubeOvnNamespace, flowOwner,
+			"conntrack", "-I", "-s", internalIP, "-d", remoteIP, "-r", remoteIP, "-q", eip.Status.IP,
+			"-p", "tcp", "--sport", natPort, "--dport", "80",
+			"--reply-port-src", "80", "--reply-port-dst", natPort,
+			"--state", "ESTABLISHED", "-u", "SEEN_REPLY", "-t", "600")
+		framework.ExpectNoError(err, "Failed to open a flow on pod %s", flowOwner)
+
+		ginkgo.By("6. Verifying the flow reaches the other replica")
+		gomega.Eventually(func() bool {
+			return flowSynced(peer)
+		}, 60*time.Second, 2*time.Second).Should(gomega.BeTrue(),
+			"Replica %s should learn the flow NATed by %s", peer, flowOwner)
+
+		ginkgo.By("7. Deleting the replica holding the flow")
+		natGwPodClient.DeleteSync(flowOwner)
+
+		ginkgo.By("8. Verifying the flow survives and the replacement replica recovers it")
+		gomega.Eventually(func() bool {
+			pods := runningNatGwPods()
+			if len(pods) != 2 {
+				framework.Logf("Expected 2 running pods, got %d", len(pods))
+				return false
+			}
+			for _, pod := range pods {
+				if pod.Name == flowOwner {
+					framework.Logf("Pod %s is still running", flowOwner)
+					return false
+				}
+				if !conntrackdReady(pod) {
+					return false
+				}
+				// The surviving replica still translates the flow, and the replacement one
+				// asked it for the table it started without.
+				if !flowSynced(pod.Name) {
+					return false
+				}
+			}
+			return true
+		}, 4*time.Minute, 5*time.Second).Should(gomega.BeTrue(),
+			"The flow should be known by the surviving replica and by the replacement one")
+	})
+
 	framework.ConformanceIt("[7] FIP/DNAT/SNAT spec update with iptables rule verification", func() {
 		f.SkipVersionPriorTo(1, 16, "FIP/DNAT/SNAT spec update was introduced in v1.16")
 

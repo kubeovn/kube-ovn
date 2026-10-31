@@ -2,6 +2,7 @@ package util
 
 import (
 	"fmt"
+	"net"
 	"reflect"
 	"strings"
 	"testing"
@@ -691,4 +692,74 @@ func TestGetImagePullSecrets(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsNatGwConntrackSyncEnabled(t *testing.T) {
+	testCases := []struct {
+		name     string
+		replicas int32
+		enabled  bool
+		expected bool
+	}{
+		{name: "enabled in HA mode", replicas: 2, enabled: true, expected: true},
+		{name: "disabled in HA mode", replicas: 2, enabled: false, expected: false},
+		{name: "enabled without HA", replicas: 1, enabled: true, expected: false},
+		{name: "enabled without replicas", replicas: 0, enabled: true, expected: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			gw := &v1.VpcNatGateway{
+				Spec: v1.VpcNatGatewaySpec{
+					Replicas:      tc.replicas,
+					ConntrackSync: v1.VpcNatGatewayConntrackSyncConfig{Enabled: tc.enabled},
+				},
+			}
+			require.Equal(t, tc.expected, IsNatGwConntrackSyncEnabled(gw))
+		})
+	}
+}
+
+func TestGenNatGwConntrackSyncGroup(t *testing.T) {
+	const uid = "0a3b2f06-5f6e-4f5c-8f60-9f5f3a2b1c4d"
+
+	group := GenNatGwConntrackSyncGroup(uid)
+	require.Equal(t, group, GenNatGwConntrackSyncGroup(uid), "the group of a gateway must not change between reconciliations")
+
+	ip := net.ParseIP(group)
+	require.NotNil(t, ip, "group %s is not an IP address", group)
+	require.NotNil(t, ip.To4(), "group %s is not an IPv4 address", group)
+	require.True(t, ip.IsMulticast(), "group %s is not a multicast address", group)
+	require.False(t, ip.IsLinkLocalMulticast(), "group %s is reserved for link-local control traffic", group)
+	require.True(t, strings.HasPrefix(group, "239."), "group %s is outside the administratively scoped block", group)
+
+	// Two gateways sharing a subnet must not exchange their conntrack entries.
+	groups := make(map[string]string, 1000)
+	for i := range 1000 {
+		other := fmt.Sprintf("%s-%d", uid, i)
+		group := GenNatGwConntrackSyncGroup(other)
+		require.NotContains(t, groups, group, "uid %s and %s derive the same group %s", other, groups[group], group)
+		groups[group] = other
+
+		octets := strings.Split(group, ".")
+		require.Len(t, octets, 4)
+		require.NotEqual(t, "255", octets[1], "group %s is in the local scope block 239.255.0.0/16", group)
+		require.NotContains(t, []string{"0", "255"}, octets[3], "group %s uses a reserved host octet", group)
+	}
+}
+
+func TestNatGwConntrackSyncGroupAndPort(t *testing.T) {
+	gw := &v1.VpcNatGateway{
+		UID:  "0a3b2f06-5f6e-4f5c-8f60-9f5f3a2b1c4d",
+		Spec: v1.VpcNatGatewaySpec{Replicas: 2},
+	}
+
+	// Nothing configured: the group is derived from the UID and the port is the default one.
+	require.Equal(t, GenNatGwConntrackSyncGroup(string(gw.UID)), NatGwConntrackSyncGroup(gw))
+	require.Equal(t, int32(NatGwConntrackSyncDefaultPort), NatGwConntrackSyncPort(gw))
+
+	gw.Spec.ConntrackSync.MulticastGroup = "239.1.2.3"
+	gw.Spec.ConntrackSync.Port = 4000
+	require.Equal(t, "239.1.2.3", NatGwConntrackSyncGroup(gw))
+	require.Equal(t, int32(4000), NatGwConntrackSyncPort(gw))
 }

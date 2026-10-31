@@ -29,8 +29,94 @@ var (
 	gwSleepResourceMemory      = resource.MustParse("10Mi")
 	gwBFDDResourceCPU          = resource.MustParse("200m")
 	gwBFDDResourceMemory       = resource.MustParse("50Mi")
+	gwConntrackdResourceCPU    = resource.MustParse("100m")
+	gwConntrackdResourceMemory = resource.MustParse("100Mi")
 	gwResourceEphemeralStorage = resource.MustParse("1Gi")
 )
+
+// natGwConntrackSyncInterface is the NAT gateway interface attached to the gateway subnet, the
+// only network every replica of a gateway shares. Conntrack entries are synchronized over it.
+const natGwConntrackSyncInterface = "eth0"
+
+// genNatGwConntrackdContainer creates a conntrackd container for HA NAT gateways. The daemon
+// multicasts the conntrack entries of its own Pod to the other replicas and writes the entries it
+// receives straight into the kernel table, so that any replica can translate a flow NATed by
+// another one.
+//
+// Only the IPv4 TCP, UDP and ICMP entries are synchronized, over an IPv4 channel: these are the
+// flows the gateway translates.
+//
+// The container shares the Pod network namespace, and therefore the conntrack table, with the
+// vpc-nat-gw container. It runs from the NAT gateway image, which is the one shipping
+// conntrack-tools.
+//
+// Parameters:
+//   - image: NAT gateway container image
+//   - group: IPv4 multicast group used to synchronize entries
+//   - port: UDP port used to synchronize entries
+//
+// Returns a container specification ready to be added to a pod template.
+func genNatGwConntrackdContainer(image, group string, port int32) corev1.Container {
+	return corev1.Container{
+		Name:            "conntrackd",
+		Image:           image,
+		ImagePullPolicy: corev1.PullIfNotPresent,
+		Command:         []string{"bash", "/kube-ovn/start-conntrackd.sh"},
+		Env: []corev1.EnvVar{
+			{
+				// Addresses conntrackd picks the source of the multicast socket from. They are
+				// the ones of the gateway subnet interface, never an EIP: EIPs move between
+				// replicas. The script keeps the IPv4 one, which a dual-stack subnet does not
+				// necessarily list first.
+				Name: "POD_IPS",
+				ValueFrom: &corev1.EnvVarSource{
+					FieldRef: &corev1.ObjectFieldSelector{
+						FieldPath: "status.podIPs",
+					},
+				},
+			},
+			{
+				Name:  "CONNTRACK_SYNC_INTERFACE",
+				Value: natGwConntrackSyncInterface,
+			},
+			{
+				Name:  "CONNTRACK_SYNC_GROUP",
+				Value: group,
+			},
+			{
+				Name:  "CONNTRACK_SYNC_PORT",
+				Value: strconv.Itoa(int(port)),
+			},
+		},
+		ReadinessProbe: &corev1.Probe{
+			Exec: &corev1.ExecAction{
+				// conntrackd -s only answers once the daemon is running and its socket is up.
+				Command: []string{"conntrackd", "-s"},
+			},
+			InitialDelaySeconds: 3,
+			PeriodSeconds:       3,
+			TimeoutSeconds:      10,
+			FailureThreshold:    1,
+		},
+		Resources: corev1.ResourceRequirements{
+			Requests: corev1.ResourceList{
+				corev1.ResourceCPU:    gwConntrackdResourceCPU,
+				corev1.ResourceMemory: gwConntrackdResourceMemory,
+			},
+			Limits: corev1.ResourceList{
+				corev1.ResourceCPU:              gwConntrackdResourceCPU,
+				corev1.ResourceMemory:           gwConntrackdResourceMemory,
+				corev1.ResourceEphemeralStorage: gwResourceEphemeralStorage,
+			},
+		},
+		// conntrackd writes entries into the Pod conntrack table and tunes the netfilter sysctls
+		// of the network namespace it shares with the gateway container.
+		SecurityContext: &corev1.SecurityContext{
+			Privileged:               new(true),
+			AllowPrivilegeEscalation: new(true),
+		},
+	}
+}
 
 // genGatewayBFDDContainer creates a BFD daemon container for VPC gateways (both Egress and NAT).
 // The container runs OpenBFDD to establish BFD sessions with the VPC's BFD port for health monitoring.
