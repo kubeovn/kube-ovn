@@ -349,6 +349,7 @@ const (
 
 	NAT                        = "nat"
 	Mangle                     = "mangle"
+	Raw                        = "raw"
 	Prerouting                 = "PREROUTING"
 	Postrouting                = "POSTROUTING"
 	Output                     = "OUTPUT"

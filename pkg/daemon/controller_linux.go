@@ -138,7 +138,9 @@ func (c *Controller) initRuntime() error {
 	c.flowCache = make(map[string]map[string]LbServiceRules)
 	c.flowChan = make(chan struct{}, 1)
 
-	if c.protocol == kubeovnv1.ProtocolIPv4 || c.protocol == kubeovnv1.ProtocolDual {
+	// Initialize both clients before workers start; a later node_networks update
+	// may add an encap family that is absent from the overlay.
+	{
 		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv4)
 		if err != nil {
 			klog.Error(err)
@@ -161,7 +163,7 @@ func (c *Controller) initRuntime() error {
 		c.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
 		c.k8siptables[kubeovnv1.ProtocolIPv4] = k8siptables.New(k8siptables.ProtocolIPv4)
 	}
-	if c.protocol == kubeovnv1.ProtocolIPv6 || c.protocol == kubeovnv1.ProtocolDual {
+	{
 		ipt, err := iptables.NewWithProtocol(iptables.ProtocolIPv6)
 		if err != nil {
 			klog.Error(err)

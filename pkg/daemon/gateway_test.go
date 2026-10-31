@@ -9,10 +9,14 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	listerv1 "k8s.io/client-go/listers/core/v1"
+	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovninformerfactory "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
+	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -259,4 +263,241 @@ func TestProviderExistsAllowsOnSubnetListError(t *testing.T) {
 	subnet, ok := handler.providerExists("attachnet-a.default.ovn", "")
 	require.True(t, ok)
 	require.Nil(t, subnet)
+}
+
+func TestGetTunnelPort(t *testing.T) {
+	cases := []struct {
+		name        string
+		networkType string
+		expected    int
+	}{
+		{
+			name:        "geneve network type",
+			networkType: util.NetworkTypeGeneve,
+			expected:    6081,
+		},
+		{
+			name:        "vxlan network type",
+			networkType: util.NetworkTypeVxlan,
+			expected:    4789,
+		},
+		{
+			name:        "vlan network type",
+			networkType: util.NetworkTypeVlan,
+			expected:    0,
+		},
+		{
+			name:        "stt network type",
+			networkType: util.NetworkTypeStt,
+			expected:    0,
+		},
+		{
+			name:        "empty network type defaults to 0",
+			networkType: "",
+			expected:    0,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := &Controller{
+				config: &Configuration{
+					NetworkType: tc.networkType,
+				},
+			}
+			require.Equal(t, tc.expected, c.getTunnelPort())
+		})
+	}
+
+	t.Run("nil config returns 0", func(t *testing.T) {
+		c := &Controller{}
+		require.Equal(t, 0, c.getTunnelPort())
+	})
+}
+
+func TestGetNodeEncapIPs(t *testing.T) {
+	t.Run("single plane node without annotation", func(t *testing.T) {
+		node := &corev1.Node{
+			Name: "node-single",
+			Status: corev1.NodeStatus{
+				Addresses: []corev1.NodeAddress{
+					{Type: corev1.NodeInternalIP, Address: "192.168.1.10"},
+					{Type: corev1.NodeHostName, Address: "node-single"},
+				},
+			},
+		}
+		require.Equal(t, []string{"192.168.1.10"}, getNodeEncapIPs(node))
+	})
+
+	t.Run("multi-encap node with node_networks annotation", func(t *testing.T) {
+		node := &corev1.Node{
+			Name: "node-multi",
+			Annotations: map[string]string{
+				util.NodeNetworksAnnotation: `{"storage": "10.0.1.20", "fast-path": "10.0.2.20", "v6net": "fd00::20"}`,
+			},
+			Status: corev1.NodeStatus{
+				Addresses: []corev1.NodeAddress{
+					{Type: corev1.NodeInternalIP, Address: "192.168.1.20"},
+				},
+			},
+		}
+		ips := getNodeEncapIPs(node)
+		require.Contains(t, ips, "192.168.1.20")
+		require.Contains(t, ips, "10.0.1.20")
+		require.Contains(t, ips, "10.0.2.20")
+		require.Contains(t, ips, "fd00::20")
+		require.Len(t, ips, 4)
+	})
+
+	t.Run("duplicate and invalid annotation tolerance", func(t *testing.T) {
+		node := &corev1.Node{
+			Name: "node-dup",
+			Annotations: map[string]string{
+				util.NodeNetworksAnnotation: `{"dup": "192.168.1.30"}`,
+			},
+			Status: corev1.NodeStatus{
+				Addresses: []corev1.NodeAddress{
+					{Type: corev1.NodeInternalIP, Address: "192.168.1.30"},
+				},
+			},
+		}
+		require.Equal(t, []string{"192.168.1.30"}, getNodeEncapIPs(node))
+
+		// Invalid JSON annotation should fallback gracefully to NodeInternalIP
+		node.Annotations[util.NodeNetworksAnnotation] = "invalid json"
+		require.Equal(t, []string{"192.168.1.30"}, getNodeEncapIPs(node))
+	})
+
+	t.Run("nil node returns nil", func(t *testing.T) {
+		require.Nil(t, getNodeEncapIPs(nil))
+	})
+}
+
+func TestGetOtherNodes_MultiEncap(t *testing.T) {
+	node1 := &corev1.Node{
+		Name: "node-1",
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{Type: corev1.NodeInternalIP, Address: "192.168.1.1"},
+			},
+		},
+	}
+	node2 := &corev1.Node{
+		Name: "node-2",
+		Annotations: map[string]string{
+			util.NodeNetworksAnnotation: `{"storage": "10.0.1.2", "v6net": "fd00::2"}`,
+		},
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{Type: corev1.NodeInternalIP, Address: "192.168.1.2"},
+			},
+		},
+	}
+	node3 := &corev1.Node{
+		Name: "node-3",
+		Status: corev1.NodeStatus{
+			Addresses: []corev1.NodeAddress{
+				{Type: corev1.NodeInternalIP, Address: "192.168.1.3"},
+			},
+		},
+	}
+
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(node1))
+	require.NoError(t, indexer.Add(node2))
+	require.NoError(t, indexer.Add(node3))
+
+	c := &Controller{
+		config: &Configuration{
+			NodeName: "node-1", // node-1 is self, should be excluded
+		},
+		nodesLister: listerv1.NewNodeLister(indexer),
+	}
+
+	v4Nodes, err := c.getOtherNodes(kubeovnv1.ProtocolIPv4)
+	require.NoError(t, err)
+	require.NotContains(t, v4Nodes, "192.168.1.1") // self excluded
+	require.Contains(t, v4Nodes, "192.168.1.2")    // node-2 primary
+	require.Contains(t, v4Nodes, "10.0.1.2")       // node-2 multi-encap
+	require.Contains(t, v4Nodes, "192.168.1.3")    // node-3 primary
+	require.Len(t, v4Nodes, 3)
+
+	v6Nodes, err := c.getOtherNodes(kubeovnv1.ProtocolIPv6)
+	require.NoError(t, err)
+	require.Equal(t, []string{"fd00::2"}, v6Nodes)
+}
+
+type tunnelPeerVswitch struct {
+	ovs.Vswitch
+	ports      []vswitch.Port
+	interfaces []vswitch.Interface
+	err        error
+}
+
+func (f *tunnelPeerVswitch) ListPort(filter func(*vswitch.Port) bool) ([]vswitch.Port, error) {
+	var result []vswitch.Port
+	for _, port := range f.ports {
+		if filter == nil || filter(&port) {
+			result = append(result, port)
+		}
+	}
+	return result, f.err
+}
+
+func (f *tunnelPeerVswitch) ListInterface(filter func(*vswitch.Interface) bool) ([]vswitch.Interface, error) {
+	var result []vswitch.Interface
+	for _, iface := range f.interfaces {
+		if filter == nil || filter(&iface) {
+			result = append(result, iface)
+		}
+	}
+	return result, f.err
+}
+
+func TestGetOtherNodesTunnelInterface(t *testing.T) {
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(&corev1.Node{Name: "self"}))
+	client := &tunnelPeerVswitch{
+		ports: []vswitch.Port{{ExternalIDs: map[string]string{"ovn-chassis-id": "peer"}, Interfaces: []string{"tunnel", "v6", "flow"}}},
+		interfaces: []vswitch.Interface{
+			{UUID: "tunnel", Type: "geneve", Options: map[string]string{"remote_ip": "172.18.0.2"}},
+			{UUID: "v6", Type: "geneve", Options: map[string]string{"remote_ip": "fd00::2"}},
+			{UUID: "flow", Type: "geneve", Options: map[string]string{"remote_ip": "flow"}},
+			{UUID: "foreign", Type: "geneve", Options: map[string]string{"remote_ip": "172.18.0.3"}},
+		},
+	}
+	c := &Controller{config: &Configuration{NodeName: "self", NetworkType: "geneve"}, nodesLister: listerv1.NewNodeLister(indexer), vswitchClient: client}
+	ips, err := c.getOtherNodes(kubeovnv1.ProtocolIPv4)
+	require.NoError(t, err)
+	require.Equal(t, []string{"172.18.0.2"}, ips)
+	ips, err = c.getOtherNodes(kubeovnv1.ProtocolIPv6)
+	require.NoError(t, err)
+	require.Equal(t, []string{"fd00::2"}, ips)
+	client.interfaces = nil
+	ips, err = c.getOtherNodes(kubeovnv1.ProtocolIPv4)
+	require.NoError(t, err)
+	require.Empty(t, ips)
+	client.err = errors.New("OVS unavailable")
+	_, err = c.getOtherNodes(kubeovnv1.ProtocolIPv4)
+	require.ErrorContains(t, err, "OVS unavailable")
+}
+
+func TestGetLocalEncapIPs(t *testing.T) {
+	c := &Controller{config: &Configuration{
+		DefaultEncapIP: "192.0.2.10",
+		NodeNetworks:   map[string]string{"default": "192.0.2.10", "storage": "198.51.100.10", "v6": "2001:db8::10", "invalid": "not-an-ip"},
+	}}
+	require.Equal(t, []string{"192.0.2.10", "198.51.100.10", "2001:db8::10"}, c.getLocalEncapIPs())
+	c.config.SetDefaultEncapIP("192.0.2.20")
+	require.Contains(t, c.getLocalEncapIPs(), "192.0.2.20")
+	require.Empty(t, (&Controller{}).getLocalEncapIPs())
+}
+
+func TestTunnelProtocolsIncludeUnderlayFamily(t *testing.T) {
+	require.Equal(t, []string{kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6},
+		getTunnelProtocols(kubeovnv1.ProtocolIPv6, []string{"192.0.2.10"}))
+	require.Equal(t, []string{kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6},
+		getTunnelProtocols(kubeovnv1.ProtocolIPv4, []string{"2001:db8::10"}))
+	require.Equal(t, []string{kubeovnv1.ProtocolIPv4},
+		getTunnelProtocols(kubeovnv1.ProtocolIPv4, []string{"192.0.2.10"}))
 }

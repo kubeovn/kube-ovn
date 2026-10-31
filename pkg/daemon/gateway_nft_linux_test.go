@@ -3,9 +3,12 @@ package daemon
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
+	"os"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +33,42 @@ func TestRenderNFTBaseSchema(t *testing.T) {
 	require.Contains(t, dump, "add chain ip kube-ovn nat-host-service { type nat hook postrouting priority 90 ;")
 	require.Contains(t, dump, "add chain ip kube-ovn nat-postrouting { type nat hook postrouting priority 110 ;")
 	require.Contains(t, dump, "add chain ip kube-ovn tproxy-output { type route hook output priority -150 ;")
+	require.Contains(t, dump, "add chain ip kube-ovn raw-prerouting { type filter hook prerouting priority -300 ;")
+	require.Contains(t, dump, "add chain ip kube-ovn raw-output { type filter hook output priority -300 ;")
+}
+
+func TestRenderNFTTunnelNoTrack(t *testing.T) {
+	t.Run("IPv4 Geneve 6081 notrack", func(t *testing.T) {
+		dump := renderTestSnapshot(t, nftFamilySnapshot{
+			Family:       knftables.IPv4Family,
+			Table:        nftGatewayTable,
+			TunnelPort:   6081,
+			OtherNodeIPs: []string{"192.168.1.11"},
+		})
+		require.Contains(t, dump, "add rule ip kube-ovn raw-prerouting udp dport 6081 ip saddr @other-node-ips ip daddr @local-encap-ips notrack")
+		require.Contains(t, dump, "add rule ip kube-ovn raw-output udp dport 6081 ip saddr @local-encap-ips ip daddr @other-node-ips notrack")
+	})
+
+	t.Run("IPv6 VXLAN 4789 notrack", func(t *testing.T) {
+		dump := renderTestSnapshot(t, nftFamilySnapshot{
+			Family:       knftables.IPv6Family,
+			Table:        nftGatewayTable,
+			TunnelPort:   4789,
+			OtherNodeIPs: []string{"fd00::11"},
+		})
+		require.Contains(t, dump, "add rule ip6 kube-ovn raw-prerouting udp dport 4789 ip6 saddr @other-node-ips ip6 daddr @local-encap-ips notrack")
+		require.Contains(t, dump, "add rule ip6 kube-ovn raw-output udp dport 4789 ip6 saddr @local-encap-ips ip6 daddr @other-node-ips notrack")
+	})
+
+	t.Run("No tunnel 0 port", func(t *testing.T) {
+		dump := renderTestSnapshot(t, nftFamilySnapshot{
+			Family:       knftables.IPv4Family,
+			Table:        nftGatewayTable,
+			TunnelPort:   0,
+			OtherNodeIPs: []string{"192.168.1.11"},
+		})
+		require.NotContains(t, dump, "notrack")
+	})
 }
 
 func TestRenderNFTDualStackSingleTransaction(t *testing.T) {
@@ -602,4 +641,137 @@ func BenchmarkNFTSnapshotDiff(b *testing.B) {
 	for range b.N {
 		_ = backend.renderDiff(oldSnapshot, newSnapshot)
 	}
+}
+
+func TestNFTTunnelNoTrackReconcile(t *testing.T) {
+	for _, family := range []knftables.Family{knftables.IPv4Family, knftables.IPv6Family} {
+		t.Run(string(family), func(t *testing.T) {
+			fake := knftables.NewFake("", "")
+			desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{Family: family, Table: nftGatewayTable, TunnelPort: 6081}}}
+			backend := &nftGatewayBackend{writer: fake, buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil }}
+			require.NoError(t, backend.Reconcile(context.Background()))
+			for i := range 3 {
+				desired.Families[0].SubnetCounters = []nftSubnetCounter{{Name: "subnet", CIDR: "10.0.0.0/24", UID: strings.Repeat("a", i+1)}}
+				require.NoError(t, backend.Reconcile(context.Background()))
+				require.Len(t, fake.Tables[family][nftGatewayTable].Chains["raw-prerouting"].Rules, 1)
+				require.Len(t, fake.Tables[family][nftGatewayTable].Chains["raw-output"].Rules, 1)
+			}
+			for _, port := range []int{4789, 0, 6081} {
+				desired.Families[0].TunnelPort = port
+				require.NoError(t, backend.Reconcile(context.Background()))
+				for _, chain := range []string{"raw-prerouting", "raw-output"} {
+					rules := fake.Tables[family][nftGatewayTable].Chains[chain].Rules
+					if port == 0 {
+						require.Empty(t, rules)
+					} else {
+						require.Len(t, rules, 1)
+						require.Contains(t, rules[0].Rule, fmt.Sprintf("udp dport %d", port))
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestNFTTunnelNoTrackNetfilter(t *testing.T) {
+	if os.Getenv("KUBE_OVN_TEST_NETFILTER") != "true" {
+		t.Skip("requires isolated Linux netfilter environment")
+	}
+	writer, err := knftables.New("", "", knftables.EmulateDestroy)
+	require.NoError(t, err)
+	for _, family := range []knftables.Family{knftables.IPv4Family, knftables.IPv6Family} {
+		t.Run(string(family), func(t *testing.T) {
+			table := "kube-ovn-notrack-test"
+			peer, cidr := "172.18.0.2", "10.0.0.0/24"
+			if family == knftables.IPv6Family {
+				peer, cidr = "fd00::2", "fd01::/64"
+			}
+			desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{Family: family, Table: table, TunnelPort: 6081, OtherNodeIPs: []string{peer}}}}
+			backend := &nftGatewayBackend{writer: writer, buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil }}
+			t.Cleanup(func() {
+				tx := writer.NewTransaction()
+				tx.Destroy(&knftables.Table{Family: family, Name: table})
+				require.NoError(t, writer.Run(context.Background(), tx))
+			})
+			require.NoError(t, backend.Reconcile(context.Background()))
+			for i, port := range []int{6081, 4789, 0, 6081} {
+				desired.Families[0].TunnelPort = port
+				desired.Families[0].SubnetCounters = []nftSubnetCounter{{UID: strconv.Itoa(i), Name: "subnet", CIDR: cidr}}
+				require.NoError(t, backend.Reconcile(context.Background()))
+				reader, err := knftables.New(family, table)
+				require.NoError(t, err)
+				for _, chain := range []string{"raw-prerouting", "raw-output"} {
+					rules, err := reader.ListRules(context.Background(), chain)
+					require.NoError(t, err)
+					if port == 0 {
+						require.Empty(t, rules)
+					} else {
+						require.Len(t, rules, 1)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestNFTLocalEncapAddressChange(t *testing.T) {
+	fake := knftables.NewFake("", "")
+	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{Family: knftables.IPv4Family, Table: nftGatewayTable, TunnelPort: 6081, LocalEncapIPs: []string{"192.0.2.10"}}}}
+	backend := &nftGatewayBackend{writer: fake, buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil }}
+	require.NoError(t, backend.Reconcile(context.Background()))
+	desired.Families[0].LocalEncapIPs[0] = "192.0.2.20"
+	require.NoError(t, backend.Reconcile(context.Background()))
+	require.Contains(t, fake.LastTransaction.String(), "delete element ip kube-ovn local-encap-ips { 192.0.2.10 }")
+	require.Contains(t, fake.LastTransaction.String(), "add element ip kube-ovn local-encap-ips { 192.0.2.20 }")
+	require.Len(t, fake.Tables[knftables.IPv4Family][nftGatewayTable].Chains["raw-prerouting"].Rules, 1)
+}
+
+func TestNFTTunnelFamilyRemoval(t *testing.T) {
+	fake := knftables.NewFake("", "")
+	input := nftSnapshotInput{Protocol: "IPv6", TunnelPort: 6081, LocalEncapIPs: []string{"192.0.2.10"}, TunnelPeerIPs: []string{"192.0.2.20"}}
+	backend := &nftGatewayBackend{writer: fake, buildSnapshot: func() (gatewayNFTSnapshot, error) { return buildNFTGatewaySnapshot(input) }}
+	require.NoError(t, backend.Reconcile(context.Background()))
+	require.NotNil(t, fake.Tables[knftables.IPv4Family][nftGatewayTable])
+	input.LocalEncapIPs = []string{"2001:db8::10"}
+	input.TunnelPeerIPs = []string{"2001:db8::20"}
+	require.NoError(t, backend.Reconcile(context.Background()))
+	require.Nil(t, fake.Tables[knftables.IPv4Family][nftGatewayTable])
+	require.NotNil(t, fake.Tables[knftables.IPv6Family][nftGatewayTable])
+}
+
+func TestNFTAuditRemovesInactiveTunnelFamily(t *testing.T) {
+	fake := knftables.NewFake("", "")
+	old := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{Family: knftables.IPv4Family, Table: nftGatewayTable, TunnelOnly: true, TunnelPort: 6081}}}
+	backend := newNFTGatewayBackendForTest(fake)
+	require.NoError(t, fake.Run(context.Background(), backend.renderFull(old)))
+	reader := knftables.NewFake(knftables.IPv4Family, nftGatewayTable)
+	require.NoError(t, reader.Run(context.Background(), backend.renderFull(old)))
+	backend.readers = map[knftables.Family]knftables.Interface{knftables.IPv4Family: reader}
+	backend.buildSnapshot = func() (gatewayNFTSnapshot, error) {
+		return buildNFTGatewaySnapshot(nftSnapshotInput{Protocol: "IPv6", TunnelPort: 6081, LocalEncapIPs: []string{"2001:db8::10"}})
+	}
+	require.NoError(t, backend.Reconcile(context.Background()))
+	require.Nil(t, fake.Tables[knftables.IPv4Family][nftGatewayTable])
+	require.NotNil(t, fake.Tables[knftables.IPv6Family][nftGatewayTable])
+}
+
+func TestNFTTunnelOnlyAuditIsStable(t *testing.T) {
+	fake := knftables.NewFake(knftables.IPv4Family, nftGatewayTable)
+	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{Family: knftables.IPv4Family, Table: nftGatewayTable, TunnelOnly: true, TunnelPort: 6081, LocalEncapIPs: []string{"192.0.2.10"}, OtherNodeIPs: []string{"192.0.2.20"}}}}
+	backend := &nftGatewayBackend{writer: fake, readers: map[knftables.Family]knftables.Interface{knftables.IPv4Family: fake}, buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil }, checkDefinitions: func(context.Context, nftFamilySnapshot) (bool, error) { return true, nil }, auditInterval: time.Minute}
+	require.NoError(t, backend.Reconcile(context.Background()))
+	before := testutil.ToFloat64(metricGatewayNFTTransactions)
+	backend.lastAudit = time.Now().Add(-2 * time.Minute)
+	require.NoError(t, backend.Reconcile(context.Background()))
+	require.Equal(t, before, testutil.ToFloat64(metricGatewayNFTTransactions))
+}
+
+func TestNFTTunnelOnlyNodeAddressChange(t *testing.T) {
+	fake := knftables.NewFake("", "")
+	desired := gatewayNFTSnapshot{Families: []nftFamilySnapshot{{Family: knftables.IPv4Family, Table: nftGatewayTable, TunnelOnly: true, TunnelPort: 6081, NodeInternalIP: "192.0.2.10"}}}
+	backend := &nftGatewayBackend{writer: fake, buildSnapshot: func() (gatewayNFTSnapshot, error) { return desired, nil }}
+	require.NoError(t, backend.Reconcile(context.Background()))
+	desired.Families[0].NodeInternalIP = "192.0.2.20"
+	require.NoError(t, backend.Reconcile(context.Background()))
+	require.NotContains(t, fake.Tables[knftables.IPv4Family][nftGatewayTable].Chains, "nat-postrouting")
 }

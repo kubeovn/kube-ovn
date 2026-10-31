@@ -36,6 +36,7 @@ const (
 	SubnetDistributedGwSet     = "subnets-distributed-gw"
 	LocalPodSet                = "local-pod-ip-nat"
 	OtherNodeSet               = "other-node"
+	LocalEncapSet              = "local-encap-ips"
 	IPSetPrefix                = "ovn"
 	NatOutGoingPolicySubnetSet = "subnets-nat-policy"
 	NatOutGoingPolicyRuleSet   = "natpr-"
@@ -44,6 +45,7 @@ const (
 const (
 	NAT                        = util.NAT
 	MANGLE                     = util.Mangle
+	RAW                        = util.Raw
 	Prerouting                 = util.Prerouting
 	Postrouting                = util.Postrouting
 	Output                     = util.Output
@@ -78,12 +80,7 @@ type policyRouteMeta struct {
 }
 
 func (c *Controller) setIPSet() error {
-	protocols := make([]string, 0, 2)
-	if c.protocol == kubeovnv1.ProtocolDual {
-		protocols = append(protocols, kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
-	} else {
-		protocols = append(protocols, c.protocol)
-	}
+	protocols := getTunnelProtocols(c.protocol, c.getLocalEncapIPs())
 
 	allSubnets, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -93,6 +90,12 @@ func (c *Controller) setIPSet() error {
 
 	for _, protocol := range protocols {
 		if c.ipsets[protocol] == nil {
+			continue
+		}
+		if !slices.Contains(getProtocols(c.protocol), protocol) {
+			if err := c.setTunnelIPSets(protocol); err != nil {
+				return err
+			}
 			continue
 		}
 		services := c.getServicesCIDR(protocol)
@@ -134,6 +137,17 @@ func (c *Controller) setIPSet() error {
 			SetID:   OtherNodeSet,
 			Type:    ipsets.IPSetTypeHashNet,
 		}, otherNode)
+		var localEncapIPs []string
+		for _, ip := range c.getLocalEncapIPs() {
+			if util.CheckProtocol(ip) == protocol {
+				localEncapIPs = append(localEncapIPs, ip)
+			}
+		}
+		c.ipsets[protocol].AddOrReplaceIPSet(ipsets.IPSetMetadata{
+			MaxSize: 1048576,
+			SetID:   LocalEncapSet,
+			Type:    ipsets.IPSetTypeHashIP,
+		}, localEncapIPs)
 		if err := c.reconcileNatOutGoingPolicyIPset(allSubnets, protocol); err != nil {
 			return err
 		}
@@ -143,18 +157,18 @@ func (c *Controller) setIPSet() error {
 }
 
 func (c *Controller) gcIPSet() {
-	protocols := make([]string, 0, 2)
-	if c.protocol == kubeovnv1.ProtocolDual {
-		protocols = append(protocols, kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
-	} else {
-		protocols = append(protocols, c.protocol)
-	}
-
-	for _, protocol := range protocols {
-		if c.ipsets[protocol] == nil {
+	required := getTunnelProtocols(c.protocol, c.getLocalEncapIPs())
+	for _, protocol := range getProtocols(kubeovnv1.ProtocolDual) {
+		manager := c.ipsets[protocol]
+		if manager == nil {
 			continue
 		}
-		c.ipsets[protocol].ApplyDeletions()
+		if !slices.Contains(required, protocol) {
+			manager.RemoveIPSet(OtherNodeSet)
+			manager.RemoveIPSet(LocalEncapSet)
+			manager.ApplyUpdates()
+		}
+		manager.ApplyDeletions()
 	}
 }
 
@@ -739,6 +753,24 @@ func generateServiceNodePortLocalRules(services []*v1.Service, protocol, nodeMat
 	return rules
 }
 
+func generateTunnelNoTrackRules(tunnelPort int, nodeMatchSet, localMatchSet string) (activeRules, obsoleteRules []util.IPTableRule) {
+	if tunnelPort != 0 {
+		activeRules = []util.IPTableRule{
+			{Table: RAW, Chain: Prerouting, Rule: strings.Fields(fmt.Sprintf(`-p udp -m udp --dport %d -m set --match-set %s src -m set --match-set %s dst -j NOTRACK`, tunnelPort, nodeMatchSet, localMatchSet))},
+			{Table: RAW, Chain: Output, Rule: strings.Fields(fmt.Sprintf(`-p udp -m udp --dport %d -m set --match-set %s src -m set --match-set %s dst -j NOTRACK`, tunnelPort, localMatchSet, nodeMatchSet))},
+		}
+	}
+	for _, port := range []int{6081, 4789, 8472} {
+		if port != tunnelPort {
+			obsoleteRules = append(obsoleteRules,
+				util.IPTableRule{Table: RAW, Chain: Prerouting, Rule: strings.Fields(fmt.Sprintf(`-p udp -m udp --dport %d -m set --match-set %s src -m set --match-set %s dst -j NOTRACK`, port, nodeMatchSet, localMatchSet))},
+				util.IPTableRule{Table: RAW, Chain: Output, Rule: strings.Fields(fmt.Sprintf(`-p udp -m udp --dport %d -m set --match-set %s src -m set --match-set %s dst -j NOTRACK`, port, localMatchSet, nodeMatchSet))},
+			)
+		}
+	}
+	return activeRules, obsoleteRules
+}
+
 func (c *Controller) setIptables() error {
 	klog.V(3).Infoln("start to set up iptables")
 	node, err := c.nodesLister.Get(c.config.NodeName)
@@ -886,10 +918,10 @@ func (c *Controller) setIptables() error {
 		var kubeProxyIpsetProtocol, matchset, svcMatchset, nodeMatchSet string
 		var obsoleteRules, iptablesRules []util.IPTableRule
 		if protocol == kubeovnv1.ProtocolIPv4 {
-			iptablesRules = v4Rules
+			iptablesRules = slices.Clone(v4Rules)
 			matchset, svcMatchset, nodeMatchSet = "ovn40subnets", "ovn40services", "ovn40"+OtherNodeSet
 		} else {
-			iptablesRules = v6Rules
+			iptablesRules = slices.Clone(v6Rules)
 			kubeProxyIpsetProtocol, matchset, svcMatchset, nodeMatchSet = "6-", "ovn60subnets", "ovn60services", "ovn60"+OtherNodeSet
 		}
 
@@ -917,11 +949,11 @@ func (c *Controller) setIptables() error {
 		}
 
 		if nodeIP := nodeIPs[protocol]; nodeIP != "" {
-			obsoleteRules = []util.IPTableRule{
-				{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))},
-				{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))},
-				{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))},
-			}
+			obsoleteRules = append(obsoleteRules,
+				util.IPTableRule{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset))},
+				util.IPTableRule{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m mark --mark 0x4000/0x4000 -j MASQUERADE`, nodeIP))},
+				util.IPTableRule{Table: NAT, Chain: Postrouting, Rule: strings.Fields(fmt.Sprintf(`! -s %s -m set ! --match-set %s src -m set --match-set %s dst -j MASQUERADE`, nodeIP, matchset, matchset))},
+			)
 
 			rules := make([]util.IPTableRule, len(iptablesRules)+1)
 			copy(rules, iptablesRules[:1])
@@ -1009,7 +1041,8 @@ func (c *Controller) setIptables() error {
 
 		var natPreroutingRules, natPostroutingRules, ovnMasqueradeRules, manglePostroutingRules []util.IPTableRule
 		for _, rule := range iptablesRules {
-			if rule.Table == NAT {
+			switch rule.Table {
+			case NAT:
 				if rule.Rule[len(rule.Rule)-1] == "MASQUERADE" || slices.Contains(rule.Rule, "SNAT") {
 					rule.Rule = append(rule.Rule, "--random-fully")
 				}
@@ -1025,7 +1058,7 @@ func (c *Controller) setIptables() error {
 					ovnMasqueradeRules = append(ovnMasqueradeRules, rule)
 					continue
 				}
-			} else if rule.Table == MANGLE {
+			case MANGLE:
 				if rule.Chain == OvnPostrouting {
 					manglePostroutingRules = append(manglePostroutingRules, rule)
 					continue
@@ -1097,7 +1130,7 @@ func (c *Controller) setIptables() error {
 }
 
 func (c *Controller) cleanupKubeOVNIptablesAndIPSets() error {
-	for _, protocol := range getProtocols(c.protocol) {
+	for _, protocol := range getProtocols(kubeovnv1.ProtocolDual) {
 		if c.iptables == nil {
 			break
 		}
@@ -1112,6 +1145,18 @@ func (c *Controller) cleanupKubeOVNIptablesAndIPSets() error {
 
 		for _, ipt := range iptInstances {
 			if ipt == nil {
+				continue
+			}
+
+			if !slices.Contains(getProtocols(c.protocol), protocol) {
+				prefix := "ovn40"
+				if protocol == kubeovnv1.ProtocolIPv6 {
+					prefix = "ovn60"
+				}
+				_, rules := generateTunnelNoTrackRules(0, prefix+OtherNodeSet, prefix+LocalEncapSet)
+				for _, rule := range rules {
+					bestEffortDeleteIptablesRule(ipt, rule)
+				}
 				continue
 			}
 
@@ -1178,7 +1223,7 @@ func (c *Controller) cleanupKubeOVNIptablesAndIPSets() error {
 			manager.RemoveIPSet(formatIPsetUnPrefix(name))
 		}
 	}
-	for _, protocol := range getProtocols(c.protocol) {
+	for _, protocol := range getProtocols(kubeovnv1.ProtocolDual) {
 		if manager := c.ipsets[protocol]; manager != nil {
 			manager.QueueResync()
 			manager.ApplyUpdates()
@@ -1205,11 +1250,13 @@ func getKubeOVNBaseIptablesRulesForCleanup(protocol string) []util.IPTableRule {
 	svcMatchset := "ovn40services"
 	nodePortPrefix := ""
 	nodeMatchset := "ovn40" + OtherNodeSet
+	localMatchSet := "ovn40" + LocalEncapSet
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		matchset = "ovn60subnets"
 		svcMatchset = "ovn60services"
 		nodePortPrefix = "6-"
 		nodeMatchset = "ovn60" + OtherNodeSet
+		localMatchSet = "ovn60" + LocalEncapSet
 	}
 
 	nodePortRules := make([]util.IPTableRule, 0, 4)
@@ -1239,6 +1286,8 @@ func getKubeOVNBaseIptablesRulesForCleanup(protocol string) []util.IPTableRule {
 		{Table: "filter", Chain: "OUTPUT", Rule: strings.Fields("-p udp -m udp --dport 4789 -j MARK --set-xmark 0x0")},
 	}
 
+	_, tunnelRules := generateTunnelNoTrackRules(0, nodeMatchset, localMatchSet)
+	rules = append(rules, tunnelRules...)
 	return append(rules, nodePortRules...)
 }
 
@@ -1557,6 +1606,15 @@ func clearObsoleteIptablesChain(ipt *iptables.IPTables, table, chain, parent str
 }
 
 func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IPTableRule) error {
+	activeIpt := c.iptables[protocol]
+	if activeIpt != nil {
+		for _, rule := range rules {
+			if rule.Table == RAW {
+				bestEffortDeleteIptablesRule(activeIpt, rule)
+			}
+		}
+	}
+
 	if c.iptablesObsolete == nil || c.iptablesObsolete[protocol] == nil {
 		return nil
 	}
@@ -1640,13 +1698,31 @@ func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IP
 	}
 
 	ipt := c.iptablesObsolete[protocol]
+	nodeMatchSet := "ovn40" + OtherNodeSet
+	localMatchSet := "ovn40" + LocalEncapSet
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		nodeMatchSet = "ovn60" + OtherNodeSet
+		localMatchSet = "ovn60" + LocalEncapSet
+	}
+	_, tunnelRules := generateTunnelNoTrackRules(0, nodeMatchSet, localMatchSet)
+	for _, rule := range tunnelRules {
+		bestEffortDeleteIptablesRule(ipt, rule)
+	}
 	for _, rule := range obsoleteRules {
+		if rule.Table == RAW {
+			bestEffortDeleteIptablesRule(ipt, rule)
+			continue
+		}
 		if err := deleteIptablesRule(ipt, rule); err != nil {
 			klog.Error(err)
 			return err
 		}
 	}
 	for _, rule := range rules {
+		if rule.Table == RAW {
+			bestEffortDeleteIptablesRule(ipt, rule)
+			continue
+		}
 		if err := deleteIptablesRule(ipt, rule); err != nil {
 			klog.Error(err)
 			return err
@@ -1697,6 +1773,9 @@ func (c *Controller) cleanObsoleteIptablesRules(protocol string, rules []util.IP
 func (c *Controller) setOvnSubnetGatewayMetric() {
 	nodeName := os.Getenv(util.EnvNodeName)
 	for proto, iptables := range c.iptables {
+		if !slices.Contains(getProtocols(c.protocol), proto) {
+			continue
+		}
 		rules, err := iptables.ListWithCounters("filter", "FORWARD")
 		if err != nil {
 			klog.Errorf("get proto %s iptables failed with err %v", proto, err)

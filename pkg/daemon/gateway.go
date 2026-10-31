@@ -15,6 +15,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -175,23 +176,130 @@ func (c *Controller) getDefaultVpcSubnetsCIDR(subnets []*kubeovnv1.Subnet, proto
 	return ret, subnetMap
 }
 
+// getNodeEncapIPs returns tunnel address candidates advertised by a node, including
+// NodeInternalIP and any additional plane addresses specified via NodeNetworksAnnotation.
+func getNodeEncapIPs(node *v1.Node) []string {
+	if node == nil {
+		return nil
+	}
+	var ips []string
+	for _, addr := range node.Status.Addresses {
+		if addr.Type == v1.NodeInternalIP && !slices.Contains(ips, addr.Address) {
+			ips = append(ips, addr.Address)
+		}
+	}
+	if node.Annotations != nil {
+		if networks, err := parseNodeNetworks(node); err == nil {
+			for _, ip := range networks {
+				if !slices.Contains(ips, ip) {
+					ips = append(ips, ip)
+				}
+			}
+		}
+	}
+	return ips
+}
+
+// getTunnelProtocols includes the overlay families for cleanup and every active
+// local encap family. Tunnel traffic need not use the overlay address family.
+func getTunnelProtocols(overlay string, localIPs []string) []string {
+	var protocols []string
+	for _, protocol := range []string{kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6} {
+		if overlay == protocol || overlay == kubeovnv1.ProtocolDual || overlay == "" && protocol == kubeovnv1.ProtocolIPv4 {
+			protocols = append(protocols, protocol)
+			continue
+		}
+		for _, ip := range localIPs {
+			if util.CheckProtocol(ip) == protocol {
+				protocols = append(protocols, protocol)
+				break
+			}
+		}
+	}
+	return protocols
+}
+
+// getLocalEncapIPs returns only configured tunnel addresses, not all local IPs:
+// a local Service VIP must not bypass conntrack merely because it uses a tunnel port.
+func (c *Controller) getLocalEncapIPs() []string {
+	if c.config == nil {
+		return nil
+	}
+	c.config.nodeNetworksMutex.RLock()
+	defer c.config.nodeNetworksMutex.RUnlock()
+	var ips []string
+	if ip := net.ParseIP(c.config.DefaultEncapIP); ip != nil {
+		ips = append(ips, ip.String())
+	}
+	for _, address := range c.config.NodeNetworks {
+		if ip := net.ParseIP(address); ip != nil && !slices.Contains(ips, ip.String()) {
+			ips = append(ips, ip.String())
+		}
+	}
+	slices.Sort(ips)
+	return ips
+}
+
+// getTunnelPeerIPs supplements node addresses with the actual OVN tunnel peers.
+// An explicitly selected tunnel interface need not use the node's InternalIP.
+func (c *Controller) getTunnelPeerIPs() ([]string, error) {
+	if c.vswitchClient == nil || c.getTunnelPort() == 0 {
+		return nil, nil
+	}
+	ports, err := c.vswitchClient.ListPort(func(port *vswitch.Port) bool {
+		peer := port.ExternalIDs["ovn-chassis-id"]
+		return peer != "" && peer != "flow"
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list OVN tunnel ports: %w", err)
+	}
+	owned := make(map[string]struct{})
+	for _, port := range ports {
+		for _, id := range port.Interfaces {
+			owned[id] = struct{}{}
+		}
+	}
+	interfaces, err := c.vswitchClient.ListInterface(func(iface *vswitch.Interface) bool {
+		_, ok := owned[iface.UUID]
+		return ok && iface.Type == c.config.NetworkType
+	})
+	if err != nil {
+		return nil, fmt.Errorf("list OVN tunnel interfaces: %w", err)
+	}
+	var ips []string
+	for _, iface := range interfaces {
+		if ip := net.ParseIP(iface.Options["remote_ip"]); ip != nil && !slices.Contains(ips, ip.String()) {
+			ips = append(ips, ip.String())
+		}
+	}
+	slices.Sort(ips)
+	return ips, nil
+}
+
 func (c *Controller) getOtherNodes(protocol string) ([]string, error) {
 	nodes, err := c.nodesLister.List(labels.Everything())
 	if err != nil {
 		klog.Error("failed to list nodes")
 		return nil, err
 	}
-	ret := make([]string, 0, len(nodes)-1)
+	ret := make([]string, 0, len(nodes))
 	for _, node := range nodes {
 		if node.Name == c.config.NodeName {
 			continue
 		}
-		for _, addr := range node.Status.Addresses {
-			if addr.Type == v1.NodeInternalIP {
-				if util.CheckProtocol(addr.Address) == protocol {
-					ret = append(ret, addr.Address)
-				}
+		for _, ip := range getNodeEncapIPs(node) {
+			if util.CheckProtocol(ip) == protocol && !slices.Contains(ret, ip) {
+				ret = append(ret, ip)
 			}
+		}
+	}
+	peerIPs, err := c.getTunnelPeerIPs()
+	if err != nil {
+		return nil, err
+	}
+	for _, ip := range peerIPs {
+		if util.CheckProtocol(ip) == protocol && !slices.Contains(ret, ip) {
+			ret = append(ret, ip)
 		}
 	}
 	return ret, nil
@@ -337,4 +445,20 @@ func (c *Controller) getTProxyConditionPod(pods []*v1.Pod, needSort bool) ([]*v1
 	}
 
 	return filteredPods, nil
+}
+
+// getTunnelPort returns the UDP port of the active overlay tunnel protocol.
+// Returns 0 for non-UDP tunnel protocols (e.g. VLAN or STT).
+func (c *Controller) getTunnelPort() int {
+	if c.config == nil {
+		return 0
+	}
+	switch c.config.NetworkType {
+	case util.NetworkTypeGeneve:
+		return 6081
+	case util.NetworkTypeVxlan:
+		return 4789
+	default:
+		return 0
+	}
 }
