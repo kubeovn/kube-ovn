@@ -1296,6 +1296,58 @@ func newNftableLbSvcOwnershipFixture() *nftableLbSvcOwnershipFixture {
 	}
 }
 
+func TestNftableLbServiceCreatedBeforeEip(t *testing.T) {
+	for name, serveClusterIP := range map[string]bool{"EIP only": false, "EIP and ClusterIP": true} {
+		t.Run(name, func(t *testing.T) {
+			f := newNftableLbSvcOwnershipFixture()
+			fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Vpcs:           []*kubeovnv1.Vpc{f.vpc},
+				VpcNatGateways: []*kubeovnv1.VpcNatGateway{f.gw},
+				Services:       []*v1.Service{f.svc},
+			})
+			require.NoError(t, err)
+			c := fc.fakeController
+			c.config.EnableGwNftableLbSvc = true
+			c.config.EnableGwNftableSvcClusterIP = serveClusterIP
+			eipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+			c.iptablesEipsLister = kubeovnlister.NewIptablesEIPLister(eipIndexer)
+			c.addOrUpdateGwNftableLbSvcQueue = newTypedRateLimitingQueue[string]("service-before-eip", nil)
+			t.Cleanup(c.addOrUpdateGwNftableLbSvcQueue.ShutDown)
+			key := f.namespace + "/" + f.svc.Name
+
+			require.NoError(t, c.handleAddOrUpdateGwNftableLbService(key))
+			require.Eventually(t, func() bool { return c.addOrUpdateGwNftableLbSvcQueue.Len() == 1 },
+				5*time.Second, 10*time.Millisecond, "a missing EIP schedules a retry even after cleanup")
+			retryKey, shutdown := c.addOrUpdateGwNftableLbSvcQueue.Get()
+			require.False(t, shutdown)
+			require.Equal(t, key, retryKey)
+			defer c.addOrUpdateGwNftableLbSvcQueue.Done(retryKey)
+
+			// Make the EIP visible without delivering any EIP, Service or EndpointSlice event.
+			require.NoError(t, eipIndexer.Add(f.eip))
+			require.NoError(t, c.handleAddOrUpdateGwNftableLbService(retryKey))
+			updated, err := c.config.KubeClient.CoreV1().Services(f.namespace).Get(context.Background(), f.svc.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Contains(t, updated.Finalizers, util.KubeOVNControllerFinalizer, "the queued retry resumes programming")
+
+			program, cleanup, err := c.resolveNftableLbSvcProgram(retryKey, updated, true, serveClusterIP)
+			require.NoError(t, err)
+			require.False(t, cleanup)
+			require.Equal(t, f.eip.Status.IP, program.eipIP)
+			desired := buildDesiredNftableLbDnatRulesForIdentities(updated, program.eipName, program.gateway,
+				program.serveEIP, program.serveClusterIP, []*discoveryv1.EndpointSlice{f.slice},
+				func(endpoint discoveryv1.Endpoint) (string, bool) { return endpoint.Addresses[0], true })
+			identities := buildNftableLbIdentities(desired, program.eipIP)
+			require.Contains(t, identities, nftableLbDnatIdentity(f.eip.Status.IP, "80", "tcp"))
+			if serveClusterIP {
+				require.Contains(t, identities, nftableLbDnatIdentity(f.svc.Spec.ClusterIP, "80", "tcp"))
+			} else {
+				require.Len(t, identities, 1)
+			}
+		})
+	}
+}
+
 func TestNftableLbServiceClaimsFinalizerBeforeProgramming(t *testing.T) {
 	f := newNftableLbSvcOwnershipFixture()
 

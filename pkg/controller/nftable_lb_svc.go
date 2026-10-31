@@ -294,6 +294,8 @@ func (c *Controller) resolveNftableLbSvcProgram(key string, svc *v1.Service, ser
 		eip, err := c.GetEip(program.eipName)
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
+				// EIP events do not enqueue Services, so retry after releasing any stale state.
+				c.requeueGwNftableLbService(key, 2*time.Second)
 				return nil, true, nil
 			}
 			// EIP not ready yet: requeue and retry once it has an IPv4 address.

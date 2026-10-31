@@ -91,7 +91,8 @@ kubectl ko nbctl lr-policy-list <vpc>
 - **The EIP must belong to the annotated gateway.** The webhook rejects a mismatching
   `IptablesEIP.spec.natGwDp` when the Service is created or its forwarding intent changes.
   The EIP does not have to be Ready or exist yet at admission; the controller checks its
-  availability and readiness before programming.
+  availability and readiness before programming. If the EIP is missing, the Service is
+  requeued after cleanup so it can recover when the EIP appears, without an EIP event.
 - **The binding is immutable, opting out is not.** The gateway and the EIP of a Service cannot be
   changed; delete and recreate it instead. Clearing the annotations is allowed and is the
   supported way to leave the mode: the controller releases the identities, the lo addresses, the
