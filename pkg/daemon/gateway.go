@@ -260,6 +260,11 @@ func (c *Controller) getTProxyConditionPod(needSort bool) ([]*v1.Pod, error) {
 	}
 
 	for _, pod := range pods {
+		if pod.DeletionTimestamp != nil {
+			// A terminating Pod may still share its IP with a replacement Pod in the
+			// informer cache. Do not keep stale TProxy state alive.
+			continue
+		}
 		subnetName, ok := pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, util.OvnProvider)]
 		if !ok {
 			continue

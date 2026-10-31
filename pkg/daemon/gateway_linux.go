@@ -985,7 +985,7 @@ func (c *Controller) reconcileTProxyIPTableRules(protocol string) error {
 			continue
 		}
 
-		ports := getProbePorts(pod)
+		ports := getTProxyRulePorts(pod, podIP)
 		if ports.Len() == 0 {
 			continue
 		}
