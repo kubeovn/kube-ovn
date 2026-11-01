@@ -17,24 +17,52 @@ import (
 var vmiResource = schema.GroupVersionResource{Group: "kubevirt.io", Version: "v1", Resource: "virtualmachineinstances"}
 
 type captureOptions struct {
-	pod, vm, vmi string
+	source, pod, vm, vmi string
 }
 
-func (o captureOptions) reference() (string, string, error) {
-	kind, reference := "", ""
-	for _, item := range []struct{ kind, value string }{{"pod", o.pod}, {"vm", o.vm}, {"vmi", o.vmi}} {
+func (o captureOptions) sourceRef() (sourceRef, error) {
+	if o.source != "" {
+		ref, err := parseSourceRef(o.source)
+		if err != nil {
+			return sourceRef{}, err
+		}
+		if ref.kind == sourceKindNode {
+			return sourceRef{}, errors.New("capture does not support node sources yet")
+		}
+		return ref, nil
+	}
+	var selected sourceRef
+	for _, item := range []struct {
+		kind  sourceKind
+		value string
+	}{{sourceKindPod, o.pod}, {sourceKindVM, o.vm}, {sourceKindVMI, o.vmi}} {
 		if item.value == "" {
 			continue
 		}
-		if reference != "" {
-			return "", "", errors.New("specify exactly one of --pod, --vm or --vmi")
+		if selected.name != "" {
+			return sourceRef{}, errors.New("specify exactly one of --source, --pod, --vm or --vmi")
 		}
-		kind, reference = item.kind, item.value
+		selected = sourceRef{kind: item.kind}
+		parts := strings.Split(item.value, "/")
+		switch len(parts) {
+		case 2:
+			if parts[0] == "" || parts[1] == "" {
+				return sourceRef{}, fmt.Errorf("%s must not contain an empty namespace or name", item.kind)
+			}
+			selected.namespace, selected.name = parts[0], parts[1]
+		case 1:
+			selected.name = parts[0]
+		default:
+			return sourceRef{}, fmt.Errorf("%s must be NAME or NAMESPACE/NAME, got %q", item.kind, item.value)
+		}
+		if err := validateSourceRef(selected); err != nil {
+			return sourceRef{}, err
+		}
 	}
-	if reference == "" {
-		return "", "", errors.New("specify exactly one of --pod, --vm or --vmi")
+	if selected.name == "" {
+		return sourceRef{}, errors.New("specify exactly one of --source, --pod, --vm or --vmi")
 	}
-	return kind, reference, nil
+	return selected, nil
 }
 
 type captureTarget struct {
@@ -43,23 +71,23 @@ type captureTarget struct {
 }
 
 func (c *Client) captureTarget(ctx context.Context, options captureOptions) (captureTarget, error) {
-	kind, reference, err := options.reference()
+	ref, err := options.sourceRef()
 	if err != nil {
 		return captureTarget{}, err
 	}
-	if kind == "pod" {
-		pod, err := c.pod(ctx, reference)
+	if ref.kind == sourceKindPod {
+		pod, err := c.pod(ctx, ref.kubeReference())
 		return captureTarget{pod: pod}, err
 	}
-	namespace, name := c.WorkloadNamespace, reference
-	if ns, n, ok := strings.Cut(reference, "/"); ok {
-		namespace, name = ns, n
+	namespace, name := c.WorkloadNamespace, ref.name
+	if ref.namespace != "" {
+		namespace = ref.namespace
 	}
 	vmi, err := c.Dynamic.Resource(vmiResource).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return captureTarget{}, fmt.Errorf("get VMI %s/%s: %w", namespace, name, err)
 	}
-	if kind == "vm" {
+	if ref.kind == sourceKindVM {
 		resource := schema.GroupVersionResource{Group: "kubevirt.io", Version: "v1", Resource: "virtualmachines"}
 		vm, err := c.Dynamic.Resource(resource).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {

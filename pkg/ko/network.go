@@ -35,14 +35,23 @@ type podInterface struct {
 func (a *Application) addNetworkCommands() {
 	options := captureOptions{}
 	capture := &cobra.Command{
-		Use: "capture (--pod POD | --vm VM | --vmi VMI) [flags] -- [TCPDUMP_ARGS...]", DisableFlagsInUseLine: true, Short: "Capture packets in a Pod or KubeVirt network namespace",
+		Use: "capture [SOURCE] [flags] -- [TCPDUMP_ARGS...]", DisableFlagsInUseLine: true, Short: "Capture packets in a Pod or KubeVirt network namespace",
 		Args: func(cmd *cobra.Command, args []string) error {
-			kind, reference, err := options.reference()
-			if err != nil {
+			positionals := commandPositionals(cmd, args)
+			if len(positionals) > 1 {
+				return errors.New("capture accepts at most one positional source")
+			}
+			if len(positionals) == 1 {
+				if options.source != "" || options.pod != "" || options.vm != "" || options.vmi != "" {
+					return errors.New("positional source is mutually exclusive with --source, --pod, --vm and --vmi")
+				}
+				options.source = positionals[0]
+			}
+			if _, err := options.sourceRef(); err != nil {
 				return err
 			}
-			if err := validateNamespacedReference(kind, reference); err != nil {
-				return err
+			if len(positionals) == 1 {
+				return nil
 			}
 			return remoteArguments(cmd, args)
 		},
@@ -56,9 +65,14 @@ func (a *Application) addNetworkCommands() {
 					return err
 				}
 			}
-			return a.tcpdump(ctx, client, target, args)
+			captureArgs := args
+			if options.source != "" && len(captureArgs) != 0 && captureArgs[0] == options.source {
+				captureArgs = captureArgs[1:]
+			}
+			return a.tcpdump(ctx, client, target, captureArgs)
 		}),
 	}
+	capture.Flags().StringVar(&options.source, "source", "", "Source reference: KIND/NAME or KIND/NAMESPACE/NAME")
 	capture.Flags().StringVar(&options.pod, "pod", "", "Pod to capture, optionally qualified by namespace")
 	capture.Flags().StringVar(&options.vm, "vm", "", "KubeVirt VM to capture, optionally qualified by namespace")
 	capture.Flags().StringVar(&options.vmi, "vmi", "", "KubeVirt VMI to capture, optionally qualified by namespace")
@@ -96,26 +110,35 @@ func (a *Application) addNetworkInspectCommand() {
 }
 
 type traceOptions struct {
-	pod, node, destination, mac, protocol, engine, arpOperation string
-	port                                                        int
+	source, pod, node, destination, target, mac, protocol, engine, arpOperation string
+	port                                                                        int
 }
 
 func (a *Application) addTraceCommand() {
 	options := traceOptions{}
 	var request traceRequest
-	command := &cobra.Command{Use: "trace --pod POD|--node NODE --dst-ip IP", Short: "Trace a packet through OVN and OVS"}
+	command := &cobra.Command{Use: "trace [SOURCE] [flags]", Short: "Trace a packet through OVN and OVS"}
 	flags := command.Flags()
+	flags.StringVar(&options.source, "source", "", "Source reference: KIND/NAME or KIND/NAMESPACE/NAME")
 	flags.StringVar(&options.pod, "pod", "", "Source pod, optionally qualified by namespace")
 	flags.StringVar(&options.node, "node", "", "Source node (mutually exclusive with --pod)")
 	flags.StringVar(&options.destination, "dst-ip", "", "Destination IPv4 or IPv6 address")
+	flags.StringVar(&options.target, "target", "", "Target address reference (addr/IP or IP)")
 	flags.StringVar(&options.mac, "dst-mac", "", "Destination MAC address (auto-detected when omitted)")
 	flags.StringVar(&options.protocol, "protocol", "icmp", "Packet protocol: icmp, tcp, udp or arp")
 	flags.IntVar(&options.port, "dst-port", 0, "Destination port for TCP or UDP")
 	flags.StringVar(&options.arpOperation, "arp-op", "request", "ARP operation: request or reply")
 	flags.StringVar(&options.engine, "engine", "all", "Trace engines: all (OVN then OVS) or ovn")
 	command.Args = func(cmd *cobra.Command, args []string) error {
-		if err := cobra.NoArgs(cmd, args); err != nil {
-			return err
+		positionals := commandPositionals(cmd, args)
+		if len(positionals) > 1 {
+			return errors.New("trace accepts at most one positional source")
+		}
+		if len(positionals) == 1 {
+			if options.source != "" || options.pod != "" || options.node != "" {
+				return errors.New("positional source is mutually exclusive with --source, --pod and --node")
+			}
+			options.source = positionals[0]
 		}
 		if flags.Changed("arp-op") && options.protocol != "arp" {
 			return errors.New("--arp-op requires --protocol=arp")
@@ -134,14 +157,23 @@ func (a *Application) addTraceCommand() {
 }
 
 func (o traceOptions) request() (traceRequest, error) {
-	if (o.pod == "") == (o.node == "") {
-		return traceRequest{}, errors.New("choose exactly one of --pod or --node")
+	if o.source != "" && (o.pod != "" || o.node != "") {
+		return traceRequest{}, errors.New("choose only one of positional source, --source, --pod or --node")
+	}
+	if o.source == "" && (o.pod == "") == (o.node == "") {
+		return traceRequest{}, errors.New("choose exactly one of positional source, --source, --pod or --node")
 	}
 	if o.engine != "all" && o.engine != "ovn" {
 		return traceRequest{}, errors.New("--engine must be all or ovn")
 	}
-	reference := o.pod
-	if o.node != "" {
+	reference := o.source
+	if reference != "" {
+		ref, err := parseSourceRef(reference)
+		if err != nil {
+			return traceRequest{}, err
+		}
+		reference = ref.reference()
+	} else if o.node != "" {
 		if err := validateResourceName("node", o.node); err != nil {
 			return traceRequest{}, err
 		}
@@ -149,7 +181,18 @@ func (o traceOptions) request() (traceRequest, error) {
 	} else if err := validatePodReference(o.pod); err != nil {
 		return traceRequest{}, err
 	}
-	args := []string{reference, o.destination}
+	destination := o.destination
+	if o.target != "" {
+		if destination != "" {
+			return traceRequest{}, errors.New("--target is mutually exclusive with --dst-ip")
+		}
+		var err error
+		destination, err = parseTargetAddress(o.target)
+		if err != nil {
+			return traceRequest{}, err
+		}
+	}
+	args := []string{reference, destination}
 	if o.mac != "" {
 		mac, err := net.ParseMAC(o.mac)
 		if err != nil || len(mac) != 6 {
@@ -168,17 +211,31 @@ func (o traceOptions) request() (traceRequest, error) {
 }
 
 func (c *Client) networkSource(ctx context.Context, reference string) (*networkSource, error) {
-	if node, ok := strings.CutPrefix(reference, "node//"); ok {
-		return c.nodeSource(ctx, node)
-	}
-	pod, err := c.pod(ctx, reference)
+	ref, err := parseSourceRef(reference)
 	if err != nil {
 		return nil, err
 	}
-	if pod.Spec.HostNetwork {
-		return c.nodeSource(ctx, pod.Spec.NodeName)
+	switch ref.kind {
+	case sourceKindNode:
+		return c.nodeSource(ctx, ref.name)
+	case sourceKindVM, sourceKindVMI:
+		target, err := c.captureTarget(ctx, captureOptions{source: ref.reference()})
+		if err != nil {
+			return nil, err
+		}
+		return podNetworkSource(target.pod), nil
+	case sourceKindPod:
+		pod, err := c.pod(ctx, ref.kubeReference())
+		if err != nil {
+			return nil, err
+		}
+		if pod.Spec.HostNetwork {
+			return c.nodeSource(ctx, pod.Spec.NodeName)
+		}
+		return podNetworkSource(pod), nil
+	default:
+		return nil, fmt.Errorf("unsupported source kind %q", ref.kind)
 	}
-	return podNetworkSource(pod), nil
 }
 
 func podNetworkSource(pod *corev1.Pod) *networkSource {
