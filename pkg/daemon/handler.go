@@ -99,9 +99,24 @@ func (csh cniServerHandler) recordCNIPodEvent(pod *v1.Pod, podRequest *request.C
 	csh.Controller.recorder.Eventf(pod, eventType, reason, "%s provider=%s interface=%s node=%s", message, podRequest.Provider, ifName, csh.Config.NodeName)
 }
 
-func (csh cniServerHandler) providerExists(provider, ifName string) (*kubeovnv1.Subnet, bool) {
+func (csh cniServerHandler) providerExists(provider, ifName string, annotations map[string]string) (*kubeovnv1.Subnet, bool) {
 	if provider == "" || provider == util.OvnProvider {
 		return nil, true
+	}
+	providerName, _ := strings.CutSuffix(provider, fmt.Sprintf(".%s", ifName))
+	if util.IsOvnProvider(providerName) {
+		logicalSwitch := logicalSwitchAnnotation(annotations, providerName, ifName)
+		if logicalSwitch != "" {
+			subnet, err := csh.Controller.subnetsLister.Get(logicalSwitch)
+			if err != nil {
+				klog.Errorf("failed to get subnet %s while checking provider %s: %v", logicalSwitch, provider, err)
+				return nil, false
+			}
+			if subnet.Spec.Provider == "" || subnet.Spec.Provider == util.OvnProvider || subnet.Spec.Provider == providerName {
+				return subnet.DeepCopy(), true
+			}
+			return nil, false
+		}
 	}
 	subnets, err := csh.Controller.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -111,13 +126,24 @@ func (csh cniServerHandler) providerExists(provider, ifName string) (*kubeovnv1.
 	// for multi interface attachments the ifname is included in provider, for example, vm-overlay.default.ovn.net1
 	// as a result if ifname is set, we need to append it to subnet provider when comparing with request provider
 	// else no subnet will be found
-	providerName, _ := strings.CutSuffix(provider, fmt.Sprintf(".%s", ifName))
 	for _, subnet := range subnets {
 		if subnet.Spec.Provider == providerName {
 			return subnet.DeepCopy(), true
 		}
 	}
 	return nil, false
+}
+
+func logicalSwitchAnnotation(annotations map[string]string, provider, ifName string) string {
+	if annotations == nil {
+		return ""
+	}
+	if ifName != "" {
+		if subnet := annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider+"."+ifName)]; subnet != "" {
+			return subnet
+		}
+	}
+	return annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)]
 }
 
 func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Response) {
@@ -135,16 +161,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		csh.recordCNIPodEvent(eventPod, &podRequest, v1.EventTypeWarning, "PodNetworkConfigureFailed", fmt.Sprintf("stage=%s error=%v", stage, err))
 	}
 	klog.V(5).Infof("request body is %v", podRequest)
-	podSubnet, exist := csh.providerExists(podRequest.Provider, podRequest.IfName)
-	if !exist {
-		errMsg := fmt.Errorf("provider %s is not bound to any subnet", podRequest.Provider)
-		klog.Error(errMsg)
-		recordFailure("provider", errMsg)
-		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
-			klog.Errorf("failed to write response, %v", err)
-		}
-		return
-	}
+	var podSubnet *kubeovnv1.Subnet
 
 	klog.Infof("add port request: %v", podRequest)
 	if err := csh.validatePodRequest(&podRequest); err != nil {
@@ -177,6 +194,17 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			return
 		}
 		eventPod = pod
+		var exist bool
+		podSubnet, exist = csh.providerExists(podRequest.Provider, podRequest.IfName, pod.Annotations)
+		if !exist {
+			errMsg := fmt.Errorf("provider %s is not bound to any subnet", podRequest.Provider)
+			klog.Error(errMsg)
+			recordFailure("provider", errMsg)
+			if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
+				klog.Errorf("failed to write response, %v", err)
+			}
+			return
+		}
 
 		// in case of multiple nics from same subnet
 		_, ok := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerWithIfName)]
