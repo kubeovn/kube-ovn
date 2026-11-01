@@ -493,33 +493,34 @@ func (c *Controller) handleDeleteAnp(anp *v1alpha1.AdminNetworkPolicy) error {
 	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("failed to delete port group for anp %s: %v", anpName, err)
 	}
-	if err := c.deletePolicyNamedPortGroups(adminNetworkPolicyKey, anpName); err != nil {
-		klog.Errorf("failed to delete named-port port groups for anp %s: %v", anpName, err)
+	namedPortErr := c.deletePolicyNamedPortGroups(adminNetworkPolicyKey, anpName)
+	if namedPortErr != nil {
+		klog.Errorf("failed to delete named-port port groups for anp %s: %v", anpName, namedPortErr)
 	}
 
 	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
 		adminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "ingress"),
 	}); err != nil {
 		klog.Errorf("failed to delete ingress address set for anp %s: %v", anpName, err)
-		return err
+		return errors.Join(namedPortErr, err)
 	}
 
 	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
 		adminNetworkPolicyKey: fmt.Sprintf("%s/%s", anpName, "egress"),
 	}); err != nil {
 		klog.Errorf("failed to delete egress address set for anp %s: %v", anpName, err)
-		return err
+		return errors.Join(namedPortErr, err)
 	}
 
 	// Delete all DNSNameResolver CRs associated with this ANP
 	if c.config.EnableDNSNameResolver {
 		if err := c.reconcileDNSNameResolversForANP(anpName, []string{}); err != nil {
 			klog.Errorf("failed to delete DNSNameResolver CRs for anp %s: %v", anpName, err)
-			return err
+			return errors.Join(namedPortErr, err)
 		}
 	}
 
-	return nil
+	return namedPortErr
 }
 
 func (c *Controller) handleUpdateAnp(changed *AdminNetworkPolicyChangedDelta) error {

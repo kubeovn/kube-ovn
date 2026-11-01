@@ -1,19 +1,89 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/utils/keymutex"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestDeletePolicyRetriesNamedPortGroupFailure(t *testing.T) {
+	tests := []struct {
+		name          string
+		externalID    string
+		externalValue string
+		baseGroup     string
+		deletePolicy  func(*Controller) error
+	}{
+		{
+			name:          "ANP",
+			externalID:    adminNetworkPolicyKey,
+			externalValue: "example",
+			baseGroup:     "example",
+			deletePolicy: func(c *Controller) error {
+				return c.handleDeleteAnp(&v1alpha1.AdminNetworkPolicy{Name: "example"})
+			},
+		},
+		{
+			name:          "BANP",
+			externalID:    baselineAdminNetworkPolicyKey,
+			externalValue: "default",
+			baseGroup:     "default",
+			deletePolicy: func(c *Controller) error {
+				return c.handleDeleteBanp(&v1alpha1.BaselineAdminNetworkPolicy{Name: "default"})
+			},
+		},
+		{
+			name:          "CNP",
+			externalID:    clusterNetworkPolicyKey,
+			externalValue: "example",
+			baseGroup:     "example",
+			deletePolicy: func(c *Controller) error {
+				return c.handleDeleteCnp(&v1alpha2.ClusterNetworkPolicy{
+					Name: "example",
+					Spec: v1alpha2.ClusterNetworkPolicySpec{Tier: v1alpha2.AdminTier},
+				})
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := newFakeController(t)
+			c := fake.fakeController
+			c.anpKeyMutex = keymutex.NewHashed(1)
+			c.banpKeyMutex = keymutex.NewHashed(1)
+			c.cnpKeyMutex = keymutex.NewHashed(1)
+
+			deleteErr := errors.New("temporary OVN failure")
+			derivedGroup := tt.baseGroup + ".named.tcp.8080"
+			fake.mockOvnClient.EXPECT().DeletePortGroup(tt.baseGroup).Return(nil).Times(2)
+			fake.mockOvnClient.EXPECT().ListPortGroups(map[string]string{
+				tt.externalID: tt.externalValue, networkPolicyNamedPortKey: "true",
+			}).Return([]ovnnb.PortGroup{{Name: derivedGroup}}, nil).Times(2)
+			gomock.InOrder(
+				fake.mockOvnClient.EXPECT().DeletePortGroup(derivedGroup).Return(deleteErr),
+				fake.mockOvnClient.EXPECT().DeletePortGroup(derivedGroup).Return(nil),
+			)
+			fake.mockOvnClient.EXPECT().DeleteAddressSets(gomock.Any()).Return(nil).Times(4)
+
+			require.ErrorIs(t, tt.deletePolicy(c), deleteErr)
+			require.NoError(t, tt.deletePolicy(c))
+		})
+	}
+}
 
 func TestPolicyNamedPortSelectorsAndResolution(t *testing.T) {
 	pod := &corev1.Pod{

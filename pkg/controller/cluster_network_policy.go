@@ -489,8 +489,9 @@ func (c *Controller) handleDeleteCnp(cnp *v1alpha2.ClusterNetworkPolicy) error {
 		// Do not exit on errors, try to go as far as possible in the deletion
 		klog.Errorf("failed to delete port group for cnp %s: %v", cnp.Name, err)
 	}
-	if err := c.deletePolicyNamedPortGroups(clusterNetworkPolicyKey, pgName); err != nil {
-		klog.Errorf("failed to delete named-port port groups for cnp %s: %v", cnp.Name, err)
+	namedPortErr := c.deletePolicyNamedPortGroups(clusterNetworkPolicyKey, pgName)
+	if namedPortErr != nil {
+		klog.Errorf("failed to delete named-port port groups for cnp %s: %v", cnp.Name, namedPortErr)
 	}
 
 	// Delete all ingress address sets for this CNP
@@ -517,7 +518,7 @@ func (c *Controller) handleDeleteCnp(cnp *v1alpha2.ClusterNetworkPolicy) error {
 		}
 	}
 
-	return nil
+	return namedPortErr
 }
 
 // getCnpCurrentAddrSetByName returns the address sets present in OVN databases for a given ClusterNetworkPolicy

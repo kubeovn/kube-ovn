@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -425,25 +426,26 @@ func (c *Controller) handleDeleteBanp(banp *v1alpha1.BaselineAdminNetworkPolicy)
 	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
 		klog.Errorf("failed to delete port group for banp %s: %v", banpName, err)
 	}
-	if err := c.deletePolicyNamedPortGroups(baselineAdminNetworkPolicyKey, banpName); err != nil {
-		klog.Errorf("failed to delete named-port port groups for banp %s: %v", banpName, err)
+	namedPortErr := c.deletePolicyNamedPortGroups(baselineAdminNetworkPolicyKey, banpName)
+	if namedPortErr != nil {
+		klog.Errorf("failed to delete named-port port groups for banp %s: %v", banpName, namedPortErr)
 	}
 
 	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
 		baselineAdminNetworkPolicyKey: fmt.Sprintf("%s/%s", banpName, "ingress"),
 	}); err != nil {
 		klog.Errorf("failed to delete ingress address set for banp %s: %v", banpName, err)
-		return err
+		return errors.Join(namedPortErr, err)
 	}
 
 	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
 		baselineAdminNetworkPolicyKey: fmt.Sprintf("%s/%s", banpName, "egress"),
 	}); err != nil {
 		klog.Errorf("failed to delete egress address set for banp %s: %v", banpName, err)
-		return err
+		return errors.Join(namedPortErr, err)
 	}
 
-	return nil
+	return namedPortErr
 }
 
 func (c *Controller) handleUpdateBanp(changed *AdminNetworkPolicyChangedDelta) error {
