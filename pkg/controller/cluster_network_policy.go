@@ -220,7 +220,10 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 			}
 		}
 
-		if as4len != 0 && (len(rulePorts) == 0 || len(numericPorts) != 0) {
+		// Keep the ACL even when the selector currently matches no addresses. A
+		// later pod or namespace label change updates the address set in place;
+		// without the ACL there is nothing for OVN to evaluate after that update.
+		if len(rulePorts) == 0 || len(numericPorts) != 0 {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "ingress", index)
 			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, numericPorts, true, cnpACLTier)
 			if err != nil {
@@ -230,7 +233,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 			ingressACLOps = append(ingressACLOps, ops...)
 		}
 
-		if as6len != 0 && (len(rulePorts) == 0 || len(numericPorts) != 0) {
+		if len(rulePorts) == 0 || len(numericPorts) != 0 {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv6, "ingress", index)
 			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, numericPorts, true, cnpACLTier)
 			if err != nil {
@@ -290,12 +293,9 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		}
 	}
 
-	// hasCnpDomainNames is invariant across egress rules, so compute it once
-	hasDomainNames := hasCnpDomainNames(cnp)
-
 	// create egress acl
 	for index, rule := range cnp.Spec.Egress {
-		v4AddressSetName, as4len, v6AddressSetName, as6len, err := c.generateCnpEgressAddressSet(cnpName, pgName, rule, index)
+		v4AddressSetName, _, v6AddressSetName, _, err := c.generateCnpEgressAddressSet(cnpName, pgName, rule, index)
 		if err != nil {
 			err := fmt.Errorf("failed to generate egress address set for cnp %s: %w", cnp.Name, err)
 			klog.Error(err)
@@ -313,9 +313,9 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 			}
 		}
 
-		// Create ACL rules if we have IP addresses OR domain names.
-		// Domain names may not be resolved initially but will be updated later
-		if (as4len != 0 || hasDomainNames) && (len(rulePorts) == 0 || len(numericPorts) != 0) {
+		// Keep ACLs for empty selector results so later pod or namespace label
+		// changes can activate the address set without recreating the policy.
+		if len(rulePorts) == 0 || len(numericPorts) != 0 {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "egress", index)
 			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, numericPorts, false, cnpACLTier)
 			if err != nil {
@@ -324,7 +324,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 			}
 			egressACLOps = append(egressACLOps, ops...)
 		}
-		if (as6len != 0 || hasDomainNames) && (len(rulePorts) == 0 || len(numericPorts) != 0) {
+		if len(rulePorts) == 0 || len(numericPorts) != 0 {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv6, "egress", index)
 			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, numericPorts, false, cnpACLTier)
 			if err != nil {
