@@ -495,20 +495,19 @@ func (c *Controller) programNftableLbServiceDirect(svc *v1.Service, gateway, eip
 		}
 	}
 
-	owner := svc.Namespace + "/" + svc.Name
-	_, clusterIPs, err := c.desiredNatGwVipStateForService(gateway, owner, desired, eipIP)
-	if err != nil {
-		return err
+	state := nftableLbSvcVipsOf(desired, eipIP)
+	clusterIPs := nftableLbExistingClusterIPs(existing)
+	if ip := nftableLbSvcClusterIP(svc); ip != "" {
+		clusterIPs = append(clusterIPs, ip)
 	}
-	if err = c.execNatGwRulesInPods(pods, natGwVipAddrSync, clusterIPs); err != nil {
+	if err = c.syncNftableLbSvcClusterIPs(pods, state.clusterIPs, clusterIPs); err != nil {
 		return fmt.Errorf("failed to sync cluster VIPs of service %s/%s: %w", svc.Namespace, svc.Name, err)
 	}
-	if err = c.syncNatGwVipStateForService(gateway, owner, desired, eipIP); err != nil {
+	eipRefs, _ := c.nftableLbSvcSpecIdentities(svc)
+	eipRefs = append(eipRefs, nftableLbEipIdentityRefsFromRecords(existing)...)
+	if err = c.syncNatGwVipStateForService(gateway, svc.Namespace+"/"+svc.Name, state, clusterIPs, eipRefs); err != nil {
 		return fmt.Errorf("failed to sync VIP routes of service %s/%s: %w", svc.Namespace, svc.Name, err)
 	}
-	// The records this pass wrote are not in the informer cache yet. Remember what they ask for so
-	// another Service reconciling in that window does not compute a gateway state without them.
-	c.rememberNatGwVipState(gateway, owner, nftableLbSvcVipsOf(desired, eipIP))
 	return nil
 }
 
@@ -847,10 +846,6 @@ func (c *Controller) cleanupNftableLbService(svc *v1.Service, namespace, name st
 // unioning the accounting records with the identities still derivable from the Service spec, and
 // leaves identities another live Service owns to their new owner.
 func (c *Controller) cleanupNftableLbSvcGateway(namespace, name, owner, gw string, ledger []*kubeovnv1.IptablesDnatRule, specEips []nftableLbEipIdentityRef, specClusterIPs []*nftableLbIdentity) error {
-	// This Service claims no VIP on this gateway from here on. Dropping the floor first also covers
-	// the gateway-is-gone path below; if a later step fails, the records are still there, so the
-	// lister carries the state until the retry.
-	c.forgetNatGwVipState(gw, owner)
 	gone, err := c.natGwNoDataPlane(gw)
 	if err != nil {
 		return err
@@ -896,14 +891,14 @@ func (c *Controller) cleanupNftableLbSvcGateway(namespace, name, owner, gw strin
 			return fmt.Errorf("failed to remove hairpin %s of service %s/%s: %w", key, namespace, name, err)
 		}
 	}
-	_, clusterIPs, stateErr := c.desiredNatGwVipStateForService(gw, owner, nil, "")
-	if stateErr != nil {
-		return stateErr
+	clusterIPs := nftableLbExistingClusterIPs(ledger)
+	for _, identity := range specClusterIPs {
+		clusterIPs = append(clusterIPs, identity.vip)
 	}
-	if err = c.execNatGwRulesInPods(pods, natGwVipAddrSync, clusterIPs); err != nil {
+	if err = c.syncNftableLbSvcClusterIPs(pods, nil, clusterIPs); err != nil {
 		return fmt.Errorf("failed to release cluster VIPs of service %s/%s: %w", namespace, name, err)
 	}
-	if err = c.syncNatGwVipStateForService(gw, owner, nil, ""); err != nil {
+	if err = c.syncNatGwVipStateForService(gw, owner, nftableLbSvcVips{}, clusterIPs, eipRefs); err != nil {
 		return fmt.Errorf("failed to release VIP routes of service %s/%s: %w", namespace, name, err)
 	}
 	return nil
