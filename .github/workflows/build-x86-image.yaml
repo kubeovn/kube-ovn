@@ -30,8 +30,6 @@ env:
   GOLANGCI_LINT_VERSION: v2.15.0
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
   HELM_VERSION: v4.3.1
-  # renovate: datasource=github-releases depName=submariner packageName=submariner-io/submariner
-  SUBMARINER_VERSION: 0.24.2
   # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
   TALOS_VERSION: v1.14.5
 
@@ -3564,110 +3562,6 @@ jobs:
         with:
           name: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
-
-      - name: Cleanup
-        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
-
-  kube-ovn-submariner-conformance-e2e:
-    name: Kube-OVN Submariner Conformance E2E
-    needs:
-      - prepare-kind-node-images
-      - build-kube-ovn
-    runs-on: ubuntu-24.04
-    timeout-minutes: 60
-    steps:
-      - uses: jlumbroso/free-disk-space@v2.0.0
-        with:
-          android: true
-          dotnet: true
-          haskell: true
-          docker-images: false
-          large-packages: false
-          tool-cache: false
-          swap-storage: false
-
-      - uses: actions/checkout@v7
-
-      - name: Create the default branch directory
-        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        run: mkdir -p test/e2e/source
-
-      - name: Check out the default branch
-        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-          fetch-depth: 1
-          path: test/e2e/source
-
-      - name: Export E2E directory
-        run: |
-          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
-            echo "E2E_DIR=." >> "$GITHUB_ENV"
-          else
-            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
-          fi
-
-      - name: Install kind
-        uses: helm/kind-action@v1.15.1
-        with:
-          version: ${{ env.KIND_VERSION }}
-          install_only: true
-
-      - name: Install submariner subctl
-        env:
-          VERSION: v${{ env.SUBMARINER_VERSION }}
-          DESTDIR: /usr/local/bin
-        run: curl -Ls https://get.submariner.io | bash
-
-      - name: Download image
-        uses: actions/download-artifact@v8
-        with:
-          name: kube-ovn
-
-      - name: Load image
-        run: docker load --input kube-ovn.tar
-
-      - name: Download private Kind node image
-        uses: actions/download-artifact@v8
-        with:
-          name: kind-node-v1.37.0
-
-      - name: Load private Kind node image
-        run: docker load --input kind-node-v1.37.0.tar
-
-      - name: Create kind cluster
-        run: |
-          pipx install jinjanator
-          make kind-init-ovn-submariner
-
-      - name: Install Kube-OVN and Submariner
-        id: install
-        run: make kind-install-ovn-submariner
-
-      - name: Run E2E
-        id: e2e
-        working-directory: ${{ env.E2E_DIR }}
-        run: make kube-ovn-submariner-conformance-e2e
-
-
-      - name: Check kube ovn pod restarts
-        id: check-restarts
-        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
-        run: make check-kube-ovn-pod-restarts
-
-      - name: kubectl ko logs
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
-        run: |
-          bash .github/scripts/collect-kubectl-ko-log.sh
-          mv kubectl-ko-log.tar.gz kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
-
-      - name: upload kubectl ko logs
-        uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
-        with:
-          name: kube-ovn-submariner-conformance-e2e-ko-log
-          path: kube-ovn-submariner-conformance-e2e-ko-log.tar.gz
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
