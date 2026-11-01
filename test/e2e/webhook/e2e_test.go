@@ -13,6 +13,7 @@ import (
 
 	// Import tests.
 	_ "github.com/kubeovn/kube-ovn/test/e2e/webhook/pod"
+	_ "github.com/kubeovn/kube-ovn/test/e2e/webhook/service"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/webhook/subnet"
 	_ "github.com/kubeovn/kube-ovn/test/e2e/webhook/vip"
 )

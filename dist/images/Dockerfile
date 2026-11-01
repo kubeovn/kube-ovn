@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1
 ARG VERSION=latest
 ARG BASE_TAG=$VERSION
 FROM kubeovn/kube-ovn-base:$BASE_TAG AS setcap
