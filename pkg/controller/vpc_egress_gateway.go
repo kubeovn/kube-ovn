@@ -536,12 +536,12 @@ func (c *Controller) resolveVpcEgressGatewayInternalProvider(intSubnet *kubeovnv
 }
 
 type vpcEgressGatewayNetworkPlan struct {
-	internalProvider    string
-	internalNetworkName string
-	externalProvider    string
-	externalNetworkName string
-	externalSubnet      *kubeovnv1.Subnet
-	primaryExternal     bool
+	internalProvider              string
+	internalNetworkName           string
+	externalProvider              string
+	externalNetworkName           string
+	externalSubnet                *kubeovnv1.Subnet
+	usesPrimaryCNIExternalNetwork bool
 }
 
 func validateVpcEgressGatewayExternalNetwork(gw *kubeovnv1.VpcEgressGateway, nonPrimaryCNI bool) error {
@@ -572,11 +572,11 @@ func (c *Controller) resolveVpcEgressGatewayNetworkPlan(gw *kubeovnv1.VpcEgressG
 		return nil, err
 	}
 	plan := &vpcEgressGatewayNetworkPlan{
-		internalProvider:    provider,
-		internalNetworkName: internalNetwork,
-		primaryExternal:     gw.Spec.ExternalNetworkMode == kubeovnv1.ExternalNetworkModePrimaryCNI,
+		internalProvider:              provider,
+		internalNetworkName:           internalNetwork,
+		usesPrimaryCNIExternalNetwork: gw.Spec.ExternalNetworkMode == kubeovnv1.ExternalNetworkModePrimaryCNI,
 	}
-	if plan.primaryExternal {
+	if plan.usesPrimaryCNIExternalNetwork {
 		return plan, nil
 	}
 
@@ -663,7 +663,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	intProvider := plan.internalProvider
 	extSubnet := plan.externalSubnet
 	attachmentNetworkName := plan.externalNetworkName
-	if plan.primaryExternal {
+	if plan.usesPrimaryCNIExternalNetwork {
 		attachmentNetworkName = plan.internalNetworkName
 	}
 	internalCIDRv4, internalCIDRv6 := util.SplitStringIP(intSubnet.Spec.CIDRBlock)
@@ -746,7 +746,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		routes.Add(intProvider, dst, intGatewayIPv6)
 	}
 	// add default routes to forward traffic to the external network
-	if !plan.primaryExternal {
+	if !plan.usesPrimaryCNIExternalNetwork {
 		routes.Add(plan.externalProvider, "0.0.0.0/0", extGatewayIPv4)
 		routes.Add(plan.externalProvider, "::/0", extGatewayIPv6)
 	}
@@ -759,7 +759,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	}
 	annotations[nadv1.NetworkAttachmentAnnot] = attachmentNetworkName
 	// Make the internal network the default network (eth0) when nonPrimaryCNI mode is set.
-	if plan.internalNetworkName != "" && !plan.primaryExternal {
+	if plan.internalNetworkName != "" && !plan.usesPrimaryCNIExternalNetwork {
 		annotations[util.DefaultNetworkAnnotation] = plan.internalNetworkName
 	}
 
@@ -781,10 +781,10 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		}
 		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, intProvider)] = gw.Spec.InternalIPPool
 	}
-	if !plan.primaryExternal && len(gw.Spec.ExternalIPs) != 0 {
+	if !plan.usesPrimaryCNIExternalNetwork && len(gw.Spec.ExternalIPs) != 0 {
 		// set external IPs
 		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)] = strings.Join(gw.Spec.ExternalIPs, ";")
-	} else if !plan.primaryExternal && gw.Spec.ExternalIPPool != "" {
+	} else if !plan.usesPrimaryCNIExternalNetwork && gw.Spec.ExternalIPPool != "" {
 		// allocate the external IP from the referenced IPPool
 		pool, err := c.ippoolLister.Get(gw.Spec.ExternalIPPool)
 		if err != nil {
@@ -815,7 +815,7 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		return attachmentNetworkName, nil, nil, nil, err
 	}
 	initEnv = append(initEnv, ipv6Env...)
-	if plan.primaryExternal {
+	if plan.usesPrimaryCNIExternalNetwork {
 		initEnv = append(initEnv, corev1.EnvVar{Name: "EXTERNAL_NETWORK_MODE", Value: "primary-cni"})
 	}
 

@@ -1068,7 +1068,7 @@ func TestReconcileVpcEgressGatewayWorkloadNonPrimaryCNIAnnotations(t *testing.T)
 func TestReconcileVpcEgressGatewayWorkloadPrimaryCNI(t *testing.T) {
 	internal := &kubeovnv1.Subnet{
 		Name: "internal", Spec: kubeovnv1.SubnetSpec{
-			CIDRBlock: "fd00:10::/64", Gateway: "fd00:10::1", Provider: "internal.default.ovn",
+			CIDRBlock: "10.16.0.0/16,fd00:10::/64", Gateway: "10.16.0.1,fd00:10::1", Provider: "internal.default.ovn",
 		},
 	}
 	pool := &kubeovnv1.IPPool{Name: "internal-pool", Spec: kubeovnv1.IPPoolSpec{Subnet: "internal"}}
@@ -1083,18 +1083,26 @@ func TestReconcileVpcEgressGatewayWorkloadPrimaryCNI(t *testing.T) {
 	gw := &kubeovnv1.VpcEgressGateway{Namespace: "default", Name: "veg", Spec: kubeovnv1.VpcEgressGatewaySpec{
 		Image: "test-image", InternalSubnet: "internal", InternalIPPool: "internal-pool",
 		ExternalNetworkMode: kubeovnv1.ExternalNetworkModePrimaryCNI,
+		Policies: []kubeovnv1.VpcEgressGatewayPolicy{{
+			SNAT:     false,
+			IPBlocks: []string{"10.20.0.0/16", "fd00:20::/64"},
+		}},
 	}}
-	network, _, _, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "", "fd00:ff::1")
+	network, _, _, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "10.16.0.254", "fd00:ff::1")
 	require.NoError(t, err)
 	require.Equal(t, "default/internal", network)
 	annotations := deploy.Spec.Template.Annotations
 	require.Equal(t, "default/internal", annotations[nadv1.NetworkAttachmentAnnot])
 	require.NotContains(t, annotations, util.DefaultNetworkAnnotation)
 	require.Equal(t, "internal-pool", annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, internal.Spec.Provider)])
-	require.JSONEq(t, `[{"dst":"fd00:ff::1/128","gw":"fd00:10::1"}]`, annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, internal.Spec.Provider)])
+	require.JSONEq(t, `[{"dst":"10.16.0.254/32","gw":"10.16.0.1"},{"dst":"10.20.0.0/16","gw":"10.16.0.1"},{"dst":"fd00:20::/64","gw":"fd00:10::1"},{"dst":"fd00:ff::1/128","gw":"fd00:10::1"}]`, annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, internal.Spec.Provider)])
 	env := deploy.Spec.Template.Spec.InitContainers[0].Env
 	require.Contains(t, env, corev1.EnvVar{Name: "EXTERNAL_NETWORK_MODE", Value: "primary-cni"})
+	require.Contains(t, env, corev1.EnvVar{Name: "INTERNAL_GATEWAY_IPV4", Value: "10.16.0.1"})
 	require.Contains(t, env, corev1.EnvVar{Name: "INTERNAL_GATEWAY_IPV6", Value: "fd00:10::1"})
+	require.Contains(t, env, corev1.EnvVar{Name: "NO_SNAT_SOURCES_IPV4", Value: "10.20.0.0/16"})
+	require.Contains(t, env, corev1.EnvVar{Name: "NO_SNAT_SOURCES_IPV6", Value: "fd00:20::/64"})
+	require.NotContains(t, env, corev1.EnvVar{Name: "EXTERNAL_GATEWAY_IPV4", Value: "10.16.0.1"})
 	require.NotContains(t, env, corev1.EnvVar{Name: "EXTERNAL_GATEWAY_IPV6", Value: "fd00:10::1"})
 }
 
