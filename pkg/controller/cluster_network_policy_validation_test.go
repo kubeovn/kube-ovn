@@ -55,3 +55,28 @@ func TestCnpRejectsUnsupportedRulesBeforeOVNChanges(t *testing.T) {
 		})
 	}
 }
+
+func TestCnpAllowsSamePriorityCnp(t *testing.T) {
+	fake := newFakeController(t)
+	c := fake.fakeController
+	c.anpPrioNameMap = map[int32]string{10: "existing"}
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	existing := &v1alpha2.ClusterNetworkPolicy{
+		Name: "existing",
+		Spec: v1alpha2.ClusterNetworkPolicySpec{
+			Tier:     v1alpha2.AdminTier,
+			Priority: 10,
+		},
+	}
+	require.NoError(t, indexer.Add(existing))
+	c.cnpsLister = cnplister.NewClusterNetworkPolicyLister(indexer)
+
+	candidate := &v1alpha2.ClusterNetworkPolicy{
+		Name: "candidate",
+		Spec: v1alpha2.ClusterNetworkPolicySpec{
+			Tier:     v1alpha2.AdminTier,
+			Priority: 10,
+		},
+	}
+	require.NoError(t, c.validateCnpConfig(candidate))
+}

@@ -1097,8 +1097,11 @@ func (c *Controller) updateCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPol
 		return fmt.Errorf("failed to get priority maps for cnp %s: %w", cnp.Name, err)
 	}
 
-	// Update map entries for the CNP
-	priorityNameMap[cnp.Spec.Priority] = cnp.Name
+	// Keep ANP/BANP priority entries intact while allowing CNPs in the same
+	// tier to share a priority.
+	if existingName, exists := priorityNameMap[cnp.Spec.Priority]; !exists || existingName == cnp.Name || c.cnpsLister == nil || c.isCnpName(existingName, cnp.Spec.Tier) {
+		priorityNameMap[cnp.Spec.Priority] = cnp.Name
+	}
 	namePriorityMap[cnp.Name] = cnp.Spec.Priority
 
 	return nil
@@ -1111,7 +1114,10 @@ func (c *Controller) deleteCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPol
 		return fmt.Errorf("failed to get priority maps for cnp %s: %w", cnp.Name, err)
 	}
 
-	delete(priorityNameMap, cnp.Spec.Priority)
+	if existingName, exists := priorityNameMap[cnp.Spec.Priority]; exists && (existingName == cnp.Name || c.cnpsLister == nil) {
+		delete(priorityNameMap, cnp.Spec.Priority)
+		c.restoreCnpPriorityMapEntry(priorityNameMap, cnp.Spec.Tier, cnp.Spec.Priority)
+	}
 	delete(namePriorityMap, cnp.Name)
 
 	return nil
@@ -1132,7 +1138,10 @@ func (c *Controller) wipeCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPolic
 		// otherwise the zero value 0 would wipe the entry of the CNP legitimately
 		// registered at priority 0 in this tier.
 		if priority, ok := namePriorityMap[cnp.Name]; ok {
-			delete(priorityNameMap, priority)
+			if existingName, exists := priorityNameMap[priority]; exists && (existingName == cnp.Name || c.cnpsLister == nil) {
+				delete(priorityNameMap, priority)
+				c.restoreCnpPriorityMapEntry(priorityNameMap, tier, priority)
+			}
 			delete(namePriorityMap, cnp.Name)
 		}
 	}
@@ -1156,8 +1165,9 @@ func (c *Controller) validateCnpConfig(cnp *v1alpha2.ClusterNetworkPolicy) error
 		return err
 	}
 
-	// Check the CNP respects priority rules
-	if err := checkCnpPriorities(priorityNameMap, cnp); err != nil {
+	// Check the CNP respects priority rules. CNPs in the same tier may share a
+	// priority; ANP/BANP entries in the shared map must remain unique.
+	if err := c.checkCnpPriorities(priorityNameMap, cnp); err != nil {
 		return err
 	}
 
@@ -1174,6 +1184,69 @@ func (c *Controller) validateCnpConfig(cnp *v1alpha2.ClusterNetworkPolicy) error
 	}
 
 	return nil
+}
+
+// checkCnpPriorities applies the CNP-specific priority semantics to the
+// controller's shared priority map. CNPs may share a priority, while ANP and
+// BANP entries remain conflicts in their respective tiers.
+func (c *Controller) checkCnpPriorities(priorityNameMap map[int32]string, cnp *v1alpha2.ClusterNetworkPolicy) error {
+	if priorityNameMap == nil || cnp == nil {
+		return checkCnpPriorities(priorityNameMap, cnp)
+	}
+
+	if existingName, exists := priorityNameMap[cnp.Spec.Priority]; exists && existingName != cnp.Name {
+		if !c.isCnpName(existingName, cnp.Spec.Tier) {
+			return checkCnpPriorities(priorityNameMap, cnp)
+		}
+	}
+
+	return checkCnpPriorities(map[int32]string{}, cnp)
+}
+
+func (c *Controller) isCnpName(name string, tier v1alpha2.Tier) bool {
+	if c.cnpsLister == nil {
+		return false
+	}
+	cnp, err := c.cnpsLister.Get(name)
+	if err != nil || cnp.Spec.Tier != tier {
+		return false
+	}
+
+	// Names are cluster-scoped independently for ANP/BANP and CNP. A same-name
+	// object in the corresponding legacy lister means the shared map entry may
+	// belong to the legacy policy, so keep the conflict conservative.
+	switch tier {
+	case v1alpha2.AdminTier:
+		if c.anpsLister != nil {
+			if _, err := c.anpsLister.Get(name); err == nil {
+				return false
+			}
+		}
+	case v1alpha2.BaselineTier:
+		if c.banpsLister != nil {
+			if _, err := c.banpsLister.Get(name); err == nil {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (c *Controller) restoreCnpPriorityMapEntry(priorityNameMap map[int32]string, tier v1alpha2.Tier, priority int32) {
+	if c.cnpsLister == nil {
+		return
+	}
+
+	cnps, err := c.cnpsLister.List(labels.Everything())
+	if err != nil {
+		return
+	}
+	for _, cnp := range cnps {
+		if cnp.Spec.Tier == tier && cnp.Spec.Priority == priority {
+			priorityNameMap[priority] = cnp.Name
+			return
+		}
+	}
 }
 
 // checkCnpPriorities checks if a ClusterNetworkPolicy respects the priority rules defined by the standard:
