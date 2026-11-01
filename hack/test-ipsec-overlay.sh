@@ -332,13 +332,20 @@ if [[ "$overlay_protection" == true ]]; then
   docker exec "$overlay_control_plane" crictl exec "$central_id" ovn-nbctl set NB_Global . ipsec=false
   ovs_id=$(docker exec "$overlay_control_plane" crictl ps --name '^openvswitch$' -q)
   [[ -n "$ovs_id" && "$ovs_id" != *$'\n'* ]]
-  for attempt in {1..30}; do
-    if docker exec "$overlay_control_plane" crictl exec "$ovs_id" ovs-vsctl --format=json --columns=options find Interface "type=$overlay_tunnel" | \
+  for attempt in {1..60}; do
+    sb_ipsec=$(docker exec "$overlay_control_plane" crictl exec "$central_id" \
+      ovn-sbctl --bare --format=csv --data=bare get SB_Global . ipsec 2>/dev/null || true)
+    if [[ "$sb_ipsec" == "false" ]] && \
+        docker exec "$overlay_control_plane" crictl exec "$ovs_id" ovs-vsctl --format=json --columns=options find Interface "type=$overlay_tunnel" | \
         python3 -c 'import json,sys; rows=json.load(sys.stdin)["data"]; options=[dict(row[0][1]) for row in rows]; sys.exit(not options or not all(o.get("egress_pkt_mark")==sys.argv[1] and "remote_name" not in o for o in options))' "${overlay_mark[$overlay_control_plane]}"; then
       break
     fi
-    if [[ "$attempt" == 30 ]]; then
-      echo 'OVN did not retain the protection mark with SB encryption disabled' >&2
+    if [[ "$attempt" == 60 ]]; then
+      echo "OVN IPsec disable did not converge (SB_Global.ipsec=$sb_ipsec)" >&2
+      docker exec "$overlay_control_plane" crictl exec "$central_id" \
+        ovn-sbctl --bare --format=csv --data=bare get SB_Global . ipsec >&2 || true
+      docker exec "$overlay_control_plane" crictl exec "$ovs_id" \
+        ovs-vsctl --format=table --columns=name,options find Interface "type=$overlay_tunnel" >&2 || true
       exit 1
     fi
     sleep 1
