@@ -1167,7 +1167,7 @@ func (c *Controller) validateCnpConfig(cnp *v1alpha2.ClusterNetworkPolicy) error
 
 	// Check the CNP respects priority rules. CNPs in the same tier may share a
 	// priority; ANP/BANP entries in the shared map must remain unique.
-	if err := c.checkCnpPriorities(priorityNameMap, cnp); err != nil {
+	if err := c.validateCnpPriority(priorityNameMap, cnp); err != nil {
 		return err
 	}
 
@@ -1186,10 +1186,10 @@ func (c *Controller) validateCnpConfig(cnp *v1alpha2.ClusterNetworkPolicy) error
 	return nil
 }
 
-// checkCnpPriorities applies the CNP-specific priority semantics to the
+// validateCnpPriority applies the CNP-specific priority semantics to the
 // controller's shared priority map. CNPs may share a priority, while ANP and
 // BANP entries remain conflicts in their respective tiers.
-func (c *Controller) checkCnpPriorities(priorityNameMap map[int32]string, cnp *v1alpha2.ClusterNetworkPolicy) error {
+func (c *Controller) validateCnpPriority(priorityNameMap map[int32]string, cnp *v1alpha2.ClusterNetworkPolicy) error {
 	if priorityNameMap == nil || cnp == nil {
 		return checkCnpPriorities(priorityNameMap, cnp)
 	}
@@ -1249,9 +1249,9 @@ func (c *Controller) restoreCnpPriorityMapEntry(priorityNameMap map[int32]string
 	}
 }
 
-// checkCnpPriorities checks if a ClusterNetworkPolicy respects the priority rules defined by the standard:
-//   - it must not collide with the priority of another CNP in the same tier
-//   - the maximum priority must not be greater than the limit
+// checkCnpPriorities enforces exclusive priority ownership for the supplied
+// policy. validateCnpPriority uses this strict check only when the shared map
+// entry belongs to an ANP or BANP (CNPs in the same tier may share a priority).
 func checkCnpPriorities(priorityNameMap map[int32]string, cnp *v1alpha2.ClusterNetworkPolicy) error {
 	// Sanitize the function input
 	if priorityNameMap == nil || cnp == nil {
