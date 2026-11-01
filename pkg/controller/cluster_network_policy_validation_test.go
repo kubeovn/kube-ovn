@@ -89,12 +89,12 @@ func TestCnpPriorityMapRestoresSharedPriorityAfterDelete(t *testing.T) {
 
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	first := &v1alpha2.ClusterNetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "first"},
-		Spec:       v1alpha2.ClusterNetworkPolicySpec{Tier: v1alpha2.AdminTier, Priority: 10},
+		Name: "first",
+		Spec: v1alpha2.ClusterNetworkPolicySpec{Tier: v1alpha2.AdminTier, Priority: 10},
 	}
 	second := &v1alpha2.ClusterNetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "second"},
-		Spec:       v1alpha2.ClusterNetworkPolicySpec{Tier: v1alpha2.AdminTier, Priority: 10},
+		Name: "second",
+		Spec: v1alpha2.ClusterNetworkPolicySpec{Tier: v1alpha2.AdminTier, Priority: 10},
 	}
 	require.NoError(t, indexer.Add(first))
 	require.NoError(t, indexer.Add(second))
