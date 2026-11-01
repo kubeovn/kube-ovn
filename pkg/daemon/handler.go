@@ -130,11 +130,15 @@ func (csh cniServerHandler) providerExists(provider, ifName string, annotations 
 	if provider == "" || provider == util.OvnProvider {
 		return nil, true
 	}
-	providerName, _ := strings.CutSuffix(provider, fmt.Sprintf(".%s", ifName))
+	providerName, providerHasIfName := strings.CutSuffix(provider, fmt.Sprintf(".%s", ifName))
 	// The v1.15 multi-NIC contract allows a named OVN attachment to select a
 	// legacy provider=ovn subnet explicitly through its logical_switch annotation.
-	if util.IsOvnProvider(provider) {
-		logicalSwitch := logicalSwitchAnnotation(annotations, provider, ifName, appendIfName)
+	if util.IsOvnProvider(providerName) {
+		logicalSwitch := logicalSwitchAnnotation(annotations, providerName, ifName, appendIfName || providerHasIfName)
+		if logicalSwitch == "" && !appendIfName && !providerHasIfName {
+			// The controller may publish logical_switch before the IP annotation.
+			logicalSwitch = logicalSwitchAnnotation(annotations, providerName, ifName, true)
+		}
 		if logicalSwitch != "" {
 			subnet, err := csh.Controller.subnetsLister.Get(logicalSwitch)
 			if err != nil {
@@ -168,6 +172,19 @@ func logicalSwitchAnnotation(annotations map[string]string, provider, ifName str
 		return ""
 	}
 	return util.GetAnnotationWithIfNameOverride(annotations, provider, ifName, util.LogicalSwitchAnnotationTemplate, appendIfName)
+}
+
+func appendIfNameForAnnotations(annotations map[string]string, provider, ifName string) bool {
+	if annotations == nil || ifName == "" || strings.HasSuffix(provider, "."+ifName) {
+		return false
+	}
+	providerWithIfName := fmt.Sprintf("%s.%s", provider, ifName)
+	for _, template := range []string{util.IPAddressAnnotationTemplate, util.LogicalSwitchAnnotationTemplate} {
+		if _, ok := annotations[fmt.Sprintf(template, providerWithIfName)]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // isMacOnlyAllocation reports whether the controller allocated only a MAC address
@@ -219,7 +236,6 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 	var pod *v1.Pod
 	var err error
 
-	providerWithIfName := fmt.Sprintf("%s.%s", podRequest.Provider, podRequest.IfName)
 	var appendIfName bool
 
 	for range 20 {
@@ -236,10 +252,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		// Match the effective annotation key used below when building the plan.
 		// This must happen before providerExists so stale interface-specific
 		// annotations cannot select a different subnet for validation.
-		_, ok := pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, providerWithIfName)]
-		if ok {
-			appendIfName = true
-		}
+		appendIfName = appendIfNameForAnnotations(pod.Annotations, podRequest.Provider, podRequest.IfName)
 		var exist bool
 		podSubnet, exist = csh.providerExists(podRequest.Provider, podRequest.IfName, pod.Annotations, appendIfName)
 		if !exist {

@@ -281,6 +281,17 @@ func TestProviderExistsAllowsLegacyOvnSubnetSelectedByLogicalSwitch(t *testing.T
 	resolved, ok = handler.providerExists(provider, "net1", interfaceAnnotations, true)
 	require.True(t, ok)
 	require.Equal(t, subnetName, resolved.Name)
+	resolved, ok = handler.providerExists(provider, "net1", interfaceAnnotations, false)
+	require.True(t, ok)
+	require.Equal(t, subnetName, resolved.Name)
+
+	suffixedProvider := provider + ".net1"
+	suffixedAnnotations := map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, suffixedProvider): subnetName,
+	}
+	resolved, ok = handler.providerExists(suffixedProvider, "net1", suffixedAnnotations, false)
+	require.True(t, ok)
+	require.Equal(t, subnetName, resolved.Name)
 
 	emptyProviderSubnet := &kubeovnv1.Subnet{
 		Name: "legacy-empty-provider",
@@ -292,6 +303,24 @@ func TestProviderExistsAllowsLegacyOvnSubnetSelectedByLogicalSwitch(t *testing.T
 	resolved, ok = handler.providerExists("legacy.default.ovn", "", emptyProviderAnnotations, false)
 	require.True(t, ok)
 	require.Equal(t, emptyProviderSubnet.Name, resolved.Name)
+}
+
+func TestAppendIfNameForAnnotations(t *testing.T) {
+	provider := "attachnet.default.ovn"
+	ifName := "net1"
+
+	require.True(t, appendIfNameForAnnotations(map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider+"."+ifName): "subnet",
+	}, provider, ifName))
+	require.True(t, appendIfNameForAnnotations(map[string]string{
+		fmt.Sprintf(util.IPAddressAnnotationTemplate, provider+"."+ifName): "10.0.0.2",
+	}, provider, ifName))
+	require.False(t, appendIfNameForAnnotations(map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): "subnet",
+	}, provider, ifName))
+	require.False(t, appendIfNameForAnnotations(map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider+"."+ifName): "subnet",
+	}, provider+"."+ifName, ifName))
 }
 
 func TestProviderExistsUsesEffectiveLogicalSwitchAnnotation(t *testing.T) {
