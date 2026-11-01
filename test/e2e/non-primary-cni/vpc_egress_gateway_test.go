@@ -136,7 +136,7 @@ func runNonPrimaryVpcEgressGatewayCase(f *framework.Framework, mode string) {
 		gomega.Expect(gwPod.Annotations[util.DefaultNetworkAnnotation]).To(gomega.Equal(internalNetwork))
 		gomega.Expect(gwPod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)]).To(gomega.Equal(internalSubnet.Name))
 		internalRoutes := gwPod.Annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, provider)]
-		for _, cidr := range strings.Split(sourceSubnet.Spec.CIDRBlock, ",") {
+		for cidr := range strings.SplitSeq(sourceSubnet.Spec.CIDRBlock, ",") {
 			gomega.Expect(internalRoutes).To(gomega.ContainSubstring(cidr))
 		}
 	}
