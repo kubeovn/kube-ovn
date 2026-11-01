@@ -13,6 +13,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
@@ -100,6 +101,48 @@ func waitForDbRecovery(f *framework.Framework, pods []corev1.Pod) {
 			}, fmt.Sprintf("ovn%s db cluster on node %s to show %d servers", db, pod.Spec.NodeName, expected))
 		}
 	}
+}
+
+func waitForCentralLeaders(f *framework.Framework) {
+	ginkgo.GinkgoHelper()
+
+	ginkgo.By("Waiting for OVN leaders to remain ready after database recovery")
+	var readySince time.Time
+	framework.WaitUntil(time.Second, 2*time.Minute, func(ctx context.Context) (bool, error) {
+		pods, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).List(ctx, metav1.ListOptions{LabelSelector: "app=ovn-central"})
+		if err != nil {
+			readySince = time.Time{}
+			framework.Logf("listing ovn-central pods while waiting for leaders: %v", err)
+			return false, nil
+		}
+
+		leaders := map[string]int{"ovn-nb-leader": 0, "ovn-sb-leader": 0, "ovn-northd-leader": 0}
+		for _, pod := range pods.Items {
+			if pod.DeletionTimestamp != nil || pod.Status.Phase != corev1.PodRunning {
+				continue
+			}
+			for _, container := range pod.Status.ContainerStatuses {
+				if container.Name != "ovn-central" || container.State.Running == nil || !container.Ready {
+					continue
+				}
+				for label := range leaders {
+					if pod.Labels[label] == "true" {
+						leaders[label]++
+					}
+				}
+			}
+		}
+		for _, count := range leaders {
+			if count != 1 {
+				readySince = time.Time{}
+				return false, nil
+			}
+		}
+		if readySince.IsZero() {
+			readySince = time.Now()
+		}
+		return time.Since(readySince) >= 10*time.Second, nil
+	}, "one ready NB, SB, and northd leader for 10 consecutive seconds")
 }
 
 type clusterStatus struct {
@@ -384,6 +427,8 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Restoring deployment ovn-central replicas to " + strconv.Itoa(int(replicas)))
 			deployClient.SetScale(deploy.Name, replicas)
+			deployClient.RolloutStatus(deploy.Name)
+			waitForCentralLeaders(f)
 		})
 
 		ginkgo.By("Waiting for deployment ovn-central to be ready")
@@ -453,6 +498,8 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Restoring deployment ovn-central replicas to " + strconv.Itoa(int(replicas)))
 			deployClient.SetScale(deploy.Name, replicas)
+			deployClient.RolloutStatus(deploy.Name)
+			waitForCentralLeaders(f)
 		})
 
 		ginkgo.By("Waiting for deployment ovn-central to be ready")
