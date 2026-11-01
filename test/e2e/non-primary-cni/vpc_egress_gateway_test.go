@@ -23,7 +23,7 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 	f := framework.NewDefaultFramework("non-primary-cni-vpc-egress-gateway")
 
 	ginkgo.Context("VPC Egress Gateway", ginkgo.Label("Feature:VPC-Egress-Gateway"), func() {
-		ginkgo.It("routes and SNATs through the existing external attachment", func() {
+		ginkgo.It("uses the internal NAD as default and SNATs through the external attachment", func() {
 			runNonPrimaryVpcEgressGatewayCase(f, apiv1.ExternalNetworkModeAttachment)
 		})
 
@@ -110,7 +110,9 @@ func runNonPrimaryVpcEgressGatewayCase(f *framework.Framework, mode string) {
 
 	gwName := "veg-" + suffix
 	gw := framework.MakeVpcEgressGateway(namespace, gwName, vpcName, 1, internalSubnet.Name, externalSubnetName)
-	gw.Spec.ExternalNetworkMode = mode
+	if mode == apiv1.ExternalNetworkModePrimaryCNI {
+		gw.Spec.ExternalNetworkMode = mode
+	}
 	gw.Spec.Policies = []apiv1.VpcEgressGatewayPolicy{{SNAT: true, Subnets: []string{sourceSubnet.Name}}}
 	gwClient := f.VpcEgressGatewayClient()
 	ginkgo.DeferCleanup(func() { gwClient.DeleteSync(gwName) })
@@ -132,6 +134,11 @@ func runNonPrimaryVpcEgressGatewayCase(f *framework.Framework, mode string) {
 		gomega.Expect(gwPod.Annotations).ToNot(gomega.HaveKey(util.DefaultNetworkAnnotation))
 	} else {
 		gomega.Expect(gwPod.Annotations[util.DefaultNetworkAnnotation]).To(gomega.Equal(internalNetwork))
+		gomega.Expect(gwPod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)]).To(gomega.Equal(internalSubnet.Name))
+		internalRoutes := gwPod.Annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, provider)]
+		for _, cidr := range strings.Split(sourceSubnet.Spec.CIDRBlock, ",") {
+			gomega.Expect(internalRoutes).To(gomega.ContainSubstring(cidr))
+		}
 	}
 
 	attachmentIPs, err := util.PodAttachmentIPs(gwPod, attachmentNetwork)
@@ -162,22 +169,28 @@ func runNonPrimaryVpcEgressGatewayCase(f *framework.Framework, mode string) {
 	source := framework.MakePrivilegedPod(namespace, sourceName, nil, annotations, f.KubeOVNImage, []string{"sleep", "infinity"}, nil)
 	ginkgo.DeferCleanup(func() { podClient.DeleteSync(sourceName) })
 	source = podClient.CreateSync(source)
+	sourceIPs, err := util.PodAttachmentIPs(source, internalNetwork)
+	framework.ExpectNoError(err)
+	sourceIPv4, sourceIPv6 := util.SplitIpsByProtocol(sourceIPs)
 
 	for _, family := range []struct {
 		af          int
 		serverIPs   []string
+		sourceIPs   []string
 		internalIPs []string
 		externalIPs []string
 	}{
-		{af: 4, serverIPs: serverIPv4, internalIPs: internalIPv4, externalIPs: externalIPv4},
-		{af: 6, serverIPs: serverIPv6, internalIPs: internalIPv6, externalIPs: externalIPv6},
+		{af: 4, serverIPs: serverIPv4, sourceIPs: sourceIPv4, internalIPs: internalIPv4, externalIPs: externalIPv4},
+		{af: 6, serverIPs: serverIPv6, sourceIPs: sourceIPv6, internalIPs: internalIPv6, externalIPs: externalIPv6},
 	} {
 		if len(family.serverIPs) == 0 {
 			continue
 		}
 		gomega.Expect(family.internalIPs).ToNot(gomega.BeEmpty())
 		gomega.Expect(family.externalIPs).ToNot(gomega.BeEmpty())
+		gomega.Expect(family.sourceIPs).ToNot(gomega.BeEmpty())
 		serverIP := family.serverIPs[0]
+		sourceIP := family.sourceIPs[0]
 		internalIP := family.internalIPs[0]
 		externalIP := family.externalIPs[0]
 		policyQuery := fmt.Sprintf(
@@ -199,6 +212,13 @@ func runNonPrimaryVpcEgressGatewayCase(f *framework.Framework, mode string) {
 			externalInterface = "eth0"
 		}
 		gomega.Expect(gatewayRoute).To(gomega.ContainSubstring("dev " + externalInterface))
+		internalInterface := "eth0"
+		if mode == apiv1.ExternalNetworkModePrimaryCNI {
+			internalInterface = "net1"
+		}
+		gatewayReturnRoute, err := e2epodoutput.RunHostCmd(namespace, gwPod.Name, fmt.Sprintf("ip -%d route get %s", family.af, sourceIP))
+		framework.ExpectNoError(err)
+		gomega.Expect(gatewayReturnRoute).To(gomega.ContainSubstring("dev " + internalInterface))
 
 		url := "http://" + net.JoinHostPort(serverIP, "8080") + "/clientip"
 		gomega.Eventually(func() (string, error) {

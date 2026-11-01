@@ -49,8 +49,9 @@ The test suite covers four main scenarios with enhanced interface handling and d
 
 ### 4. VPC Egress Gateway
 - **Purpose**: Tests both the existing external attachment mode and `PrimaryCNI` egress mode
+- **Existing behavior**: Covers the internal NAD default-network and external attachment routing introduced by [PR #7425](https://github.com/kubeovn/kube-ovn/pull/7425), using a gateway without `externalNetworkMode`
 - **Version**: `PrimaryCNI` mode requires Kube-OVN v1.17 or later
-- **Coverage**: Gateway interface roles, internal/external status IPs, OVN reroute next hops, and the source IP observed after SNAT
+- **Coverage**: Gateway interface roles, routes back to the VPC, internal/external status IPs, OVN reroute next hops, and the source IP observed after SNAT
 - **Networks**: Uses `kind-underlay` for the external macvlan attachment case and Cilium's primary pod network for the `PrimaryCNI` case
 - **Config**: Creates its VPC, subnets, NADs, gateway, and test pods through the E2E clients
 
