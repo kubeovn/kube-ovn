@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -94,22 +95,56 @@ func TestProviderExistsRequiresSubnetForNamedOvnProvider(t *testing.T) {
 
 	handler := cniServerHandler{Controller: &Controller{subnetsLister: subnetInformer.Lister()}}
 
-	_, ok := handler.providerExists(util.OvnProvider)
+	_, ok := handler.providerExists(util.OvnProvider, "", nil)
 	require.True(t, ok)
 
-	subnet, ok := handler.providerExists("attachnet-a.default.ovn")
+	subnet, ok := handler.providerExists("attachnet-a.default.ovn", "", nil)
 	require.True(t, ok)
 	require.NotNil(t, subnet)
 	require.Equal(t, "attach-subnet", subnet.Name)
 
-	_, ok = handler.providerExists("attachnet-b.default.ovn")
+	_, ok = handler.providerExists("attachnet-b.default.ovn", "", nil)
 	require.False(t, ok)
 }
 
 func TestProviderExistsAllowsOnSubnetListError(t *testing.T) {
 	handler := cniServerHandler{Controller: &Controller{subnetsLister: errSubnetLister{}}}
 
-	subnet, ok := handler.providerExists("attachnet-a.default.ovn")
+	subnet, ok := handler.providerExists("attachnet-a.default.ovn", "", nil)
 	require.True(t, ok)
 	require.Nil(t, subnet)
+}
+
+func TestProviderExistsAllowsLegacyOvnSubnetSelectedByLogicalSwitch(t *testing.T) {
+	const provider = "attachnet.default.ovn"
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "legacy-attachment"},
+		Spec:       kubeovnv1.SubnetSpec{Provider: util.OvnProvider},
+	}
+	kubeovnClient := kubeovnfake.NewSimpleClientset()
+	informerFactory := kubeovninformerfactory.NewSharedInformerFactory(kubeovnClient, 0)
+	subnetInformer := informerFactory.Kubeovn().V1().Subnets()
+	require.NoError(t, subnetInformer.Informer().GetStore().Add(subnet))
+	handler := cniServerHandler{Controller: &Controller{subnetsLister: subnetInformer.Lister()}}
+
+	annotations := map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): subnet.Name,
+	}
+	resolved, ok := handler.providerExists(provider, "", annotations)
+	require.True(t, ok)
+	require.Equal(t, subnet.Name, resolved.Name)
+
+	interfaceAnnotations := map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider+".net1"): subnet.Name,
+	}
+	resolved, ok = handler.providerExists(provider, "net1", interfaceAnnotations)
+	require.True(t, ok)
+	require.Equal(t, subnet.Name, resolved.Name)
+
+	suffixedProvider := provider + ".net1"
+	resolved, ok = handler.providerExists(suffixedProvider, "net1", map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, suffixedProvider): subnet.Name,
+	})
+	require.True(t, ok)
+	require.Equal(t, subnet.Name, resolved.Name)
 }
