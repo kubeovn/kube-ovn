@@ -3326,7 +3326,7 @@ jobs:
 
       - name: Install Kube-OVN
         id: install
-        run: make kind-install-anp
+        run: make kind-install-${{ matrix.suite }}
 
       - name: Run network policy conformance
         id: e2e
