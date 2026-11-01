@@ -160,12 +160,16 @@ func (c *OVNSbClient) UpdateChassisTag(chassisName, nodeName string) error {
 		klog.Error(err)
 		return err
 	}
-	if chassis.ExternalIDs == nil || chassis.ExternalIDs["node"] != nodeName {
+	if chassis.ExternalIDs == nil || chassis.ExternalIDs["vendor"] != util.CniTypeName {
+		// The only field this function actually writes is "vendor"; gate the
+		// update on that, not on "node" (a key this function stopped writing
+		// below - "not need to filter chassis by node name if we use
+		// libovsdb" - so comparing it here was always comparing against a
+		// value nothing sets, making this a no-op whenever a legacy row
+		// happened to still carry a stale but matching "node" id).
 		externalIDs := make(map[string]string, len(chassis.ExternalIDs)+2)
 		maps.Copy(externalIDs, chassis.ExternalIDs)
 		externalIDs["vendor"] = util.CniTypeName
-		// externalIDs["node"] = nodeName
-		// not need filter chassis by node name if we use libovsdb
 		chassis.ExternalIDs = externalIDs
 		if err := c.UpdateChassis(chassis, &chassis.ExternalIDs); err != nil {
 			klog.Error(err)
