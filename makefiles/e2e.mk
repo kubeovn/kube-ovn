@@ -215,7 +215,7 @@ kube-ovn-non-primary-cni-e2e:
 	TEST_CONFIG_PATH=$(shell echo $${TEST_CONFIG_PATH:-$(CURDIR)/test/e2e/non-primary-cni/testconfigs}) \
 	KUBE_OVN_PRIMARY_CNI=$(shell echo $${KUBE_OVN_PRIMARY_CNI:-false}) \
 	$(GINKGO_E2E_RUN_PARALLEL) --timeout=15m \
-		--focus="group:non-primary-cni" ./test/e2e/non-primary-cni/non-primary-cni.test -- $(TEST_BIN_ARGS)
+		--focus="$(or $(NON_PRIMARY_CNI_E2E_FOCUS),group:non-primary-cni)" ./test/e2e/non-primary-cni/non-primary-cni.test -- $(TEST_BIN_ARGS)
 
 .PHONY: kube-ovn-bgp-speaker-e2e
 kube-ovn-bgp-speaker-e2e:
