@@ -133,7 +133,7 @@ spec:
           - --ls-dnat-mod-dl-dst={{- .Values.func.LS_DNAT_MOD_DL_DST }}
           - --ls-ct-skip-dst-lport-ips={{- .Values.func.LS_CT_SKIP_DST_LPORT_IPS }}
           - --pod-nic-type={{- .Values.networking.POD_NIC_TYPE }}
-          - --enable-lb={{ .Values.func.ENABLE_LB }}
+          - --enable-lb={{- .Values.func.ENABLE_LB }}
           - --enable-np={{- .Values.func.ENABLE_NP }}
           - --np-enforcement={{- .Values.func.NP_ENFORCEMENT }}
           - --enable-acl-sampling={{- .Values.aclSampling.enabled }}
