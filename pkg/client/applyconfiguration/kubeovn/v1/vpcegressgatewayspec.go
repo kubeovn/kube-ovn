@@ -45,7 +45,9 @@ type VpcEgressGatewaySpecApplyConfiguration struct {
 	// optional internal subnet used to create the workload
 	// if not specified, the workload will be created in the default subnet of the VPC
 	InternalSubnet *string `json:"internalSubnet,omitempty"`
-	// external subnet used to create the workload
+	// External network mode. Attachment uses externalSubnet; PrimaryCNI uses the pod's primary network.
+	ExternalNetworkMode *string `json:"externalNetworkMode,omitempty"`
+	// External subnet used to create the workload in Attachment mode.
 	ExternalSubnet *string `json:"externalSubnet,omitempty"`
 	// optional internal/external IPs used to create the workload
 	// these IPs must be in the internal/external subnet
@@ -153,6 +155,14 @@ func (b *VpcEgressGatewaySpecApplyConfiguration) WithImage(value string) *VpcEgr
 // If called multiple times, the InternalSubnet field is set to the value of the last call.
 func (b *VpcEgressGatewaySpecApplyConfiguration) WithInternalSubnet(value string) *VpcEgressGatewaySpecApplyConfiguration {
 	b.InternalSubnet = &value
+	return b
+}
+
+// WithExternalNetworkMode sets the ExternalNetworkMode field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ExternalNetworkMode field is set to the value of the last call.
+func (b *VpcEgressGatewaySpecApplyConfiguration) WithExternalNetworkMode(value string) *VpcEgressGatewaySpecApplyConfiguration {
+	b.ExternalNetworkMode = &value
 	return b
 }
 

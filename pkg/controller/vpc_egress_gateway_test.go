@@ -677,6 +677,59 @@ func TestCollectVpcEgressGatewayWorkloadStatusRetainsNetworkedNotReadyPod(t *tes
 	require.Len(t, messages, 1)
 }
 
+func TestCollectVpcEgressGatewayWorkloadStatusPrimaryCNI(t *testing.T) {
+	pod := newVegWorkloadPod("veg-1", "node-1", "2001:db8:1::10", `[{"name":"default/internal","ips":["fd00:10::10"]}]`)
+	gw := &kubeovnv1.VpcEgressGateway{Spec: kubeovnv1.VpcEgressGatewaySpec{
+		Replicas: 1, ExternalNetworkMode: kubeovnv1.ExternalNetworkModePrimaryCNI,
+	}}
+	ipv4, ipv6, messages := collectVpcEgressGatewayWorkloadStatus(gw, []*corev1.Pod{pod}, "default/internal")
+	require.Empty(t, messages)
+	require.Empty(t, ipv4)
+	require.Equal(t, map[string]set.Set[string]{"node-1": set.New("fd00:10::10")}, ipv6)
+	require.Equal(t, []string{"fd00:10::10"}, gw.Status.InternalIPs)
+	require.Equal(t, []string{"2001:db8:1::10"}, gw.Status.ExternalIPs)
+
+	pod.Annotations[nadv1.NetworkStatusAnnot] = `[{"name":"default/internal","ips":[]}]`
+	_, _, messages = collectVpcEgressGatewayWorkloadStatus(gw, []*corev1.Pod{pod}, "default/internal")
+	require.NotEmpty(t, messages)
+	require.Empty(t, gw.Status.InternalIPs)
+}
+
+func TestValidateVpcEgressGatewayExternalNetwork(t *testing.T) {
+	tests := []struct {
+		name       string
+		mode       string
+		nonPrimary bool
+		modify     func(*kubeovnv1.VpcEgressGatewaySpec)
+		wantError  string
+	}{
+		{name: "legacy attachment", modify: func(spec *kubeovnv1.VpcEgressGatewaySpec) { spec.ExternalSubnet = "external" }},
+		{name: "missing attachment subnet", wantError: "externalSubnet is required"},
+		{name: "primary", mode: kubeovnv1.ExternalNetworkModePrimaryCNI, nonPrimary: true},
+		{name: "primary requires non-primary CNI", mode: kubeovnv1.ExternalNetworkModePrimaryCNI, wantError: "requires non-primary CNI"},
+		{name: "primary rejects external subnet", mode: kubeovnv1.ExternalNetworkModePrimaryCNI, nonPrimary: true, modify: func(spec *kubeovnv1.VpcEgressGatewaySpec) { spec.ExternalSubnet = "external" }, wantError: "cannot use externalSubnet"},
+		{name: "primary rejects BGP", mode: kubeovnv1.ExternalNetworkModePrimaryCNI, nonPrimary: true, modify: func(spec *kubeovnv1.VpcEgressGatewaySpec) { spec.BgpConf = "bgp" }, wantError: "does not support BGP"},
+		{name: "primary rejects observability", mode: kubeovnv1.ExternalNetworkModePrimaryCNI, nonPrimary: true, modify: func(spec *kubeovnv1.VpcEgressGatewaySpec) {
+			spec.Observability = &kubeovnv1.VpcEgressGatewayObservability{}
+		}, wantError: "does not support BGP"},
+		{name: "unknown mode", mode: "Unknown", wantError: "unsupported externalNetworkMode"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gw := &kubeovnv1.VpcEgressGateway{Spec: kubeovnv1.VpcEgressGatewaySpec{ExternalNetworkMode: tt.mode}}
+			if tt.modify != nil {
+				tt.modify(&gw.Spec)
+			}
+			err := validateVpcEgressGatewayExternalNetwork(gw, tt.nonPrimary)
+			if tt.wantError == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tt.wantError)
+			}
+		})
+	}
+}
+
 func newVpcEgressGatewayWorkloadTestController(t *testing.T, ippools []*kubeovnv1.IPPool) (*Controller, *kubeovnv1.Subnet, *kubeovnv1.Subnet) {
 	t.Helper()
 	intSubnet := &kubeovnv1.Subnet{
@@ -1010,4 +1063,58 @@ func TestReconcileVpcEgressGatewayWorkloadNonPrimaryCNIAnnotations(t *testing.T)
 	require.Equal(t, "ext-pool", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)])
 	require.Equal(t, "100", deploy.Spec.Template.Annotations[fmt.Sprintf(util.EgressRateAnnotationTemplate, intSubnet.Spec.Provider)])
 	require.Equal(t, "200", deploy.Spec.Template.Annotations[fmt.Sprintf(util.IngressRateAnnotationTemplate, intSubnet.Spec.Provider)])
+}
+
+func TestReconcileVpcEgressGatewayWorkloadPrimaryCNI(t *testing.T) {
+	internal := &kubeovnv1.Subnet{
+		Name: "internal", Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "fd00:10::/64", Gateway: "fd00:10::1", Provider: "internal.default.ovn",
+		},
+	}
+	pool := &kubeovnv1.IPPool{Name: "internal-pool", Spec: kubeovnv1.IPPoolSpec{Subnet: "internal"}}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets:            []*kubeovnv1.Subnet{internal},
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{{Name: "internal", Namespace: "default"}},
+		IPPools:            []*kubeovnv1.IPPool{pool},
+	})
+	require.NoError(t, err)
+	c := fc.fakeController
+	c.config.EnableNonPrimaryCNI = true
+	gw := &kubeovnv1.VpcEgressGateway{Namespace: "default", Name: "veg", Spec: kubeovnv1.VpcEgressGatewaySpec{
+		Image: "test-image", InternalSubnet: "internal", InternalIPPool: "internal-pool",
+		ExternalNetworkMode: kubeovnv1.ExternalNetworkModePrimaryCNI,
+	}}
+	network, _, _, deploy, err := c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "", "fd00:ff::1")
+	require.NoError(t, err)
+	require.Equal(t, "default/internal", network)
+	annotations := deploy.Spec.Template.Annotations
+	require.Equal(t, "default/internal", annotations[nadv1.NetworkAttachmentAnnot])
+	require.NotContains(t, annotations, util.DefaultNetworkAnnotation)
+	require.Equal(t, "internal-pool", annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, internal.Spec.Provider)])
+	require.JSONEq(t, `[{"dst":"fd00:ff::1/128","gw":"fd00:10::1"}]`, annotations[fmt.Sprintf(util.RoutesAnnotationTemplate, internal.Spec.Provider)])
+	env := deploy.Spec.Template.Spec.InitContainers[0].Env
+	require.Contains(t, env, corev1.EnvVar{Name: "EXTERNAL_NETWORK_MODE", Value: "primary-cni"})
+	require.Contains(t, env, corev1.EnvVar{Name: "INTERNAL_GATEWAY_IPV6", Value: "fd00:10::1"})
+	require.NotContains(t, env, corev1.EnvVar{Name: "EXTERNAL_GATEWAY_IPV6", Value: "fd00:10::1"})
+}
+
+func TestReconcileVpcEgressGatewayWorkloadPrimaryCNIMissingNAD(t *testing.T) {
+	internal := &kubeovnv1.Subnet{Name: "internal", Spec: kubeovnv1.SubnetSpec{Provider: "internal.default.ovn"}}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{internal}})
+	require.NoError(t, err)
+	c := fc.fakeController
+	c.config.EnableNonPrimaryCNI = true
+	gw := &kubeovnv1.VpcEgressGateway{Namespace: "default", Name: "veg", Spec: kubeovnv1.VpcEgressGatewaySpec{
+		Image: "test-image", InternalSubnet: internal.Name,
+		ExternalNetworkMode: kubeovnv1.ExternalNetworkModePrimaryCNI,
+	}}
+	_, _, _, _, err = c.reconcileVpcEgressGatewayWorkload(gw, &kubeovnv1.Vpc{}, "", "", "")
+	var invalidSpec *vpcEgressGatewayInvalidSpecError
+	require.ErrorAs(t, err, &invalidSpec)
+	require.ErrorContains(t, err, "net-attach-def default/internal")
+	for _, action := range c.config.KubeClient.(*k8sfake.Clientset).Actions() {
+		if action.GetResource().Resource == "deployments" {
+			require.NotEqual(t, "create", action.GetVerb())
+		}
+	}
 }

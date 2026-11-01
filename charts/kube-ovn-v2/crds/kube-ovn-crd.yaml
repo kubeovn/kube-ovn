@@ -3672,8 +3672,20 @@ spec:
                   type: string
                 type: array
                 x-kubernetes-list-type: set
+              externalNetworkMode:
+                default: Attachment
+                description: External network mode. Attachment uses externalSubnet;
+                  PrimaryCNI uses the pod's primary network.
+                enum:
+                - Attachment
+                - PrimaryCNI
+                type: string
+                x-kubernetes-validations:
+                - message: This field is immutable.
+                  rule: self == oldSelf
               externalSubnet:
-                description: external subnet used to create the workload
+                description: External subnet used to create the workload in Attachment
+                  mode.
                 type: string
               image:
                 description: |-
@@ -4518,8 +4530,6 @@ spec:
                   optional VPC name
                   if not specified, the default VPC will be used
                 type: string
-            required:
-            - externalSubnet
             type: object
             x-kubernetes-validations:
             - fieldPath: .internalIPs
@@ -4541,6 +4551,19 @@ spec:
             - message: Each VPC Egress Gateway MUST have at least one policy or selector
               rule: (has(self.policies) && size(self.policies) != 0) || (has(self.selectors)
                 && size(self.selectors) != 0)
+            - message: externalSubnet is required in Attachment mode and forbidden
+                in PrimaryCNI mode
+              rule: 'has(self.externalNetworkMode) && self.externalNetworkMode ==
+                ''PrimaryCNI'' ? !has(self.externalSubnet) || size(self.externalSubnet)
+                == 0 : has(self.externalSubnet) && size(self.externalSubnet) > 0'
+            - message: PrimaryCNI mode does not support external IP allocation, BGP,
+                EVPN, selectors, bandwidth or observability
+              rule: '!has(self.externalNetworkMode) || self.externalNetworkMode !=
+                ''PrimaryCNI'' || ((!has(self.externalIPs) || size(self.externalIPs)
+                == 0) && (!has(self.externalIPPool) || size(self.externalIPPool) ==
+                0) && (!has(self.bgpConf) || size(self.bgpConf) == 0) && (!has(self.evpnConf)
+                || size(self.evpnConf) == 0) && (!has(self.selectors) || size(self.selectors)
+                == 0) && !has(self.bandwidth) && !has(self.observability))'
           status:
             properties:
               conditions:

@@ -20,6 +20,9 @@ const (
 	TrafficPolicyLocal   = "Local"
 	TrafficPolicyCluster = "Cluster"
 
+	ExternalNetworkModeAttachment = "Attachment"
+	ExternalNetworkModePrimaryCNI = "PrimaryCNI"
+
 	PodAntiAffinityRequired  = "Required"
 	PodAntiAffinityPreferred = "Preferred"
 
@@ -262,6 +265,8 @@ func (b *BandwidthLimit) Mbps() (int64, int64, error) {
 // +kubebuilder:validation:XValidation:rule="!(has(self.internalIPs) && size(self.internalIPs) != 0 && has(self.internalIPPool) && size(self.internalIPPool) > 0)",message="internalIPs and internalIPPool are mutually exclusive",fieldPath=".internalIPPool"
 // +kubebuilder:validation:XValidation:rule="!(has(self.externalIPs) && size(self.externalIPs) != 0 && has(self.externalIPPool) && size(self.externalIPPool) > 0)",message="externalIPs and externalIPPool are mutually exclusive",fieldPath=".externalIPPool"
 // +kubebuilder:validation:XValidation:rule="(has(self.policies) && size(self.policies) != 0) || (has(self.selectors) && size(self.selectors) != 0)",message="Each VPC Egress Gateway MUST have at least one policy or selector"
+// +kubebuilder:validation:XValidation:rule="has(self.externalNetworkMode) && self.externalNetworkMode == 'PrimaryCNI' ? !has(self.externalSubnet) || size(self.externalSubnet) == 0 : has(self.externalSubnet) && size(self.externalSubnet) > 0",message="externalSubnet is required in Attachment mode and forbidden in PrimaryCNI mode"
+// +kubebuilder:validation:XValidation:rule="!has(self.externalNetworkMode) || self.externalNetworkMode != 'PrimaryCNI' || ((!has(self.externalIPs) || size(self.externalIPs) == 0) && (!has(self.externalIPPool) || size(self.externalIPPool) == 0) && (!has(self.bgpConf) || size(self.bgpConf) == 0) && (!has(self.evpnConf) || size(self.evpnConf) == 0) && (!has(self.selectors) || size(self.selectors) == 0) && !has(self.bandwidth) && !has(self.observability))",message="PrimaryCNI mode does not support external IP allocation, BGP, EVPN, selectors, bandwidth or observability"
 type VpcEgressGatewaySpec struct {
 	// optional VPC name
 	// if not specified, the default VPC will be used
@@ -288,9 +293,13 @@ type VpcEgressGatewaySpec struct {
 	// optional internal subnet used to create the workload
 	// if not specified, the workload will be created in the default subnet of the VPC
 	InternalSubnet string `json:"internalSubnet,omitempty"`
-	// external subnet used to create the workload
-	// +kubebuilder:validation:Required
-	ExternalSubnet string `json:"externalSubnet"`
+	// External network mode. Attachment uses externalSubnet; PrimaryCNI uses the pod's primary network.
+	// +kubebuilder:default=Attachment
+	// +kubebuilder:validation:Enum=Attachment;PrimaryCNI
+	// +kubebuilder:validation:XValidation:rule="self == oldSelf",message="This field is immutable."
+	ExternalNetworkMode string `json:"externalNetworkMode,omitempty"`
+	// External subnet used to create the workload in Attachment mode.
+	ExternalSubnet string `json:"externalSubnet,omitempty"`
 	// optional internal/external IPs used to create the workload
 	// these IPs must be in the internal/external subnet
 	// when specified, the IPs count must NOT be less than the replicas count

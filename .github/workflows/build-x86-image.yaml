@@ -272,6 +272,8 @@ jobs:
       - name: Unit test
         run: |
           python3 hack/test-ovn-db-mode.py
+          bash dist/images/init-vpc-egress-gateway_test.sh
+          bash dist/images/init-vpc-egress-gateway-primary-cni_test.sh
           make ut
           go test -race ./pkg/ipsec
           go test -race ./pkg/controller -run TestIPsec -count=1

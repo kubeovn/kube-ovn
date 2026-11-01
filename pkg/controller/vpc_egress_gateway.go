@@ -149,14 +149,18 @@ func collectVpcEgressGatewayWorkloadStatus(gw *kubeovnv1.VpcEgressGateway, pods 
 			continue
 		}
 
-		extIPs, err := util.PodAttachmentIPs(pod, attachmentNetworkName)
+		attachmentIPs, err := util.PodAttachmentIPs(pod, attachmentNetworkName)
 		if err != nil {
 			notReadyMessages = append(notReadyMessages, err.Error())
 			continue
 		}
-		if len(extIPs) == 0 {
+		if len(attachmentIPs) == 0 {
 			notReadyMessages = append(notReadyMessages, fmt.Sprintf("pod %s/%s has no IP for network %s", pod.Namespace, pod.Name, attachmentNetworkName))
 			continue
+		}
+		extIPs := attachmentIPs
+		if gw.Spec.ExternalNetworkMode == kubeovnv1.ExternalNetworkModePrimaryCNI {
+			ips, extIPs = attachmentIPs, ips
 		}
 
 		ipv4, ipv6 := util.SplitIpsByProtocol(ips)
@@ -239,11 +243,21 @@ type vpcEgressGatewayWorkloadState struct {
 	nodeNexthopIPv6 map[string]set.Set[string]
 }
 
+type vpcEgressGatewayInvalidSpecError struct{ err error }
+
+func (e *vpcEgressGatewayInvalidSpecError) Error() string { return e.err.Error() }
+func (e *vpcEgressGatewayInvalidSpecError) Unwrap() error { return e.err }
+
 func (c *Controller) prepareVpcEgressGateway(gw *kubeovnv1.VpcEgressGateway) (*vpcEgressGatewayReconcileContext, error) {
 	var err error
 	if gw, err = c.initVpcEgressGatewayStatus(gw); err != nil {
 		return nil, err
 	}
+	if err := validateVpcEgressGatewayExternalNetwork(gw, c.config.EnableNonPrimaryCNI); err != nil {
+		gw.Status.Conditions.SetCondition(kubeovnv1.Validated, corev1.ConditionFalse, "InvalidSpec", err.Error(), gw.Generation)
+		return nil, c.failVpcEgressGatewayReconcile(gw, "InvalidSpec", err)
+	}
+	gw.Status.Conditions.SetValidated(gw.Generation)
 
 	vpcName := gw.Spec.VPC
 	if vpcName == "" {
@@ -294,7 +308,12 @@ func (c *Controller) reconcileVpcEgressGatewayWorkloadState(ctx *vpcEgressGatewa
 	if err != nil {
 		klog.Error(err)
 		gw.Status.Replicas = 0
-		return nil, c.failVpcEgressGatewayReconcile(gw, "ReconcileWorkloadFailed", err)
+		reason := "ReconcileWorkloadFailed"
+		if _, ok := errors.AsType[*vpcEgressGatewayInvalidSpecError](err); ok {
+			reason = "InvalidSpec"
+			gw.Status.Conditions.SetCondition(kubeovnv1.Validated, corev1.ConditionFalse, reason, err.Error(), gw.Generation)
+		}
+		return nil, c.failVpcEgressGatewayReconcile(gw, reason, err)
 	}
 
 	gw.Status.InternalIPs = nil
@@ -516,6 +535,69 @@ func (c *Controller) resolveVpcEgressGatewayInternalProvider(intSubnet *kubeovnv
 	return intProvider, internalAttachmentNwName, nil
 }
 
+type vpcEgressGatewayNetworkPlan struct {
+	internalProvider    string
+	internalNetworkName string
+	externalProvider    string
+	externalNetworkName string
+	externalSubnet      *kubeovnv1.Subnet
+	primaryExternal     bool
+}
+
+func validateVpcEgressGatewayExternalNetwork(gw *kubeovnv1.VpcEgressGateway, nonPrimaryCNI bool) error {
+	switch gw.Spec.ExternalNetworkMode {
+	case "", kubeovnv1.ExternalNetworkModeAttachment:
+		if gw.Spec.ExternalSubnet == "" {
+			return errors.New("externalSubnet is required in Attachment mode")
+		}
+	case kubeovnv1.ExternalNetworkModePrimaryCNI:
+		if !nonPrimaryCNI {
+			return errors.New("PrimaryCNI mode requires non-primary CNI")
+		}
+		if gw.Spec.ExternalSubnet != "" || len(gw.Spec.ExternalIPs) != 0 || gw.Spec.ExternalIPPool != "" {
+			return errors.New("PrimaryCNI mode cannot use externalSubnet, externalIPs or externalIPPool")
+		}
+		if gw.Spec.BgpConf != "" || gw.Spec.EvpnConf != "" || len(gw.Spec.Selectors) != 0 || gw.Spec.Bandwidth != nil || gw.Spec.Observability != nil {
+			return errors.New("PrimaryCNI mode does not support BGP, EVPN, selectors, bandwidth or observability")
+		}
+	default:
+		return fmt.Errorf("unsupported externalNetworkMode %q", gw.Spec.ExternalNetworkMode)
+	}
+	return nil
+}
+
+func (c *Controller) resolveVpcEgressGatewayNetworkPlan(gw *kubeovnv1.VpcEgressGateway, intSubnet *kubeovnv1.Subnet) (*vpcEgressGatewayNetworkPlan, error) {
+	provider, internalNetwork, err := c.resolveVpcEgressGatewayInternalProvider(intSubnet)
+	if err != nil {
+		return nil, err
+	}
+	plan := &vpcEgressGatewayNetworkPlan{
+		internalProvider:    provider,
+		internalNetworkName: internalNetwork,
+		primaryExternal:     gw.Spec.ExternalNetworkMode == kubeovnv1.ExternalNetworkModePrimaryCNI,
+	}
+	if plan.primaryExternal {
+		return plan, nil
+	}
+
+	plan.externalSubnet, err = c.subnetsLister.Get(gw.Spec.ExternalSubnet)
+	if err != nil {
+		return nil, err
+	}
+	provider = plan.externalSubnet.Spec.Provider
+	if !strings.ContainsRune(provider, '.') {
+		return nil, fmt.Errorf("please set correct provider of subnet %s to get the network-attachment-definition", plan.externalSubnet.Name)
+	}
+	parts := strings.Split(provider, ".")
+	nadName, nadNamespace := parts[0], parts[1]
+	if _, err = c.netAttachLister.NetworkAttachmentDefinitions(nadNamespace).Get(nadName); err != nil {
+		return nil, fmt.Errorf("failed to get net-attach-def %s/%s: %w", nadNamespace, nadName, err)
+	}
+	plan.externalProvider = provider
+	plan.externalNetworkName = fmt.Sprintf("%s/%s", nadNamespace, nadName)
+	return plan, nil
+}
+
 // create or update vpc egress gateway workload
 func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGateway, vpc *kubeovnv1.Vpc, bfdIP, bfdIPv4, bfdIPv6 string) (string, set.Set[string], set.Set[string], *appsv1.Deployment, error) {
 	image := c.config.Image
@@ -548,6 +630,9 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		klog.Error(err)
 		return "", nil, nil, nil, err
 	}
+	if err := validateVpcEgressGatewayExternalNetwork(gw, c.config.EnableNonPrimaryCNI); err != nil {
+		return "", nil, nil, nil, err
+	}
 
 	internalSubnet := gw.Spec.InternalSubnet
 	if internalSubnet == "" {
@@ -561,32 +646,26 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	intSubnet, err := c.subnetsLister.Get(internalSubnet)
 	if err != nil {
 		klog.Error(err)
+		if gw.Spec.ExternalNetworkMode == kubeovnv1.ExternalNetworkModePrimaryCNI {
+			err = &vpcEgressGatewayInvalidSpecError{err}
+		}
 		return "", nil, nil, nil, err
 	}
 
-	intProvider, internalAttachmentNwName, err := c.resolveVpcEgressGatewayInternalProvider(intSubnet)
+	plan, err := c.resolveVpcEgressGatewayNetworkPlan(gw, intSubnet)
 	if err != nil {
 		klog.Error(err)
+		if gw.Spec.ExternalNetworkMode == kubeovnv1.ExternalNetworkModePrimaryCNI {
+			err = &vpcEgressGatewayInvalidSpecError{err}
+		}
 		return "", nil, nil, nil, err
 	}
-
-	extSubnet, err := c.subnetsLister.Get(gw.Spec.ExternalSubnet)
-	if err != nil {
-		klog.Error(err)
-		return "", nil, nil, nil, err
+	intProvider := plan.internalProvider
+	extSubnet := plan.externalSubnet
+	attachmentNetworkName := plan.externalNetworkName
+	if plan.primaryExternal {
+		attachmentNetworkName = plan.internalNetworkName
 	}
-	if !strings.ContainsRune(extSubnet.Spec.Provider, '.') {
-		err = fmt.Errorf("please set correct provider of subnet %s to get the network-attachment-definition", extSubnet.Name)
-		klog.Error(err)
-		return "", nil, nil, nil, err
-	}
-	subStrings := strings.Split(extSubnet.Spec.Provider, ".")
-	nadName, nadNamespace := subStrings[0], subStrings[1]
-	if _, err = c.netAttachLister.NetworkAttachmentDefinitions(nadNamespace).Get(nadName); err != nil {
-		klog.Errorf("failed to get net-attach-def %s/%s: %v", nadNamespace, nadName, err)
-		return "", nil, nil, nil, err
-	}
-	attachmentNetworkName := fmt.Sprintf("%s/%s", nadNamespace, nadName)
 	internalCIDRv4, internalCIDRv6 := util.SplitStringIP(intSubnet.Spec.CIDRBlock)
 
 	// collect egress policies
@@ -652,7 +731,10 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	// generate route annotations used to configure routes in the pod
 	routes := util.NewPodRoutes()
 	intGatewayIPv4, intGatewayIPv6 := util.SplitStringIP(intSubnet.Spec.Gateway)
-	extGatewayIPv4, extGatewayIPv6 := util.SplitStringIP(extSubnet.Spec.Gateway)
+	var extGatewayIPv4, extGatewayIPv6 string
+	if extSubnet != nil {
+		extGatewayIPv4, extGatewayIPv6 = util.SplitStringIP(extSubnet.Spec.Gateway)
+	}
 	// add routes for the VPC BFD Port so that the egress gateway can establish BFD session(s) with it
 	routes.Add(intProvider, bfdIPv4, intGatewayIPv4)
 	routes.Add(intProvider, bfdIPv6, intGatewayIPv6)
@@ -664,8 +746,10 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		routes.Add(intProvider, dst, intGatewayIPv6)
 	}
 	// add default routes to forward traffic to the external network
-	routes.Add(extSubnet.Spec.Provider, "0.0.0.0/0", extGatewayIPv4)
-	routes.Add(extSubnet.Spec.Provider, "::/0", extGatewayIPv6)
+	if !plan.primaryExternal {
+		routes.Add(plan.externalProvider, "0.0.0.0/0", extGatewayIPv4)
+		routes.Add(plan.externalProvider, "::/0", extGatewayIPv6)
+	}
 
 	// generate pod annotations
 	annotations, err := routes.ToAnnotations()
@@ -675,8 +759,8 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 	}
 	annotations[nadv1.NetworkAttachmentAnnot] = attachmentNetworkName
 	// Make the internal network the default network (eth0) when nonPrimaryCNI mode is set.
-	if internalAttachmentNwName != "" {
-		annotations[util.DefaultNetworkAnnotation] = internalAttachmentNwName
+	if plan.internalNetworkName != "" && !plan.primaryExternal {
+		annotations[util.DefaultNetworkAnnotation] = plan.internalNetworkName
 	}
 
 	annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, intProvider)] = intSubnet.Name
@@ -697,10 +781,10 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		}
 		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, intProvider)] = gw.Spec.InternalIPPool
 	}
-	if len(gw.Spec.ExternalIPs) != 0 {
+	if !plan.primaryExternal && len(gw.Spec.ExternalIPs) != 0 {
 		// set external IPs
 		annotations[fmt.Sprintf(util.IPPoolAnnotationTemplate, extSubnet.Spec.Provider)] = strings.Join(gw.Spec.ExternalIPs, ";")
-	} else if gw.Spec.ExternalIPPool != "" {
+	} else if !plan.primaryExternal && gw.Spec.ExternalIPPool != "" {
 		// allocate the external IP from the referenced IPPool
 		pool, err := c.ippoolLister.Get(gw.Spec.ExternalIPPool)
 		if err != nil {
@@ -731,6 +815,9 @@ func (c *Controller) reconcileVpcEgressGatewayWorkload(gw *kubeovnv1.VpcEgressGa
 		return attachmentNetworkName, nil, nil, nil, err
 	}
 	initEnv = append(initEnv, ipv6Env...)
+	if plan.primaryExternal {
+		initEnv = append(initEnv, corev1.EnvVar{Name: "EXTERNAL_NETWORK_MODE", Value: "primary-cni"})
+	}
 
 	var evpnConf *kubeovnv1.EvpnConf
 	if gw.Spec.BgpConf != "" {
