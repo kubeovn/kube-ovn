@@ -36,8 +36,11 @@ if [ "${EXTERNAL_NETWORK_MODE}" = "primary-cni" ]; then
       "${table_cmd}" -t nat -N "${chain}"
     fi
     "${table_cmd}" -t nat -F "${chain}"
-    if ! "${table_cmd}" -t nat -C POSTROUTING -i "${internal_iface}" -o "${external_iface}" -j "${chain}" &>/dev/null; then
-      "${table_cmd}" -t nat -A POSTROUTING -i "${internal_iface}" -o "${external_iface}" -j "${chain}"
+    if ! "${table_cmd}" -t mangle -C PREROUTING -i "${internal_iface}" -j MARK --set-xmark 0x4000/0x4000 &>/dev/null; then
+      "${table_cmd}" -t mangle -A PREROUTING -i "${internal_iface}" -j MARK --set-xmark 0x4000/0x4000
+    fi
+    if ! "${table_cmd}" -t nat -C POSTROUTING -o "${external_iface}" -m mark --mark 0x4000/0x4000 -j "${chain}" &>/dev/null; then
+      "${table_cmd}" -t nat -A POSTROUTING -o "${external_iface}" -m mark --mark 0x4000/0x4000 -j "${chain}"
     fi
     local src
     for src in ${no_snat_sources}; do

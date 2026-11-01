@@ -35,7 +35,7 @@ iptables() {
     return
   fi
   if [ "${3:-}" = '-C' ]; then
-    grep -Fq -- "iptables -t nat -A ${*:4}" "${command_log}"
+    grep -Fq -- "iptables -t ${2} -A ${*:4}" "${command_log}"
     return
   fi
   printf 'iptables %s\n' "$*" >> "${command_log}"
@@ -47,7 +47,7 @@ ip6tables() {
     return
   fi
   if [ "${3:-}" = '-C' ]; then
-    grep -Fq -- "ip6tables -t nat -A ${*:4}" "${command_log}"
+    grep -Fq -- "ip6tables -t ${2} -A ${*:4}" "${command_log}"
     return
   fi
   printf 'ip6tables %s\n' "$*" >> "${command_log}"
@@ -61,8 +61,14 @@ export NO_SNAT_SOURCES_IPV4=10.20.0.0/16 NO_SNAT_SOURCES_IPV6=fd00:20::/64
 bash "${script_dir}/init-vpc-egress-gateway.sh" >/dev/null 2>&1
 bash "${script_dir}/init-vpc-egress-gateway.sh" >/dev/null 2>&1
 
-[ "$(grep -Fc -- 'iptables -t nat -A POSTROUTING -i net1 -o eth0 -j VEG-PRIMARY-SNAT' "${command_log}")" -eq 1 ]
-[ "$(grep -Fc -- 'ip6tables -t nat -A POSTROUTING -i net1 -o eth0 -j VEG-PRIMARY-SNAT' "${command_log}")" -eq 1 ]
+[ "$(grep -Fc -- 'iptables -t mangle -A PREROUTING -i net1 -j MARK --set-xmark 0x4000/0x4000' "${command_log}")" -eq 1 ]
+[ "$(grep -Fc -- 'ip6tables -t mangle -A PREROUTING -i net1 -j MARK --set-xmark 0x4000/0x4000' "${command_log}")" -eq 1 ]
+[ "$(grep -Fc -- 'iptables -t nat -A POSTROUTING -o eth0 -m mark --mark 0x4000/0x4000 -j VEG-PRIMARY-SNAT' "${command_log}")" -eq 1 ]
+[ "$(grep -Fc -- 'ip6tables -t nat -A POSTROUTING -o eth0 -m mark --mark 0x4000/0x4000 -j VEG-PRIMARY-SNAT' "${command_log}")" -eq 1 ]
+if grep -Eq -- '(iptables|ip6tables) -t nat -A POSTROUTING -i ' "${command_log}"; then
+  printf 'PrimaryCNI init must not use an input interface in POSTROUTING\n' >&2
+  exit 1
+fi
 [ "$(grep -Fc -- 'iptables -t nat -N VEG-PRIMARY-SNAT' "${command_log}")" -eq 1 ]
 [ "$(grep -Fc -- 'ip6tables -t nat -N VEG-PRIMARY-SNAT' "${command_log}")" -eq 1 ]
 grep -Fq -- 'iptables -t nat -A VEG-PRIMARY-SNAT -s 10.20.0.0/16 -j RETURN' "${command_log}"
