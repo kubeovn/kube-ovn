@@ -87,6 +87,10 @@ func TestAdminNetworkPolicyConformance(t *testing.T) {
 	profiles := sets.Set[suite.ConformanceProfileName]{}
 	profiles.Insert(suite.ConformanceProfileName(suite.SupportAdminNetworkPolicy))
 	profiles.Insert(suite.ConformanceProfileName(suite.SupportBaselineAdminNetworkPolicy))
+	supportedFeatures := suite.StandardFeatures.Union(sets.New(
+		suite.SupportAdminNetworkPolicyNamedPorts,
+		suite.SupportBaselineAdminNetworkPolicyNamedPorts,
+	))
 	cSuite, err := suite.NewConformanceProfileTestSuite(
 		suite.ConformanceProfileOptions{
 			Options: suite.Options{
@@ -95,7 +99,7 @@ func TestAdminNetworkPolicyConformance(t *testing.T) {
 				KubeConfig:           *cfg,
 				Debug:                true,
 				CleanupBaseResources: true,
-				SupportedFeatures:    suite.StandardFeatures,
+				SupportedFeatures:    supportedFeatures,
 				BaseManifests:        manifestsURL,
 				TimeoutConfig:        netpolv1config.TimeoutConfig{GetTimeout: 300 * time.Second},
 			},

@@ -47,3 +47,30 @@ func TestProtocolPortRejectsMultipleTransports(t *testing.T) {
 	})
 	require.EqualError(t, err, "exactly one transport is required")
 }
+
+func TestValidateProtocolsAllowsDestinationNamedPort(t *testing.T) {
+	policy := &v1alpha2.ClusterNetworkPolicy{
+		Spec: v1alpha2.ClusterNetworkPolicySpec{
+			Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{{
+				Protocols: []v1alpha2.ClusterNetworkPolicyProtocol{{DestinationNamedPort: "http"}},
+			}},
+			Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{{
+				Protocols: []v1alpha2.ClusterNetworkPolicyProtocol{{DestinationNamedPort: "metrics"}},
+			}},
+		},
+	}
+
+	require.NoError(t, ValidateProtocols(policy))
+}
+
+func TestValidateProtocolsRejectsMixedNamedPortTransport(t *testing.T) {
+	policy := &v1alpha2.ClusterNetworkPolicy{
+		Spec: v1alpha2.ClusterNetworkPolicySpec{
+			Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{{Protocols: []v1alpha2.ClusterNetworkPolicyProtocol{{
+				DestinationNamedPort: "http",
+				TCP:                  &v1alpha2.ClusterNetworkPolicyProtocolTCP{},
+			}}}},
+		},
+	}
+	require.EqualError(t, ValidateProtocols(policy), "ingress[0]: destinationNamedPort cannot be combined with a transport")
+}

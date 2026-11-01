@@ -23,6 +23,9 @@ func (c *Controller) enqueueAddNamespace(obj any) {
 			c.updateNpQueue.Add(np)
 		}
 	}
+	if c.config.EnableANP {
+		c.enqueueNamedPortPolicies()
+	}
 
 	key := cache.MetaObjectToName(obj.(*v1.Namespace)).String()
 	c.addNamespaceQueue.Add(key)
@@ -54,6 +57,7 @@ func (c *Controller) enqueueDeleteNamespace(obj any) {
 	if c.config.EnableANP {
 		c.updateAnpsByLabelsMatch(ns.Labels, nil)
 		c.updateCnpsByLabelsMatch(ns.Labels, nil)
+		c.enqueueNamedPortPolicies()
 	}
 }
 
@@ -78,6 +82,7 @@ func (c *Controller) enqueueUpdateNamespace(oldObj, newObj any) {
 			change := labelChange{oldNs.Labels, newNs.Labels, nil, nil}
 			c.updateAnpsByLabelsChange(change)
 			c.updateCnpsByLabelsChange(change)
+			c.enqueueNamedPortPolicies()
 		}
 
 		expectSubnets, err := c.getNsExpectSubnets(newNs)

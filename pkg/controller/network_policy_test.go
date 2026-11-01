@@ -105,6 +105,14 @@ func TestNetworkPolicyNamedPortVariantsWithoutIndex(t *testing.T) {
 	require.Empty(t, variants)
 }
 
+func TestNetworkPolicyNamedPortAddressSetNameSanitizesPrefix(t *testing.T) {
+	name := networkPolicyNamedPortAddressSetName("egress-tcp.cnp.egress", kubeovnv1.ProtocolIPv4, 5, "web", namedPortKey{
+		protocol: corev1.ProtocolTCP,
+		port:     80,
+	})
+	require.Equal(t, "egress.tcp.cnp.egress.IPv4.5.named.db6b339eeb58", name)
+}
+
 func TestNamedOnlyPolicyDoesNotAllowOtherPorts(t *testing.T) {
 	pod := &corev1.Pod{
 		Name: "server", Namespace: metav1.NamespaceDefault,
