@@ -46,9 +46,24 @@ func createCniServerHandler(config *Configuration, controller *Controller) *cniS
 	return csh
 }
 
-func (csh cniServerHandler) providerExists(provider string) (*kubeovnv1.Subnet, bool) {
+func (csh cniServerHandler) providerExists(provider, ifName string, annotations map[string]string) (*kubeovnv1.Subnet, bool) {
 	if provider == "" || provider == util.OvnProvider {
 		return nil, true
+	}
+	providerName, _ := strings.CutSuffix(provider, fmt.Sprintf(".%s", ifName))
+	if util.IsOvnProvider(providerName) {
+		logicalSwitch := logicalSwitchAnnotation(annotations, providerName, ifName)
+		if logicalSwitch != "" {
+			subnet, err := csh.Controller.subnetsLister.Get(logicalSwitch)
+			if err != nil {
+				klog.Errorf("failed to get subnet %s while checking provider %s: %v", logicalSwitch, provider, err)
+				return nil, false
+			}
+			if subnet.Spec.Provider == "" || subnet.Spec.Provider == util.OvnProvider || subnet.Spec.Provider == providerName {
+				return subnet.DeepCopy(), true
+			}
+			return nil, false
+		}
 	}
 	subnets, err := csh.Controller.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -56,11 +71,23 @@ func (csh cniServerHandler) providerExists(provider string) (*kubeovnv1.Subnet, 
 		return nil, true
 	}
 	for _, subnet := range subnets {
-		if subnet.Spec.Provider == provider {
+		if subnet.Spec.Provider == providerName {
 			return subnet.DeepCopy(), true
 		}
 	}
 	return nil, false
+}
+
+func logicalSwitchAnnotation(annotations map[string]string, provider, ifName string) string {
+	if annotations == nil {
+		return ""
+	}
+	if ifName != "" {
+		if subnet := annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider+"."+ifName)]; subnet != "" {
+			return subnet
+		}
+	}
+	return annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)]
 }
 
 func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Response) {
@@ -74,15 +101,7 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 		return
 	}
 	klog.V(5).Infof("request body is %v", podRequest)
-	podSubnet, exist := csh.providerExists(podRequest.Provider)
-	if !exist {
-		errMsg := fmt.Errorf("provider %s is not bound to any subnet", podRequest.Provider)
-		klog.Error(errMsg)
-		if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
-			klog.Errorf("failed to write response, %v", err)
-		}
-		return
-	}
+	var podSubnet *kubeovnv1.Subnet
 
 	klog.Infof("add port request: %v", podRequest)
 	if err := csh.validatePodRequest(&podRequest); err != nil {
@@ -104,6 +123,16 @@ func (csh cniServerHandler) handleAdd(req *restful.Request, resp *restful.Respon
 			errMsg := fmt.Errorf("get pod %s/%s failed %w", podRequest.PodNamespace, podRequest.PodName, err)
 			klog.Error(errMsg)
 			if err := resp.WriteHeaderAndEntity(http.StatusInternalServerError, request.CniResponse{Err: errMsg.Error()}); err != nil {
+				klog.Errorf("failed to write response, %v", err)
+			}
+			return
+		}
+		var exist bool
+		podSubnet, exist = csh.providerExists(podRequest.Provider, podRequest.IfName, pod.Annotations)
+		if !exist {
+			errMsg := fmt.Errorf("provider %s is not bound to any subnet", podRequest.Provider)
+			klog.Error(errMsg)
+			if err := resp.WriteHeaderAndEntity(http.StatusBadRequest, request.CniResponse{Err: errMsg.Error()}); err != nil {
 				klog.Errorf("failed to write response, %v", err)
 			}
 			return
