@@ -30,7 +30,7 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 	ginkgo.BeforeEach(func() {
 		policyNames = nil
 		podClient = nil
-		f.SkipVersionPriorTo(1, 17, "ClusterNetworkPolicy protocols requires the v0.2.0 controller")
+		f.SkipVersionPriorTo(1, 17, "ClusterNetworkPolicy protocols requires the v0.2.1 controller")
 		namespaceName = "ns-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
 		cnpClient = f.CnpClient()
