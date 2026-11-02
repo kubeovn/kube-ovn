@@ -27,6 +27,11 @@ func TestParseSourceRef(t *testing.T) {
 		{"daemonset alias", "ds/agent", sourceRef{kind: sourceKindDaemonSet, name: "agent"}},
 		{"vm", "vm/database", sourceRef{kind: sourceKindVM, name: "database"}},
 		{"vmi", "vmi/database", sourceRef{kind: sourceKindVMI, name: "database"}},
+		{"localnet", "localnet/underlay", sourceRef{kind: sourceKindLocalnet, name: "underlay"}},
+		{"lsp", "lsp/localnet.underlay", sourceRef{kind: sourceKindLSP, name: "localnet.underlay"}},
+		{"lsp full name", "logicalswitchport/port_1", sourceRef{kind: sourceKindLSP, name: "port_1"}},
+		{"lrp", "lrp/router-underlay", sourceRef{kind: sourceKindLRP, name: "router-underlay"}},
+		{"lrp full name", "logicalrouterport/port_1", sourceRef{kind: sourceKindLRP, name: "port_1"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -63,6 +68,11 @@ func TestCommandsAcceptPositionalSources(t *testing.T) {
 		{"capture", "-n", "app", "vmi/database", "--", "-c", "1"},
 		{"capture", "-n", "app", "service/api", "--", "-c", "1"},
 		{"capture", "node/worker-a", "--", "-D"},
+		{"trace", "localnet/underlay", "--target", "addr/10.0.0.2", "--source-ip", "10.0.0.3", "--source-mac", "02:00:00:00:00:03"},
+		{"trace", "lsp/web.app", "--target", "addr/10.0.0.2"},
+		{"trace", "lrp/router-underlay", "--target", "addr/10.0.0.2"},
+		{"capture", "lsp/web.app", "--", "-c", "1"},
+		{"capture", "lrp/router-underlay", "--observe-at", "lsp/web.app", "--", "-c", "1"},
 	} {
 		t.Run(args[0]+" "+args[1], func(t *testing.T) {
 			app := New(genericiooptions.IOStreams{Out: io.Discard, ErrOut: io.Discard})

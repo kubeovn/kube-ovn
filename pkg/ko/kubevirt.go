@@ -16,12 +16,63 @@ import (
 var vmiResource = schema.GroupVersionResource{Group: "kubevirt.io", Version: "v1", Resource: "virtualmachineinstances"}
 
 type captureTarget struct {
-	pod  *corev1.Pod
-	vmi  *unstructured.Unstructured
-	node string
+	pod         *corev1.Pod
+	vmi         *unstructured.Unstructured
+	node        string
+	iface       string
+	netns       string
+	observation string
 }
 
 func (c *Client) captureTarget(ctx context.Context, ref sourceRef) (captureTarget, error) {
+	return c.captureTargetOnNode(ctx, ref, "", "")
+}
+
+func (c *Client) captureTargetOnNode(ctx context.Context, ref sourceRef, nodeHint, observeAt string) (captureTarget, error) {
+	if ref.kind == sourceKindLRP {
+		if observeAt == "" {
+			return captureTarget{}, errors.New("LRP capture requires --observe-at lsp/NAME")
+		}
+		observed, err := parseSourceRef(observeAt)
+		if err != nil || observed.kind != sourceKindLSP {
+			return captureTarget{}, errors.New("--observe-at must be lsp/NAME")
+		}
+		if err := c.checkLRPObservation(ctx, ref.name, observed.name); err != nil {
+			return captureTarget{}, err
+		}
+		target, err := c.captureTargetOnNode(ctx, observed, nodeHint, "")
+		if err != nil {
+			return captureTarget{}, err
+		}
+		target.observation = fmt.Sprintf("Capturing traffic adjacent to LRP %s at LSP %s on node %s interface %s", ref.name, observed.name, target.node, target.iface)
+		return target, nil
+	}
+	if ref.kind == sourceKindLocalnet || ref.kind == sourceKindLSP {
+		source, err := c.ovnSource(ctx, ref, nodeHint, true)
+		if err != nil {
+			return captureTarget{}, err
+		}
+		iface := source.physicalNIC
+		netns := ""
+		if iface == "" {
+			ovs, err := c.nodeTarget(ctx, source.node, "ovs")
+			if err != nil {
+				return captureTarget{}, err
+			}
+			nic, err := c.podInterface(ctx, ovs, source.lsp)
+			if err != nil {
+				return captureTarget{}, err
+			}
+			iface = nic.name
+			if nic.kind == "internal" {
+				if nic.netns == "" {
+					return captureTarget{}, fmt.Errorf("internal LSP interface %q has no network namespace", nic.name)
+				}
+				netns = nic.netns
+			}
+		}
+		return captureTarget{node: source.node, iface: iface, netns: netns}, nil
+	}
 	if ref.kind == sourceKindPod {
 		pod, err := c.pod(ctx, ref.name)
 		return captureTarget{pod: pod}, err

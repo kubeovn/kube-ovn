@@ -21,6 +21,9 @@ const (
 	sourceKindReplicaSet            sourceKind = "replicaset"
 	sourceKindReplicationController sourceKind = "replicationcontroller"
 	sourceKindJob                   sourceKind = "job"
+	sourceKindLocalnet              sourceKind = "localnet"
+	sourceKindLSP                   sourceKind = "lsp"
+	sourceKindLRP                   sourceKind = "lrp"
 )
 
 var sourceKindAliases = map[string]sourceKind{
@@ -56,6 +59,13 @@ var sourceKindAliases = map[string]sourceKind{
 	"replicationcontrollers":  sourceKindReplicationController,
 	"job":                     sourceKindJob,
 	"jobs":                    sourceKindJob,
+	"localnet":                sourceKindLocalnet,
+	"lsp":                     sourceKindLSP,
+	"logicalswitchport":       sourceKindLSP,
+	"logicalswitchports":      sourceKindLSP,
+	"lrp":                     sourceKindLRP,
+	"logicalrouterport":       sourceKindLRP,
+	"logicalrouterports":      sourceKindLRP,
 }
 
 // sourceRef is the common command-level resource notation.
@@ -94,6 +104,12 @@ func validateSourceRef(ref sourceRef) error {
 	}
 	if ref.kind == sourceKindNode {
 		return validateResourceName("node", ref.name)
+	}
+	if ref.kind == sourceKindLSP || ref.kind == sourceKindLRP {
+		if strings.ContainsAny(ref.name, " \t\r\n") {
+			return fmt.Errorf("invalid %s name %q: whitespace is not allowed", ref.kind, ref.name)
+		}
+		return nil
 	}
 	return validateNamespacedReference(string(ref.kind), ref.name)
 }
