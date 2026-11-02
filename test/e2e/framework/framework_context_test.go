@@ -32,7 +32,7 @@ func TestDeploymentClientContextCancellation(t *testing.T) {
 	_, err = client.GetContext(ctx, "ovn-central")
 	require.ErrorContains(t, err, "canceled")
 	_, err = client.GetAllPodsContext(ctx, &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Namespace: "kube-system"},
+		Namespace: "kube-system",
 		Spec: appsv1.DeploymentSpec{
 			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "ovn-central"}},
 		},

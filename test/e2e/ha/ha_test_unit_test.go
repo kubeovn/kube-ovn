@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/moby/moby/api/types/container"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/kind"
@@ -32,7 +31,7 @@ func TestCopyDbFiles(t *testing.T) {
 			}
 			t.Setenv("PATH", binDir)
 			dir := t.TempDir()
-			node := &kind.Node{Summary: container.Summary{Names: []string{"/kind-control-plane"}}}
+			node := &kind.Node{Names: []string{"/kind-control-plane"}}
 			err := copyDbFiles(node, dir)
 			if tt.missingHdr != (err != nil) {
 				t.Fatalf("copyDbFiles() error = %v, want missing header = %v", err, tt.missingHdr)
@@ -61,7 +60,7 @@ func TestSaveDbFailureDiagnostics(t *testing.T) {
 	}
 	t.Setenv("PATH", binDir)
 	t.Setenv("HA_E2E_DIAGNOSTICS_DIR", t.TempDir())
-	node := &kind.Node{Summary: container.Summary{Names: []string{"/kind-control-plane"}}}
+	node := &kind.Node{Names: []string{"/kind-control-plane"}}
 	pods := []corev1.Pod{{}, {}}
 	pods[0].Name, pods[1].Name = "ovn-central-1", "ovn-central-2"
 	for i := range pods {
