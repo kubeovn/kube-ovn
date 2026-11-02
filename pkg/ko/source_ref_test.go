@@ -3,6 +3,7 @@ package ko
 import (
 	"errors"
 	"io"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -52,16 +53,32 @@ func TestParseSourceRefRejectsMalformedReferences(t *testing.T) {
 }
 
 func TestTraceRequestAcceptsTargetAndSourceReferences(t *testing.T) {
-	request, err := (traceOptions{target: "addr/2001:db8::2", protocol: "icmp", engine: "ovn"}).request(sourceRef{kind: sourceKindPod, name: "web"})
-	require.NoError(t, err)
-	require.Equal(t, "pod/web", request.reference)
-	require.Equal(t, "2001:db8::2", request.destination.String())
+	for _, target := range []string{"2001:db8::2", "addr/2001:db8::2", "192.0.2.2", "addr/192.0.2.2"} {
+		t.Run(target, func(t *testing.T) {
+			request, err := (traceOptions{target: target, protocol: "icmp", engine: "ovn"}).request(sourceRef{kind: sourceKindPod, name: "web"})
+			require.NoError(t, err)
+			require.Equal(t, "pod/web", request.reference)
+			address, _ := strings.CutPrefix(target, "addr/")
+			require.Equal(t, address, request.destination.String())
+		})
+	}
+}
+
+func TestParseTargetAddressRejectsNonIPTargets(t *testing.T) {
+	for _, target := range []string{"", "addr/", "example.com", "svc/api", "addr/not-an-ip", "fe80::1%eth0", "addr/fe80::1%eth0"} {
+		t.Run(target, func(t *testing.T) {
+			_, err := parseTargetAddress(target)
+			require.Error(t, err)
+		})
+	}
 }
 
 func TestCommandsAcceptPositionalSources(t *testing.T) {
 	sentinel := errors.New("client creation reached")
 	for _, args := range [][]string{
 		{"trace", "-n", "app", "po/web", "--target", "addr/10.0.0.2"},
+		{"trace", "-n", "app", "svc/api", "--target", "10.0.0.8"},
+		{"trace", "no/worker-a", "--target", "2001:db8::2"},
 		{"trace", "-n", "app", "svc/api", "--target", "addr/10.0.0.2"},
 		{"trace", "no/worker-a", "--target", "addr/10.0.0.2"},
 		{"capture", "-n", "app", "pod/web", "--", "-c", "1"},

@@ -81,7 +81,7 @@ kubectl ko
       status | backup | kick SERVER_ID | restore
     sb
       status | backup | kick SERVER_ID
-  trace TARGET --target addr/IP [OPTIONS]
+  trace TARGET --target IP [OPTIONS]
   capture TARGET -- [CAPTURE_ARGS...]
   network
     inspect TARGET [-n NAMESPACE] [--output table|json]
@@ -115,7 +115,7 @@ kubectl ko
 | `db nb backup`, `db sb backup` | Convert and download a standalone database, verify DB name and SHA256, and publish without overwriting an existing file. Write a JSON provenance sidecar; remove the temporary remote backup. |
 | `db nb kick SERVER_ID`, `db sb kick SERVER_ID` | Remove a stale cluster member. `--dry-run` prints the database leader Pod and exact command without requiring an agent or applying the change; actual removal runs through the agent on that leader's node. |
 | `db nb restore` | Reconstruct the central NB/SB cluster from the NB database already present on the explicit bootstrap node. Verify the shared hostPath, use temporary per-node helpers when OVS does not mount the databases, stop central, preserve originals and RAFT headers, rebuild, verify storage and restart OVS. Helpers use the central image and security context and are cleaned up by UID. This is not local-file import; SB-only restore is not supported. |
-| `trace` | Resolve the required positional Pod, Node, Service, workload, VM, VMI, localnet Subnet, LSP or LRP target, then trace through OVN and, where a physical ingress exists, OVS. A bare name means Pod; use `KIND/NAME` with `-n NAMESPACE` for namespaced resources. `--target addr/IP` specifies the destination. IPv4/IPv6, ICMP/TCP/UDP, IPv4 ARP request/reply, explicit destination MAC, hostNetwork, Underlay/U2O and VM logical ports remain supported. `--engine ovn` runs only OVN trace. |
+| `trace` | Resolve the required positional Pod, Node, Service, workload, VM, VMI, localnet Subnet, LSP or LRP target, then trace through OVN and, where a physical ingress exists, OVS. A bare name means Pod; use `KIND/NAME` with `-n NAMESPACE` for namespaced resources. `--target IP` specifies the destination; `addr/IP` is also accepted. IPv4/IPv6, ICMP/TCP/UDP, IPv4 ARP request/reply, explicit destination MAC, hostNetwork, Underlay/U2O and VM logical ports remain supported. `--engine ovn` runs only OVN trace. |
 | `capture` | Capture packets from a required positional Pod, Node, Service, workload, VM, VMI, localnet Subnet or bound LSP through the Go node agent. Service and workload targets select one running Pod. Node capture requires `-i INTERFACE` or `-D`. Localnet capture uses the ProviderNetwork NIC on a ready node; use `--node` when more than one node qualifies. LRP capture requires `--observe-at lsp/NAME` for a bound LSP on its adjacent logical switch and reports that actual observation point. Capture arguments follow `--`: `-D`, `-i`, `-c`, `-s`, `-nn` and `-w -`; the last option streams a pcap locally. |
 | `network inspect` | Inspect a positional Pod, Node, Service, workload, VM or VMI target. Service and workload targets select one running Pod and report which Pod was inspected. Node targets show host-network interfaces. Pod output includes the network namespace path, interface details and host-side veth peers; `macvlan`/`ipvlan` output includes parent NIC details. `--output=json` emits machine-readable data. |
 | `diagnose cluster` | Check cluster configuration, component rollout and leaders; create a unique temporary NodePort Service and run active checks from independent temporary probe Pods in the original pinger network namespaces. |
@@ -151,7 +151,7 @@ selected by `--kube-ovn-namespace`, `KUBE_OVN_NS`, then `kube-system`.
 | Kubernetes exec | `exec` accepts `POD` or `TYPE/NAME`, `-c/--container`, `-l/--selector`, `-i/--stdin`, `-t/--tty`, `-q/--quiet`, and `--pod-running-timeout=1m`. A command must follow `--`. |
 | Raw tools / capture | `exec` OVS tools require `--node`; `capture` requires exactly one positional resource. Localnet and localnet LSP capture accept `--node`; LRP capture requires `--observe-at lsp/NAME`. Capture arguments must follow `--`. |
 | Network inspection | `network inspect` requires one `POD` or `KIND/NAME` positional target. Use `-n NAMESPACE` for namespaced resources; `--output=table` is the default and `--output=json` is intended for automation. OVN port and localnet targets are not supported by this command. |
-| Trace | Exactly one positional resource and `--target addr/IP` are required; `--protocol=icmp`, `--engine=all`, optional `--dst-mac`. Localnet and localnet LSP sources require `--source-ip` and `--source-mac`; OVS tracing uses `--node` to select a ready ProviderNetwork node when necessary. LRP defaults to `--engine ovn` and has no OVS stage. TCP/UDP require `--dst-port=1..65535`. ARP uses `--arp-op=request|reply` and IPv4. |
+| Trace | Exactly one positional resource and `--target IP` are required (`addr/IP` is also accepted); `--protocol=icmp`, `--engine=all`, optional `--dst-mac`. Localnet and localnet LSP sources require `--source-ip` and `--source-mac`; OVS tracing uses `--node` to select a ready ProviderNetwork node when necessary. LRP defaults to `--engine ovn` and has no OVS stage. TCP/UDP require `--dst-port=1..65535`. ARP uses `--arp-op=request|reply` and IPv4. |
 | Database backup | `--output FILE`; otherwise a unique DB-specific filename. |
 | Database recovery | Required `--source-node NODE` and either `--yes` or `--dry-run`. |
 | Diagnostics | Cluster/node/subnet accept `--read-only` to skip active probes and temporary resources. All configuration/probe modes accept `--skip-kube-proxy`, defaulting from `WITHOUT_KUBE_PROXY=true`. Subnet accepts `--tcp-port` / `--udp-port`, defaulting from `TCP_CONN_CHECK_PORT` / `UDP_CONN_CHECK_PORT`, then 8100 / 8101. Explicit flags override environment values. Connectivity requires one or more `--target tcp://IP:PORT` / `udp://IP:PORT`; IPv6 uses brackets. |
@@ -166,12 +166,12 @@ kubectl ko exec -n app -l app=web -- curl http://localhost:8080/healthz
 kubectl ko exec nbctl --context staging -- --format=json show
 kubectl ko exec nbctl -- -- ls-add example -- lsp-add example example-port
 kubectl ko exec vsctl --node worker-a -- --timeout=5 show
-kubectl ko trace -n app po/web --target addr/10.0.0.8
-kubectl ko trace -n app svc/api --target addr/10.0.0.8 --protocol tcp --dst-port 443
-kubectl ko trace no/worker-a --target addr/2001:db8::8 --engine ovn
-kubectl ko trace localnet/underlay-a --target addr/10.0.0.8 --source-ip 10.0.0.2 --source-mac 02:00:00:00:00:02 --dst-mac 02:00:00:00:00:08 --node worker-a
-kubectl ko trace lsp/web.app --target addr/10.0.0.8 --engine ovn --dst-mac 02:00:00:00:00:08
-kubectl ko trace lrp/router-underlay-a --target addr/10.0.0.8
+kubectl ko trace -n app po/web --target 10.0.0.8
+kubectl ko trace -n app svc/api --target 10.0.0.8 --protocol tcp --dst-port 443
+kubectl ko trace no/worker-a --target 2001:db8::8 --engine ovn
+kubectl ko trace localnet/underlay-a --target 10.0.0.8 --source-ip 10.0.0.2 --source-mac 02:00:00:00:00:02 --dst-mac 02:00:00:00:00:08 --node worker-a
+kubectl ko trace lsp/web.app --target 10.0.0.8 --engine ovn --dst-mac 02:00:00:00:00:08
+kubectl ko trace lrp/router-underlay-a --target 10.0.0.8
 kubectl ko capture -n app pod/web -- -i eth0 -c 10
 kubectl ko capture -n app vmi/database -- -w - > vm.pcap
 kubectl ko capture --namespace app vm/database -- -w - > vm.pcap
@@ -194,7 +194,7 @@ The separator belongs to the plugin and is removed exactly once. Every argument
 after it, including another `--`, `--help`, `--timeout`, `-n`, `-c`, whitespace or
 quotes within a single argument, belongs to the remote tool and is preserved.
 For `trace`, the positional resource is before the destination flags, for example
-`trace -n app po/web --target addr/10.0.0.8`; a bare name is always a Pod.
+`trace -n app po/web --target 10.0.0.8`; a bare name is always a Pod.
 `KIND/NAMESPACE/NAME` is rejected; specify the namespace with `-n` instead.
 For `capture`, the resource is before the separator; `-n` before `--` selects the
 Kubernetes namespace, while `-n` after `--` remains a capture display option.
@@ -368,8 +368,8 @@ output directory. Migrate commands using this table:
 | `nb/sb status`, `nb/sb backup`, `nb/sb kick ID` | `db nb/sb status`, `db nb/sb backup`, `db nb/sb kick ID` |
 | `nb dbstatus`, `sb dbstatus` | `db health` |
 | `nb restore` | `db nb restore --source-node NODE --yes` |
-| `trace POD IP [MAC] PROTOCOL [PORT/OP]` | `trace pod/POD --target addr/IP [--dst-mac MAC] --protocol PROTOCOL [--dst-port PORT/--arp-op OP]` |
-| `trace node//NODE ...` | `trace node/NODE --target addr/IP ...` |
+| `trace POD IP [MAC] PROTOCOL [PORT/OP]` | `trace pod/POD --target IP [--dst-mac MAC] --protocol PROTOCOL [--dst-port PORT/--arp-op OP]` |
+| `trace node//NODE ...` | `trace node/NODE --target IP ...` |
 | `ovn-trace ...` | `trace --engine ovn ...` |
 | `tcpdump POD ARGS` | `capture pod/POD -- ARGS` |
 | `diagnose [all]` | `diagnose cluster` |

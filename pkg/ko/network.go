@@ -156,9 +156,9 @@ type traceOptions struct {
 func (a *Application) addTraceCommand() {
 	options := traceOptions{}
 	var request traceRequest
-	command := &cobra.Command{Use: "trace TARGET --target addr/IP [flags]", Short: "Trace a packet through OVN and OVS"}
+	command := &cobra.Command{Use: "trace TARGET --target IP [flags]", Short: "Trace a packet through OVN and OVS"}
 	flags := command.Flags()
-	flags.StringVar(&options.target, "target", "", "Destination address reference (addr/IP)")
+	flags.StringVar(&options.target, "target", "", "Destination IP address (addr/IP also accepted)")
 	flags.StringVar(&options.mac, "dst-mac", "", "Destination MAC address (auto-detected when omitted)")
 	flags.StringVar(&options.sourceIP, "source-ip", "", "Source IP for an OVN logical port without an address")
 	flags.StringVar(&options.sourceMAC, "source-mac", "", "Source MAC for an OVN logical port without an address")
@@ -213,7 +213,7 @@ func (o traceOptions) request(ref sourceRef) (traceRequest, error) {
 		return traceRequest{}, errors.New("--engine must be all or ovn")
 	}
 	if o.target == "" {
-		return traceRequest{}, errors.New("--target addr/IP is required")
+		return traceRequest{}, errors.New("--target IP is required")
 	}
 	destination, err := parseTargetAddress(o.target)
 	if err != nil {

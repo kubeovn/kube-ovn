@@ -119,13 +119,10 @@ func (ref sourceRef) reference() string {
 }
 
 func parseTargetAddress(value string) (string, error) {
-	address, ok := strings.CutPrefix(value, "addr/")
-	if !ok {
-		return "", fmt.Errorf("target %q must be addr/IP", value)
-	}
+	address, _ := strings.CutPrefix(value, "addr/")
 	ip, err := netip.ParseAddr(address)
 	if err != nil || ip.Zone() != "" {
-		return "", fmt.Errorf("target %q is not an address reference; this phase supports addr/IP only", value)
+		return "", fmt.Errorf("target %q must be an IPv4 or IPv6 address, optionally prefixed with addr/", value)
 	}
 	return ip.Unmap().String(), nil
 }
