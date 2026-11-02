@@ -476,26 +476,39 @@ func (a *Application) tcpdump(ctx context.Context, client *Client, target captur
 		}
 		return client.Executor.Exec(ctx, ovs, captureCommand(netns, name, options), a.outputStreams())
 	}
-	source := podNetworkSource(pod)
-	nic, err := client.podInterface(ctx, ovs, source.lsp)
-	if err != nil || nic.netns == "" {
-		var fallbackErr error
-		netns, fallbackErr = client.podNetNS(ctx, ovs, pod)
-		if fallbackErr != nil {
-			if err != nil {
-				return fmt.Errorf("find capture interface for %s/%s: %w", pod.Namespace, pod.Name, err)
-			}
-			return fmt.Errorf("resolve capture network namespace for %s/%s: %w", pod.Namespace, pod.Name, fallbackErr)
+	var nic podInterface
+	if options.iface != "" {
+		// An explicit -i names an interface inside the Pod network namespace.
+		// Resolve the namespace from all OVS interfaces so secondary Multus
+		// interfaces such as net1 do not depend on the primary LSP lookup.
+		netns, err = client.podNetNS(ctx, ovs, pod)
+		if err != nil {
+			return fmt.Errorf("resolve capture network namespace for %s/%s: %w", pod.Namespace, pod.Name, err)
 		}
 		netns = strings.TrimSpace(netns)
 		if netns == "" {
 			return errors.New("pod network namespace path is empty")
 		}
 	} else {
-		netns = nic.netns
-	}
-	if pod.Annotations[annotationPrefix+"pod_nic_type"] == "internal-port" {
-		if options.iface == "" && nic.name != "" {
+		source := podNetworkSource(pod)
+		nic, err = client.podInterface(ctx, ovs, source.lsp)
+		if err != nil || nic.netns == "" {
+			var fallbackErr error
+			netns, fallbackErr = client.podNetNS(ctx, ovs, pod)
+			if fallbackErr != nil {
+				if err != nil {
+					return fmt.Errorf("find capture interface for %s/%s: %w", pod.Namespace, pod.Name, err)
+				}
+				return fmt.Errorf("resolve capture network namespace for %s/%s: %w", pod.Namespace, pod.Name, fallbackErr)
+			}
+			netns = strings.TrimSpace(netns)
+			if netns == "" {
+				return errors.New("pod network namespace path is empty")
+			}
+		} else {
+			netns = nic.netns
+		}
+		if pod.Annotations[annotationPrefix+"pod_nic_type"] == "internal-port" && nic.name != "" {
 			name = nic.name
 		}
 	}

@@ -194,7 +194,7 @@ Plugin flags are `--node NODE` (localnet or OVN-port node selection) and
 | Capture argument | Meaning and validation |
 | --- | --- |
 | `-D` | List capture interfaces; required instead of `-i` for node interface discovery. |
-| `-i IFACE` or `-iIFACE` | Select interface. Node capture requires it unless `-D` is used. |
+| `-i IFACE` or `-iIFACE` | Select interface. For Pod, Service/workload and VM/VMI targets, `IFACE` is resolved inside the selected Pod network namespace (for example `net1`); it overrides the default `eth0` or internal-port interface. For Node and OVN targets it selects the host/OVS interface and must match a resolved interface where applicable. Node capture requires it unless `-D` is used. |
 | `-c COUNT` or `-cCOUNT` | Stop after a positive packet count. |
 | `-s SNAPLEN` or `-sSNAPLEN` | Snap length from `64` through `1048576`; default `262144`. |
 | `-n` / `-nn` | Disable address/name conversion. |
@@ -264,6 +264,7 @@ kubectl ko trace localnet/underlay-a --target 10.0.0.8 --source-ip 10.0.0.2 --so
 kubectl ko trace lsp/web.app --target 10.0.0.8 --engine ovn --dst-mac 02:00:00:00:00:08
 kubectl ko trace lrp/router-underlay-a --target 10.0.0.8
 kubectl ko capture -n app pod/web -- -i eth0 -c 10
+kubectl ko capture -n app pod/web -- -i net1 -c 10
 kubectl ko capture -n app vmi/database -- -w - > vm.pcap
 kubectl ko capture --namespace app vm/database -- -w - > vm.pcap
 kubectl ko capture node/worker-a -- -D

@@ -17,9 +17,14 @@ The debug image may install additional diagnostic tools, including `gdb` and
 | `nmap` Geneve probe | Native agent UDP probe | `diagnose environment` reports `open`, `closed`, or `unknown`; an unanswered UDP packet is not treated as proof of readiness. |
 | `strace`, `readelf`, `gdb` | Structured `kubectl ko` trace, logs, network inspection and performance commands | These tools are not required by production images. The debug image may continue to install `gdb`, `valgrind` and packet tools for CI and interactive debugging. |
 
-Capture accepts `-D` (list interfaces), `-i`, `-c`, `-s`, `-nn` and `-w -`. Unsupported packet-filter
+Capture accepts `-D` (list interfaces), `-i`, `-c`, `-s`, `-nn` and `-w -`. For Pod,
+Service/workload and VM/VMI targets, `-i IFACE` selects an interface inside the target
+Pod network namespace, including secondary interfaces such as `net1`. Unsupported packet-filter
 expressions fail before a remote request is opened. Save pcap streams on the
 workstation and inspect them there.
+
+For example, `kubectl ko capture -n app pod/web -- -i net1 -c 10` enters the
+selected Pod network namespace and captures ten packets from `net1`.
 
 The agent enters a mounted network namespace itself with `setns(2)`. This
 keeps packet capture independent from `kube-ovn-cni`, `ovs-ovn` and
