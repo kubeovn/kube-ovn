@@ -238,8 +238,17 @@ func (c *Controller) getNextHopAttribute(neighborAddress net.IP) net.IP {
 	proto := util.CheckProtocol(nextHop.String()) // Is next hop IPv4 or IPv6
 
 	// Preserve the historical fallback for non-whitelist mode.
+	// nodeIP may be configured as an ovn-eip, which differs from the address used to
+	// establish the BGP session with the neighbor. In that case traffic must still be
+	// forwarded to the ovn-eip, so prefer nodeIP whenever it is configured, instead of
+	// only when nextHop equals the pod IP. (nextHop.Equal(c.config.PodIPs[proto]))
+
+	// This is a usecase where overlay network is connected to underlay external network
+	// via LRP(ovn-eip) and route is advertised for the overlay network through bgp speaker.
+	// In that case, the next hop should be the ovn-eip instead of the pod IP
+	// and bgp session is established via a different IP address.
 	nodeIP := c.config.NodeIPs[proto].IP
-	if nodeIP != nil && nextHop.Equal(c.config.PodIPs[proto]) {
+	if nodeIP != nil {
 		nextHop = nodeIP
 	}
 
