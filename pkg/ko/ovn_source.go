@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/kubeovn/kube-ovn/pkg/util"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -142,7 +141,7 @@ func (c *Client) localnetSource(ctx context.Context, subnetName, portName, netwo
 		return nil, err
 	}
 	source := &networkSource{
-		kind: sourceKindLocalnet, lsp: portName, datapath: subnetName, bridge: util.ExternalBridgeName(provider),
+		kind: sourceKindLocalnet, lsp: portName, datapath: subnetName, bridge: "br-" + provider,
 		annotations: map[string]string{annotationPrefix + "logical_switch": subnetName, annotationPrefix + "cidr": cidr},
 	}
 	if !needOVS {
@@ -166,8 +165,8 @@ func (c *Client) localnetSource(ctx context.Context, subnetName, portName, netwo
 }
 
 func (c *Client) providerNodeInterface(ctx context.Context, provider, hint string) (string, string, error) {
-	readyKey := fmt.Sprintf(util.ProviderNetworkReadyTemplate, provider)
-	interfaceKey := fmt.Sprintf(util.ProviderNetworkInterfaceTemplate, provider)
+	readyKey := provider + ".provider-network.kubernetes.io/ready"
+	interfaceKey := provider + ".provider-network.kubernetes.io/interface"
 	var nodes []corev1.Node
 	if hint != "" {
 		node, err := c.Kubernetes.CoreV1().Nodes().Get(ctx, hint, metav1.GetOptions{})
