@@ -2,9 +2,13 @@ package ha
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"maps"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,6 +18,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/klog/v2"
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
@@ -59,6 +64,88 @@ func dbFileHostPath(db string) string {
 
 func raftHeaderFileHostPath(db string) string {
 	return fmt.Sprintf("/etc/origin/ovn/ovn%s_db.hdr", db)
+}
+
+func copyDbFiles(node *kind.Node, dir, dbFileHost string) error {
+	files := []string{dbFileHost}
+	for _, db := range [...]string{"nb", "sb"} {
+		files = append(files, dbFileHostPath(db), raftHeaderFileHostPath(db))
+	}
+	seen := set.New[string]()
+	var failures []error
+	for _, file := range files {
+		if seen.Has(file) {
+			continue
+		}
+		seen.Insert(file)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		output, err := exec.CommandContext(ctx, "docker", "cp", node.Name()+":"+file, filepath.Join(dir, filepath.Base(file))).CombinedOutput()
+		cancel()
+		if err != nil {
+			failures = append(failures, fmt.Errorf("copy %s from node %s: %w: %s", file, node.Name(), err, output))
+		}
+	}
+	return errors.Join(failures...)
+}
+
+func saveDbFailureDiagnostics(f *framework.Framework, pods []corev1.Pod, kindNodes map[string]*kind.Node, dbFile, dbFileHost string, failedPod corev1.Pod, checkErr error, stdout, stderr string) (string, error) {
+	baseDir := os.Getenv("HA_E2E_DIAGNOSTICS_DIR")
+	if baseDir == "" {
+		baseDir = filepath.Join(os.TempDir(), "kube-ovn-ha-e2e-diagnostics")
+	}
+	if err := os.MkdirAll(baseDir, 0o700); err != nil {
+		return "", err
+	}
+	dir, err := os.MkdirTemp(baseDir, "db-failure-")
+	if err != nil {
+		return "", err
+	}
+
+	var failures []error
+	lastCheck := fmt.Sprintf("pod: %s\ncommand: ovsdb-tool check-cluster %s\nerror: %v\nstdout:\n%s\nstderr:\n%s\n", failedPod.Name, dbFile, checkErr, stdout, stderr)
+	if err := os.WriteFile(filepath.Join(dir, "failed-check-cluster.txt"), []byte(lastCheck), 0o600); err != nil {
+		failures = append(failures, fmt.Errorf("save last check-cluster result: %w", err))
+	}
+
+	for _, pod := range pods {
+		if err := os.MkdirAll(filepath.Join(dir, pod.Spec.NodeName), 0o700); err != nil {
+			failures = append(failures, fmt.Errorf("create directory for node %s: %w", pod.Spec.NodeName, err))
+		}
+	}
+	nodes := set.New[string]()
+	for _, pod := range pods {
+		nodes.Insert(pod.Spec.NodeName)
+	}
+	for nodeName := range nodes {
+		node, ok := kindNodes[nodeName]
+		if !ok {
+			failures = append(failures, fmt.Errorf("kind node %s not found", nodeName))
+			continue
+		}
+		if err := copyDbFiles(node, filepath.Join(dir, nodeName), dbFileHost); err != nil {
+			failures = append(failures, err)
+		}
+	}
+
+	for _, pod := range pods {
+		podDir := filepath.Join(dir, pod.Spec.NodeName)
+		for _, db := range [...]string{"nb", "sb"} {
+			stdout, stderr, err := framework.ExecShellInContainer(f, pod.Namespace, pod.Name, "ovn-central", "ovsdb-tool check-cluster "+dbFilePath(db))
+			result := fmt.Sprintf("pod: %s\ncommand: ovsdb-tool check-cluster %s\nerror: %v\nstdout:\n%s\nstderr:\n%s\n", pod.Name, dbFilePath(db), err, stdout, stderr)
+			if err := os.WriteFile(filepath.Join(podDir, db+"-check-cluster.txt"), []byte(result), 0o600); err != nil {
+				failures = append(failures, fmt.Errorf("save check-cluster output for pod %s: %w", pod.Name, err))
+			}
+			stdout, stderr, err = framework.ExecShellInContainer(f, pod.Namespace, pod.Name, "ovn-central", cmdClusterStatus(db))
+			result = fmt.Sprintf("pod: %s\ncommand: %s\nerror: %v\nstdout:\n%s\nstderr:\n%s\n", pod.Name, cmdClusterStatus(db), err, stdout, stderr)
+			if err := os.WriteFile(filepath.Join(podDir, db+"-cluster-status.txt"), []byte(result), 0o600); err != nil {
+				failures = append(failures, fmt.Errorf("save cluster status for pod %s: %w", pod.Name, err))
+			}
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "snapshot-errors.txt"), []byte(fmt.Sprint(errors.Join(failures...))), 0o600); err != nil {
+		failures = append(failures, fmt.Errorf("save snapshot errors: %w", err))
+	}
+	return dir, errors.Join(failures...)
 }
 
 var dbNames = map[string]string{
@@ -297,10 +384,17 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	checkCmd := "ovsdb-tool check-cluster " + dbFile
 	for _, pod := range pods.Items {
 		ginkgo.By("Waiting for db file " + dbFile + " on node " + pod.Spec.NodeName + " to be healthy before corruption")
-		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			_, _, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, checkCmd)
-			return err == nil, nil
-		}, fmt.Sprintf("db file %s on node %s to be healthy before corruption", dbFile, pod.Spec.NodeName))
+		var lastStdout, lastStderr string
+		var lastErr error
+		err := wait.PollUntilContextTimeout(context.Background(), time.Second, 30*time.Second, false, func(_ context.Context) (bool, error) {
+			lastStdout, lastStderr, lastErr = framework.ExecShellInContainer(f, pod.Namespace, pod.Name, "ovn-central", checkCmd)
+			return lastErr == nil, nil
+		})
+		if err != nil {
+			dir, snapshotErr := saveDbFailureDiagnostics(f, pods.Items, kindNodes, dbFile, dbFileHost, pod, lastErr, lastStdout, lastStderr)
+			framework.Failf("db file %s on pod %s did not become healthy: wait error = %v, last check error = %v, stdout = %q, stderr = %q; diagnostics = %q, snapshot errors = %v",
+				dbFile, pod.Name, err, lastErr, lastStdout, lastStderr, dir, snapshotErr)
+		}
 	}
 
 	nodes := set.New[string]()
