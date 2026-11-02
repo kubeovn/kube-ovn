@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.16.17 (2026-11-01)
+
+ * [ba6d8fae4](https://github.com/kubeovn/kube-ovn/commit/ba6d8fae4876f2beca74ce3e4b95f4784bf24c04) release v1.16.17
+ * [18026dbcc](https://github.com/kubeovn/kube-ovn/commit/18026dbccdc8503909337d8608df699183678fe0) fix: honor legacy OVN attachment subnet selection (#7822)
+ * [3c5924822](https://github.com/kubeovn/kube-ovn/commit/3c592482239aa788a79ec3c8f7339224833c8ddd) fix(controller): preserve external chassis in external VPC mode (#7816)
+ * [4e1cf01fd](https://github.com/kubeovn/kube-ovn/commit/4e1cf01fd2ad4c917835ed8120220d2dcfc78fb8) [release-1.16] fix(tproxy): preserve TCP probe failures for custom VPC pods (#7805)
+ * [3997bd313](https://github.com/kubeovn/kube-ovn/commit/3997bd31360e0be4001aad50a8140dbdbb316af9) fix(deps): update cert-manager to v1.20.5 (#7801)
+ * [230056e4c](https://github.com/kubeovn/kube-ovn/commit/230056e4cadbb87e149e30903e8485077f0c8ce1) prepare for next release
+
+### Contributors
+
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.16 (2026-10-29)
 
  * [b311ad0c5](https://github.com/kubeovn/kube-ovn/commit/b311ad0c51913abf9bcac64ad7612f0adb247221) release v1.16.16
@@ -764,6 +778,21 @@
  * jskrill
  * renovate[bot]
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.15.33 (2026-11-01)
+
+ * [693dc630f](https://github.com/kubeovn/kube-ovn/commit/693dc630f64fa5b5ef5369daff6b9dc134fc3782) release v1.15.33
+ * [8f7c2d750](https://github.com/kubeovn/kube-ovn/commit/8f7c2d7502b826629b2df7e89b12581cc8f64718) fix: honor legacy OVN attachment subnet selection (#7821)
+ * [abf236d40](https://github.com/kubeovn/kube-ovn/commit/abf236d408ea28e1b6834864e766272e2a39d83e) fix(deps): update cert-manager to v1.20.5 (#7800)
+ * [2707398f4](https://github.com/kubeovn/kube-ovn/commit/2707398f437ad8943ac83dad5ad7e8d6a0746e93) [release-1.15] fix(controller): cache selectors, index label events, and coalesce policy updates (#7788)
+ * [f968fefcb](https://github.com/kubeovn/kube-ovn/commit/f968fefcb0a0b2b24d6c1f031b71630103c0e959) [release-1.15] fix(daemon): refresh underlay Service flows when OVS ofports change (#7790)
+ * [a34ed9cf2](https://github.com/kubeovn/kube-ovn/commit/a34ed9cf2805ea8987066b103117bfe6127369ee) fix(deps): update Kubernetes and Go x modules on release-1.15 (#7791)
+ * [de42e18f8](https://github.com/kubeovn/kube-ovn/commit/de42e18f88b2c07a63dedae364eff99b2358cac2) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 
