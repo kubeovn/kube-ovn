@@ -23,7 +23,7 @@ func localnetTestClient(t *testing.T, extraNodes ...*corev1.Node) (*Application,
 	objects := []runtime.Object{
 		readyPod("central", "worker", "ovn-central", map[string]string{"ovn-nb-leader": "true", "ovn-sb-leader": "true"}),
 		readyPod("ovs", "worker", "openvswitch", map[string]string{"app": "ovs"}),
-		&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "worker", Labels: labels}},
+		&corev1.Node{Name: "worker", Labels: labels},
 	}
 	for _, node := range extraNodes {
 		objects = append(objects, node)
@@ -100,7 +100,7 @@ func TestLocalnetMultipleNodesRequireSelection(t *testing.T) {
 		"provider.provider-network.kubernetes.io/ready":     "true",
 		"provider.provider-network.kubernetes.io/interface": "eno2",
 	}
-	_, _, client := localnetTestClient(t, &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "worker-b", Labels: ready}})
+	_, _, client := localnetTestClient(t, &corev1.Node{Name: "worker-b", Labels: ready})
 	_, err := client.ovnSource(t.Context(), sourceRef{kind: sourceKindLocalnet, name: "underlay"}, "", true)
 	require.ErrorContains(t, err, "specify --node")
 }
@@ -123,7 +123,7 @@ func ovnPortTestClient(t *testing.T) (*Application, *recordingExecutor) {
 	app, executor, _, _ := testApplication(t,
 		readyPod("central", "worker", "ovn-central", map[string]string{"ovn-nb-leader": "true", "ovn-sb-leader": "true"}),
 		readyPod("ovs", "worker", "openvswitch", map[string]string{"app": "ovs"}),
-		&corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "worker"}},
+		&corev1.Node{Name: "worker"},
 	)
 	client, err := app.newClient()
 	require.NoError(t, err)
