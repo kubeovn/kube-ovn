@@ -13,6 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/vishvananda/netlink"
 	"k8s.io/utils/set"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func newTestBgpServer(t *testing.T, routerID string) *gobgp.BgpServer {
@@ -264,4 +266,30 @@ func TestGetNextHopAttributeReusesInitializedNeighborLocalAddresses(t *testing.T
 	controller := &Controller{config: config}
 	require.True(t, ipv4StartupAddress.Equal(controller.getNextHopAttribute(ipv4Neighbor)))
 	require.True(t, ipv6StartupAddress.Equal(controller.getNextHopAttribute(ipv6Neighbor)))
+
+}
+
+func TestGetNextHopAttributePrefersConfiguredNodeIPOverPodIP(t *testing.T) {
+	neighbor := net.ParseIP("192.0.2.1")
+	routedSource := net.ParseIP("127.0.0.2")
+	podIP := net.ParseIP("10.244.0.8")
+	ovnEip := net.ParseIP("192.0.2.100")
+
+	config := &Configuration{
+		NodeIPs: map[string]IP{
+			kubeovnv1.ProtocolIPv4: {IP: ovnEip},
+		},
+		PodIPs: map[string]net.IP{
+			kubeovnv1.ProtocolIPv4: podIP,
+		},
+		routeLookup: func(address net.IP) ([]netlink.Route, error) {
+			require.True(t, neighbor.Equal(address))
+			return []netlink.Route{{Src: routedSource}}, nil
+		},
+	}
+	controller := &Controller{config: config}
+
+	// Even though the routed source differs from podIP, the configured nodeIP
+	// (which may be an ovn-eip) must always be preferred as the nexthop.
+	require.True(t, ovnEip.Equal(controller.getNextHopAttribute(neighbor)))
 }
