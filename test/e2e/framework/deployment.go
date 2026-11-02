@@ -58,9 +58,13 @@ func (f *Framework) DeploymentClientNS(namespace string) *DeploymentClient {
 
 func (c *DeploymentClient) Get(name string) *appsv1.Deployment {
 	ginkgo.GinkgoHelper()
-	deploy, err := c.DeploymentInterface.Get(context.TODO(), name, metav1.GetOptions{})
+	deploy, err := c.GetContext(context.Background(), name)
 	ExpectNoError(err)
 	return deploy
+}
+
+func (c *DeploymentClient) GetContext(ctx context.Context, name string) (*appsv1.Deployment, error) {
+	return c.DeploymentInterface.Get(ctx, name, metav1.GetOptions{})
 }
 
 func (c *DeploymentClient) GetPods(deploy *appsv1.Deployment) (*corev1.PodList, error) {
@@ -68,12 +72,16 @@ func (c *DeploymentClient) GetPods(deploy *appsv1.Deployment) (*corev1.PodList, 
 }
 
 func (c *DeploymentClient) GetAllPods(deploy *appsv1.Deployment) (*corev1.PodList, error) {
+	return c.GetAllPodsContext(context.Background(), deploy)
+}
+
+func (c *DeploymentClient) GetAllPodsContext(ctx context.Context, deploy *appsv1.Deployment) (*corev1.PodList, error) {
 	podSelector, err := metav1.LabelSelectorAsSelector(deploy.Spec.Selector)
 	if err != nil {
 		return nil, err
 	}
 	podListOptions := metav1.ListOptions{LabelSelector: podSelector.String()}
-	return c.clientSet.CoreV1().Pods(deploy.Namespace).List(context.TODO(), podListOptions)
+	return c.clientSet.CoreV1().Pods(deploy.Namespace).List(ctx, podListOptions)
 }
 
 // Create creates a new deployment according to the framework specifications
@@ -99,9 +107,10 @@ func (c *DeploymentClient) RolloutStatus(name string) *appsv1.Deployment {
 	ginkgo.GinkgoHelper()
 
 	var deploy *appsv1.Deployment
-	WaitUntil(poll, timeout, func(_ context.Context) (bool, error) {
+	WaitUntil(poll, timeout, func(ctx context.Context) (bool, error) {
 		var err error
-		deploy = c.Get(name)
+		deploy, err = c.GetContext(ctx, name)
+		ExpectNoError(err)
 		unstructured := &unstructured.Unstructured{}
 		if unstructured.Object, err = runtime.DefaultUnstructuredConverter.ToUnstructured(deploy); err != nil {
 			return false, err
@@ -196,17 +205,22 @@ func (c *DeploymentClient) RestartSync(deploy *appsv1.Deployment) *appsv1.Deploy
 
 func (c *DeploymentClient) SetScale(deployment string, replicas int32) {
 	ginkgo.GinkgoHelper()
+	framework.ExpectNoError(c.SetScaleContext(context.Background(), deployment, replicas))
+}
 
-	scale, err := c.GetScale(context.Background(), deployment, metav1.GetOptions{})
-	framework.ExpectNoError(err)
+func (c *DeploymentClient) SetScaleContext(ctx context.Context, deployment string, replicas int32) error {
+	scale, err := c.GetScale(ctx, deployment, metav1.GetOptions{})
+	if err != nil {
+		return err
+	}
 	if scale.Spec.Replicas == replicas {
 		Logf("replicas of deployment %s/%s has already been set to %d", c.namespace, deployment, replicas)
-		return
+		return nil
 	}
 
 	scale.Spec.Replicas = replicas
-	_, err = c.UpdateScale(context.Background(), deployment, scale, metav1.UpdateOptions{})
-	framework.ExpectNoError(err)
+	_, err = c.UpdateScale(ctx, deployment, scale, metav1.UpdateOptions{})
+	return err
 }
 
 // Delete deletes a deployment if the deployment exists

@@ -3663,6 +3663,7 @@ jobs:
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          HA_E2E_DIAGNOSTICS_DIR: ${{ github.workspace }}/ha-e2e-diagnostics
         run: |
           make kube-ovn-security-e2e
           make kube-ovn-ha-e2e
@@ -3685,6 +3686,14 @@ jobs:
         with:
           name: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log
           path: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-ko-log.tar.gz
+
+      - name: Upload HA E2E database diagnostics
+        uses: actions/upload-artifact@v7
+        if: ${{ always() && steps.e2e.conclusion == 'failure' }}
+        with:
+          name: kube-ovn-ha-e2e-${{ matrix.ssl }}-${{ matrix.bind-local }}-${{ matrix.ip-family }}-db-diagnostics
+          path: ha-e2e-diagnostics/
+          if-no-files-found: ignore
 
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh

@@ -16,6 +16,7 @@ import (
 )
 
 type ExecOptions struct {
+	Context            context.Context
 	Command            []string
 	Namespace          string
 	PodName            string
@@ -42,6 +43,10 @@ func ExecuteCommandInContainer(client kubernetes.Interface, cfg *rest.Config, na
 }
 
 func ExecuteWithOptions(client kubernetes.Interface, cfg *rest.Config, options ExecOptions) (string, string, error) {
+	ctx := options.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	req := client.CoreV1().RESTClient().Post().
 		Resource("pods").
 		Name(options.PodName).
@@ -59,14 +64,14 @@ func ExecuteWithOptions(client kubernetes.Interface, cfg *rest.Config, options E
 	}, scheme.ParameterCodec)
 
 	var stdout, stderr bytes.Buffer
-	err := execute("POST", req.URL(), cfg, options.Stdin, &stdout, &stderr, false)
+	err := execute(ctx, "POST", req.URL(), cfg, options.Stdin, &stdout, &stderr, false)
 	if options.PreserveWhitespace {
 		return stdout.String(), stderr.String(), err
 	}
 	return strings.TrimSpace(stdout.String()), strings.TrimSpace(stderr.String()), err
 }
 
-func execute(method string, url *url.URL, cfg *rest.Config, stdin io.Reader, stdout, stderr io.Writer,
+func execute(ctx context.Context, method string, url *url.URL, cfg *rest.Config, stdin io.Reader, stdout, stderr io.Writer,
 	tty bool,
 ) error {
 	exec, err := remotecommand.NewSPDYExecutor(cfg, method, url)
@@ -74,7 +79,7 @@ func execute(method string, url *url.URL, cfg *rest.Config, stdin io.Reader, std
 		klog.Errorf("remotecommand.NewSPDYExecutor error: %v", err)
 		return err
 	}
-	return exec.StreamWithContext(context.TODO(), remotecommand.StreamOptions{
+	return exec.StreamWithContext(ctx, remotecommand.StreamOptions{
 		Stdin:  stdin,
 		Stdout: stdout,
 		Stderr: stderr,
