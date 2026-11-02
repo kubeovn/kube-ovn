@@ -266,7 +266,6 @@ func TestGetNextHopAttributeReusesInitializedNeighborLocalAddresses(t *testing.T
 	controller := &Controller{config: config}
 	require.True(t, ipv4StartupAddress.Equal(controller.getNextHopAttribute(ipv4Neighbor)))
 	require.True(t, ipv6StartupAddress.Equal(controller.getNextHopAttribute(ipv6Neighbor)))
-
 }
 
 func TestGetNextHopAttributePrefersConfiguredNodeIPOverPodIP(t *testing.T) {
