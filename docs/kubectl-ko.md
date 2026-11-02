@@ -1,5 +1,9 @@
 # kubectl-ko
 
+> **Code baseline audited:** GitHub PR #7826, HEAD
+> `c01741eeec2e001a408331ebb7b42d9e3d3cef31`. This page describes the command
+> tree and validation implemented by that code baseline.
+
 `kubectl-ko` is a standalone Go kubectl plugin for operating and diagnosing
 Kube-OVN. It talks to the Kubernetes API and routes node-sensitive operations
 through the independent `kubectl-ko-node-agent` DaemonSet. The agent is not a
@@ -63,108 +67,195 @@ On Windows, build from the checkout with
 Use `kubectl plugin list` to detect older copies shadowing the new binary.
 `kubectl ko version` prints the local build without accessing a cluster.
 
-## Command structure and complete feature inventory
+## Command reference
 
-The Go CLI uses the following command tree. Trace and capture require one
-positional resource target.
+### Command tree
 
 ```text
 kubectl ko
-  exec
-    (POD | TYPE/NAME) [-c CONTAINER] [flags] -- COMMAND [args...]
-    -l SELECTOR -- COMMAND [args...]
-    nbctl | sbctl | ic-nbctl | ic-sbctl -- [TOOL_ARGS...]
-    vsctl | ofctl | dpctl | appctl --node NODE -- [TOOL_ARGS...]
-  db
-    health
-    nb
-      status | backup | kick SERVER_ID | restore
-    sb
-      status | backup | kick SERVER_ID
-  trace TARGET --target IP [OPTIONS]
-  capture TARGET -- [CAPTURE_ARGS...]
-  network
-    inspect TARGET [-n NAMESPACE] [--output table|json]
-  diagnose
-    cluster
-    node NODE
-    subnet SUBNET
-    connectivity --target PROTOCOL://IP:PORT [--target ...]
-    environment
-  logs [OPTIONS]
+  exec (POD | TYPE/NAME) [exec flags] -- COMMAND [args...]
+  exec -l SELECTOR -- COMMAND [args...]
+  exec nbctl|sbctl|ic-nbctl|ic-sbctl -- [TOOL_ARGS...]
+  exec vsctl|ofctl|dpctl|appctl --node NODE -- [TOOL_ARGS...]
+  db health
+  db nb|sb status|backup|kick SERVER_ID|restore
+  db sb status|backup|kick SERVER_ID
+  trace TARGET --target IP [trace flags]
+  capture TARGET [capture flags] -- [CAPTURE_ARGS...]
+  network inspect TARGET [inspect flags]
+  diagnose cluster|node NODE|subnet SUBNET|connectivity|environment
+  logs [flags]
   restart
-  perf
-    run [OPTIONS]
-    recovery --yes
-  acl
-    decode COOKIE
-    listen --node NODE
+  perf run [flags] | recovery --yes
+  acl decode COOKIE | listen --node NODE
   version
   completion bash|zsh|fish|powershell
 ```
 
-| New command | Complete capability and effects |
+### Global Kubernetes and plugin flags
+
+The following flags are persistent and can be placed before or after the
+subcommand (before a remote `--` separator):
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `-n, --namespace NAMESPACE` | kubeconfig namespace, then `default` | Namespace for namespaced target resolution. |
+| `--kube-ovn-namespace NAMESPACE` | `$KUBE_OVN_NS`, then `kube-system` | Namespace containing Kube-OVN component Pods. The current HEAD does not auto-discover this value from labels. |
+| `--kubeconfig FILE` | kubeconfig default | Kubernetes client configuration. |
+| `--context NAME` | current context | Kubeconfig context. |
+| `--cluster NAME` | context default | Kubeconfig cluster. |
+| `--server URL` | kubeconfig default | API server address. |
+| `--certificate-authority FILE` | empty | CA bundle. |
+| `--client-certificate FILE` / `--client-key FILE` | empty | Client TLS credentials. |
+| `--token TOKEN` | empty | Bearer token. |
+| `--user NAME` | context default | Kubeconfig user. |
+| `--insecure-skip-tls-verify` | `false` | Disable API server certificate verification. |
+| `--tls-server-name NAME` | empty | TLS server name override. |
+| `--proxy-url URL` | empty | API server proxy. |
+| `--request-timeout DURATION` | `0` | Timeout for an individual Kubernetes request. It does not truncate an established stream. |
+| `--as USER`, `--as-group GROUP`, `--as-uid UID`, `--as-user-extra KEY=VALUE` | empty | Kubernetes impersonation; repeat array flags as needed. |
+| `--discovery-timeout DURATION` | `10s` | Maximum wait for one unique ready target. |
+| `--timeout DURATION` | `0` | Whole command timeout; zero permits long-running streams. |
+
+### Resource references
+
+Use one positional `TARGET`. A bare name means `pod/NAME`; namespaced
+resources use `KIND/NAME` together with `-n NAMESPACE`. `KIND/NAMESPACE/NAME`
+is rejected. Node, LSP, LRP and localnet references are cluster-scoped.
+
+| Canonical kind | Accepted spellings | Namespace | `exec` | `trace` | `capture` | `network inspect` |
+| --- | --- | --- | --- | --- | --- | --- |
+| Pod | `pod`, `po`, `pods` | yes | yes | yes | yes | yes |
+| Node | `node`, `no`, `nodes` | no | no | yes | yes | yes |
+| Service | `service`, `svc`, `services` | yes | yes | yes | yes | yes |
+| Deployment | `deployment`, `deploy`, `deployments` | yes | yes | yes | yes | yes |
+| DaemonSet | `daemonset`, `ds`, `daemonsets` | yes | yes | yes | yes | yes |
+| StatefulSet | `statefulset`, `sts`, `statefulsets` | yes | yes | yes | yes | yes |
+| ReplicaSet | `replicaset`, `rs`, `replicasets` | yes | yes | yes | yes | yes |
+| ReplicationController | `replicationcontroller`, `rc`, `replicationcontrollers` | yes | yes | yes | yes | yes |
+| Job | `job`, `jobs` | yes | yes | yes | yes | yes |
+| VirtualMachine | `virtualmachine`, `vm`, `virtualmachines` | yes | no | yes | yes | yes |
+| VirtualMachineInstance | `virtualmachineinstance`, `vmi`, `virtualmachineinstances` | yes | no | yes | yes | yes |
+| Localnet Subnet | `localnet` | cluster-scoped Subnet name | no | yes | yes | no |
+| Logical switch port | `logicalswitchport`, `lsp`, `logicalswitchports` | no | no | yes | yes | no |
+| Logical router port | `logicalrouterport`, `lrp`, `logicalrouterports` | no | no | yes | yes | no |
+
+`service` and workload targets resolve one running backend Pod. There is no
+named-port, NodePort, DNS-name, VIP, EIP or VPC resource selector in this HEAD;
+use an IP with `trace --target` and choose a Pod or logical port explicitly.
+
+### `exec`
+
+| Form | Parameters and behavior |
 | --- | --- |
-| `exec POD -- COMMAND`, `exec deploy/NAME -- COMMAND`, `exec svc/NAME -- COMMAND`, `exec ds/NAME -- COMMAND` | Resolve a Pod or a standard Kubernetes workload using the workload's selector, then execute the command through Kubernetes `pods/exec`. Supported resource aliases include `po`, `deploy`, `svc`, `ds`, `sts`, `rs`, `rc`, and `job`. The selected Pod must be running; workload and selector forms choose one running Pod deterministically. |
-| `exec -l SELECTOR -- COMMAND` | Select a running Pod by Kubernetes label selector. This form cannot be combined with a resource reference. |
-| `exec nbctl`, `exec sbctl` | Find the requested database leader independently and execute its OVN CLI through the node agent's mounted OVN socket. All CLI operations, including writes and multi-command transactions, remain available. |
-| `exec ic-nbctl`, `exec ic-sbctl` | Find the corresponding interconnection leader and execute its CLI. |
-| `exec vsctl/ofctl/dpctl/appctl --node NODE` | Execute the selected OVS tool through the node agent and its mounted OVS sockets. Remote commands may change live state. |
-| `db nb status`, `db sb status` | Show RAFT cluster and storage status for the selected leader. |
-| `db health` | Check both NB and SB storage on every running central container, without requiring a healthy leader. Report unhealthy storage as failure. |
-| `db nb backup`, `db sb backup` | Convert and download a standalone database, verify DB name and SHA256, and publish without overwriting an existing file. Write a JSON provenance sidecar; remove the temporary remote backup. |
-| `db nb kick SERVER_ID`, `db sb kick SERVER_ID` | Remove a stale cluster member. `--dry-run` prints the database leader Pod and exact command without requiring an agent or applying the change; actual removal runs through the agent on that leader's node. |
-| `db nb restore` | Reconstruct the central NB/SB cluster from the NB database already present on the explicit bootstrap node. Verify the shared hostPath, use temporary per-node helpers when OVS does not mount the databases, stop central, preserve originals and RAFT headers, rebuild, verify storage and restart OVS. Helpers use the central image and security context and are cleaned up by UID. This is not local-file import; SB-only restore is not supported. |
-| `trace` | Resolve the required positional Pod, Node, Service, workload, VM, VMI, localnet Subnet, LSP or LRP target, then trace through OVN and, where a physical ingress exists, OVS. A bare name means Pod; use `KIND/NAME` with `-n NAMESPACE` for namespaced resources. `--target IP` specifies the destination; `addr/IP` is also accepted. IPv4/IPv6, ICMP/TCP/UDP, IPv4 ARP request/reply, explicit destination MAC, hostNetwork, Underlay/U2O and VM logical ports remain supported. `--engine ovn` runs only OVN trace. |
-| `capture` | Capture packets from a required positional Pod, Node, Service, workload, VM, VMI, localnet Subnet or bound LSP through the Go node agent. Service and workload targets select one running Pod. Node capture requires `-i INTERFACE` or `-D`. Localnet capture uses the ProviderNetwork NIC on a ready node; use `--node` when more than one node qualifies. LRP capture requires `--observe-at lsp/NAME` for a bound LSP on its adjacent logical switch and reports that actual observation point. Capture arguments follow `--`: `-D`, `-i`, `-c`, `-s`, `-nn` and `-w -`; the last option streams a pcap locally. |
-| `network inspect` | Inspect a positional Pod, Node, Service, workload, VM or VMI target. Service and workload targets select one running Pod and report which Pod was inspected. Node targets show host-network interfaces. Pod output includes the network namespace path, interface details and host-side veth peers; `macvlan`/`ipvlan` output includes parent NIC details. `--output=json` emits machine-readable data. |
-| `diagnose cluster` | Check cluster configuration, component rollout and leaders; create a unique temporary NodePort Service and run active checks from independent temporary probe Pods in the original pinger network namespaces. |
-| `diagnose node NODE` | Perform configuration checks and restrict the independent active probes to one node. |
-| `diagnose subnet SUBNET` | Check the subnet, create an isolated temporary DaemonSet and NodePort Service, and check peer TCP/UDP, node ICMP and NodePort connectivity from those subnet Pods. Does not require optional CNI node TCP/UDP listeners. |
-| `diagnose connectivity` | Check configuration and probe explicit TCP/UDP IP endpoints using independent temporary Pods in the existing pinger network namespaces. Does not create NodePort Services or subnet DaemonSets. |
-| `diagnose environment` | Discover Linux nodes from the Kubernetes API and run the environment checker through one independent agent per node, including nodes without CNI Pods. |
-| `logs` | Collect component files, container logs and Linux node state in parallel; limit each item and record partial failures in a manifest. `netstat.log` contains raw `/proc/net/{tcp,tcp6,udp,udp6,unix}` socket tables, including socket inodes, without process PID/name resolution. |
-| `restart` | Restart and wait for central, OVS, controller, CNI, pinger and monitor in dependency order. |
-| `perf run` | Create isolated probe Pods/Service; measure Pod, host, Service and multicast performance. Temporarily configure an OVN LB and multicast membership, then clean up owned changes. Does not delete central leaders. |
-| `perf recovery --yes` | Deliberately delete NB, SB and northd leader Pods in sequence and measure their recovery. Does not run the traffic benchmark. |
-| `acl decode COOKIE` | Decode a sample cookie using the existing NB helper. |
-| `acl listen --node NODE` | Stream sampled cookies from that node, decode with bounded backpressure, and emit YAML documents until cancellation. |
-| `version`, `help`, `completion` | Show the client build, discover commands or generate shell completion without accessing a cluster. |
+| `exec POD -- COMMAND [args...]` | Execute in a named Pod. A bare `POD` uses the selected namespace. |
+| `exec KIND/NAME -- COMMAND [args...]` | Resolve one running Pod from a Service or workload selector. Supported kinds are `pod`, `service`, `deployment`, `daemonset`, `statefulset`, `replicaset`, `replicationcontroller` and `job`, including aliases. |
+| `exec -l SELECTOR -- COMMAND [args...]` | Select one running Pod by label. Cannot be combined with a resource reference. |
+| `exec nbctl|sbctl|ic-nbctl|ic-sbctl -- [TOOL_ARGS...]` | Run the corresponding OVN CLI on its unique leader. |
+| `exec vsctl|ofctl|dpctl|appctl --node NODE -- [TOOL_ARGS...]` | Run the corresponding OVS CLI on the selected node. `--node` is required. |
 
-## Configuration and argument boundaries
+Exec flags: `-c, --container NAME`; `-l, --selector SELECTOR`;
+`-i, --stdin`; `-t, --tty`; `-q, --quiet`; and
+`--pod-running-timeout DURATION` (default `1m`). Put all remote arguments
+after `--`; `exec nbctl show` is invalid, while
+`exec nbctl -- show` is valid.
+The Kubernetes-style group-qualified form, such as `deploy.apps/web`, is
+accepted for `exec`; the group-qualified form is not accepted by `trace`,
+`capture` or `network inspect`.
 
-Temporary NodePort probes request `PreferDualStack` and target only the IP
-families actually allocated to the Service. Single-stack clusters use their
-available family; dual-stack clusters probe both families. Missing node
-addresses for an allocated family are reported as errors.
+### `trace`
 
-Standard Kubernetes connection flags are accepted before or after subcommands,
-up to the explicit `--` remote-argument separator. The kubeconfig loader supports
-`--kubeconfig`, `KUBECONFIG`, context, TLS, authentication plugins and impersonation.
-Workload namespace selection is `--namespace/-n`, then kubeconfig namespace,
-then `default`. The deployment namespace is independently
-selected by `--kube-ovn-namespace`, `KUBE_OVN_NS`, then `kube-system`.
+Syntax: `trace TARGET --target IP [flags]`.
 
-| Scope | Parameters and defaults |
+| Flag | Default | Supported values and constraints |
+| --- | --- | --- |
+| `--target IP` | required | Bare IPv4/IPv6 or `addr/IP`; zone identifiers are rejected. |
+| `--protocol` | `icmp` | `icmp`, `tcp`, `udp` or `arp`. |
+| `--dst-port PORT` | none | Required for TCP/UDP; integer `1..65535`. |
+| `--arp-op OP` | `request` | `request` or `reply`; only with IPv4 `--protocol=arp`. |
+| `--dst-mac MAC` | auto | Six-byte destination MAC. Required when the destination MAC cannot be inferred. |
+| `--engine` | `all` | `all` (OVN then OVS) or `ovn`. LRP forces `ovn`. |
+| `--node NODE` | auto | OVS node for `localnet` or a localnet LSP; requires an OVS stage. |
+| `--source-ip IP` | inferred | Required for localnet sources; optional override for LRP/LSP cases. |
+| `--source-mac MAC` | inferred | Required for localnet sources; optional override for LRP/LSP cases. |
+
+Localnet sources require both `--source-ip` and `--source-mac`. An ordinary
+LSP without a bound chassis supports OVN-only trace; localnet LSP follows the
+localnet ProviderNetwork path. LRP has no Linux interface and is OVN-only.
+
+### `capture`
+
+Syntax: `capture TARGET [flags] -- [CAPTURE_ARGS...]`.
+
+Plugin flags are `--node NODE` (localnet or OVN-port node selection) and
+`--observe-at lsp/NAME` (required for LRP capture). Capture arguments after
+`--` are deliberately limited to the following native agent interface:
+
+| Capture argument | Meaning and validation |
 | --- | --- |
-| Global | `--timeout=0` bounds the whole invocation; zero allows long streams. `--discovery-timeout=10s` bounds target selection. Kubernetes `--request-timeout` does not truncate an established exec stream. |
-| Kubernetes exec | `exec` accepts `POD` or `TYPE/NAME`, `-c/--container`, `-l/--selector`, `-i/--stdin`, `-t/--tty`, `-q/--quiet`, and `--pod-running-timeout=1m`. A command must follow `--`. |
-| Raw tools / capture | `exec` OVS tools require `--node`; `capture` requires exactly one positional resource. Localnet and localnet LSP capture accept `--node`; LRP capture requires `--observe-at lsp/NAME`. Capture arguments must follow `--`. |
-| Network inspection | `network inspect` requires one `POD` or `KIND/NAME` positional target. Use `-n NAMESPACE` for namespaced resources; `--output=table` is the default and `--output=json` is intended for automation. OVN port and localnet targets are not supported by this command. |
-| Trace | Exactly one positional resource and `--target IP` are required (`addr/IP` is also accepted); `--protocol=icmp`, `--engine=all`, optional `--dst-mac`. Localnet and localnet LSP sources require `--source-ip` and `--source-mac`; OVS tracing uses `--node` to select a ready ProviderNetwork node when necessary. LRP defaults to `--engine ovn` and has no OVS stage. TCP/UDP require `--dst-port=1..65535`. ARP uses `--arp-op=request|reply` and IPv4. |
-| Database backup | `--output FILE`; otherwise a unique DB-specific filename. |
-| Database recovery | Required `--source-node NODE` and either `--yes` or `--dry-run`. |
-| Diagnostics | Cluster/node/subnet accept `--read-only` to skip active probes and temporary resources. All configuration/probe modes accept `--skip-kube-proxy`, defaulting from `WITHOUT_KUBE_PROXY=true`. Subnet accepts `--tcp-port` / `--udp-port`, defaulting from `TCP_CONN_CHECK_PORT` / `UDP_CONN_CHECK_PORT`, then 8100 / 8101. Explicit flags override environment values. Connectivity requires one or more `--target tcp://IP:PORT` / `udp://IP:PORT`; IPv6 uses brackets. |
-| Logs | `--component=all` (`all`, `kube-ovn`, `ovn`, `ovs`, `linux`), `--output-dir=kubectl-ko-log`, `--concurrency=4`, `--item-timeout=30s`, `--max-bytes=268435456` per item, optional `--strict`. |
-| Performance | `perf run --image=docker.io/kubeovn/test:v1.13.0 --duration=5s --bandwidth=1G`. Duration is per measurement and must be whole seconds from 1s to 5m. Use `--image` for an internal mirror. Leader disruption is a separate `perf recovery --yes` operation. |
-| ACL | `acl decode COOKIE`; `acl listen --node NODE`. |
+| `-D` | List capture interfaces; required instead of `-i` for node interface discovery. |
+| `-i IFACE` or `-iIFACE` | Select interface. Node capture requires it unless `-D` is used. |
+| `-c COUNT` or `-cCOUNT` | Stop after a positive packet count. |
+| `-s SNAPLEN` or `-sSNAPLEN` | Snap length from `64` through `1048576`; default `262144`. |
+| `-n` / `-nn` | Disable address/name conversion. |
+| `-w -` | Stream pcap to stdout. Other output files are rejected. |
+
+The target is resolved before capture. Service/workload targets select one
+running Pod; VM/VMI targets select the current valid KubeVirt launcher and
+recheck it before capture. LRP capture observes an adjacent bound LSP selected
+by `--observe-at`; localnet capture uses the ProviderNetwork interface on the
+selected node.
+
+### `network inspect`
+
+Syntax: `network inspect TARGET [-o|--output table|json]`.
+The default output is `table`; `json` is intended for automation. Supported
+targets are Pod, Node, Service, workload, VM and VMI. OVN ports and localnet
+targets are rejected. Pod output includes the network namespace, interfaces,
+RX/TX statistics, host-side veth peers and resolved macvlan/ipvlan parents;
+Service/workload/VM/VMI output identifies the selected Pod.
+
+### Database commands
+
+| Command | Flags | Effect |
+| --- | --- | --- |
+| `db health` | none | Check NB/SB storage on every running central Pod without requiring a leader. |
+| `db nb status`, `db sb status` | none | Show cluster and storage status from the selected leader. |
+| `db nb backup`, `db sb backup` | `--output FILE` | Download a verified standalone backup; default is a unique generated filename. Existing files are never overwritten. |
+| `db nb kick SERVER_ID`, `db sb kick SERVER_ID` | `--dry-run` | Remove a stale member; dry-run only resolves and prints the command. |
+| `db nb restore` | `--source-node NODE` plus `--yes` or `--dry-run` | Rebuild central NB/SB from the existing database on the explicit source node. This is a destructive operation and is not local-file import. |
+
+### Diagnostics, logs, performance and ACL
+
+| Command | Parameters | Behavior |
+| --- | --- | --- |
+| `diagnose cluster` | `--read-only`, `--skip-kube-proxy`, repeatable `--external-address IP` | Cluster configuration and active connectivity checks. |
+| `diagnose node NODE` | Same flags | Restrict checks to one node. |
+| `diagnose subnet SUBNET` | Same flags, `--tcp-port PORT`, `--udp-port PORT` | Subnet probes with temporary DaemonSet/NodePort resources. Port defaults are `$TCP_CONN_CHECK_PORT`/`$UDP_CONN_CHECK_PORT`, then `8100`/`8101`. |
+| `diagnose connectivity` | `--skip-kube-proxy`, repeatable `--target tcp://IP:PORT` or `udp://IP:PORT` | Probe explicit endpoints; IPv6 uses brackets. |
+| `diagnose environment` | none | Run environment checks on every Linux node through the independent agent. |
+| `restart` | none | Restart central, OVS, controller, CNI, pinger and monitor in dependency order. |
+| `logs` | `--component all\|kube-ovn\|ovn\|ovs\|linux`; `--output-dir DIR`; `--concurrency N` (4); `--item-timeout DURATION` (30s); `--max-bytes BYTES` (268435456); `--strict` | Collect logs and node state. `--strict` fails if any item fails. |
+| `perf run` | `--image IMAGE`; `--duration DURATION` (5s, whole seconds `1s..5m`); `--bandwidth RATE` (`1G`) | Measure Pod, host, Service and multicast performance; temporary resources are cleaned up. |
+| `perf recovery` | required `--yes` | Deliberately delete central leaders and measure recovery. |
+| `acl decode COOKIE` | none | Decode one ACL sample cookie. |
+| `acl listen` | required `--node NODE` | Stream decoded ACL samples from a node until cancelled. |
+| `version` | none | Print local client version without contacting the cluster. |
+| `completion bash\|zsh\|fish\|powershell` | shell-specific `--no-descriptions` where supported | Generate shell completion. |
+
+## Usage rules and examples
+
+Temporary NodePort probes request `PreferDualStack` and use only the IP
+families allocated to the Service. Single-stack clusters use their available
+family; missing node addresses for an allocated family are reported as errors.
 
 ```console
 kubectl ko exec deploy/web -- date
 kubectl ko exec svc/web -c app -- sh -c 'echo ready'
 kubectl ko exec -n app -l app=web -- curl http://localhost:8080/healthz
 kubectl ko exec nbctl --context staging -- --format=json show
-kubectl ko exec nbctl -- -- ls-add example -- lsp-add example example-port
+kubectl ko exec nbctl -- ls-add example -- lsp-add example example-port
+kubectl ko exec ic-nbctl -- --format=json show
 kubectl ko exec vsctl --node worker-a -- --timeout=5 show
 kubectl ko trace -n app po/web --target 10.0.0.8
 kubectl ko trace -n app svc/api --target 10.0.0.8 --protocol tcp --dst-port 443
@@ -180,14 +271,27 @@ kubectl ko capture no/worker-a -- -i eth0 -c 10
 kubectl ko capture localnet/underlay-a --node worker-a -- -c 10
 kubectl ko capture lsp/web.app -- -c 10
 kubectl ko capture lrp/router-underlay-a --observe-at lsp/web.app -- -c 10
-kubectl ko network inspect pod/web -n app
+kubectl ko network inspect -n app pod/web
 kubectl ko network inspect node/worker-a
-kubectl ko network inspect svc/api -n app --output json
+kubectl ko network inspect -n app svc/api --output json
+kubectl ko db health
+kubectl ko db nb status
+kubectl ko db nb kick ffffffff --dry-run
+kubectl ko db nb restore --source-node worker-a --dry-run
+kubectl ko diagnose cluster --read-only
+kubectl ko diagnose node worker-a --external-address 1.1.1.1
 kubectl ko diagnose subnet ovn-default --tcp-port 8100 --udp-port 8101
 kubectl ko diagnose connectivity --target tcp://10.0.0.8:8100 --target 'udp://[2001:db8::8]:8101'
+kubectl ko diagnose environment
+kubectl ko restart
 kubectl ko db nb backup --output northbound.backup
 kubectl ko logs --component ovn --output-dir ./support --strict
 kubectl ko perf run --image registry.example/test:v1.13.0 --duration 2s
+kubectl ko perf recovery --yes
+kubectl ko acl decode 0x1234
+kubectl ko acl listen --node worker-a
+kubectl ko version
+kubectl ko completion bash > ~/.local/share/bash-completion/completions/kubectl-ko
 ```
 
 The separator belongs to the plugin and is removed exactly once. Every argument
