@@ -65,9 +65,8 @@ Use `kubectl plugin list` to detect older copies shadowing the new binary.
 
 ## Command structure and complete feature inventory
 
-The Go CLI uses the following command tree. Old command names remain explicit
-commands, while the trace and capture source forms below are shared aliases for
-the same source resolver and retain the documented legacy flags.
+The Go CLI uses the following command tree. Trace and capture require one
+positional resource target.
 
 ```text
 kubectl ko
@@ -82,12 +81,8 @@ kubectl ko
       status | backup | kick SERVER_ID | restore
     sb
       status | backup | kick SERVER_ID
-  trace [SOURCE] [OPTIONS] --target addr/IP
-  trace --source SOURCE [OPTIONS] --target addr/IP
-  trace --pod POD|--node NODE --dst-ip IP [OPTIONS]  (legacy form)
-  capture [SOURCE] [OPTIONS] -- [TCPDUMP_ARGS...]
-  capture --source SOURCE [OPTIONS] -- [TCPDUMP_ARGS...]
-  capture (--pod POD | --vm VM | --vmi VMI) -- [TCPDUMP_ARGS...]  (legacy form)
+  trace TARGET --target addr/IP [OPTIONS]
+  capture TARGET -- [CAPTURE_ARGS...]
   network
     inspect --pod POD [--output table|json]
   diagnose
@@ -120,8 +115,8 @@ kubectl ko
 | `db nb backup`, `db sb backup` | Convert and download a standalone database, verify DB name and SHA256, and publish without overwriting an existing file. Write a JSON provenance sidecar; remove the temporary remote backup. |
 | `db nb kick SERVER_ID`, `db sb kick SERVER_ID` | Remove a stale cluster member. `--dry-run` prints the database leader Pod and exact command without requiring an agent or applying the change; actual removal runs through the agent on that leader's node. |
 | `db nb restore` | Reconstruct the central NB/SB cluster from the NB database already present on the explicit bootstrap node. Verify the shared hostPath, use temporary per-node helpers when OVS does not mount the databases, stop central, preserve originals and RAFT headers, rebuild, verify storage and restart OVS. Helpers use the central image and security context and are cleaned up by UID. This is not local-file import; SB-only restore is not supported. |
-| `trace` | Resolve a Pod, Node, VM or VMI source through the shared source reference parser, then resolve addresses, MACs and logical ports and trace through OVN and OVS. A source may be a bare Pod name, `KIND/NAME`, `KIND/NAMESPACE/NAME`, `--source SOURCE`, or the legacy `--pod`/`--node` flags. The first implementation supports `pod`/`po`, `node`, `vm` and `vmi`; `--target addr/IP` is the resource-shaped spelling for a literal destination. IPv4/IPv6, ICMP/TCP/UDP, IPv4 ARP request/reply, explicit destination MAC, hostNetwork, Underlay/U2O and VM logical ports remain supported. `--engine ovn` runs only OVN trace. |
-| `capture` | Capture packets through the independent Go node agent using the same source reference parser. The first implementation supports Pod, VM and VMI sources as a positional source or `--source`; legacy `--pod`, `--vm` and `--vmi` remain compatible. Node capture is not enabled by this change because the current packet-capture path requires a Pod or guest launcher network namespace. Supported capture flags are `-D` (list interfaces), `-i`, `-c`, `-s`, `-nn` and `-w -`; the last option streams a pcap locally. |
+| `trace` | Resolve the required positional Pod, Node, Service, workload, VM or VMI target, then trace through OVN and OVS. A bare name means Pod; `KIND/NAME` and `KIND/NAMESPACE/NAME` are also accepted. `--target addr/IP` specifies the destination. IPv4/IPv6, ICMP/TCP/UDP, IPv4 ARP request/reply, explicit destination MAC, hostNetwork, Underlay/U2O and VM logical ports remain supported. `--engine ovn` runs only OVN trace. |
+| `capture` | Capture packets from a required positional Pod, Node, Service, workload, VM or VMI target through the Go node agent. Service and workload targets select one running Pod. A Node target captures in its host network namespace; use `-i INTERFACE` or `-D` to list interfaces. Capture arguments follow `--`: `-D`, `-i`, `-c`, `-s`, `-nn` and `-w -`; the last option streams a pcap locally. |
 | `network inspect` | Show the Pod network namespace path, every interface's index, kind, MAC, MTU, state and addresses, plus the host-side veth peer when one exists. For `macvlan`/`ipvlan`, also show the parent host NIC with its link details. `--output=json` emits machine-readable data. Host-network Pods use the host namespace and expose peer indexes for host links. |
 | `diagnose cluster` | Check cluster configuration, component rollout and leaders; create a unique temporary NodePort Service and run active checks from independent temporary probe Pods in the original pinger network namespaces. |
 | `diagnose node NODE` | Perform configuration checks and restrict the independent active probes to one node. |
@@ -154,9 +149,9 @@ selected by `--kube-ovn-namespace`, `KUBE_OVN_NS`, then `kube-system`.
 | --- | --- |
 | Global | `--timeout=0` bounds the whole invocation; zero allows long streams. `--discovery-timeout=10s` bounds target selection. Kubernetes `--request-timeout` does not truncate an established exec stream. |
 | Kubernetes exec | `exec` accepts `POD` or `TYPE/NAME`, `-c/--container`, `-l/--selector`, `-i/--stdin`, `-t/--tty`, `-q/--quiet`, and `--pod-running-timeout=1m`. A command must follow `--`. |
-| Raw tools / capture | `exec` OVS tools require `--node`; `capture` requires exactly one of `--pod`, `--vm`, or `--vmi`. All remote arguments must follow `--`. |
+| Raw tools / capture | `exec` OVS tools require `--node`; `capture` requires exactly one positional resource. Capture arguments must follow `--`. |
 | Network inspection | `network inspect` requires `--pod`; `--output=table` is the default and `--output=json` is intended for automation. |
-| Trace | Exactly one positional source, `--source`, legacy `--pod`, or legacy `--node`; required `--target addr/IP` or legacy `--dst-ip`; `--protocol=icmp`, `--engine=all`, optional `--dst-mac`. TCP/UDP require `--dst-port=1..65535`. ARP uses `--arp-op=request|reply` and IPv4. |
+| Trace | Exactly one positional resource and `--target addr/IP` are required; `--protocol=icmp`, `--engine=all`, optional `--dst-mac`. TCP/UDP require `--dst-port=1..65535`. ARP uses `--arp-op=request|reply` and IPv4. |
 | Database backup | `--output FILE`; otherwise a unique DB-specific filename. |
 | Database recovery | Required `--source-node NODE` and either `--yes` or `--dry-run`. |
 | Diagnostics | Cluster/node/subnet accept `--read-only` to skip active probes and temporary resources. All configuration/probe modes accept `--skip-kube-proxy`, defaulting from `WITHOUT_KUBE_PROXY=true`. Subnet accepts `--tcp-port` / `--udp-port`, defaulting from `TCP_CONN_CHECK_PORT` / `UDP_CONN_CHECK_PORT`, then 8100 / 8101. Explicit flags override environment values. Connectivity requires one or more `--target tcp://IP:PORT` / `udp://IP:PORT`; IPv6 uses brackets. |
@@ -171,15 +166,14 @@ kubectl ko exec -n app -l app=web -- curl http://localhost:8080/healthz
 kubectl ko exec nbctl --context staging -- --format=json show
 kubectl ko exec nbctl -- -- ls-add example -- lsp-add example example-port
 kubectl ko exec vsctl --node worker-a -- --timeout=5 show
-kubectl ko trace -n app web --target addr/10.0.0.8
-kubectl ko trace --source pod/app/web --target addr/10.0.0.8 --protocol tcp --dst-port 443
-kubectl ko trace --pod app/web --dst-ip 10.0.0.8 --protocol tcp --dst-port 443
-kubectl ko trace --node worker-a --dst-ip 2001:db8::8 --engine ovn
-kubectl ko capture -n app web -- -i eth0 -c 10
-kubectl ko capture --source vmi/app/database -- -w - > vm.pcap
-kubectl ko capture --namespace app --pod web -- -w - > capture.pcap
-kubectl ko capture --vm app/database -- -w - > vm.pcap
-kubectl ko capture --namespace app --vmi database -- -c 10
+kubectl ko trace -n app po/web --target addr/10.0.0.8
+kubectl ko trace svc/app/api --target addr/10.0.0.8 --protocol tcp --dst-port 443
+kubectl ko trace no/worker-a --target addr/2001:db8::8 --engine ovn
+kubectl ko capture -n app pod/web -- -i eth0 -c 10
+kubectl ko capture vmi/app/database -- -w - > vm.pcap
+kubectl ko capture --namespace app vm/database -- -w - > vm.pcap
+kubectl ko capture node/worker-a -- -D
+kubectl ko capture no/worker-a -- -i eth0 -c 10
 kubectl ko network inspect --pod app/web
 kubectl ko network inspect --pod app/web --output json
 kubectl ko diagnose subnet ovn-default --tcp-port 8100 --udp-port 8101
@@ -192,10 +186,9 @@ kubectl ko perf run --image registry.example/test:v1.13.0 --duration 2s
 The separator belongs to the plugin and is removed exactly once. Every argument
 after it, including another `--`, `--help`, `--timeout`, `-n`, `-c`, whitespace or
 quotes within a single argument, belongs to the remote tool and is preserved.
-For `trace`, the positional source is before the target flags, for example
-`trace -n app web --target addr/10.0.0.8`; a bare source is always a Pod.
-`--source` is equivalent and is useful in scripts. For `capture`, the positional
-source or `--source` is before the separator; `-n` before `--` selects the
+For `trace`, the positional resource is before the destination flags, for example
+`trace -n app po/web --target addr/10.0.0.8`; a bare name is always a Pod.
+For `capture`, the resource is before the separator; `-n` before `--` selects the
 Kubernetes namespace, while `-n` after `--` remains a capture display option.
 Kubernetes-style resource execution accepts one Pod or workload reference before
 the separator; `-l/--selector` is an alternative that selects one running Pod.
@@ -205,22 +198,25 @@ invocation.
 `exec nbctl show` is rejected instead of guessing the argument boundary.
 
 KubeVirt capture resolves a running VMI's current launcher using its controller
-UID, node and active Pod status. `--vm` additionally verifies that the VMI is
-controlled by the requested VM; `--vmi` also supports standalone VMIs. A stopped
+UID, node and active Pod status. A `vm/NAME` target additionally verifies that the VMI is
+controlled by the requested VM; `vmi/NAME` also supports standalone VMIs. A stopped
 VM or unavailable VMI returns an error. During migration, the source launcher
 is selected until migration succeeds; a completed failed migration still uses
 the source. A successful migration selects the target launcher. The selected
 Pod must be Running and not terminating. Missing or ambiguous launchers and a
 VMI/Pod change detected before capture fail explicitly; retry after status
-settles or use `--pod` to select a launcher yourself. An established capture
+settles or use `pod/NAME` to select a launcher yourself. An established capture
 stays in that launcher's network namespace and does not follow later migrations.
 Target diagnostics go to stderr, so `-w -` preserves pcap stdout. The caller
-needs permission to get VMIs, list launcher Pods and, for `--vm`, get VMs.
+needs permission to get VMIs, list launcher Pods and, for `vm/NAME`, get VMs.
 
-The shared source parser currently normalizes only `pod`/`po`, `node`, `vm` and
-`vmi`. Workload, Service, OVN logical-port, localnet and VPC resource kinds are
-reserved for subsequent adapters; they are not accepted as successful execution
-targets by this change.
+Supported target kinds are `pod`/`po`/`pods`, `node`/`no`/`nodes`,
+`service`/`svc`/`services`, `deployment`/`deploy`/`deployments`,
+`daemonset`/`ds`/`daemonsets`, `statefulset`/`sts`/`statefulsets`,
+`replicaset`/`rs`/`replicasets`, `replicationcontroller`/`rc`/`replicationcontrollers`,
+`job`/`jobs`, `virtualmachine`/`vm`/`virtualmachines`, and
+`virtualmachineinstance`/`vmi`/`virtualmachineinstances`. OVN logical-port,
+localnet and VPC resource kinds require separate adapters.
 
 UDP endpoint probes send a `health check` datagram and require a response.
 Use a responding health/echo service for UDP; this is not a DNS query or a
@@ -346,10 +342,10 @@ output directory. Migrate commands using this table:
 | `nb/sb status`, `nb/sb backup`, `nb/sb kick ID` | `db nb/sb status`, `db nb/sb backup`, `db nb/sb kick ID` |
 | `nb dbstatus`, `sb dbstatus` | `db health` |
 | `nb restore` | `db nb restore --source-node NODE --yes` |
-| `trace POD IP [MAC] PROTOCOL [PORT/OP]` | `trace POD --target addr/IP [--dst-mac MAC] --protocol PROTOCOL [--dst-port PORT/--arp-op OP]` or the legacy flag form |
-| `trace node//NODE ...` | `trace --node NODE ...` |
+| `trace POD IP [MAC] PROTOCOL [PORT/OP]` | `trace pod/POD --target addr/IP [--dst-mac MAC] --protocol PROTOCOL [--dst-port PORT/--arp-op OP]` |
+| `trace node//NODE ...` | `trace node/NODE --target addr/IP ...` |
 | `ovn-trace ...` | `trace --engine ovn ...` |
-| `tcpdump POD ARGS` | `capture POD -- ARGS` or `capture --source pod/POD -- ARGS`; the legacy `--pod` form remains valid |
+| `tcpdump POD ARGS` | `capture pod/POD -- ARGS` |
 | `diagnose [all]` | `diagnose cluster` |
 | `diagnose node NODE`, `diagnose subnet SUBNET` | Same spelling, now real subcommands with their own help/validation |
 | `diagnose IPPorts tcp-IP-PORT,udp-IP-PORT` | `diagnose connectivity --target tcp://IP:PORT --target udp://IP:PORT` |

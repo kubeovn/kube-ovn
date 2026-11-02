@@ -26,7 +26,7 @@ func expectVMCaptureInterfaces(namespace, vm string, pod *corev1.Pod) {
 		ginkgo.By("Listing capture interfaces for " + target.kind + " " + target.name)
 		command := testConfig.KubectlCmd()
 		args := append([]string{"ko"}, command.Args[1:]...)
-		args = append(args, "--namespace", namespace, "--timeout", "1m", "capture", "--"+target.kind, target.name, "--", "-D")
+		args = append(args, "--namespace", namespace, "--timeout", "1m", "capture", target.kind+"/"+target.name, "--", "-D")
 		ctx, cancel := context.WithTimeout(context.Background(), 70*time.Second)
 		cmd := exec.CommandContext(ctx, command.Path, args...)
 		var stderr bytes.Buffer

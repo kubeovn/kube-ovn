@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -80,9 +81,9 @@ func TestTCPDumpUsesNetNSAndPreservesBinary(t *testing.T) {
 				_, err := s.Out.Write([]byte{0, 255, 10, 13, 0})
 				return err
 			}
-			args := []string{"capture", "app/web", "--", "-w", "-", "-c", "1"}
+			args := []string{"capture", "pod/app/web", "--", "-w", "-", "-c", "1"}
 			if internal {
-				args = []string{"capture", "--source", "pod/app/web", "--", "-w", "-", "-c", "1"}
+				args = []string{"capture", "po/app/web", "--", "-w", "-", "-c", "1"}
 			}
 			require.NoError(t, app.Execute(t.Context(), args))
 			nic := "eth0"
@@ -120,7 +121,7 @@ func TestTCPDumpFallsBackToPodNetNS(t *testing.T) {
 		}
 	}
 
-	require.NoError(t, app.Execute(t.Context(), []string{"capture", "--pod", "app/web", "--", "-c", "1"}))
+	require.NoError(t, app.Execute(t.Context(), []string{"capture", "pod/app/web", "--", "-c", "1"}))
 	var captureCall []string
 	for _, call := range executor.calls {
 		if len(call.argv) > 0 && call.argv[0] == "capture" {
@@ -136,7 +137,46 @@ func TestVMPortResolvedBeforeInterfaceLookup(t *testing.T) {
 	app, _, _, _ := testApplication(t, pod)
 	client, err := app.newClient()
 	require.NoError(t, err)
-	source, err := client.networkSource(t.Context(), "app/virt-launcher")
+	source, err := client.networkSource(t.Context(), "pod/app/virt-launcher")
 	require.NoError(t, err)
 	require.Equal(t, "vm-a.app", source.lsp)
+}
+
+func TestResourceTargetsResolveRunningPod(t *testing.T) {
+	pod := readyPod("web", "node-a", "web", map[string]string{"app": "web"})
+	pod.Namespace = "app"
+	pod.Annotations = map[string]string{annotationPrefix + "ip_address": "10.0.0.2"}
+	service := &corev1.Service{Name: "api", Namespace: "app", Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "web"}}}
+	deployment := &appsv1.Deployment{Name: "web", Namespace: "app", Spec: appsv1.DeploymentSpec{Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}}}}
+	app, _, _, _ := testApplication(t, pod, service, deployment)
+	client, err := app.newClient()
+	require.NoError(t, err)
+	for _, reference := range []string{"svc/api", "service/app/api", "deploy/web", "deployment/app/web"} {
+		t.Run(reference, func(t *testing.T) {
+			ref, err := parseSourceRef(reference)
+			require.NoError(t, err)
+			target, err := client.captureTarget(t.Context(), ref)
+			require.NoError(t, err)
+			require.Equal(t, pod.Name, target.pod.Name)
+			source, err := client.networkSource(t.Context(), reference)
+			require.NoError(t, err)
+			require.Equal(t, "web.app", source.lsp)
+		})
+	}
+}
+
+func TestNodeCaptureUsesHostNamespace(t *testing.T) {
+	agent := readyPod("agent-a", "node-a", "agent", map[string]string{"app": "kubectl-ko-node-agent"})
+	app, executor, _, _ := testApplication(t, agent, &corev1.Node{Name: "node-a"})
+	client, err := app.newClient()
+	require.NoError(t, err)
+	client.ComponentFree = true
+	for _, args := range [][]string{{"capture", "no/node-a", "--", "-i", "eth1", "-c", "1"}, {"capture", "node/node-a", "--", "-D"}} {
+		require.NoError(t, app.Execute(t.Context(), args))
+	}
+	require.Equal(t, []string{"capture", "--netns", "/proc/1/ns/net", "--interface", "eth1", "--count", "1"}, executor.calls[0].argv)
+	require.Equal(t, []string{"capture", "--netns", "/proc/1/ns/net", "--interface", "", "--list-interfaces"}, executor.calls[1].argv)
+	for _, call := range executor.calls {
+		require.Equal(t, "agent", call.target.Container)
+	}
 }

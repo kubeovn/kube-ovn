@@ -24,7 +24,7 @@ func Args(args ...string) []string {
 		}
 		return append([]string{"ko", "db", command}, rest...)
 	case "tcpdump":
-		return append([]string{"ko", "capture", "--pod", rest[0], "--"}, rest[1:]...)
+		return append([]string{"ko", "capture", "pod/" + rest[0], "--"}, rest[1:]...)
 	case "trace", "ovn-trace":
 		return traceFixtureArgs(command, rest)
 	case "log":
@@ -51,11 +51,11 @@ func Args(args ...string) []string {
 func traceFixtureArgs(command string, args []string) []string {
 	result := []string{"ko", "trace"}
 	if node, ok := strings.CutPrefix(args[0], "node//"); ok {
-		result = append(result, "--node", node)
+		result = append(result, "node/"+node)
 	} else {
-		result = append(result, "--pod", args[0])
+		result = append(result, "pod/"+args[0])
 	}
-	result = append(result, "--dst-ip", args[1])
+	result = append(result, "--target", "addr/"+args[1])
 	if command == "ovn-trace" {
 		result = append(result, "--engine", "ovn")
 	}

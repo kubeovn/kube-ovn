@@ -21,6 +21,10 @@ import (
 // Resources with a selector use the same selector that kubectl derives from
 // the object, while -l selects Pods directly.
 func (c *Client) execPod(ctx context.Context, reference, selector string, timeout time.Duration) (*corev1.Pod, error) {
+	return c.execPodInNamespace(ctx, c.WorkloadNamespace, reference, selector, timeout)
+}
+
+func (c *Client) execPodInNamespace(ctx context.Context, namespace, reference, selector string, timeout time.Duration) (*corev1.Pod, error) {
 	if reference != "" && selector != "" {
 		return nil, fmt.Errorf("resource %q and --selector cannot be used together", reference)
 	}
@@ -28,12 +32,12 @@ func (c *Client) execPod(ctx context.Context, reference, selector string, timeou
 		if selector == "" {
 			return nil, errors.New("pod, type/name, or --selector must be specified")
 		}
-		return c.firstRunningPod(ctx, selector, timeout)
+		return c.firstRunningPod(ctx, namespace, selector, timeout)
 	}
 
 	resource, name, qualified := strings.Cut(reference, "/")
 	if !qualified {
-		return c.waitForNamedPod(ctx, reference, timeout)
+		return c.waitForNamedPod(ctx, namespace, reference, timeout)
 	}
 	if resource == "" || name == "" || strings.Contains(name, "/") {
 		return nil, fmt.Errorf("invalid resource reference %q", reference)
@@ -43,21 +47,21 @@ func (c *Client) execPod(ctx context.Context, reference, selector string, timeou
 	var err error
 	switch resource {
 	case "pod":
-		return c.waitForNamedPod(ctx, name, timeout)
+		return c.waitForNamedPod(ctx, namespace, name, timeout)
 	case "service":
-		object, err = c.Kubernetes.CoreV1().Services(c.WorkloadNamespace).Get(ctx, name, metav1.GetOptions{})
+		object, err = c.Kubernetes.CoreV1().Services(namespace).Get(ctx, name, metav1.GetOptions{})
 	case "deployment":
-		object, err = c.Kubernetes.AppsV1().Deployments(c.WorkloadNamespace).Get(ctx, name, metav1.GetOptions{})
+		object, err = c.Kubernetes.AppsV1().Deployments(namespace).Get(ctx, name, metav1.GetOptions{})
 	case "daemonset":
-		object, err = c.Kubernetes.AppsV1().DaemonSets(c.WorkloadNamespace).Get(ctx, name, metav1.GetOptions{})
+		object, err = c.Kubernetes.AppsV1().DaemonSets(namespace).Get(ctx, name, metav1.GetOptions{})
 	case "statefulset":
-		object, err = c.Kubernetes.AppsV1().StatefulSets(c.WorkloadNamespace).Get(ctx, name, metav1.GetOptions{})
+		object, err = c.Kubernetes.AppsV1().StatefulSets(namespace).Get(ctx, name, metav1.GetOptions{})
 	case "replicaset":
-		object, err = c.Kubernetes.AppsV1().ReplicaSets(c.WorkloadNamespace).Get(ctx, name, metav1.GetOptions{})
+		object, err = c.Kubernetes.AppsV1().ReplicaSets(namespace).Get(ctx, name, metav1.GetOptions{})
 	case "replicationcontroller":
-		object, err = c.Kubernetes.CoreV1().ReplicationControllers(c.WorkloadNamespace).Get(ctx, name, metav1.GetOptions{})
+		object, err = c.Kubernetes.CoreV1().ReplicationControllers(namespace).Get(ctx, name, metav1.GetOptions{})
 	case "job":
-		object, err = c.Kubernetes.BatchV1().Jobs(c.WorkloadNamespace).Get(ctx, name, metav1.GetOptions{})
+		object, err = c.Kubernetes.BatchV1().Jobs(namespace).Get(ctx, name, metav1.GetOptions{})
 	default:
 		return nil, fmt.Errorf("unsupported exec resource %q; use pod, deploy, svc, ds, sts, rs, rc, or job", resource)
 	}
@@ -68,14 +72,14 @@ func (c *Client) execPod(ctx context.Context, reference, selector string, timeou
 	if err != nil {
 		return nil, err
 	}
-	return c.firstRunningPod(ctx, objectSelector.String(), timeout)
+	return c.firstRunningPod(ctx, namespace, objectSelector.String(), timeout)
 }
 
-func (c *Client) waitForNamedPod(ctx context.Context, name string, timeout time.Duration) (*corev1.Pod, error) {
+func (c *Client) waitForNamedPod(ctx context.Context, namespace, name string, timeout time.Duration) (*corev1.Pod, error) {
 	var result *corev1.Pod
 	err := wait.PollUntilContextTimeout(ctx, 250*time.Millisecond, timeout, true,
 		func(ctx context.Context) (bool, error) {
-			pod, err := c.Kubernetes.CoreV1().Pods(c.WorkloadNamespace).Get(ctx, name, metav1.GetOptions{})
+			pod, err := c.Kubernetes.CoreV1().Pods(namespace).Get(ctx, name, metav1.GetOptions{})
 			if err != nil {
 				return false, err
 			}
@@ -121,11 +125,11 @@ func canonicalExecResource(resource string) string {
 	}
 }
 
-func (c *Client) firstRunningPod(ctx context.Context, selector string, timeout time.Duration) (*corev1.Pod, error) {
+func (c *Client) firstRunningPod(ctx context.Context, namespace, selector string, timeout time.Duration) (*corev1.Pod, error) {
 	var result *corev1.Pod
 	err := wait.PollUntilContextTimeout(ctx, 250*time.Millisecond, timeout, true,
 		func(ctx context.Context) (bool, error) {
-			pods, err := c.Kubernetes.CoreV1().Pods(c.WorkloadNamespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
+			pods, err := c.Kubernetes.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
 			if err != nil {
 				return false, err
 			}

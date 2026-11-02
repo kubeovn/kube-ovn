@@ -208,8 +208,8 @@ var _ = framework.Describe("[group:kubevirt]", func() {
 			command := testConfig.KubectlCmd()
 			// kubectl requires connection flags to follow the plugin name.
 			args := append([]string{"ko"}, command.Args[1:]...)
-			args = append(args, "--timeout", "1m", "trace", "--pod", namespaceName+"/"+pod.Name,
-				"--dst-ip", peer.Status.PodIP, "--engine", engine)
+			args = append(args, "--timeout", "1m", "trace", "pod/"+namespaceName+"/"+pod.Name,
+				"--target", "addr/"+peer.Status.PodIP, "--engine", engine)
 			ctx, cancel := context.WithTimeout(context.Background(), 70*time.Second)
 			output, err := exec.CommandContext(ctx, command.Path, args...).CombinedOutput()
 			cancel()

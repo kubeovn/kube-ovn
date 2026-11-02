@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,72 +15,27 @@ import (
 
 var vmiResource = schema.GroupVersionResource{Group: "kubevirt.io", Version: "v1", Resource: "virtualmachineinstances"}
 
-type captureOptions struct {
-	source, pod, vm, vmi string
-}
-
-func (o captureOptions) sourceRef() (sourceRef, error) {
-	if o.source != "" {
-		ref, err := parseSourceRef(o.source)
-		if err != nil {
-			return sourceRef{}, err
-		}
-		if ref.kind == sourceKindNode {
-			return sourceRef{}, errors.New("capture does not support node sources yet")
-		}
-		return ref, nil
-	}
-	var selected sourceRef
-	for _, item := range []struct {
-		kind  sourceKind
-		value string
-	}{{sourceKindPod, o.pod}, {sourceKindVM, o.vm}, {sourceKindVMI, o.vmi}} {
-		if item.value == "" {
-			continue
-		}
-		if selected.name != "" {
-			return sourceRef{}, errors.New("specify exactly one of --source, --pod, --vm or --vmi")
-		}
-		selected = sourceRef{kind: item.kind}
-		parts := strings.Split(item.value, "/")
-		switch len(parts) {
-		case 2:
-			if parts[0] == "" || parts[1] == "" {
-				return sourceRef{}, fmt.Errorf("%s must not contain an empty namespace or name", item.kind)
-			}
-			selected.namespace, selected.name = parts[0], parts[1]
-		case 1:
-			selected.name = parts[0]
-		default:
-			return sourceRef{}, fmt.Errorf("%s must be NAME or NAMESPACE/NAME, got %q", item.kind, item.value)
-		}
-		if err := validateSourceRef(selected); err != nil {
-			return sourceRef{}, err
-		}
-	}
-	if selected.name == "" {
-		return sourceRef{}, errors.New("specify exactly one of --source, --pod, --vm or --vmi")
-	}
-	return selected, nil
-}
-
 type captureTarget struct {
-	pod *corev1.Pod
-	vmi *unstructured.Unstructured
+	pod  *corev1.Pod
+	vmi  *unstructured.Unstructured
+	node string
 }
 
-func (c *Client) captureTarget(ctx context.Context, options captureOptions) (captureTarget, error) {
-	ref, err := options.sourceRef()
-	if err != nil {
-		return captureTarget{}, err
-	}
+func (c *Client) captureTarget(ctx context.Context, ref sourceRef) (captureTarget, error) {
 	if ref.kind == sourceKindPod {
 		pod, err := c.pod(ctx, ref.kubeReference())
 		return captureTarget{pod: pod}, err
 	}
+	if ref.kind == sourceKindNode {
+		return captureTarget{node: ref.name}, nil
+	}
 	namespace, name := c.WorkloadNamespace, ref.name
 	if ref.namespace != "" {
 		namespace = ref.namespace
+	}
+	if ref.kind != sourceKindVM && ref.kind != sourceKindVMI {
+		pod, err := c.execPodInNamespace(ctx, namespace, string(ref.kind)+"/"+name, "", c.DiscoveryTimeout)
+		return captureTarget{pod: pod}, err
 	}
 	vmi, err := c.Dynamic.Resource(vmiResource).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
@@ -161,12 +115,15 @@ func (c *Client) vmiLauncher(ctx context.Context, vmi *unstructured.Unstructured
 		candidates = append(candidates, pod)
 	}
 	if len(candidates) != 1 {
-		return nil, fmt.Errorf("resolve VMI %s/%s on node %s: expected one running launcher Pod (migration Pod %q), found %d; retry or specify --pod", vmi.GetNamespace(), vmi.GetName(), status.NodeName, preferred, len(candidates))
+		return nil, fmt.Errorf("resolve VMI %s/%s on node %s: expected one running launcher Pod (migration Pod %q), found %d; retry or select the launcher with pod/NAME", vmi.GetNamespace(), vmi.GetName(), status.NodeName, preferred, len(candidates))
 	}
 	return candidates[0], nil
 }
 
 func (c *Client) checkCaptureTarget(ctx context.Context, target captureTarget) error {
+	if target.pod == nil {
+		return nil
+	}
 	if err := c.checkSource(ctx, podNetworkSource(target.pod)); err != nil {
 		return err
 	}
