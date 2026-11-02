@@ -23,18 +23,15 @@ type captureTarget struct {
 
 func (c *Client) captureTarget(ctx context.Context, ref sourceRef) (captureTarget, error) {
 	if ref.kind == sourceKindPod {
-		pod, err := c.pod(ctx, ref.kubeReference())
+		pod, err := c.pod(ctx, ref.name)
 		return captureTarget{pod: pod}, err
 	}
 	if ref.kind == sourceKindNode {
 		return captureTarget{node: ref.name}, nil
 	}
 	namespace, name := c.WorkloadNamespace, ref.name
-	if ref.namespace != "" {
-		namespace = ref.namespace
-	}
 	if ref.kind != sourceKindVM && ref.kind != sourceKindVMI {
-		pod, err := c.execPodInNamespace(ctx, namespace, string(ref.kind)+"/"+name, "", c.DiscoveryTimeout)
+		pod, err := c.execPod(ctx, string(ref.kind)+"/"+name, "", c.DiscoveryTimeout)
 		return captureTarget{pod: pod}, err
 	}
 	vmi, err := c.Dynamic.Resource(vmiResource).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})

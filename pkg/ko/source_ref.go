@@ -58,12 +58,10 @@ var sourceKindAliases = map[string]sourceKind{
 	"jobs":                    sourceKindJob,
 }
 
-// sourceRef is the common command-level source notation. Resolution into a
-// Pod, node, or guest launcher remains in the existing resource adapters.
+// sourceRef is the common command-level resource notation.
 type sourceRef struct {
-	kind      sourceKind
-	namespace string
-	name      string
+	kind sourceKind
+	name string
 }
 
 func parseSourceRef(value string) (sourceRef, error) {
@@ -77,24 +75,15 @@ func parseSourceRef(value string) (sourceRef, error) {
 		ref.name = parts[0]
 	case 2:
 		if parts[0] == "" || parts[1] == "" {
-			return sourceRef{}, fmt.Errorf("source reference %q contains an empty namespace or name", value)
+			return sourceRef{}, fmt.Errorf("source reference %q contains an empty kind or name", value)
 		}
 		kind, ok := sourceKindAliases[strings.ToLower(parts[0])]
 		if !ok {
 			return sourceRef{}, fmt.Errorf("unsupported source kind %q", parts[0])
 		}
 		ref.kind, ref.name = kind, parts[1]
-	case 3:
-		if parts[1] == "" || parts[2] == "" {
-			return sourceRef{}, fmt.Errorf("source reference %q contains an empty namespace or name", value)
-		}
-		kind, ok := sourceKindAliases[strings.ToLower(parts[0])]
-		if !ok || kind == sourceKindNode {
-			return sourceRef{}, fmt.Errorf("source reference %q must be KIND/NAME or KIND/NAMESPACE/NAME", value)
-		}
-		ref.kind, ref.namespace, ref.name = kind, parts[1], parts[2]
 	default:
-		return sourceRef{}, fmt.Errorf("source reference %q must be NAME, KIND/NAME or KIND/NAMESPACE/NAME", value)
+		return sourceRef{}, fmt.Errorf("source reference %q must be NAME or KIND/NAME; use -n for the namespace", value)
 	}
 	return ref, validateSourceRef(ref)
 }
@@ -104,30 +93,13 @@ func validateSourceRef(ref sourceRef) error {
 		return errors.New("source name must not be empty")
 	}
 	if ref.kind == sourceKindNode {
-		if ref.namespace != "" {
-			return errors.New("node source must not include a namespace")
-		}
 		return validateResourceName("node", ref.name)
 	}
-	value := ref.name
-	if ref.namespace != "" {
-		value = ref.namespace + "/" + ref.name
-	}
-	return validateNamespacedReference(string(ref.kind), value)
-}
-
-func (ref sourceRef) kubeReference() string {
-	if ref.namespace == "" {
-		return ref.name
-	}
-	return ref.namespace + "/" + ref.name
+	return validateNamespacedReference(string(ref.kind), ref.name)
 }
 
 func (ref sourceRef) reference() string {
-	if ref.namespace == "" {
-		return string(ref.kind) + "/" + ref.name
-	}
-	return string(ref.kind) + "/" + ref.namespace + "/" + ref.name
+	return string(ref.kind) + "/" + ref.name
 }
 
 func parseTargetAddress(value string) (string, error) {

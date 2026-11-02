@@ -24,7 +24,8 @@ func Args(args ...string) []string {
 		}
 		return append([]string{"ko", "db", command}, rest...)
 	case "tcpdump":
-		return append([]string{"ko", "capture", "pod/" + rest[0], "--"}, rest[1:]...)
+		result := append([]string{"ko", "capture"}, fixturePodTarget(rest[0])...)
+		return append(append(result, "--"), rest[1:]...)
 	case "trace", "ovn-trace":
 		return traceFixtureArgs(command, rest)
 	case "log":
@@ -53,7 +54,7 @@ func traceFixtureArgs(command string, args []string) []string {
 	if node, ok := strings.CutPrefix(args[0], "node//"); ok {
 		result = append(result, "node/"+node)
 	} else {
-		result = append(result, "pod/"+args[0])
+		result = append(result, fixturePodTarget(args[0])...)
 	}
 	result = append(result, "--target", "addr/"+args[1])
 	if command == "ovn-trace" {
@@ -73,4 +74,11 @@ func traceFixtureArgs(command string, args []string) []string {
 		result = append(result, flag, args[1])
 	}
 	return result
+}
+
+func fixturePodTarget(value string) []string {
+	if namespace, name, ok := strings.Cut(value, "/"); ok {
+		return []string{"-n", namespace, "pod/" + name}
+	}
+	return []string{"pod/" + value}
 }

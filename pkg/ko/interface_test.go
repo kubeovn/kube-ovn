@@ -43,7 +43,7 @@ func TestInvalidInterfaceArgumentsNeverConnect(t *testing.T) {
 		{"exec", "vsctl", "--", "show"},
 		{"exec", "ofctl", "--node", "worker", "show", "--", "extra"},
 		{"capture", "--", "-c1"},
-		{"capture", "pod/app/web", "-c1"},
+		{"capture", "pod/web", "-c1"},
 		{"trace", "--dst-ip", "10.0.0.1"},
 		{"trace", "--pod", "a", "--node", "b", "--dst-ip", "10.0.0.1"},
 		{"trace", "pod/a", "--target", "bad"},
@@ -58,6 +58,8 @@ func TestInvalidInterfaceArgumentsNeverConnect(t *testing.T) {
 		{"capture", "pod/a", "pod/b"},
 		{"capture", "pod/a", "--", "-c1", "pod/b"},
 		{"trace", "pod/a", "--source", "pod/b", "--target", "addr/10.0.0.1"},
+		{"trace", "svc/app/api", "--target", "addr/10.0.0.1"},
+		{"capture", "pod/app/web", "--", "-c1"},
 		{"diagnose", "node"},
 		{"diagnose", "subnet", "s", "--tcp-port", "65536"},
 		{"diagnose", "cluster", "--external-address", "example.com"},
@@ -135,7 +137,7 @@ func TestDiagnosticFlagsOverrideEnvironment(t *testing.T) {
 
 func TestValidNamedInterfacesReachClientCreation(t *testing.T) {
 	for _, args := range [][]string{
-		{"trace", "pod/app/web", "--target", "addr/10.0.0.1"},
+		{"trace", "-n", "app", "pod/web", "--target", "addr/10.0.0.1"},
 		{"trace", "no/worker", "--target", "addr/2001:db8::1", "--protocol", "udp", "--dst-port", "53", "--engine", "ovn"},
 		{"diagnose", "connectivity", "--target", "tcp://192.0.2.1:443", "--target", "udp://[2001:db8::1]:53"},
 		{"diagnose", "cluster", "--external-address", "192.0.2.1", "--external-address", "2001:db8::1"},

@@ -81,9 +81,9 @@ func TestTCPDumpUsesNetNSAndPreservesBinary(t *testing.T) {
 				_, err := s.Out.Write([]byte{0, 255, 10, 13, 0})
 				return err
 			}
-			args := []string{"capture", "pod/app/web", "--", "-w", "-", "-c", "1"}
+			args := []string{"capture", "-n", "app", "pod/web", "--", "-w", "-", "-c", "1"}
 			if internal {
-				args = []string{"capture", "po/app/web", "--", "-w", "-", "-c", "1"}
+				args = []string{"capture", "-n", "app", "po/web", "--", "-w", "-", "-c", "1"}
 			}
 			require.NoError(t, app.Execute(t.Context(), args))
 			nic := "eth0"
@@ -121,7 +121,7 @@ func TestTCPDumpFallsBackToPodNetNS(t *testing.T) {
 		}
 	}
 
-	require.NoError(t, app.Execute(t.Context(), []string{"capture", "pod/app/web", "--", "-c", "1"}))
+	require.NoError(t, app.Execute(t.Context(), []string{"capture", "-n", "app", "pod/web", "--", "-c", "1"}))
 	var captureCall []string
 	for _, call := range executor.calls {
 		if len(call.argv) > 0 && call.argv[0] == "capture" {
@@ -137,7 +137,7 @@ func TestVMPortResolvedBeforeInterfaceLookup(t *testing.T) {
 	app, _, _, _ := testApplication(t, pod)
 	client, err := app.newClient()
 	require.NoError(t, err)
-	source, err := client.networkSource(t.Context(), "pod/app/virt-launcher")
+	source, err := client.networkSource(t.Context(), "pod/virt-launcher")
 	require.NoError(t, err)
 	require.Equal(t, "vm-a.app", source.lsp)
 }
@@ -151,7 +151,7 @@ func TestResourceTargetsResolveRunningPod(t *testing.T) {
 	app, _, _, _ := testApplication(t, pod, service, deployment)
 	client, err := app.newClient()
 	require.NoError(t, err)
-	for _, reference := range []string{"svc/api", "service/app/api", "deploy/web", "deployment/app/web"} {
+	for _, reference := range []string{"svc/api", "service/api", "deploy/web", "deployment/web"} {
 		t.Run(reference, func(t *testing.T) {
 			ref, err := parseSourceRef(reference)
 			require.NoError(t, err)

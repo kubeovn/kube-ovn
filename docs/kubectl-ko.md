@@ -115,7 +115,7 @@ kubectl ko
 | `db nb backup`, `db sb backup` | Convert and download a standalone database, verify DB name and SHA256, and publish without overwriting an existing file. Write a JSON provenance sidecar; remove the temporary remote backup. |
 | `db nb kick SERVER_ID`, `db sb kick SERVER_ID` | Remove a stale cluster member. `--dry-run` prints the database leader Pod and exact command without requiring an agent or applying the change; actual removal runs through the agent on that leader's node. |
 | `db nb restore` | Reconstruct the central NB/SB cluster from the NB database already present on the explicit bootstrap node. Verify the shared hostPath, use temporary per-node helpers when OVS does not mount the databases, stop central, preserve originals and RAFT headers, rebuild, verify storage and restart OVS. Helpers use the central image and security context and are cleaned up by UID. This is not local-file import; SB-only restore is not supported. |
-| `trace` | Resolve the required positional Pod, Node, Service, workload, VM or VMI target, then trace through OVN and OVS. A bare name means Pod; `KIND/NAME` and `KIND/NAMESPACE/NAME` are also accepted. `--target addr/IP` specifies the destination. IPv4/IPv6, ICMP/TCP/UDP, IPv4 ARP request/reply, explicit destination MAC, hostNetwork, Underlay/U2O and VM logical ports remain supported. `--engine ovn` runs only OVN trace. |
+| `trace` | Resolve the required positional Pod, Node, Service, workload, VM or VMI target, then trace through OVN and OVS. A bare name means Pod; use `KIND/NAME` with `-n NAMESPACE` for namespaced resources. `--target addr/IP` specifies the destination. IPv4/IPv6, ICMP/TCP/UDP, IPv4 ARP request/reply, explicit destination MAC, hostNetwork, Underlay/U2O and VM logical ports remain supported. `--engine ovn` runs only OVN trace. |
 | `capture` | Capture packets from a required positional Pod, Node, Service, workload, VM or VMI target through the Go node agent. Service and workload targets select one running Pod. A Node target captures in its host network namespace; use `-i INTERFACE` or `-D` to list interfaces. Capture arguments follow `--`: `-D`, `-i`, `-c`, `-s`, `-nn` and `-w -`; the last option streams a pcap locally. |
 | `network inspect` | Show the Pod network namespace path, every interface's index, kind, MAC, MTU, state and addresses, plus the host-side veth peer when one exists. For `macvlan`/`ipvlan`, also show the parent host NIC with its link details. `--output=json` emits machine-readable data. Host-network Pods use the host namespace and expose peer indexes for host links. |
 | `diagnose cluster` | Check cluster configuration, component rollout and leaders; create a unique temporary NodePort Service and run active checks from independent temporary probe Pods in the original pinger network namespaces. |
@@ -141,8 +141,8 @@ addresses for an allocated family are reported as errors.
 Standard Kubernetes connection flags are accepted before or after subcommands,
 up to the explicit `--` remote-argument separator. The kubeconfig loader supports
 `--kubeconfig`, `KUBECONFIG`, context, TLS, authentication plugins and impersonation.
-Workload namespace selection is `namespace/name`, then `--namespace/-n`, then
-kubeconfig namespace, then `default`. The deployment namespace is independently
+Workload namespace selection is `--namespace/-n`, then kubeconfig namespace,
+then `default`. The deployment namespace is independently
 selected by `--kube-ovn-namespace`, `KUBE_OVN_NS`, then `kube-system`.
 
 | Scope | Parameters and defaults |
@@ -167,10 +167,10 @@ kubectl ko exec nbctl --context staging -- --format=json show
 kubectl ko exec nbctl -- -- ls-add example -- lsp-add example example-port
 kubectl ko exec vsctl --node worker-a -- --timeout=5 show
 kubectl ko trace -n app po/web --target addr/10.0.0.8
-kubectl ko trace svc/app/api --target addr/10.0.0.8 --protocol tcp --dst-port 443
+kubectl ko trace -n app svc/api --target addr/10.0.0.8 --protocol tcp --dst-port 443
 kubectl ko trace no/worker-a --target addr/2001:db8::8 --engine ovn
 kubectl ko capture -n app pod/web -- -i eth0 -c 10
-kubectl ko capture vmi/app/database -- -w - > vm.pcap
+kubectl ko capture -n app vmi/database -- -w - > vm.pcap
 kubectl ko capture --namespace app vm/database -- -w - > vm.pcap
 kubectl ko capture node/worker-a -- -D
 kubectl ko capture no/worker-a -- -i eth0 -c 10
@@ -188,6 +188,7 @@ after it, including another `--`, `--help`, `--timeout`, `-n`, `-c`, whitespace 
 quotes within a single argument, belongs to the remote tool and is preserved.
 For `trace`, the positional resource is before the destination flags, for example
 `trace -n app po/web --target addr/10.0.0.8`; a bare name is always a Pod.
+`KIND/NAMESPACE/NAME` is rejected; specify the namespace with `-n` instead.
 For `capture`, the resource is before the separator; `-n` before `--` selects the
 Kubernetes namespace, while `-n` after `--` remains a capture display option.
 Kubernetes-style resource execution accepts one Pod or workload reference before

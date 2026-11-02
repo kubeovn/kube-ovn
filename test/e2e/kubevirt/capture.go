@@ -21,7 +21,7 @@ func expectVMCaptureInterfaces(namespace, vm string, pod *corev1.Pod) {
 		k8sframework.TestContext.Host, k8sframework.TestContext.KubeConfig,
 		k8sframework.TestContext.KubeContext, k8sframework.TestContext.KubectlPath, "")
 	for _, target := range []struct{ kind, name string }{
-		{"vm", namespace + "/" + vm}, {"vmi", vm}, {"pod", namespace + "/" + pod.Name},
+		{"vm", vm}, {"vmi", vm}, {"pod", pod.Name},
 	} {
 		ginkgo.By("Listing capture interfaces for " + target.kind + " " + target.name)
 		command := testConfig.KubectlCmd()

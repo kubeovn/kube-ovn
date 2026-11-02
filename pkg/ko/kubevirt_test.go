@@ -173,10 +173,9 @@ func TestCaptureKubeVirtPreservesBinaryOutput(t *testing.T) {
 				require.NoError(t, err)
 				client.Dynamic = dynamicfake.NewSimpleDynamicClient(runtime.NewScheme(), vm, vmi)
 				client.ComponentFree = true
-				reference := "vm-a"
+				args := []string{"capture"}
 				if qualified {
-					reference = "app/vm-a"
-					client.WorkloadNamespace = "wrong-namespace"
+					args = append(args, "-n", "app")
 				}
 				executor.run = func(_ context.Context, _ Target, argv []string, streams Streams) error {
 					if argv[0] == "ovs-vsctl" {
@@ -187,7 +186,8 @@ func TestCaptureKubeVirtPreservesBinaryOutput(t *testing.T) {
 					_, err := streams.Out.Write([]byte{0, 255, 10, 13, 0})
 					return err
 				}
-				require.NoError(t, app.Execute(t.Context(), []string{"capture", kind + "/" + reference, "--", "-w", "-", "-c", "1"}))
+				args = append(args, kind+"/vm-a", "--", "-w", "-", "-c", "1")
+				require.NoError(t, app.Execute(t.Context(), args))
 				require.Equal(t, []byte{0, 255, 10, 13, 0}, out.Bytes())
 				require.Equal(t, "agent", executor.calls[1].target.Container)
 				require.Contains(t, stderr.String(), "VMI app/vm-a through Pod source on node node-a")
@@ -221,7 +221,7 @@ func TestCaptureKubeVirtSurfacesAPIErrors(t *testing.T) {
 			case "list":
 				client.Kubernetes.(*fake.Clientset).PrependReactor("list", "pods", reactor)
 			}
-			err = app.Execute(t.Context(), []string{"capture", kind + "/app/vm-a"})
+			err = app.Execute(t.Context(), []string{"capture", "-n", "app", kind + "/vm-a"})
 			if verb == "not found" {
 				require.True(t, apierrors.IsNotFound(err), "%v", err)
 			} else {
@@ -244,11 +244,11 @@ func TestCaptureRejectsVMOwnershipAndVMIRaces(t *testing.T) {
 			if mode == "wrong VM owner" {
 				vm := &unstructured.Unstructured{Object: map[string]any{"apiVersion": "kubevirt.io/v1", "kind": "VirtualMachine", "metadata": map[string]any{"name": "vm-a", "namespace": "app", "uid": "vm-id"}}}
 				dynamic.PrependReactor("get", "virtualmachines", func(k8stesting.Action) (bool, runtime.Object, error) { return true, vm, nil })
-				_, err = client.captureTarget(t.Context(), sourceRef{kind: sourceKindVM, namespace: "app", name: "vm-a"})
+				_, err = client.captureTarget(t.Context(), sourceRef{kind: sourceKindVM, name: "vm-a"})
 				require.ErrorContains(t, err, "not controlled by the current VM")
 				return
 			}
-			target, err := client.captureTarget(t.Context(), sourceRef{kind: sourceKindVMI, namespace: "app", name: "vm-a"})
+			target, err := client.captureTarget(t.Context(), sourceRef{kind: sourceKindVMI, name: "vm-a"})
 			require.NoError(t, err)
 			switch mode {
 			case "replaced VMI":
