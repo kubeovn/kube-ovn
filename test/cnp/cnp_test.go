@@ -10,6 +10,7 @@ import (
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/module"
 	"gopkg.in/yaml.v3"
+	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -82,8 +83,11 @@ func TestClusterNetworkPolicyConformance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Error initializing API scheme: %v", err)
 	}
+	if err := apiextensionsv1.AddToScheme(client.Scheme()); err != nil {
+		t.Fatalf("Error initializing apiextensions scheme: %v", err)
+	}
 
-	t.Log("Starting the admin network policy conformance test suite")
+	t.Log("Starting the cluster network policy conformance test suite")
 	profiles := sets.Set[suite.ConformanceProfileName]{}
 	profiles.Insert(suite.CNPConformanceProfileName)
 	supportedFeatures := suite.StandardFeatures.Union(sets.New(suite.SupportClusterNetworkPolicyNamedPorts))

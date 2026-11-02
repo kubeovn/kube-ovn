@@ -55,3 +55,66 @@ func TestCnpRejectsUnsupportedRulesBeforeOVNChanges(t *testing.T) {
 		})
 	}
 }
+
+func TestCnpAllowsSamePriorityCnp(t *testing.T) {
+	fake := newFakeController(t)
+	c := fake.fakeController
+	c.anpPrioNameMap = map[int32]string{10: "existing"}
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	existing := &v1alpha2.ClusterNetworkPolicy{
+		Name: "existing",
+		Spec: v1alpha2.ClusterNetworkPolicySpec{
+			Tier:     v1alpha2.AdminTier,
+			Priority: 10,
+		},
+	}
+	require.NoError(t, indexer.Add(existing))
+	c.cnpsLister = cnplister.NewClusterNetworkPolicyLister(indexer)
+
+	candidate := &v1alpha2.ClusterNetworkPolicy{
+		Name: "candidate",
+		Spec: v1alpha2.ClusterNetworkPolicySpec{
+			Tier:     v1alpha2.AdminTier,
+			Priority: 10,
+		},
+	}
+	require.NoError(t, c.validateCnpConfig(candidate))
+}
+
+func TestCnpPriorityMapRestoresSharedPriorityAfterDelete(t *testing.T) {
+	fake := newFakeController(t)
+	c := fake.fakeController
+	c.anpPrioNameMap = map[int32]string{10: "first"}
+	c.anpNamePrioMap = map[string]int32{"first": 10, "second": 10}
+
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	first := &v1alpha2.ClusterNetworkPolicy{
+		Name: "first",
+		Spec: v1alpha2.ClusterNetworkPolicySpec{Tier: v1alpha2.AdminTier, Priority: 10},
+	}
+	second := &v1alpha2.ClusterNetworkPolicy{
+		Name: "second",
+		Spec: v1alpha2.ClusterNetworkPolicySpec{Tier: v1alpha2.AdminTier, Priority: 10},
+	}
+	require.NoError(t, indexer.Add(first))
+	require.NoError(t, indexer.Add(second))
+	c.cnpsLister = cnplister.NewClusterNetworkPolicyLister(indexer)
+
+	// Reprocessing the second policy must preserve the shared priority entry.
+	require.NoError(t, c.updateCnpPriorityMapEntries(second))
+	require.Equal(t, "second", c.anpPrioNameMap[10])
+
+	// The informer removes the object before the delete queue handles it. The
+	// remaining CNP must become the representative for the shared priority.
+	require.NoError(t, indexer.Delete(second))
+	require.NoError(t, c.deleteCnpPriorityMapEntries(second))
+	require.Equal(t, "first", c.anpPrioNameMap[10])
+	require.Equal(t, int32(10), c.anpNamePrioMap["first"])
+	_, exists := c.anpNamePrioMap["second"]
+	require.False(t, exists)
+
+	require.NoError(t, indexer.Delete(first))
+	require.NoError(t, c.deleteCnpPriorityMapEntries(first))
+	_, exists = c.anpPrioNameMap[10]
+	require.False(t, exists)
+}
