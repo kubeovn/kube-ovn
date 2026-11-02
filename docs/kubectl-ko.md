@@ -84,7 +84,7 @@ kubectl ko
   trace TARGET --target addr/IP [OPTIONS]
   capture TARGET -- [CAPTURE_ARGS...]
   network
-    inspect --pod POD [--output table|json]
+    inspect TARGET [-n NAMESPACE] [--output table|json]
   diagnose
     cluster
     node NODE
@@ -117,7 +117,7 @@ kubectl ko
 | `db nb restore` | Reconstruct the central NB/SB cluster from the NB database already present on the explicit bootstrap node. Verify the shared hostPath, use temporary per-node helpers when OVS does not mount the databases, stop central, preserve originals and RAFT headers, rebuild, verify storage and restart OVS. Helpers use the central image and security context and are cleaned up by UID. This is not local-file import; SB-only restore is not supported. |
 | `trace` | Resolve the required positional Pod, Node, Service, workload, VM, VMI, localnet Subnet, LSP or LRP target, then trace through OVN and, where a physical ingress exists, OVS. A bare name means Pod; use `KIND/NAME` with `-n NAMESPACE` for namespaced resources. `--target addr/IP` specifies the destination. IPv4/IPv6, ICMP/TCP/UDP, IPv4 ARP request/reply, explicit destination MAC, hostNetwork, Underlay/U2O and VM logical ports remain supported. `--engine ovn` runs only OVN trace. |
 | `capture` | Capture packets from a required positional Pod, Node, Service, workload, VM, VMI, localnet Subnet or bound LSP through the Go node agent. Service and workload targets select one running Pod. Node capture requires `-i INTERFACE` or `-D`. Localnet capture uses the ProviderNetwork NIC on a ready node; use `--node` when more than one node qualifies. LRP capture requires `--observe-at lsp/NAME` for a bound LSP on its adjacent logical switch and reports that actual observation point. Capture arguments follow `--`: `-D`, `-i`, `-c`, `-s`, `-nn` and `-w -`; the last option streams a pcap locally. |
-| `network inspect` | Show the Pod network namespace path, every interface's index, kind, MAC, MTU, state and addresses, plus the host-side veth peer when one exists. For `macvlan`/`ipvlan`, also show the parent host NIC with its link details. `--output=json` emits machine-readable data. Host-network Pods use the host namespace and expose peer indexes for host links. |
+| `network inspect` | Inspect a positional Pod, Node, Service, workload, VM or VMI target. Service and workload targets select one running Pod and report which Pod was inspected. Node targets show host-network interfaces. Pod output includes the network namespace path, interface details and host-side veth peers; `macvlan`/`ipvlan` output includes parent NIC details. `--output=json` emits machine-readable data. |
 | `diagnose cluster` | Check cluster configuration, component rollout and leaders; create a unique temporary NodePort Service and run active checks from independent temporary probe Pods in the original pinger network namespaces. |
 | `diagnose node NODE` | Perform configuration checks and restrict the independent active probes to one node. |
 | `diagnose subnet SUBNET` | Check the subnet, create an isolated temporary DaemonSet and NodePort Service, and check peer TCP/UDP, node ICMP and NodePort connectivity from those subnet Pods. Does not require optional CNI node TCP/UDP listeners. |
@@ -150,7 +150,7 @@ selected by `--kube-ovn-namespace`, `KUBE_OVN_NS`, then `kube-system`.
 | Global | `--timeout=0` bounds the whole invocation; zero allows long streams. `--discovery-timeout=10s` bounds target selection. Kubernetes `--request-timeout` does not truncate an established exec stream. |
 | Kubernetes exec | `exec` accepts `POD` or `TYPE/NAME`, `-c/--container`, `-l/--selector`, `-i/--stdin`, `-t/--tty`, `-q/--quiet`, and `--pod-running-timeout=1m`. A command must follow `--`. |
 | Raw tools / capture | `exec` OVS tools require `--node`; `capture` requires exactly one positional resource. Localnet and localnet LSP capture accept `--node`; LRP capture requires `--observe-at lsp/NAME`. Capture arguments must follow `--`. |
-| Network inspection | `network inspect` requires `--pod`; `--output=table` is the default and `--output=json` is intended for automation. |
+| Network inspection | `network inspect` requires one `POD` or `KIND/NAME` positional target. Use `-n NAMESPACE` for namespaced resources; `--output=table` is the default and `--output=json` is intended for automation. OVN port and localnet targets are not supported by this command. |
 | Trace | Exactly one positional resource and `--target addr/IP` are required; `--protocol=icmp`, `--engine=all`, optional `--dst-mac`. Localnet and localnet LSP sources require `--source-ip` and `--source-mac`; OVS tracing uses `--node` to select a ready ProviderNetwork node when necessary. LRP defaults to `--engine ovn` and has no OVS stage. TCP/UDP require `--dst-port=1..65535`. ARP uses `--arp-op=request|reply` and IPv4. |
 | Database backup | `--output FILE`; otherwise a unique DB-specific filename. |
 | Database recovery | Required `--source-node NODE` and either `--yes` or `--dry-run`. |
@@ -180,8 +180,9 @@ kubectl ko capture no/worker-a -- -i eth0 -c 10
 kubectl ko capture localnet/underlay-a --node worker-a -- -c 10
 kubectl ko capture lsp/web.app -- -c 10
 kubectl ko capture lrp/router-underlay-a --observe-at lsp/web.app -- -c 10
-kubectl ko network inspect --pod app/web
-kubectl ko network inspect --pod app/web --output json
+kubectl ko network inspect pod/web -n app
+kubectl ko network inspect node/worker-a
+kubectl ko network inspect svc/api -n app --output json
 kubectl ko diagnose subnet ovn-default --tcp-port 8100 --udp-port 8101
 kubectl ko diagnose connectivity --target tcp://10.0.0.8:8100 --target 'udp://[2001:db8::8]:8101'
 kubectl ko db nb backup --output northbound.backup
@@ -258,12 +259,14 @@ process's stdin/stdout. Concurrent operations have separate streams and do not
 restart the agent. It does not execute in Kube-OVN component Pods. Packet
 capture uses the agent's native Linux `AF_PACKET` socket and `setns(2)`;
 it does not start `tcpdump`, `nsenter`, or a shell.
-`network inspect` resolves the Pod netns from OVSDB through the agent, with a
+`network inspect` resolves Pod, Service, workload, VM and VMI targets to a Pod,
+then resolves its netns from OVSDB through the agent, with a
 Pod-UID lookup in host process cgroups when no OVS interface exists, then
 reads Pod and host links with `ip -s -j -d addr show`; it reports the host-side veth peer by
 ifindex and resolves `macvlan`/`ipvlan` parent NICs in the Pod or host netns
 using the link namespace identity, name and ifindex,
-without entering `kube-ovn-cni` or `ovs-ovn`.
+without entering `kube-ovn-cni` or `ovs-ovn`. Node targets inspect the host
+network namespace through the selected node agent.
 Both JSON and text output include RX/TX statistics for Pod interfaces and
 resolved host peers or parent NICs. Counter names match iproute2; 64-bit values
 are preserved, including zero and driver-specific counters. Older `stats`

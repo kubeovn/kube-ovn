@@ -116,16 +116,22 @@ func (a *Application) addNetworkCommands() {
 }
 
 func (a *Application) addNetworkInspectCommand() {
-	var pod, output string
+	var output string
+	var ref sourceRef
 	command := &cobra.Command{
-		Use:   "inspect --pod [NAMESPACE/]POD",
-		Short: "Show a Pod network namespace, interfaces and veth peers",
+		Use:   "inspect TARGET [flags]",
+		Short: "Show a resource network namespace, interfaces and peers",
 		Args: func(cmd *cobra.Command, args []string) error {
-			if err := cobra.NoArgs(cmd, args); err != nil {
+			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
 				return err
 			}
-			if err := validatePodReference(pod); err != nil {
+			var err error
+			ref, err = parseSourceRef(args[0])
+			if err != nil {
 				return err
+			}
+			if ref.kind == sourceKindLocalnet || ref.kind == sourceKindLSP || ref.kind == sourceKindLRP {
+				return fmt.Errorf("network inspect does not support %s targets", ref.kind)
 			}
 			if output != "table" && output != "json" {
 				return errors.New("--output must be table or json")
@@ -133,12 +139,11 @@ func (a *Application) addNetworkInspectCommand() {
 			return nil
 		},
 		RunE: a.run(func(ctx context.Context, client *Client, _ []string) error {
-			return a.networkInspect(ctx, client, pod, output)
+			return a.networkInspect(ctx, client, ref, output)
 		}),
 	}
-	command.Flags().StringVar(&pod, "pod", "", "Pod to inspect, optionally qualified by namespace")
 	command.Flags().StringVarP(&output, "output", "o", "table", "Output format: table or json")
-	parent := &cobra.Command{Use: "network", Short: "Inspect Pod network namespaces and interfaces"}
+	parent := &cobra.Command{Use: "network", Short: "Inspect resource network namespaces and interfaces"}
 	parent.AddCommand(command)
 	a.root.AddCommand(parent)
 }
