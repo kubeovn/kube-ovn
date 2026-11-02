@@ -1,15 +1,46 @@
 package framework
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 )
+
+func TestDeploymentClientContextCancellation(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unexpected request", http.StatusBadRequest)
+	}))
+	defer server.Close()
+	clientSet, err := kubernetes.NewForConfig(&rest.Config{Host: server.URL})
+	require.NoError(t, err)
+	client := NewDeploymentClient(clientSet, "kube-system")
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err = client.GetContext(ctx, "ovn-central")
+	require.ErrorContains(t, err, "canceled")
+	_, err = client.GetAllPodsContext(ctx, &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Namespace: "kube-system"},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "ovn-central"}},
+		},
+	})
+	require.ErrorContains(t, err, "canceled")
+	err = client.SetScaleContext(ctx, "ovn-central", 3)
+	require.ErrorContains(t, err, "canceled")
+}
 
 func TestUseContextDoesNotRewriteKubeconfig(t *testing.T) {
 	configPath := filepath.Join(t.TempDir(), "config")

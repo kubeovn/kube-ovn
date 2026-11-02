@@ -66,18 +66,13 @@ func raftHeaderFileHostPath(db string) string {
 	return fmt.Sprintf("/etc/origin/ovn/ovn%s_db.hdr", db)
 }
 
-func copyDbFiles(node *kind.Node, dir, dbFileHost string) error {
-	files := []string{dbFileHost}
+func copyDbFiles(node *kind.Node, dir string) error {
+	var files []string
 	for _, db := range [...]string{"nb", "sb"} {
 		files = append(files, dbFileHostPath(db), raftHeaderFileHostPath(db))
 	}
-	seen := set.New[string]()
 	var failures []error
 	for _, file := range files {
-		if seen.Has(file) {
-			continue
-		}
-		seen.Insert(file)
 		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		output, err := exec.CommandContext(ctx, "docker", "cp", node.Name()+":"+file, filepath.Join(dir, filepath.Base(file))).CombinedOutput()
 		cancel()
@@ -88,7 +83,15 @@ func copyDbFiles(node *kind.Node, dir, dbFileHost string) error {
 	return errors.Join(failures...)
 }
 
-func saveDbFailureDiagnostics(f *framework.Framework, pods []corev1.Pod, kindNodes map[string]*kind.Node, dbFile, dbFileHost string, failedPod corev1.Pod, checkErr error, stdout, stderr string) (string, error) {
+type failedCheckCluster struct {
+	podName string
+	command string
+	err     error
+	stdout  string
+	stderr  string
+}
+
+func saveDbFailureDiagnostics(pods []corev1.Pod, kindNodes map[string]*kind.Node, failureMessage string, failedCheck *failedCheckCluster, run func(corev1.Pod, string) (string, string, error)) (string, error) {
 	baseDir := os.Getenv("HA_E2E_DIAGNOSTICS_DIR")
 	if baseDir == "" {
 		baseDir = filepath.Join(os.TempDir(), "kube-ovn-ha-e2e-diagnostics")
@@ -102,41 +105,46 @@ func saveDbFailureDiagnostics(f *framework.Framework, pods []corev1.Pod, kindNod
 	}
 
 	var failures []error
-	lastCheck := fmt.Sprintf("pod: %s\ncommand: ovsdb-tool check-cluster %s\nerror: %v\nstdout:\n%s\nstderr:\n%s\n", failedPod.Name, dbFile, checkErr, stdout, stderr)
-	if err := os.WriteFile(filepath.Join(dir, "failed-check-cluster.txt"), []byte(lastCheck), 0o600); err != nil {
-		failures = append(failures, fmt.Errorf("save last check-cluster result: %w", err))
+	if err := os.WriteFile(filepath.Join(dir, "failure.txt"), []byte(failureMessage+"\n"), 0o600); err != nil {
+		failures = append(failures, fmt.Errorf("save failure message: %w", err))
 	}
-
-	for _, pod := range pods {
-		if err := os.MkdirAll(filepath.Join(dir, pod.Spec.NodeName), 0o700); err != nil {
-			failures = append(failures, fmt.Errorf("create directory for node %s: %w", pod.Spec.NodeName, err))
+	if failedCheck != nil {
+		result := fmt.Sprintf("pod: %s\ncommand: %s\nerror: %v\nstdout:\n%s\nstderr:\n%s\n", failedCheck.podName, failedCheck.command, failedCheck.err, failedCheck.stdout, failedCheck.stderr)
+		if err := os.WriteFile(filepath.Join(dir, "failed-check-cluster.txt"), []byte(result), 0o600); err != nil {
+			failures = append(failures, fmt.Errorf("save last check-cluster result: %w", err))
 		}
 	}
-	nodes := set.New[string]()
-	for _, pod := range pods {
-		nodes.Insert(pod.Spec.NodeName)
-	}
-	for nodeName := range nodes {
-		node, ok := kindNodes[nodeName]
-		if !ok {
-			failures = append(failures, fmt.Errorf("kind node %s not found", nodeName))
+	for nodeName, node := range kindNodes {
+		nodeDir := filepath.Join(dir, nodeName)
+		if err := os.MkdirAll(nodeDir, 0o700); err != nil {
+			failures = append(failures, fmt.Errorf("create directory for node %s: %w", nodeName, err))
 			continue
 		}
-		if err := copyDbFiles(node, filepath.Join(dir, nodeName), dbFileHost); err != nil {
+		if err := copyDbFiles(node, nodeDir); err != nil {
 			failures = append(failures, err)
 		}
 	}
 
 	for _, pod := range pods {
-		podDir := filepath.Join(dir, pod.Spec.NodeName)
+		podDir := filepath.Join(dir, pod.Spec.NodeName, pod.Name)
+		if err := os.MkdirAll(podDir, 0o700); err != nil {
+			failures = append(failures, fmt.Errorf("create directory for pod %s: %w", pod.Name, err))
+			continue
+		}
 		for _, db := range [...]string{"nb", "sb"} {
-			stdout, stderr, err := framework.ExecShellInContainer(f, pod.Namespace, pod.Name, "ovn-central", "ovsdb-tool check-cluster "+dbFilePath(db))
+			stdout, stderr, err := run(pod, "ovsdb-tool check-cluster "+dbFilePath(db))
 			result := fmt.Sprintf("pod: %s\ncommand: ovsdb-tool check-cluster %s\nerror: %v\nstdout:\n%s\nstderr:\n%s\n", pod.Name, dbFilePath(db), err, stdout, stderr)
+			if err != nil {
+				failures = append(failures, fmt.Errorf("check cluster for pod %s: %w", pod.Name, err))
+			}
 			if err := os.WriteFile(filepath.Join(podDir, db+"-check-cluster.txt"), []byte(result), 0o600); err != nil {
 				failures = append(failures, fmt.Errorf("save check-cluster output for pod %s: %w", pod.Name, err))
 			}
-			stdout, stderr, err = framework.ExecShellInContainer(f, pod.Namespace, pod.Name, "ovn-central", cmdClusterStatus(db))
+			stdout, stderr, err = run(pod, cmdClusterStatus(db))
 			result = fmt.Sprintf("pod: %s\ncommand: %s\nerror: %v\nstdout:\n%s\nstderr:\n%s\n", pod.Name, cmdClusterStatus(db), err, stdout, stderr)
+			if err != nil {
+				failures = append(failures, fmt.Errorf("cluster status for pod %s: %w", pod.Name, err))
+			}
 			if err := os.WriteFile(filepath.Join(podDir, db+"-cluster-status.txt"), []byte(result), 0o600); err != nil {
 				failures = append(failures, fmt.Errorf("save cluster status for pod %s: %w", pod.Name, err))
 			}
@@ -155,6 +163,26 @@ var dbNames = map[string]string{
 
 func cmdClusterStatus(db string) string {
 	return fmt.Sprintf("ovn-appctl -t /var/run/ovn/ovn%s_db.ctl cluster/status %s", db, dbNames[db])
+}
+
+func getCentralDeployment(client *framework.DeploymentClient) *appsv1.Deployment {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	deploy, err := client.GetContext(ctx, "ovn-central")
+	framework.ExpectNoError(err)
+	return deploy
+}
+
+func getCentralPods(client *framework.DeploymentClient, deploy *appsv1.Deployment) (*corev1.PodList, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return client.GetAllPodsContext(ctx, deploy)
+}
+
+func setCentralReplicas(client *framework.DeploymentClient, name string, replicas int32) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	framework.ExpectNoError(client.SetScaleContext(ctx, name, replicas))
 }
 
 func clusterStatusHasAllServers(output string, expected int) bool {
@@ -179,8 +207,8 @@ func waitForDbRecovery(f *framework.Framework, pods []corev1.Pod) {
 	for pod := range slices.Values(pods) {
 		for _, db := range [...]string{"nb", "sb"} {
 			ginkgo.By("Waiting for ovn" + db + " db cluster on node " + pod.Spec.NodeName + " to show all servers")
-			framework.WaitUntil(time.Second, 60*time.Second, func(_ context.Context) (bool, error) {
-				stdout, _, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, cmdClusterStatus(db))
+			framework.WaitUntil(time.Second, 60*time.Second, func(ctx context.Context) (bool, error) {
+				stdout, _, err := framework.ExecShellInPod(ctx, f, pod.Namespace, pod.Name, cmdClusterStatus(db))
 				if err != nil {
 					return false, nil
 				}
@@ -295,7 +323,7 @@ func getDbSidsFromClusterStatus(f *framework.Framework, deploy *appsv1.Deploymen
 
 	ginkgo.By("Getting pods of deployment " + deploy.Name)
 	deployClient := f.DeploymentClientNS(deploy.Namespace)
-	pods, err := deployClient.GetAllPods(deploy)
+	pods, err := getCentralPods(deployClient, deploy)
 	framework.ExpectNoError(err)
 	framework.ExpectHaveLen(pods.Items, int(*deploy.Spec.Replicas))
 
@@ -305,8 +333,8 @@ func getDbSidsFromClusterStatus(f *framework.Framework, deploy *appsv1.Deploymen
 		ginkgo.By("Waiting for ovn" + db + " db cluster to show all servers on every ovn-central pod")
 		for pod := range slices.Values(pods.Items) {
 			var lastStdout, lastStderr string
-			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-				stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, cmdClusterStatus(db))
+			framework.WaitUntil(time.Second, 30*time.Second, func(ctx context.Context) (bool, error) {
+				stdout, stderr, err := framework.ExecShellInPod(ctx, f, pod.Namespace, pod.Name, cmdClusterStatus(db))
 				if err != nil {
 					return false, nil
 				}
@@ -349,7 +377,7 @@ func getDbSids(f *framework.Framework, deploy *appsv1.Deployment) map[string]set
 
 	ginkgo.By("Getting pods of deployment " + deploy.Name)
 	deployClient := f.DeploymentClientNS(deploy.Namespace)
-	pods, err := deployClient.GetAllPods(deploy)
+	pods, err := getCentralPods(deployClient, deploy)
 	framework.ExpectNoError(err)
 	framework.ExpectHaveLen(pods.Items, int(*deploy.Spec.Replicas))
 
@@ -359,7 +387,9 @@ func getDbSids(f *framework.Framework, deploy *appsv1.Deployment) map[string]set
 		cmd := fmt.Sprintf(`ovsdb-tool db-sid %q`, dbFilePath(db))
 		for pod := range slices.Values(pods.Items) {
 			ginkgo.By("Getting ovn" + db + " db server id from pod " + pod.Name)
-			stdout, stderr, err := framework.ExecShellInPod(context.Background(), f, pod.Namespace, pod.Name, cmd)
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			stdout, stderr, err := framework.ExecShellInPod(ctx, f, pod.Namespace, pod.Name, cmd)
+			cancel()
 			framework.ExpectNoError(err, fmt.Sprintf("failed to get ovn%s db server id from pod %s: stdout = %q, stderr = %q", db, pod.Name, stdout, stderr))
 			dbSids[db].Insert(strings.TrimSpace(stdout)[:4])
 		}
@@ -370,14 +400,14 @@ func getDbSids(f *framework.Framework, deploy *appsv1.Deployment) map[string]set
 	return dbSids
 }
 
-func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile, dbFileHost, corruptCmd string, kindNodes map[string]*kind.Node) {
+func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile, dbFileHost, corruptCmd string, kindNodes map[string]*kind.Node, lastFailedCheck **failedCheckCluster) {
 	ginkgo.GinkgoHelper()
 
 	replicas := *deploy.Spec.Replicas
 
 	ginkgo.By("Getting ovn-central pods")
 	deployClient := f.DeploymentClientNS(deploy.Namespace)
-	pods, err := deployClient.GetAllPods(deploy)
+	pods, err := getCentralPods(deployClient, deploy)
 	framework.ExpectNoError(err)
 	framework.ExpectHaveLen(pods.Items, int(replicas))
 
@@ -386,14 +416,14 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 		ginkgo.By("Waiting for db file " + dbFile + " on node " + pod.Spec.NodeName + " to be healthy before corruption")
 		var lastStdout, lastStderr string
 		var lastErr error
-		err := wait.PollUntilContextTimeout(context.Background(), time.Second, 30*time.Second, false, func(_ context.Context) (bool, error) {
-			lastStdout, lastStderr, lastErr = framework.ExecShellInContainer(f, pod.Namespace, pod.Name, "ovn-central", checkCmd)
+		err := wait.PollUntilContextTimeout(context.Background(), time.Second, 30*time.Second, false, func(ctx context.Context) (bool, error) {
+			lastStdout, lastStderr, lastErr = framework.ExecShellInContainerContext(ctx, f, pod.Namespace, pod.Name, "ovn-central", checkCmd)
 			return lastErr == nil, nil
 		})
 		if err != nil {
-			dir, snapshotErr := saveDbFailureDiagnostics(f, pods.Items, kindNodes, dbFile, dbFileHost, pod, lastErr, lastStdout, lastStderr)
-			framework.Failf("db file %s on pod %s did not become healthy: wait error = %v, last check error = %v, stdout = %q, stderr = %q; diagnostics = %q, snapshot errors = %v",
-				dbFile, pod.Name, err, lastErr, lastStdout, lastStderr, dir, snapshotErr)
+			*lastFailedCheck = &failedCheckCluster{podName: pod.Name, command: checkCmd, err: lastErr, stdout: lastStdout, stderr: lastStderr}
+			framework.Failf("db file %s on pod %s did not become healthy: wait error = %v, last check error = %v, stdout = %q, stderr = %q",
+				dbFile, pod.Name, err, lastErr, lastStdout, lastStderr)
 		}
 	}
 
@@ -403,11 +433,11 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	}
 
 	ginkgo.By("Scaling down deployment ovn-central to " + strconv.Itoa(int(replicas-1)))
-	deployClient.SetScale(deploy.Name, replicas-1)
+	setCentralReplicas(deployClient, deploy.Name, replicas-1)
 
 	ginkgo.By("Waiting for an ovn-central pod to be deleted")
-	framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-		pods, err := deployClient.GetAllPods(deploy)
+	framework.WaitUntil(time.Second, 30*time.Second, func(ctx context.Context) (bool, error) {
+		pods, err := deployClient.GetAllPodsContext(ctx, deploy)
 		if err != nil {
 			return false, err
 		}
@@ -418,7 +448,7 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	deployClient.RolloutStatus(deploy.Name)
 
 	ginkgo.By("Getting ovn-central pods after scale down")
-	pods, err = deployClient.GetAllPods(deploy)
+	pods, err = getCentralPods(deployClient, deploy)
 	framework.ExpectNoError(err)
 	framework.ExpectHaveLen(pods.Items, int(replicas-1))
 
@@ -450,13 +480,13 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	framework.ExpectNotEqual(newSize, size, "file size of db file %q on node %s should change after corruption", dbFileHost, nodeName)
 
 	ginkgo.By("Scaling up deployment ovn-central to " + strconv.Itoa(int(replicas)))
-	deployClient.SetScale(deploy.Name, replicas)
+	setCentralReplicas(deployClient, deploy.Name, replicas)
 
 	ginkgo.By("Waiting for deployment ovn-central to be ready")
 	deployClient.RolloutStatus(deploy.Name)
 
 	ginkgo.By("Getting ovn-central pods after scale up")
-	pods, err = deployClient.GetAllPods(deploy)
+	pods, err = getCentralPods(deployClient, deploy)
 	framework.ExpectNoError(err)
 	framework.ExpectHaveLen(pods.Items, int(replicas))
 
@@ -480,8 +510,12 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 	kindNodes := make(map[string]*kind.Node)
 	var clusterName string
 	var skip bool
+	var lastFailedCheck *failedCheckCluster
+	var diagnosticsSaved bool
 
 	ginkgo.BeforeEach(func() {
+		lastFailedCheck = nil
+		diagnosticsSaved = false
 		if skip {
 			ginkgo.Skip("OVN database HA spec only runs on kind clusters")
 		}
@@ -507,6 +541,36 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 			}
 		}
 	})
+	captureFailure := func(report ginkgo.SpecReport, phase string) {
+		if !report.Failed() || skip || diagnosticsSaved {
+			return
+		}
+		failureMessage := fmt.Sprintf("capture phase: %s\n%s", phase, report.Failure.Message)
+		var pods []corev1.Pod
+		if f.ClientSet != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			list, err := f.ClientSet.CoreV1().Pods(framework.KubeOvnNamespace).List(ctx, metav1.ListOptions{LabelSelector: "app=ovn-central"})
+			cancel()
+			if err != nil {
+				failureMessage += fmt.Sprintf("\nlist ovn-central pods: %v", err)
+			} else {
+				pods = list.Items
+			}
+		}
+		dir, snapshotErr := saveDbFailureDiagnostics(pods, kindNodes, failureMessage, lastFailedCheck, func(pod corev1.Pod, command string) (string, string, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			return framework.ExecShellInContainerContext(ctx, f, pod.Namespace, pod.Name, "ovn-central", command)
+		})
+		diagnosticsSaved = dir != ""
+		framework.Logf("HA E2E failure diagnostics: directory = %q, snapshot errors = %v", dir, snapshotErr)
+	}
+	ginkgo.JustAfterEach(func() {
+		captureFailure(ginkgo.CurrentSpecReport(), "before cleanup")
+	})
+	ginkgo.ReportAfterEach(func(report ginkgo.SpecReport) {
+		captureFailure(report, "after cleanup")
+	})
 
 	registerKubectlKoHA(f, kindNodes)
 
@@ -515,12 +579,12 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 
 		ginkgo.By("Getting deployment ovn-central")
 		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
-		deploy := deployClient.Get("ovn-central")
+		deploy := getCentralDeployment(deployClient)
 		replicas := *deploy.Spec.Replicas
 		framework.ExpectNotZero(replicas)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Restoring deployment ovn-central replicas to " + strconv.Itoa(int(replicas)))
-			deployClient.SetScale(deploy.Name, replicas)
+			setCentralReplicas(deployClient, deploy.Name, replicas)
 			deployClient.RolloutStatus(deploy.Name)
 			waitForCentralLeaders(f)
 		})
@@ -555,7 +619,7 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 			}
 			for cmd, runSpec := range testcases {
 				if runSpec {
-					corruptAndRecover(f, deploy, dbFile, dbFileHost, cmd, kindNodes)
+					corruptAndRecover(f, deploy, dbFile, dbFileHost, cmd, kindNodes, &lastFailedCheck)
 				}
 			}
 		}
@@ -586,12 +650,12 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 
 		ginkgo.By("Getting deployment ovn-central")
 		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
-		deploy := deployClient.Get("ovn-central")
+		deploy := getCentralDeployment(deployClient)
 		replicas := *deploy.Spec.Replicas
 		framework.ExpectNotZero(replicas)
 		ginkgo.DeferCleanup(func() {
 			ginkgo.By("Restoring deployment ovn-central replicas to " + strconv.Itoa(int(replicas)))
-			deployClient.SetScale(deploy.Name, replicas)
+			setCentralReplicas(deployClient, deploy.Name, replicas)
 			deployClient.RolloutStatus(deploy.Name)
 			waitForCentralLeaders(f)
 		})
@@ -614,7 +678,7 @@ grep -q '"cluster_id": "%[2]s"' %[1]q
 rm -f %[3]q
 `, hdrFileHost, zeroClusterID, dbFileHost)
 
-		corruptAndRecover(f, deploy, dbFile, dbFileHost, poisonCmd, kindNodes)
+		corruptAndRecover(f, deploy, dbFile, dbFileHost, poisonCmd, kindNodes, &lastFailedCheck)
 
 		ginkgo.By("Checking every ovn-central pod sees a converged three-member OVN DB cluster")
 		clusterDbSids := getDbSidsFromClusterStatus(f, deploy)
