@@ -132,7 +132,7 @@ require (
 	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
 	github.com/gaissmai/bart v0.30.0 // indirect
 	github.com/go-errors/errors v1.5.1 // indirect
-	github.com/go-ini/ini v0.0.0-00010101000000-000000000000 // indirect
+	github.com/go-ini/ini v1.67.3 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.1 // indirect
 	github.com/go-openapi/jsonpointer v1.0.0 // indirect
