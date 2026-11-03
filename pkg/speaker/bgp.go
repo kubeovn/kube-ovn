@@ -216,9 +216,24 @@ func (c *Controller) getPathRequest(route string) ([][]*apiutil.Path, error) {
 }
 
 // getNextHopAttribute returns the next hop we should advertise for a specific BGP neighbor.
-// When source address whitelisting is enabled, the startup-selected local address is reused.
-// Otherwise, keep the historical behavior and resolve the source address dynamically.
+//
+// Precedence:
+//  1. Explicit NextHops override (per address family) - always wins, intended for the
+//     OVN LRP EIP use case where traffic must be forwarded to an address that differs
+//     from the address used to establish the BGP session with the neighbor.
+//  2. When source address whitelisting is enabled, the startup-selected local address is reused.
+//  3. Otherwise, resolve the source address dynamically via route lookup (historical behavior).
+//  4. NodeIPs fallback: preserved as historical behavior, only applied when the resolved
+//     next hop equals the Pod IP (i.e. non-host-network case). This does not broaden the
+//     original node-ips semantics.
 func (c *Controller) getNextHopAttribute(neighborAddress net.IP) net.IP {
+	if nextHops := c.config.NextHops; nextHops != nil {
+		proto := util.CheckProtocol(neighborAddress.String())
+		if override := nextHops[proto].IP; override != nil {
+			return override
+		}
+	}
+
 	if localAddr := c.config.getNeighborLocalAddress(neighborAddress); localAddr != nil {
 		return localAddr
 	}
@@ -237,19 +252,14 @@ func (c *Controller) getNextHopAttribute(neighborAddress net.IP) net.IP {
 
 	proto := util.CheckProtocol(nextHop.String()) // Is next hop IPv4 or IPv6
 
-	// Preserve the historical fallback for non-whitelist mode.
-	// nodeIP may be configured as an ovn-eip, which differs from the address used to
-	// establish the BGP session with the neighbor. In that case traffic must still be
-	// forwarded to the ovn-eip, so prefer nodeIP whenever it is configured, instead of
-	// only when nextHop equals the pod IP. (nextHop.Equal(c.config.PodIPs[proto]))
-
-	// This is a usecase where overlay network is connected to underlay external network
-	// via LRP(ovn-eip) and route is advertised for the overlay network through bgp speaker.
-	// In that case, the next hop should be the ovn-eip instead of the pod IP
-	// and bgp session is established via a different IP address.
-	nodeIP := c.config.NodeIPs[proto].IP
-	if nodeIP != nil {
-		nextHop = nodeIP
+	// Historical node-ips fallback: node-ips was introduced for the non-host-network case
+	// where the selected next hop equals the Pod IP. Keep that condition intact so this
+	// option's meaning is not silently broadened; use the explicit NextHops override above
+	// for the OVN EIP use case instead.
+	if nextHop.Equal(c.config.PodIPs[proto]) {
+		if nodeIP := c.config.NodeIPs[proto].IP; nodeIP != nil {
+			nextHop = nodeIP
+		}
 	}
 
 	return nextHop

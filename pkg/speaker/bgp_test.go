@@ -268,27 +268,127 @@ func TestGetNextHopAttributeReusesInitializedNeighborLocalAddresses(t *testing.T
 	require.True(t, ipv6StartupAddress.Equal(controller.getNextHopAttribute(ipv6Neighbor)))
 }
 
-func TestGetNextHopAttributePrefersConfiguredNodeIPOverPodIP(t *testing.T) {
-	neighbor := net.ParseIP("192.0.2.1")
-	routedSource := net.ParseIP("127.0.0.2")
-	podIP := net.ParseIP("10.244.0.8")
-	ovnEip := net.ParseIP("192.0.2.100")
+func TestGetNextHopAttributeExplicitNextHopsOverride(t *testing.T) {
+	ipv4Neighbor := net.ParseIP("192.0.2.1")
+	ipv4RoutedSource := net.ParseIP("127.0.0.2")
+	ipv4Override := net.ParseIP("192.0.2.100")
+	ipv6Neighbor := net.ParseIP("2001:db8::1")
+	ipv6RoutedSource := net.ParseIP("fd00::2")
+	ipv6Override := net.ParseIP("2001:db8::100")
 
 	config := &Configuration{
-		NodeIPs: map[string]IP{
-			kubeovnv1.ProtocolIPv4: {IP: ovnEip},
-		},
-		PodIPs: map[string]net.IP{
-			kubeovnv1.ProtocolIPv4: podIP,
+		NextHops: map[string]IP{
+			kubeovnv1.ProtocolIPv4: {IP: ipv4Override},
+			kubeovnv1.ProtocolIPv6: {IP: ipv6Override},
 		},
 		routeLookup: func(address net.IP) ([]netlink.Route, error) {
-			require.True(t, neighbor.Equal(address))
-			return []netlink.Route{{Src: routedSource}}, nil
+			if ipv4Neighbor.Equal(address) {
+				return []netlink.Route{{Src: ipv4RoutedSource}}, nil
+			}
+			return []netlink.Route{{Src: ipv6RoutedSource}}, nil
 		},
 	}
 	controller := &Controller{config: config}
 
-	// Even though the routed source differs from podIP, the configured nodeIP
-	// (which may be an ovn-eip) must always be preferred as the nexthop.
-	require.True(t, ovnEip.Equal(controller.getNextHopAttribute(neighbor)))
+	// Explicit NextHops must win regardless of routed source or PodIPs.
+	require.True(t, ipv4Override.Equal(controller.getNextHopAttribute(ipv4Neighbor)))
+	require.True(t, ipv6Override.Equal(controller.getNextHopAttribute(ipv6Neighbor)))
+}
+
+func TestGetNextHopAttributeNodeIPsOnlyAppliesWhenNextHopEqualsPodIP(t *testing.T) {
+	neighbor := net.ParseIP("192.0.2.1")
+	podIP := net.ParseIP("10.244.0.8")
+	nodeIP := net.ParseIP("192.0.2.100")
+
+	t.Run("applies when routed source equals pod IP", func(t *testing.T) {
+		config := &Configuration{
+			NodeIPs: map[string]IP{kubeovnv1.ProtocolIPv4: {IP: nodeIP}},
+			PodIPs:  map[string]net.IP{kubeovnv1.ProtocolIPv4: podIP},
+			routeLookup: func(address net.IP) ([]netlink.Route, error) {
+				return []netlink.Route{{Src: podIP}}, nil
+			},
+		}
+		controller := &Controller{config: config}
+		require.True(t, nodeIP.Equal(controller.getNextHopAttribute(neighbor)))
+	})
+
+	t.Run("does not apply when routed source differs from pod IP", func(t *testing.T) {
+		routedSource := net.ParseIP("127.0.0.2")
+		config := &Configuration{
+			NodeIPs: map[string]IP{kubeovnv1.ProtocolIPv4: {IP: nodeIP}},
+			PodIPs:  map[string]net.IP{kubeovnv1.ProtocolIPv4: podIP},
+			routeLookup: func(address net.IP) ([]netlink.Route, error) {
+				return []netlink.Route{{Src: routedSource}}, nil
+			},
+		}
+		controller := &Controller{config: config}
+		require.True(t, routedSource.Equal(controller.getNextHopAttribute(neighbor)))
+	})
+
+	t.Run("no override configured falls back to routed source", func(t *testing.T) {
+		config := &Configuration{
+			PodIPs: map[string]net.IP{kubeovnv1.ProtocolIPv4: podIP},
+			routeLookup: func(address net.IP) ([]netlink.Route, error) {
+				return []netlink.Route{{Src: podIP}}, nil
+			},
+		}
+		controller := &Controller{config: config}
+		require.True(t, podIP.Equal(controller.getNextHopAttribute(neighbor)))
+	})
+}
+
+func TestGetNextHopAttributeAllowedSourceAddressesTakesPrecedenceOverNodeIPs(t *testing.T) {
+	neighbor := net.ParseIP("192.0.2.1")
+	whitelisted := net.ParseIP("192.0.2.10")
+	podIP := net.ParseIP("10.244.0.8")
+	nodeIP := net.ParseIP("192.0.2.100")
+
+	config := &Configuration{
+		NeighborAddresses:      []IP{{IP: neighbor}},
+		AllowedSourceAddresses: []IP{{IP: whitelisted}},
+		NodeIPs:                map[string]IP{kubeovnv1.ProtocolIPv4: {IP: nodeIP}},
+		PodIPs:                 map[string]net.IP{kubeovnv1.ProtocolIPv4: podIP},
+	}
+	require.NoError(t, config.initNeighborLocalAddressesWithRouteLookup(func(address net.IP) ([]netlink.Route, error) {
+		return []netlink.Route{{Src: whitelisted}}, nil
+	}))
+	controller := &Controller{config: config}
+
+	// When source-address whitelisting is configured, it is resolved before NodeIPs is
+	// ever evaluated, so NodeIPs does not override the next hop in this case.
+	require.True(t, whitelisted.Equal(controller.getNextHopAttribute(neighbor)))
+}
+
+func TestReconcileRoutesAddsAndWithdrawsIPv4RoutesWithConfiguredNextHop(t *testing.T) {
+	const (
+		routerID = "192.0.2.10"
+		neighbor = "192.0.2.1"
+		prefix   = "10.244.0.8/32"
+		nextHop  = "192.0.2.100"
+	)
+
+	controller := &Controller{config: &Configuration{
+		RouterID:               IP{IP: net.ParseIP(routerID)},
+		NeighborAddresses:      []IP{{IP: net.ParseIP(neighbor)}},
+		NeighborLocalAddresses: map[string]net.IP{neighbor: net.ParseIP(routerID)},
+		NextHops: map[string]IP{
+			kubeovnv1.ProtocolIPv4: {IP: net.ParseIP(nextHop)},
+		},
+		BgpServer: newTestBgpServer(t, routerID),
+	}}
+
+	// Announce: the route must carry the user-configured next hop, not the router ID.
+	require.NoError(t, controller.reconcileRoutes(prefixMap{
+		api.Family_AFI_IP: set.New(prefix),
+	}))
+	routes := listTestPrefixNextHops(t, controller.config.BgpServer, api.Family_AFI_IP)
+	require.Contains(t, routes, prefix)
+	require.Len(t, routes[prefix], 1)
+	require.True(t, net.ParseIP(nextHop).Equal(routes[prefix][0]))
+
+	// Withdraw: the route must be removed, matched and withdrawn using the same configured next hop.
+	require.NoError(t, controller.reconcileRoutes(prefixMap{
+		api.Family_AFI_IP: set.New[string](),
+	}))
+	require.NotContains(t, listTestPrefixNextHops(t, controller.config.BgpServer, api.Family_AFI_IP), prefix)
 }

@@ -170,12 +170,17 @@ func (ip IP) String() string {
 }
 
 type Configuration struct {
-	GrpcHost                    IP                `yaml:"grpc-host,omitempty"`
-	GrpcPort                    int32             `yaml:"grpc-port,omitempty"`
-	ClusterAs                   uint32            `yaml:"cluster-as,omitempty"`
-	RouterID                    IP                `yaml:"router-id,omitempty"`
-	PodIPs                      map[string]net.IP `yaml:"-"`
-	NodeIPs                     map[string]IP     `yaml:"node-ips,omitempty"`
+	GrpcHost  IP                `yaml:"grpc-host,omitempty"`
+	GrpcPort  int32             `yaml:"grpc-port,omitempty"`
+	ClusterAs uint32            `yaml:"cluster-as,omitempty"`
+	RouterID  IP                `yaml:"router-id,omitempty"`
+	PodIPs    map[string]net.IP `yaml:"-"`
+	NodeIPs   map[string]IP     `yaml:"node-ips,omitempty"`
+	// NextHops is an explicit per address-family next hop override, taking precedence
+	// over local address whitelisting and route lookup. Intended for use cases such as
+	// advertising an OVN LRP EIP as the next hop while the BGP session itself is
+	// established via a different address.
+	NextHops                    map[string]IP     `yaml:"next-hops,omitempty"`
 	NeighborAddresses           IPList            `yaml:"neighbor-address,omitempty"`
 	NeighborIPv6Addresses       IPList            `yaml:"neighbor-ipv6-address,omitempty"`
 	AllowedSourceAddresses      IPList            `yaml:"allowed-source-addresses,omitempty"`
@@ -227,27 +232,29 @@ func ParseFlags() (*Configuration, error) {
 		argClusterAs                   = pflag.Uint32("cluster-as", 0, "The AS number of the local BGP speaker (required)")
 		argRouterID                    = pflag.IP("router-id", nil, "The address for the speaker to use as router ID. When empty, the IPv4 address from POD_IPS is used; if POD_IPS is empty, POD_IP is used; if no IPv4 address is available, 0.0.0.0 is used")
 		argNodeIPs                     = pflag.IPSlice("node-ips", nil, "The comma-separated list of node IP addresses to use instead of the pod IP address for the next hop router IP address.")
-		argNeighborAddress             = pflag.IPSlice("neighbor-address", nil, "Comma separated IPv4 router addresses the speaker connects to.")
-		argNeighborIPv6Address         = pflag.IPSlice("neighbor-ipv6-address", nil, "Comma separated IPv6 router addresses the speaker connects to.")
-		argAllowedSourceAddresses      = pflag.IPSlice("allowed-source-addresses", nil, "Comma separated IPv4 source addresses allowed for BGP peering and next-hop advertisement.")
-		argAllowedSourceIPv6Addresses  = pflag.IPSlice("allowed-source-ipv6-addresses", nil, "Comma separated IPv6 source addresses allowed for BGP peering and next-hop advertisement.")
-		argNeighborAs                  = pflag.Uint32("neighbor-as", 0, "The AS number of the BGP neighbor/peer (required)")
-		argAuthPassword                = pflag.String("auth-password", "", "bgp peer auth password")
-		argHoldTime                    = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected. Holdtime must be in the range 3s to 65536s.")
-		argPprofPort                   = pflag.Int32("pprof-port", DefaultPprofPort, "The port to get profiling data")
-		argNodeName                    = pflag.String("node-name", os.Getenv(util.EnvNodeName), "Name of the node on which the speaker is running on.")
-		argKubeConfigFile              = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
-		argPassiveMode                 = pflag.BoolP("passivemode", "", false, "Set BGP Speaker to passive model, do not actively initiate connections to peers")
-		argEbgpMultihopTTL             = pflag.Uint8("ebgp-multihop", DefaultEbgpMultiHop, "The TTL value of EBGP peer")
-		argExtendedNexthop             = pflag.BoolP("extended-nexthop", "", false, "Announce IPv4/IPv6 prefixes to every neighbor, no matter their AFI")
-		argNatGwMode                   = pflag.BoolP("nat-gw-mode", "", false, "Make the BGP speaker announce EIPs from inside a NAT gateway, Pod IP/Service/Subnet announcements will be disabled")
-		argEnableMetrics               = pflag.BoolP("enable-metrics", "", true, "Whether to support metrics query")
-		argLogPerm                     = pflag.String("log-perm", "640", "The permission for the log file")
-		argEnableBFD                   = pflag.BoolP("enable-bfd", "", false, "Enable BFD (Bidirectional Forwarding Detection) for fast failure detection")
-		argBFDMinTX                    = pflag.Uint32("bfd-min-tx", 1000, "BFD minimum transmit interval in milliseconds (max 4294967)")
-		argBFDMinRX                    = pflag.Uint32("bfd-min-rx", 1000, "BFD minimum receive interval in milliseconds (max 4294967)")
-		argBFDDetectionMultiplier      = pflag.Uint8("bfd-detection-multiplier", 3, "BFD detection multiplier (valid range 1-255 per RFC 5880)")
-		argConfigFile                  = pflag.String("config", os.Getenv(util.EnvKubeOVNBGPSpeakerConfigFile), "Path to speaker config file in yaml format")
+		// Only the first IPv4 and first IPv6 address are honored (one next hop per address family).
+		argNextHops                   = pflag.IPSlice("next-hops", nil, "Comma separated next hop override addresses (one IPv4 and/or one IPv6); only the first address of each family is used. Takes precedence over node-ips and route lookup.")
+		argNeighborAddress            = pflag.IPSlice("neighbor-address", nil, "Comma separated IPv4 router addresses the speaker connects to.")
+		argNeighborIPv6Address        = pflag.IPSlice("neighbor-ipv6-address", nil, "Comma separated IPv6 router addresses the speaker connects to.")
+		argAllowedSourceAddresses     = pflag.IPSlice("allowed-source-addresses", nil, "Comma separated IPv4 source addresses allowed for BGP peering and next-hop advertisement.")
+		argAllowedSourceIPv6Addresses = pflag.IPSlice("allowed-source-ipv6-addresses", nil, "Comma separated IPv6 source addresses allowed for BGP peering and next-hop advertisement.")
+		argNeighborAs                 = pflag.Uint32("neighbor-as", 0, "The AS number of the BGP neighbor/peer (required)")
+		argAuthPassword               = pflag.String("auth-password", "", "bgp peer auth password")
+		argHoldTime                   = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected. Holdtime must be in the range 3s to 65536s.")
+		argPprofPort                  = pflag.Int32("pprof-port", DefaultPprofPort, "The port to get profiling data")
+		argNodeName                   = pflag.String("node-name", os.Getenv(util.EnvNodeName), "Name of the node on which the speaker is running on.")
+		argKubeConfigFile             = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
+		argPassiveMode                = pflag.BoolP("passivemode", "", false, "Set BGP Speaker to passive model, do not actively initiate connections to peers")
+		argEbgpMultihopTTL            = pflag.Uint8("ebgp-multihop", DefaultEbgpMultiHop, "The TTL value of EBGP peer")
+		argExtendedNexthop            = pflag.BoolP("extended-nexthop", "", false, "Announce IPv4/IPv6 prefixes to every neighbor, no matter their AFI")
+		argNatGwMode                  = pflag.BoolP("nat-gw-mode", "", false, "Make the BGP speaker announce EIPs from inside a NAT gateway, Pod IP/Service/Subnet announcements will be disabled")
+		argEnableMetrics              = pflag.BoolP("enable-metrics", "", true, "Whether to support metrics query")
+		argLogPerm                    = pflag.String("log-perm", "640", "The permission for the log file")
+		argEnableBFD                  = pflag.BoolP("enable-bfd", "", false, "Enable BFD (Bidirectional Forwarding Detection) for fast failure detection")
+		argBFDMinTX                   = pflag.Uint32("bfd-min-tx", 1000, "BFD minimum transmit interval in milliseconds (max 4294967)")
+		argBFDMinRX                   = pflag.Uint32("bfd-min-rx", 1000, "BFD minimum receive interval in milliseconds (max 4294967)")
+		argBFDDetectionMultiplier     = pflag.Uint8("bfd-detection-multiplier", 3, "BFD detection multiplier (valid range 1-255 per RFC 5880)")
+		argConfigFile                 = pflag.String("config", os.Getenv(util.EnvKubeOVNBGPSpeakerConfigFile), "Path to speaker config file in yaml format")
 	)
 	klogFlags := flag.NewFlagSet("klog", flag.ExitOnError)
 	klog.InitFlags(klogFlags)
@@ -282,6 +289,17 @@ func ParseFlags() (*Configuration, error) {
 		}
 	}
 
+	// Only one next hop per address family is supported; if multiple are passed,
+	// only the last IPv4 and last IPv6 entries win (matches node-ips behavior above).
+	var nextHopV4, nextHopV6 net.IP
+	for _, ip := range *argNextHops {
+		if ip.To4() != nil {
+			nextHopV4 = ip
+		} else if ip.To16() != nil {
+			nextHopV6 = ip
+		}
+	}
+
 	// Convert []net.IP from pflag to []IP for YAML support.
 	neighborAddresses := make([]IP, 0, len(*argNeighborAddress))
 	for _, ip := range *argNeighborAddress {
@@ -311,6 +329,7 @@ func ParseFlags() (*Configuration, error) {
 		AllowedSourceAddresses:      allowedSourceAddresses,
 		AllowedSourceIPv6Addresses:  allowedSourceIPv6Addresses,
 		NodeIPs:                     map[string]IP{kubeovnv1.ProtocolIPv4: {IP: nodeIPv4}, kubeovnv1.ProtocolIPv6: {IP: nodeIPv6}},
+		NextHops:                    map[string]IP{kubeovnv1.ProtocolIPv4: {IP: nextHopV4}, kubeovnv1.ProtocolIPv6: {IP: nextHopV6}},
 		PodIPs:                      make(map[string]net.IP, 2),
 		NeighborAs:                  *argNeighborAs,
 		AuthPassword:                *argAuthPassword,
@@ -451,6 +470,9 @@ func (config *Configuration) loadFileConfig() (*Configuration, error) {
 	if err := cfg.validateNodeIPs(); err != nil {
 		return nil, err
 	}
+	if err := cfg.validateNextHops(); err != nil {
+		return nil, err
+	}
 	return &cfg, nil
 }
 
@@ -471,6 +493,23 @@ func (config *Configuration) validateNodeIPs() error {
 	return nil
 }
 
+func (config *Configuration) validateNextHops() error {
+	for family, address := range config.NextHops {
+		if family != kubeovnv1.ProtocolIPv4 && family != kubeovnv1.ProtocolIPv6 {
+			return fmt.Errorf("invalid next-hops key %q: expected IPv4 or IPv6", family)
+		}
+		// Empty and null values clear the corresponding CLI override.
+		if address.IP == nil {
+			continue
+		}
+		if (family == kubeovnv1.ProtocolIPv4 && address.To4() == nil) ||
+			(family == kubeovnv1.ProtocolIPv6 && (address.To16() == nil || address.To4() != nil)) {
+			return fmt.Errorf("invalid next-hops %s address %s: expected %s", family, address, family)
+		}
+	}
+	return nil
+}
+
 func (config *Configuration) hasFileField(name string, nonZero bool) bool {
 	if config.fileFields == nil {
 		return nonZero
@@ -483,6 +522,7 @@ func (config *Configuration) hasFileField(name string, nonZero bool) bool {
 // Variables from the file will override command line arguments and the default configuration.
 func (config *Configuration) mergeFileConfig(cfg *Configuration) {
 	config.mergeFileNodeIPs(cfg)
+	config.mergeFileNextHops(cfg)
 	config.mergeFileBooleans(cfg)
 	if cfg.hasFileField("grpc-host", cfg.GrpcHost.IP != nil) {
 		config.GrpcHost = cfg.GrpcHost
@@ -567,6 +607,27 @@ func (config *Configuration) mergeFileNodeIPs(cfg *Configuration) {
 			delete(config.NodeIPs, family)
 		} else {
 			config.NodeIPs[family] = address
+		}
+	}
+}
+
+func (config *Configuration) mergeFileNextHops(cfg *Configuration) {
+	if !cfg.hasFileField("next-hops", cfg.NextHops != nil) {
+		return
+	}
+	// An empty or null map clears all overrides; individual entries merge by family.
+	if len(cfg.NextHops) == 0 {
+		config.NextHops = nil
+		return
+	}
+	if config.NextHops == nil {
+		config.NextHops = make(map[string]IP)
+	}
+	for family, address := range cfg.NextHops {
+		if address.IP == nil {
+			delete(config.NextHops, family)
+		} else {
+			config.NextHops[family] = address
 		}
 	}
 }
