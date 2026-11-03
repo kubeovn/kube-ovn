@@ -21,11 +21,16 @@ package v1
 // IptablesDnatRuleSpecApplyConfiguration represents a declarative configuration of the IptablesDnatRuleSpec type for use
 // with apply.
 type IptablesDnatRuleSpecApplyConfiguration struct {
-	// EIP name for DNAT rule
+	// Name of the EIP the rule exposes its backends on. It may be omitted only when
+	// ClusterIP is set, i.e. the rule is reachable from inside the VPC only.
 	EIP *string `json:"eip,omitempty"`
+	// Internal virtual IP the rule serves, reachable from inside the VPC through the VPC NAT
+	// gateway. Only IPv4 addresses and type=share rules support it. It is immutable: delete
+	// and recreate the rule to serve another address.
+	ClusterIP *string `json:"clusterIP,omitempty"`
 	// External port number
 	ExternalPort *string `json:"externalPort,omitempty"`
-	// Protocol type (TCP or UDP)
+	// Protocol type (TCP or UDP).
 	Protocol *string `json:"protocol,omitempty"`
 	// Internal IP address to forward traffic to
 	InternalIP *string `json:"internalIp,omitempty"`
@@ -55,6 +60,14 @@ func IptablesDnatRuleSpec() *IptablesDnatRuleSpecApplyConfiguration {
 // If called multiple times, the EIP field is set to the value of the last call.
 func (b *IptablesDnatRuleSpecApplyConfiguration) WithEIP(value string) *IptablesDnatRuleSpecApplyConfiguration {
 	b.EIP = &value
+	return b
+}
+
+// WithClusterIP sets the ClusterIP field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ClusterIP field is set to the value of the last call.
+func (b *IptablesDnatRuleSpecApplyConfiguration) WithClusterIP(value string) *IptablesDnatRuleSpecApplyConfiguration {
+	b.ClusterIP = &value
 	return b
 }
 

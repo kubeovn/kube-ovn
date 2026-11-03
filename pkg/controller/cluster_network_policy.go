@@ -58,6 +58,10 @@ func (c *Controller) enqueueUpdateCnp(oldObj, newObj any) {
 		c.addCnpQueue.Add(newCnp.Name)
 		return
 	}
+	if hasCnpNamedPort(newCnp) && !reflect.DeepEqual(oldCnp.Spec, newCnp.Spec) {
+		c.addCnpQueue.Add(newCnp.Name)
+		return
+	}
 
 	klog.V(3).Infof("enqueue update cnp %s", newCnp.Name)
 
@@ -158,6 +162,27 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 	cnpName := getCnpName(cnp.Name)
 	pgName := getCnpPortGroupName(cnp)
 	cnpACLTier := getCnpACLTier(cnp.Spec.Tier)
+	var namedPortVariants []networkPolicyNamedPortVariant
+	requestedNamedPorts := requestedNamedPortNamesCnp(cnp.Spec.Ingress)
+	for name := range requestedNamedPortNamesCnpEgress(cnp.Spec.Egress) {
+		requestedNamedPorts[name] = struct{}{}
+	}
+	if len(requestedNamedPorts) != 0 {
+		nsSelector, podSelector := namedPortSelectorsForCnpSubject(&cnp.Spec.Subject)
+		selectors, err := c.namedPortSelectors(nsSelector, podSelector)
+		if err != nil {
+			return err
+		}
+		namedPortVariants, err = c.namedPortVariantsForSelectors(selectors, requestedNamedPorts, pgName)
+		if err != nil {
+			return err
+		}
+		if err := c.ensurePolicyNamedPortGroups(clusterNetworkPolicyKey, pgName, namedPortVariants); err != nil {
+			return err
+		}
+	} else if err := c.ensurePolicyNamedPortGroups(clusterNetworkPolicyKey, pgName, nil); err != nil {
+		return err
+	}
 
 	curIngressAddrSet, curEgressAddrSet, err := c.getCnpCurrentAddrSetByName(cnpName)
 	if err != nil {
@@ -188,10 +213,19 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 
 		aclPriority := getCnpACLPriority(cnp, index)
 		rulePorts := rule.Protocols
+		numericPorts := make([]v1alpha2.ClusterNetworkPolicyProtocol, 0, len(rulePorts))
+		for _, port := range rulePorts {
+			if port.DestinationNamedPort == "" {
+				numericPorts = append(numericPorts, port)
+			}
+		}
 
-		if as4len != 0 {
+		// Keep the ACL even when the selector currently matches no addresses. A
+		// later pod or namespace label change updates the address set in place;
+		// without the ACL there is nothing for OVN to evaluate after that update.
+		if len(rulePorts) == 0 || len(numericPorts) != 0 {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "ingress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, true, cnpACLTier)
+			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, numericPorts, true, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v4 ingress acls for cnp %s: %v", key, err)
 				return err
@@ -199,14 +233,42 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 			ingressACLOps = append(ingressACLOps, ops...)
 		}
 
-		if as6len != 0 {
+		if len(rulePorts) == 0 || len(numericPorts) != 0 {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv6, "ingress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, true, cnpACLTier)
+			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, numericPorts, true, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v6 ingress acls for cnp %s: %v", cnp.Name, err)
 				return err
 			}
 			ingressACLOps = append(ingressACLOps, ops...)
+		}
+
+		for _, protocol := range rule.Protocols {
+			if protocol.DestinationNamedPort == "" {
+				continue
+			}
+			for _, variant := range namedPortVariants {
+				if variant.name != protocol.DestinationNamedPort {
+					continue
+				}
+				variantPorts := []v1alpha2.ClusterNetworkPolicyProtocol{cnpNamedPortProtocol(namedPortKey{protocol: variant.protocol, port: variant.port})}
+				if as4len != 0 {
+					aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "ingress", index) + fmt.Sprintf("/named/%s/%s/%d", variant.name, variant.protocol, variant.port)
+					ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(variant.pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, variantPorts, true, cnpACLTier)
+					if err != nil {
+						return err
+					}
+					ingressACLOps = append(ingressACLOps, ops...)
+				}
+				if as6len != 0 {
+					aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv6, "ingress", index) + fmt.Sprintf("/named/%s/%s/%d", variant.name, variant.protocol, variant.port)
+					ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(variant.pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, variantPorts, true, cnpACLTier)
+					if err != nil {
+						return err
+					}
+					ingressACLOps = append(ingressACLOps, ops...)
+				}
+			}
 		}
 	}
 
@@ -231,12 +293,9 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 		}
 	}
 
-	// hasCnpDomainNames is invariant across egress rules, so compute it once
-	hasDomainNames := hasCnpDomainNames(cnp)
-
 	// create egress acl
 	for index, rule := range cnp.Spec.Egress {
-		v4AddressSetName, as4len, v6AddressSetName, as6len, err := c.generateCnpEgressAddressSet(cnpName, pgName, rule, index)
+		v4AddressSetName, _, v6AddressSetName, _, err := c.generateCnpEgressAddressSet(cnpName, pgName, rule, index)
 		if err != nil {
 			err := fmt.Errorf("failed to generate egress address set for cnp %s: %w", cnp.Name, err)
 			klog.Error(err)
@@ -247,27 +306,72 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 
 		aclPriority := getCnpACLPriority(cnp, index)
 		rulePorts := rule.Protocols
+		numericPorts := make([]v1alpha2.ClusterNetworkPolicyProtocol, 0, len(rulePorts))
+		for _, port := range rulePorts {
+			if port.DestinationNamedPort == "" {
+				numericPorts = append(numericPorts, port)
+			}
+		}
 
-		// Create ACL rules if we have IP addresses OR domain names.
-		// Domain names may not be resolved initially but will be updated later
-		if as4len != 0 || hasDomainNames {
+		// Keep ACLs for empty selector results so later pod or namespace label
+		// changes can activate the address set without recreating the policy.
+		if len(rulePorts) == 0 || len(numericPorts) != 0 {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "egress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, cnpACLTier)
+			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, numericPorts, false, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v4 egress acls for cnp %s: %v", key, err)
 				return err
 			}
 			egressACLOps = append(egressACLOps, ops...)
 		}
-
-		if as6len != 0 || hasDomainNames {
+		if len(rulePorts) == 0 || len(numericPorts) != 0 {
 			aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv6, "egress", index)
-			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, rulePorts, false, cnpACLTier)
+			ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6AddressSetName, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, numericPorts, false, cnpACLTier)
 			if err != nil {
 				klog.Errorf("failed to add v6 egress acls for cnp %s: %v", key, err)
 				return err
 			}
 			egressACLOps = append(egressACLOps, ops...)
+		}
+		for _, protocol := range rule.Protocols {
+			if protocol.DestinationNamedPort == "" {
+				continue
+			}
+			addresses, err := c.namedPortAddressesForCnpEgressPeers(rule.To, protocol.DestinationNamedPort)
+			if err != nil {
+				return err
+			}
+			for variant, selected := range addresses {
+				if len(selected.v4) == 0 && len(selected.v6) == 0 {
+					continue
+				}
+				v4Name := networkPolicyNamedPortAddressSetName(fmt.Sprintf("%s.%s.egress", cnpName, "cnp"), kubeovnv1.ProtocolIPv4, index, protocol.DestinationNamedPort, variant)
+				v6Name := networkPolicyNamedPortAddressSetName(fmt.Sprintf("%s.%s.egress", cnpName, "cnp"), kubeovnv1.ProtocolIPv6, index, protocol.DestinationNamedPort, variant)
+				if len(selected.v4) != 0 {
+					if err := c.createCnpAddressSet(cnpName, rule.Name, "egress", v4Name, selected.v4); err != nil {
+						return err
+					}
+					desiredEgressAddrSet.Add(v4Name)
+					aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "egress", index) + fmt.Sprintf("/named/%s/%s/%d", protocol.DestinationNamedPort, variant.protocol, variant.port)
+					ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, []v1alpha2.ClusterNetworkPolicyProtocol{cnpNamedPortProtocol(variant)}, false, cnpACLTier)
+					if err != nil {
+						return err
+					}
+					egressACLOps = append(egressACLOps, ops...)
+				}
+				if len(selected.v6) != 0 {
+					if err := c.createCnpAddressSet(cnpName, rule.Name, "egress", v6Name, selected.v6); err != nil {
+						return err
+					}
+					desiredEgressAddrSet.Add(v6Name)
+					aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv6, "egress", index) + fmt.Sprintf("/named/%s/%s/%d", protocol.DestinationNamedPort, variant.protocol, variant.port)
+					ops, err := c.OVNNbClient.UpdateCnpRuleACLOps(pgName, v6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, []v1alpha2.ClusterNetworkPolicyProtocol{cnpNamedPortProtocol(variant)}, false, cnpACLTier)
+					if err != nil {
+						return err
+					}
+					egressACLOps = append(egressACLOps, ops...)
+				}
+			}
 		}
 	}
 
@@ -385,6 +489,10 @@ func (c *Controller) handleDeleteCnp(cnp *v1alpha2.ClusterNetworkPolicy) error {
 		// Do not exit on errors, try to go as far as possible in the deletion
 		klog.Errorf("failed to delete port group for cnp %s: %v", cnp.Name, err)
 	}
+	namedPortErr := c.deletePolicyNamedPortGroups(clusterNetworkPolicyKey, pgName)
+	if namedPortErr != nil {
+		klog.Errorf("failed to delete named-port port groups for cnp %s: %v", cnp.Name, namedPortErr)
+	}
 
 	// Delete all ingress address sets for this CNP
 	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
@@ -410,7 +518,7 @@ func (c *Controller) handleDeleteCnp(cnp *v1alpha2.ClusterNetworkPolicy) error {
 		}
 	}
 
-	return nil
+	return namedPortErr
 }
 
 // getCnpCurrentAddrSetByName returns the address sets present in OVN databases for a given ClusterNetworkPolicy
@@ -989,8 +1097,11 @@ func (c *Controller) updateCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPol
 		return fmt.Errorf("failed to get priority maps for cnp %s: %w", cnp.Name, err)
 	}
 
-	// Update map entries for the CNP
-	priorityNameMap[cnp.Spec.Priority] = cnp.Name
+	// Keep ANP/BANP priority entries intact while allowing CNPs in the same
+	// tier to share a priority.
+	if existingName, exists := priorityNameMap[cnp.Spec.Priority]; !exists || existingName == cnp.Name || c.cnpsLister == nil || c.isCnpName(existingName, cnp.Spec.Tier) {
+		priorityNameMap[cnp.Spec.Priority] = cnp.Name
+	}
 	namePriorityMap[cnp.Name] = cnp.Spec.Priority
 
 	return nil
@@ -1003,7 +1114,10 @@ func (c *Controller) deleteCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPol
 		return fmt.Errorf("failed to get priority maps for cnp %s: %w", cnp.Name, err)
 	}
 
-	delete(priorityNameMap, cnp.Spec.Priority)
+	if existingName, exists := priorityNameMap[cnp.Spec.Priority]; exists && (existingName == cnp.Name || c.cnpsLister == nil) {
+		delete(priorityNameMap, cnp.Spec.Priority)
+		c.restoreCnpPriorityMapEntry(priorityNameMap, cnp.Spec.Tier, cnp.Spec.Priority)
+	}
 	delete(namePriorityMap, cnp.Name)
 
 	return nil
@@ -1024,7 +1138,10 @@ func (c *Controller) wipeCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPolic
 		// otherwise the zero value 0 would wipe the entry of the CNP legitimately
 		// registered at priority 0 in this tier.
 		if priority, ok := namePriorityMap[cnp.Name]; ok {
-			delete(priorityNameMap, priority)
+			if existingName, exists := priorityNameMap[priority]; exists && (existingName == cnp.Name || c.cnpsLister == nil) {
+				delete(priorityNameMap, priority)
+				c.restoreCnpPriorityMapEntry(priorityNameMap, tier, priority)
+			}
 			delete(namePriorityMap, cnp.Name)
 		}
 	}
@@ -1048,8 +1165,9 @@ func (c *Controller) validateCnpConfig(cnp *v1alpha2.ClusterNetworkPolicy) error
 		return err
 	}
 
-	// Check the CNP respects priority rules
-	if err := checkCnpPriorities(priorityNameMap, cnp); err != nil {
+	// Check the CNP respects priority rules. CNPs in the same tier may share a
+	// priority; ANP/BANP entries in the shared map must remain unique.
+	if err := c.validateCnpPriority(priorityNameMap, cnp); err != nil {
 		return err
 	}
 
@@ -1068,9 +1186,72 @@ func (c *Controller) validateCnpConfig(cnp *v1alpha2.ClusterNetworkPolicy) error
 	return nil
 }
 
-// checkCnpPriorities checks if a ClusterNetworkPolicy respects the priority rules defined by the standard:
-//   - it must not collide with the priority of another CNP in the same tier
-//   - the maximum priority must not be greater than the limit
+// validateCnpPriority applies the CNP-specific priority semantics to the
+// controller's shared priority map. CNPs may share a priority, while ANP and
+// BANP entries remain conflicts in their respective tiers.
+func (c *Controller) validateCnpPriority(priorityNameMap map[int32]string, cnp *v1alpha2.ClusterNetworkPolicy) error {
+	if priorityNameMap == nil || cnp == nil {
+		return checkCnpPriorities(priorityNameMap, cnp)
+	}
+
+	if existingName, exists := priorityNameMap[cnp.Spec.Priority]; exists && existingName != cnp.Name {
+		if !c.isCnpName(existingName, cnp.Spec.Tier) {
+			return checkCnpPriorities(priorityNameMap, cnp)
+		}
+	}
+
+	return checkCnpPriorities(map[int32]string{}, cnp)
+}
+
+func (c *Controller) isCnpName(name string, tier v1alpha2.Tier) bool {
+	if c.cnpsLister == nil {
+		return false
+	}
+	cnp, err := c.cnpsLister.Get(name)
+	if err != nil || cnp.Spec.Tier != tier {
+		return false
+	}
+
+	// Names are cluster-scoped independently for ANP/BANP and CNP. A same-name
+	// object in the corresponding legacy lister means the shared map entry may
+	// belong to the legacy policy, so keep the conflict conservative.
+	switch tier {
+	case v1alpha2.AdminTier:
+		if c.anpsLister != nil {
+			if _, err := c.anpsLister.Get(name); err == nil {
+				return false
+			}
+		}
+	case v1alpha2.BaselineTier:
+		if c.banpsLister != nil {
+			if _, err := c.banpsLister.Get(name); err == nil {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (c *Controller) restoreCnpPriorityMapEntry(priorityNameMap map[int32]string, tier v1alpha2.Tier, priority int32) {
+	if c.cnpsLister == nil {
+		return
+	}
+
+	cnps, err := c.cnpsLister.List(labels.Everything())
+	if err != nil {
+		return
+	}
+	for _, cnp := range cnps {
+		if cnp.Spec.Tier == tier && cnp.Spec.Priority == priority {
+			priorityNameMap[priority] = cnp.Name
+			return
+		}
+	}
+}
+
+// checkCnpPriorities enforces exclusive priority ownership for the supplied
+// policy. validateCnpPriority uses this strict check only when the shared map
+// entry belongs to an ANP or BANP (CNPs in the same tier may share a priority).
 func checkCnpPriorities(priorityNameMap map[int32]string, cnp *v1alpha2.ClusterNetworkPolicy) error {
 	// Sanitize the function input
 	if priorityNameMap == nil || cnp == nil {

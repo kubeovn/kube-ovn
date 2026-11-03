@@ -116,9 +116,8 @@ type Controller struct {
 	// qosNatGwKeyMutex is the only QoS data-plane lock. It is keyed by NAT gateway,
 	// never by EIP or QoS policy, because every QoS rule on one gateway shares its
 	// HTB root, IFB device and ingress redirect state.
-	qosNatGwKeyMutex     keymutex.KeyMutex
-	vpcNatGwExecKeyMutex keymutex.KeyMutex
-
+	qosNatGwKeyMutex                 keymutex.KeyMutex
+	vpcNatGwExecKeyMutex             keymutex.KeyMutex
 	vpcEgressGatewayLister           kubeovnlister.VpcEgressGatewayLister
 	vpcEgressGatewaySynced           cache.InformerSynced
 	addOrUpdateVpcEgressGatewayQueue workqueue.TypedRateLimitingInterface[string]
@@ -135,6 +134,26 @@ type Controller struct {
 	bgpConfSynced  cache.InformerSynced
 	evpnConfLister atomic.Pointer[kubeovnlister.EvpnConfLister]
 	evpnConfSynced cache.InformerSynced
+
+	// gcChassisMu serializes gcChassis against its call sites: the periodic
+	// GC ticker, the reactive call from UpdateChassisTag, and the startup
+	// flush in initNodeChassis. gcChassis itself also honors
+	// GCInterval==0 (same contract as gc()), so all three no-op when GC is
+	// disabled.
+	gcChassisMu sync.Mutex
+	// nodeChassisInitialized guards gcChassis against running before
+	// initNodeChassis has had a chance to tag every live node's chassis. The
+	// periodic GC ticker starts (and fires once immediately) inside
+	// startWorkers, which only waits for AllocatedAnnotation on each node -
+	// a node can pass that barrier before kube-ovn-cni has patched its
+	// ChassisAnnotation, let alone before initResourceOnce's initNodeChassis
+	// pass (which runs after startWorkers returns) has tagged its chassis.
+	// Without this gate, that chassis looks orphaned on the very first tick
+	// and gets deleted. Set once, at the end of initNodeChassis, which also
+	// flushes one gcChassis pass right after opening the gate so a reactive
+	// call that no-op'd while the gate was closed (or the ticker's first,
+	// skipped tick) doesn't sit stale until the next periodic tick.
+	nodeChassisInitialized atomic.Bool
 
 	routerLBRuleLister      kubeovnlister.RouterLBRuleLister
 	routerLBRuleSynced      cache.InformerSynced
@@ -262,7 +281,12 @@ type Controller struct {
 	updateServiceQueue workqueue.TypedRateLimitingInterface[*updateSvcObject]
 	svcKeyMutex        keymutex.KeyMutex
 
-	addOrUpdateNftableLbSvcQueue workqueue.TypedRateLimitingInterface[string]
+	addOrUpdateGwNftableLbSvcQueue workqueue.TypedRateLimitingInterface[string]
+	// nftableLbVipSnapshot remembers the gateway VIP state each Service last programmed, keyed by
+	// gateway and then by Service (namespace/name). It is the floor of the gateway-wide desired
+	// state while the informer has not observed a Service's records yet; see
+	// desiredNatGwVipStateForService. Only the single-threaded worker above touches it.
+	nftableLbVipSnapshot map[string]map[string]nftableLbSvcVips
 
 	endpointSlicesLister          discoveryv1.EndpointSliceLister
 	endpointSlicesSynced          cache.InformerSynced
@@ -648,7 +672,8 @@ func Run(ctx context.Context, config *Configuration) {
 		updateServiceQueue: newTypedRateLimitingQueue[*updateSvcObject]("UpdateService", nil),
 		svcKeyMutex:        keymutex.NewHashed(numKeyLocks),
 
-		addOrUpdateNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateNftableLbSvc", nil),
+		addOrUpdateGwNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateGwNftableLbSvc", nil),
+		nftableLbVipSnapshot:           make(map[string]map[string]nftableLbSvcVips),
 
 		endpointSlicesLister:          endpointSliceInformer.Lister(),
 		endpointSlicesSynced:          endpointSliceInformer.Informer().HasSynced,
@@ -1374,7 +1399,7 @@ func (c *Controller) shutdown() {
 	c.addServiceQueue.ShutDown()
 	c.deleteServiceQueue.ShutDown()
 	c.updateServiceQueue.ShutDown()
-	c.addOrUpdateNftableLbSvcQueue.ShutDown()
+	c.addOrUpdateGwNftableLbSvcQueue.ShutDown()
 	c.addOrUpdateEndpointSliceQueue.ShutDown()
 	c.priorityEndpointSliceQueue.ShutDown()
 
@@ -1574,18 +1599,28 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}
 	}
 
-	if c.config.EnableOvnLB {
+	// The worker is always started: with the gateway nftable gates off it must still drain Services
+	// and records this feature programmed before the gates were turned off. The handler only acts on
+	// leftovers in that mode. Service informer startup Adds replay every live or finalizing Service,
+	// and the record replay below covers an orphaned record whose Service is already gone.
+	go wait.Until(runWorker("add/update gateway nftable lb service", c.addOrUpdateGwNftableLbSvcQueue, c.handleAddOrUpdateGwNftableLbService), time.Second, ctx.Done())
+	if err := c.enqueueGwNftableLbSvcRecordOwners(); err != nil {
+		klog.Errorf("failed to replay nftable lb accounting records at startup: %v", err)
+	}
+
+	// TODO: Consolidate the OVN LB workers below, including the WorkerNum-scaled workers,
+	// under a single EnableOvnLB condition instead of scattering the same gate.
+	// The Pod LB lifecycle (one forwarding Pod per LoadBalancer Service) does not depend on the OVN
+	// LB data plane: it runs whenever a ClusterIP data plane is present. TODO: give it its own
+	// handlers and workers instead of sharing these, so the two data planes stop sharing an event
+	// path (see podLbSvcEnabled in service.go).
+	if c.config.EnableOvnLB || c.podLbSvcEnabled() {
 		go wait.Until(runWorker("add service", c.addServiceQueue, c.handleAddService), time.Second, ctx.Done())
 		// run in a single worker to avoid delete the last vip, which will lead ovn to delete the loadbalancer
 		go wait.Until(runWorker("delete service", c.deleteServiceQueue, c.handleDeleteService), time.Second, ctx.Done())
+	}
 
-		if c.config.EnableNftableLbSvc {
-			if err := c.enqueueNftableLbSvcOwnersFromRules(); err != nil {
-				util.LogFatalAndExit(err, "failed to enqueue nftable lb service owners from generated dnat rules")
-			}
-			go wait.Until(runWorker("add/update nftable lb service", c.addOrUpdateNftableLbSvcQueue, c.handleAddOrUpdateNftableLbService), time.Second, ctx.Done())
-		}
-
+	if c.config.EnableOvnLB {
 		go wait.Until(runWorker("add/update router lb rule", c.addRouterLBRuleQueue, c.handleAddOrUpdateRouterLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete router lb rule", c.delRouterLBRuleQueue, c.handleDelRouterLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("update router lb rule", c.updateRouterLBRuleQueue, c.handleUpdateRouterLBRule), time.Second, ctx.Done())
@@ -1613,8 +1648,10 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("update status of ippool", c.updateIPPoolStatusQueue, c.handleUpdateIPPoolStatus), time.Second, ctx.Done())
 		go wait.Until(runWorker("virtual port for subnet", c.syncVirtualPortsQueue, c.syncVirtualPort), time.Second, ctx.Done())
 
-		if c.config.EnableOvnLB {
+		if c.config.EnableOvnLB || c.podLbSvcEnabled() {
 			go wait.Until(runWorker("update service", c.updateServiceQueue, c.handleUpdateService), time.Second, ctx.Done())
+		}
+		if c.config.EnableOvnLB {
 			go wait.Until(runWorker("add/update endpoint slice", c.addOrUpdateEndpointSliceQueue, c.handleUpdateEndpointSlice), time.Second, ctx.Done())
 		}
 
@@ -1649,11 +1686,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}, time.Second, ctx.Done())
 
 	if c.config.GCInterval != 0 {
-		go wait.Until(func() {
-			if err := c.markAndCleanLSP(); err != nil {
-				klog.Errorf("gc lsp error: %v", err)
-			}
-		}, time.Duration(c.config.GCInterval)*time.Second, ctx.Done())
+		go wait.Until(c.periodicGC, time.Duration(c.config.GCInterval)*time.Second, ctx.Done())
 	}
 
 	go wait.Until(func() {

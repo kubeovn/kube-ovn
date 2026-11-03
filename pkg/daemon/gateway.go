@@ -296,6 +296,11 @@ func providerCoversIPs(pod *v1.Pod, provider string, podIPs []string) bool {
 func (c *Controller) getTProxyConditionPod(pods []*v1.Pod, needSort bool) ([]*v1.Pod, error) {
 	var filteredPods []*v1.Pod
 	for _, pod := range pods {
+		if pod.DeletionTimestamp != nil {
+			// A terminating Pod may still share its IP with the replacement Pod in
+			// the informer cache. Do not let it keep stale TProxy state alive.
+			continue
+		}
 		provider, ok := getPodPrimaryNetworkProvider(pod)
 		if !ok {
 			// The pod's primary network is not managed by kube-ovn, e.g. kube-ovn works

@@ -21,12 +21,12 @@ func expectVMCaptureInterfaces(namespace, vm string, pod *corev1.Pod) {
 		k8sframework.TestContext.Host, k8sframework.TestContext.KubeConfig,
 		k8sframework.TestContext.KubeContext, k8sframework.TestContext.KubectlPath, "")
 	for _, target := range []struct{ kind, name string }{
-		{"vm", namespace + "/" + vm}, {"vmi", vm}, {"pod", namespace + "/" + pod.Name},
+		{"vm", vm}, {"vmi", vm}, {"pod", pod.Name},
 	} {
 		ginkgo.By("Listing capture interfaces for " + target.kind + " " + target.name)
 		command := testConfig.KubectlCmd()
 		args := append([]string{"ko"}, command.Args[1:]...)
-		args = append(args, "--namespace", namespace, "--timeout", "1m", "capture", "--"+target.kind, target.name, "--", "-D")
+		args = append(args, "--namespace", namespace, "--timeout", "1m", "capture", target.kind+"/"+target.name, "--", "-D")
 		ctx, cancel := context.WithTimeout(context.Background(), 70*time.Second)
 		cmd := exec.CommandContext(ctx, command.Path, args...)
 		var stderr bytes.Buffer

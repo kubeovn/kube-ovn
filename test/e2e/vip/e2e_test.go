@@ -743,8 +743,10 @@ var _ = framework.Describe("[group:vip]", func() {
 			vip := makeOvnVip(namespaceName, vipName, subnetName, vipV4, vipV6, util.SwitchLBRuleVip, []string{attachSubnetName1})
 			vip = vipClient.CreateSync(vip)
 
-			// Verify annotation is set
-			framework.ExpectEqual(vip.Annotations[util.VipAttachSubnetsAnnotation], attachSubnetName1)
+			framework.WaitUntil(time.Second, time.Minute, func(context.Context) (bool, error) {
+				vip = vipClient.Get(vipName)
+				return vip.Annotations[util.VipAttachSubnetsAnnotation] == attachSubnetName1, nil
+			}, "VIP load balancer is attached to the first subnet")
 
 			// Verify OVN: VPC's LB is attached to attachSubnetName1's logical switch
 			ginkgo.By("Verifying load balancer is attached to " + attachSubnetName1 + " in OVN")
@@ -761,8 +763,10 @@ var _ = framework.Describe("[group:vip]", func() {
 			vip = vipClient.Patch(vip, modified, 30*time.Second)
 			framework.ExpectEqual(vip.Spec.AttachSubnets, []string{attachSubnetName2})
 
-			// Wait for controller to reconcile
-			time.Sleep(5 * time.Second)
+			framework.WaitUntil(time.Second, time.Minute, func(context.Context) (bool, error) {
+				vip = vipClient.Get(vipName)
+				return vip.Annotations[util.VipAttachSubnetsAnnotation] == attachSubnetName2, nil
+			}, "VIP load balancer is moved to the second subnet")
 
 			// Verify old subnet no longer has LB
 			ginkgo.By("Verifying LB is detached from " + attachSubnetName1)

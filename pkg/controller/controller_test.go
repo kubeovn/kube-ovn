@@ -27,6 +27,7 @@ import (
 	"go.uber.org/mock/gomock"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	discoveryv1 "k8s.io/api/discovery/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/informers"
@@ -109,6 +110,7 @@ type FakeControllerOptions struct {
 	Nodes                 []*corev1.Node
 	Namespaces            []*corev1.Namespace
 	Services              []*corev1.Service
+	EndpointSlices        []*discoveryv1.EndpointSlice
 	Vpcs                  []*kubeovnv1.Vpc
 	VpcDNSs               []*kubeovnv1.VpcDns
 	RouterLBRules         []*kubeovnv1.RouterLBRule
@@ -159,6 +161,9 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	}
 	for _, svc := range opts.Services {
 		kubeObjects = append(kubeObjects, svc)
+	}
+	for _, slice := range opts.EndpointSlices {
+		kubeObjects = append(kubeObjects, slice)
 	}
 	for _, sts := range opts.StatefulSets {
 		kubeObjects = append(kubeObjects, sts)
@@ -459,6 +464,8 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		configMapsLister:              configMapInformer.Lister(),
 		vpcNatGwKeyMutex:              keymutex.NewHashed(0),
 		qosNatGwKeyMutex:              keymutex.NewHashed(1),
+		epKeyMutex:                    keymutex.NewHashed(0),
+		svcKeyMutex:                   keymutex.NewHashed(0),
 		OVNNbClient:                   mockOvnClient,
 		OVNSbClient:                   mockOvnSbClient,
 		ipam:                          ovnipam.NewIPAM(),
@@ -491,6 +498,11 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		AttachNetClient:       nadClient,
 		EnableANP:             opts.EnableANP,
 		EnableDNSNameResolver: opts.EnableDNSNameResolver,
+		// GCInterval=0 disables GC entirely (see gcChassis/gc()); tests that
+		// cover that contract override this explicitly, so default to a
+		// running controller's non-zero interval like the
+		// nodeChassisInitialized default below.
+		GCInterval: 360,
 	}
 
 	if err := ctrl.setupIndexers(vpcInformer.Informer(), podInformer.Informer(), endpointSliceInformer.Informer(), ipInformer.Informer(), serviceInformer.Informer()); err != nil {
@@ -508,6 +520,12 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	kubeInformerFactory.WaitForCacheSync(stopCh)
 	nadInformerFactory.WaitForCacheSync(stopCh)
 	kubeovnInformerFactory.WaitForCacheSync(stopCh)
+
+	// gcChassis no-ops until initNodeChassis has run once; tests exercise
+	// gcChassis directly without going through controller startup, so
+	// default this to "initialized" like a running controller past its
+	// startup phase. Tests of the gate itself override it explicitly.
+	ctrl.nodeChassisInitialized.Store(true)
 
 	return &fakeController{
 		fakeController:  ctrl,

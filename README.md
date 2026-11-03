@@ -49,7 +49,7 @@ Kube-OVN is easy to install, please refer to the [Installation Guide](https://ku
 - [Getting Start](https://kubeovn.github.io/docs/stable/en/start/prepare/)
 - [KubeVirt Usage](https://kubeovn.github.io/docs/stable/en/kubevirt/static-ip/)
 - [VPC Network](https://kubeovn.github.io/docs/stable/en/vpc/vpc/)
-- [User Guide](https://kubeovn.github.io/docs/stable/en/guide/setup-options/)
+- [User Guide](https://kubeovn.github.io/docs/stable/en/guide/subnet/)
 - [Operations](https://kubeovn.github.io/docs/stable/en/ops/kubectl-ko/)
 - [Advanced Usage](https://kubeovn.github.io/docs/stable/en/advance/multi-nic/)
 - [Reference](https://kubeovn.github.io/docs/stable/en/reference/architecture/)

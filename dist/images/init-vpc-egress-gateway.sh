@@ -11,11 +11,55 @@ NO_SNAT_SOURCES_IPV6=($(echo "${NO_SNAT_SOURCES_IPV6:-}" | tr ',' ' '))
 ENABLE_BGP=${ENABLE_BGP:-}
 ENABLE_EVPN=${ENABLE_EVPN:-}
 VNI=${VNI:-}
+EXTERNAL_NETWORK_MODE=${EXTERNAL_NETWORK_MODE:-attachment}
 
 sysctl -w net.ipv4.ip_forward=1
 sysctl -w net.ipv6.conf.all.forwarding=1
 
 iptables -V
+
+if [ "${EXTERNAL_NETWORK_MODE}" = "primary-cni" ]; then
+  configure_primary_cni_nat() {
+    local family="$1" gateway="$2" table_cmd="$3" no_snat_sources="$4"
+    local internal_iface external_iface route_output chain="VEG-PRIMARY-SNAT"
+
+    [ -n "${gateway}" ] || return 0
+    route_output=$(ip "-${family}" -o route get "${gateway}")
+    internal_iface=$(awk '{for (i = 1; i < NF; i++) if ($i == "dev") {print $(i+1); exit}}' <<< "${route_output}")
+    external_iface=$(ip "-${family}" -o route show default | awk '{for (i = 1; i < NF; i++) if ($i == "dev") {print $(i+1); exit}}')
+    if [ -z "${internal_iface}" ] || [ "${internal_iface}" = "eth0" ] || [ "${external_iface}" != "eth0" ]; then
+      echo "PrimaryCNI mode requires an internal attachment and a primary eth0 default route for IPv${family}" >&2
+      return 1
+    fi
+
+    if ! "${table_cmd}" -t nat -S "${chain}" &>/dev/null; then
+      "${table_cmd}" -t nat -N "${chain}"
+    fi
+    "${table_cmd}" -t nat -F "${chain}"
+    if ! "${table_cmd}" -t mangle -C PREROUTING -i "${internal_iface}" -j MARK --set-xmark 0x4000/0x4000 &>/dev/null; then
+      "${table_cmd}" -t mangle -A PREROUTING -i "${internal_iface}" -j MARK --set-xmark 0x4000/0x4000
+    fi
+    if ! "${table_cmd}" -t nat -C POSTROUTING -o "${external_iface}" -m mark --mark 0x4000/0x4000 -j "${chain}" &>/dev/null; then
+      "${table_cmd}" -t nat -A POSTROUTING -o "${external_iface}" -m mark --mark 0x4000/0x4000 -j "${chain}"
+    fi
+    local src
+    for src in ${no_snat_sources}; do
+      "${table_cmd}" -t nat -A "${chain}" -s "${src}" -j RETURN
+      "${table_cmd}" -t nat -A "${chain}" -d "${src}" -j RETURN
+    done
+    "${table_cmd}" -t nat -A "${chain}" -j MASQUERADE --random-fully
+    sysctl "net.ipv4.conf.${internal_iface}.rp_filter=0"
+  }
+
+  configure_primary_cni_nat 4 "${INTERNAL_GATEWAY_IPV4}" iptables "${NO_SNAT_SOURCES_IPV4[*]}"
+  configure_primary_cni_nat 6 "${INTERNAL_GATEWAY_IPV6}" ip6tables "${NO_SNAT_SOURCES_IPV6[*]}"
+  exit 0
+fi
+
+if [ "${EXTERNAL_NETWORK_MODE}" != "attachment" ]; then
+  echo "Unsupported external network mode: ${EXTERNAL_NETWORK_MODE}" >&2
+  exit 1
+fi
 
 internal_iface="eth0"
 external_iface="net1"

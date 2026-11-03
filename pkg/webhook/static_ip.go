@@ -27,6 +27,7 @@ var (
 	jobGVK         = batchv1.SchemeGroupVersion.WithKind(util.KindJob)
 	cronJobGVK     = batchv1.SchemeGroupVersion.WithKind(util.KindCronJob)
 	podGVK         = corev1.SchemeGroupVersion.WithKind(util.KindPod)
+	serviceGVK     = corev1.SchemeGroupVersion.WithKind("Service")
 	subnetGVK      = ovnv1.SchemeGroupVersion.WithKind(util.KindSubnet)
 	vpcGVK         = ovnv1.SchemeGroupVersion.WithKind(util.KindVpc)
 )

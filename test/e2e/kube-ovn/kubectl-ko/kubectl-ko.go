@@ -69,7 +69,7 @@ func checkInterfaceStatistics(link inspectedInterface) {
 
 func inspectNetwork(pod *corev1.Pod) inspectedNetwork {
 	ginkgo.GinkgoHelper()
-	output := e2ekubectl.NewKubectlCommand("", "ko", "network", "inspect", "--pod", pod.Namespace+"/"+pod.Name, "--output", "json").ExecOrDie("")
+	output := e2ekubectl.NewKubectlCommand("", "ko", "network", "inspect", "-n", pod.Namespace, "pod/"+pod.Name, "--output", "json").ExecOrDie("")
 	var info inspectedNetwork
 	framework.ExpectNoError(json.Unmarshal([]byte(output), &info))
 	framework.ExpectNotEmpty(info.NetNS)

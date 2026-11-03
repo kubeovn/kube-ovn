@@ -996,15 +996,6 @@ func (c *Controller) initNodeChassis() error {
 		klog.Errorf("failed to list nodes: %v", err)
 		return err
 	}
-	chassises, err := c.OVNSbClient.GetKubeOvnChassises()
-	if err != nil {
-		klog.Errorf("failed to get chassis nodes: %v", err)
-		return err
-	}
-	chassisNodes := make(map[string]string, len(*chassises))
-	for _, chassis := range *chassises {
-		chassisNodes[chassis.Name] = chassis.Hostname
-	}
 	for _, node := range nodes {
 		if err := c.UpdateChassisTag(node); err != nil {
 			klog.Error(err)
@@ -1012,6 +1003,20 @@ func (c *Controller) initNodeChassis() error {
 				return err
 			}
 		}
+	}
+	// gcChassis (periodic ticker + the reactive call above) relies on every
+	// live node's chassis already being tagged/annotated by this point;
+	// only flip the gate on a clean, full pass over every node.
+	c.nodeChassisInitialized.Store(true)
+	// The gate above was closed for this entire loop, so any reactive
+	// gcChassis call triggered by UpdateChassisTag's ErrChassisNotFound path
+	// (or a concurrent periodic tick firing before this point) no-op'd
+	// instead of cleaning up. Flush once now that the gate is open, rather
+	// than leaving that cleanup stranded until the next periodic tick
+	// (GCInterval later, 360s by default). Best-effort like periodicGC: a
+	// failure here doesn't block startup, the next tick retries it.
+	if err := c.gcChassis(); err != nil {
+		klog.Errorf("gc chassis error: %v", err)
 	}
 	return nil
 }

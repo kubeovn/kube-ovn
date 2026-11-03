@@ -9,6 +9,7 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
 
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
@@ -294,6 +295,14 @@ func (c *Controller) indexNetworkPolicy(np *netv1.NetworkPolicy) {
 		}
 	}
 	for _, rule := range np.Spec.Egress {
+		if len(rule.To) == 0 {
+			for _, port := range rule.Ports {
+				if port.Port != nil && port.Port.Type == intstr.String {
+					selectors = append(selectors, policyEventSelector{pod: &metav1.LabelSelector{}})
+					break
+				}
+			}
+		}
 		for _, peer := range rule.To {
 			selectors = append(selectors, networkPolicyPeerSelector(peer, np.Namespace))
 		}

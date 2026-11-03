@@ -83,7 +83,7 @@ func TestNetworkInspectWithoutOVSInterface(t *testing.T) {
 					return nil
 				}
 			}
-			require.NoError(t, app.Execute(t.Context(), []string{"network", "inspect", "--pod", "app/web", "--output", "json"}))
+			require.NoError(t, app.Execute(t.Context(), []string{"network", "inspect", "pod/web", "-n", "app", "--output", "json"}))
 			var info podNetworkInfo
 			require.NoError(t, json.Unmarshal(out.Bytes(), &info))
 			require.Equal(t, "/proc/42/ns/net", info.NetNS)
@@ -94,6 +94,67 @@ func TestNetworkInspectWithoutOVSInterface(t *testing.T) {
 	}
 }
 
+func TestNetworkInspectNodeUsesHostNamespace(t *testing.T) {
+	ovs := readyPod("ovs-a", "worker-a", "openvswitch", map[string]string{"app": "ovs"})
+	app, executor, out, _ := testApplication(t, ovs, &corev1.Node{Name: "worker-a"})
+	executor.run = func(_ context.Context, target Target, argv []string, streams Streams) error {
+		require.Equal(t, "ovs-a", target.Pod)
+		require.Equal(t, []string{"nsenter", "--net=/proc/1/ns/net", "--", "ip", "-s", "-j", "-d", "addr", "show"}, argv)
+		_, err := io.WriteString(streams.Out, `[{"ifindex":2,"ifname":"eth0","address":"02:00:00:00:00:01","addr_info":[{"family":"inet","local":"192.0.2.2","prefixlen":24}]}]`)
+		return err
+	}
+	require.NoError(t, app.Execute(t.Context(), []string{"network", "inspect", "node/worker-a", "--output", "json"}))
+	var info podNetworkInfo
+	require.NoError(t, json.Unmarshal(out.Bytes(), &info))
+	require.Equal(t, "node", info.Kind)
+	require.Equal(t, "worker-a", info.Node)
+	require.Equal(t, "/proc/1/ns/net", info.NetNS)
+	require.True(t, info.HostNetwork)
+	require.Equal(t, "eth0", info.Interfaces[0].Name)
+	out.Reset()
+	require.NoError(t, app.Execute(t.Context(), []string{"network", "inspect", "no/worker-a", "--output", "table"}))
+	require.Contains(t, out.String(), "Node: worker-a")
+	require.NotContains(t, out.String(), "Pod:")
+}
+
+func TestNetworkInspectServiceReportsSelectedPod(t *testing.T) {
+	pod := readyPod("web", "worker-a", "app", map[string]string{"app": "web"})
+	pod.Namespace = "ns1"
+	service := &corev1.Service{Name: "api", Namespace: "ns1", Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "web"}}}
+	ovs := readyPod("ovs-a", "worker-a", "openvswitch", map[string]string{"app": "ovs"})
+	app, executor, out, _ := testApplication(t, pod, service, ovs, &corev1.Node{Name: "worker-a"})
+	client, err := app.newClient()
+	require.NoError(t, err)
+	client.WorkloadNamespace = "ns1"
+	executor.run = func(_ context.Context, _ Target, argv []string, streams Streams) error {
+		switch argv[0] {
+		case "ovs-vsctl":
+			_, err := io.WriteString(streams.Out, `{"headings":["name","external_ids","ofport"],"data":[["web_h",["map",[["pod_name","web"],["pod_namespace","ns1"],["pod_netns","/var/run/netns/web"]]],4]]}`)
+			return err
+		case "nsenter":
+			_, err := io.WriteString(streams.Out, `[{"ifindex":2,"ifname":"eth0","addr_info":[{"family":"inet","local":"10.0.0.2","prefixlen":24}]}]`)
+			return err
+		case "ip":
+			_, err := io.WriteString(streams.Out, `[]`)
+			return err
+		default:
+			t.Fatalf("unexpected command: %v", argv)
+			return nil
+		}
+	}
+	require.NoError(t, app.Execute(t.Context(), []string{"network", "inspect", "svc/api", "-n", "ns1", "--output", "json"}))
+	var info podNetworkInfo
+	require.NoError(t, json.Unmarshal(out.Bytes(), &info))
+	require.Equal(t, "service/api", info.Target)
+	require.Equal(t, "ns1", info.Namespace)
+	require.Equal(t, "web", info.Name)
+	require.Equal(t, "/var/run/netns/web", info.NetNS)
+	out.Reset()
+	require.NoError(t, app.Execute(t.Context(), []string{"network", "inspect", "service/api", "-n", "ns1", "--output", "table"}))
+	require.Contains(t, out.String(), "Target: service/api")
+	require.Contains(t, out.String(), "Pod: ns1/web")
+}
+
 func TestHostNetworkPeerIndexesDoNotAliasHostNICs(t *testing.T) {
 	pod := &corev1.Pod{Name: "web", Namespace: "app", Spec: corev1.PodSpec{NodeName: "worker-a", HostNetwork: true}}
 	ovs := readyPod("ovs-a", "worker-a", "openvswitch", map[string]string{"app": "ovs"})
@@ -102,7 +163,7 @@ func TestHostNetworkPeerIndexesDoNotAliasHostNICs(t *testing.T) {
 		_, err := io.WriteString(streams.Out, `[{"ifindex":2,"ifname":"eth0","link_type":"ether"},{"ifindex":42,"ifname":"pod_h","link_index":2,"link_netnsid":0,"linkinfo":{"info_kind":"veth"}}]`)
 		return err
 	}
-	require.NoError(t, app.Execute(t.Context(), []string{"network", "inspect", "--pod", "app/web", "--output", "json"}))
+	require.NoError(t, app.Execute(t.Context(), []string{"network", "inspect", "pod/web", "-n", "app", "--output", "json"}))
 	var info podNetworkInfo
 	require.NoError(t, json.Unmarshal(out.Bytes(), &info))
 	require.Nil(t, info.Interfaces[1].Peer, "peer ifindex 2 belongs to another netns, not host eth0")
@@ -181,7 +242,7 @@ func TestNetworkInspectReadsPodAndHostLinks(t *testing.T) {
 			return nil
 		}
 	}
-	if err := app.Execute(t.Context(), []string{"network", "inspect", "--pod", "app/web"}); err != nil {
+	if err := app.Execute(t.Context(), []string{"network", "inspect", "pod/web", "-n", "app"}); err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"Network namespace: /var/run/netns/pod", "eth0", "10.244.0.2/24", "host peer: pod123_h", "RX: bytes=9007199254740993 packets=12", "RX: bytes=0 packets=0", "TX: bytes=21 packets=8"} {
@@ -277,7 +338,7 @@ func TestNetworkInspectResolvesParentNamespace(t *testing.T) {
 						return nil
 					}
 				}
-				require.NoError(t, app.Execute(t.Context(), []string{"network", "inspect", "--pod", "app/web", "--output", "json"}))
+				require.NoError(t, app.Execute(t.Context(), []string{"network", "inspect", "pod/web", "-n", "app", "--output", "json"}))
 				var info podNetworkInfo
 				require.NoError(t, json.Unmarshal(out.Bytes(), &info))
 				require.Len(t, info.Interfaces, 2)

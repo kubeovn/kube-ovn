@@ -2532,7 +2532,8 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyACLMatch() {
 
 			namedPortMap := map[string]*util.NamedPortInfo{
 				"test-pod-port": {
-					PortID: 13455,
+					PortID:   13455,
+					Protocol: "TCP",
 				},
 			}
 			matches := newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, namedPortMap)
@@ -2556,11 +2557,26 @@ func (suite *OvnClientTestSuite) testnewNetworkPolicyACLMatch() {
 
 			namedPortMap := map[string]*util.NamedPortInfo{
 				"test-pod-port": {
-					PortID: 13455,
+					PortID:   13455,
+					Protocol: "TCP",
 				},
 			}
 			matches := newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, namedPortMap)
 			// named port not found should generate no match (deny-all), not port 0
+			require.Empty(t, matches)
+		})
+
+		t.Run("named port protocol mismatch does not allow traffic", func(t *testing.T) {
+			t.Parallel()
+			protocolUDP := v1.ProtocolUDP
+			npp := []netv1.NetworkPolicyPort{{
+				Port:     new(intstr.FromString("http")),
+				Protocol: &protocolUDP,
+			}}
+			namedPortMap := map[string]*util.NamedPortInfo{
+				"http": {PortID: 80, Protocol: "TCP"},
+			}
+			matches := newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, kubeovnv1.ProtocolIPv4, ovnnb.ACLDirectionToLport, npp, namedPortMap)
 			require.Empty(t, matches)
 		})
 	})

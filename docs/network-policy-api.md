@@ -1,6 +1,6 @@
-# network-policy-api v0.2.0
+# network-policy-api v0.2.1
 
-Kube-OVN uses the v0.2.0 `ClusterNetworkPolicy` API. CNP ingress and egress
+Kube-OVN uses the v0.2.1 `ClusterNetworkPolicy` API. CNP ingress and egress
 rules express transport matching through `protocols`, for example:
 
 ```yaml
@@ -15,18 +15,20 @@ protocols:
           end: 9000
 ```
 
-TCP, UDP and SCTP numeric ports and ranges are supported. Omitting `protocols`
-leaves the rule unrestricted by transport or destination port. Named ports
-are rejected before applying OVN changes. Domain-name peers require the DNS
-resolver and an `Accept` action.
+TCP, UDP and SCTP numeric ports and ranges are supported. `destinationNamedPort`
+resolves against the selected destination Pods and supports all protocols and
+port numbers exposed by that name. Named ports must target Pods or Namespaces;
+Node, Network and domain-name peers do not provide named-port resolution.
+Omitting `protocols` leaves the rule unrestricted by transport or destination
+port. Domain-name peers require the DNS resolver and an `Accept` action.
 
 Existing CNP manifests must be converted from `ports` to `protocols` before
-using the v0.2.0 controller and CRD. This release does not provide automatic
+using the v0.2.1 controller and CRD. This release does not provide automatic
 object migration, legacy-format compatibility or reverse migration. The
 v1alpha2 API version stays the same, so changing the CRD alone does not convert
 stored policy specifications.
 
 The experimental CNP CRD download is pinned by `CNP_CRD_VERSION` in the
 Makefile. Renovate tracks upstream releases and proposes updates for review.
-ANP and BANP continue to use their independent v1alpha1 CRDs and conformance
-test module.
+ANP and BANP continue to use their independent v1alpha1 CRDs pinned to
+`v0.1.7`; network-policy-api v0.2.1 only publishes the CNP conformance profile.

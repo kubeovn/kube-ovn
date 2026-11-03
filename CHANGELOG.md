@@ -1,5 +1,41 @@
 # Changelog
 
+## v1.16.17 (2026-11-01)
+
+ * [ba6d8fae4](https://github.com/kubeovn/kube-ovn/commit/ba6d8fae4876f2beca74ce3e4b95f4784bf24c04) release v1.16.17
+ * [18026dbcc](https://github.com/kubeovn/kube-ovn/commit/18026dbccdc8503909337d8608df699183678fe0) fix: honor legacy OVN attachment subnet selection (#7822)
+ * [3c5924822](https://github.com/kubeovn/kube-ovn/commit/3c592482239aa788a79ec3c8f7339224833c8ddd) fix(controller): preserve external chassis in external VPC mode (#7816)
+ * [4e1cf01fd](https://github.com/kubeovn/kube-ovn/commit/4e1cf01fd2ad4c917835ed8120220d2dcfc78fb8) [release-1.16] fix(tproxy): preserve TCP probe failures for custom VPC pods (#7805)
+ * [3997bd313](https://github.com/kubeovn/kube-ovn/commit/3997bd31360e0be4001aad50a8140dbdbb316af9) fix(deps): update cert-manager to v1.20.5 (#7801)
+ * [230056e4c](https://github.com/kubeovn/kube-ovn/commit/230056e4cadbb87e149e30903e8485077f0c8ce1) prepare for next release
+
+### Contributors
+
+ * zhangzujian
+ * 张祖建
+
+## v1.16.16 (2026-10-29)
+
+ * [b311ad0c5](https://github.com/kubeovn/kube-ovn/commit/b311ad0c51913abf9bcac64ad7612f0adb247221) release v1.16.16
+ * [4989ff376](https://github.com/kubeovn/kube-ovn/commit/4989ff376de2c9ec753948b6c88b1e97256f9691) [release-1.16] fix(daemon): refresh underlay Service flows when OVS ofports change (#7789)
+ * [4814ac717](https://github.com/kubeovn/kube-ovn/commit/4814ac7178bb5cc2f42c94186513c86450d9d557) fix(deps): update Kubernetes and Go x modules (#7786)
+ * [17ee03529](https://github.com/kubeovn/kube-ovn/commit/17ee03529553fb45bea580129d25b6acc76d2739) [release-1.16] fix(controller): coalesce admin policy update deltas (#7785)
+ * [4f17d2f06](https://github.com/kubeovn/kube-ovn/commit/4f17d2f06b107f37b52dc618db46bd8b23d2d11c) [release-1.16] fix(controller): index NetworkPolicy label events (#7780)
+ * [3000858d9](https://github.com/kubeovn/kube-ovn/commit/3000858d93dd0b4e712b47775848d595ec62c703) fix(controller): preserve successor subnet routes (#7777)
+ * [fdc59b821](https://github.com/kubeovn/kube-ovn/commit/fdc59b821feff1cf811e7c54aebc6abbd25e4ce7) [release-1.16] Fix standalone VMI network loss after failed live migration (#7773)
+ * [bc1285276](https://github.com/kubeovn/kube-ovn/commit/bc12852765932b3f0c2fbbdc8529ced7d7c4c61e) fix(deps): update module golang.org/x/net to v0.62.0 (#7770)
+ * [245eeb8f2](https://github.com/kubeovn/kube-ovn/commit/245eeb8f2836a71d9dcc7dbe2c910b6cd7b1e2ea) fix(controller): cache repeated network policy selector scans (#7759)
+ * [a83bc17bc](https://github.com/kubeovn/kube-ovn/commit/a83bc17bcf40888a7cba1bdf4c7aac84ed74a8fc) fix(controller): answer ARP for switch_lb_vip via router port arp_proxy (#7626) (#7752)
+ * [ff86c1e6e](https://github.com/kubeovn/kube-ovn/commit/ff86c1e6e10a1340eff04ff94919bb130dae8eff) [release-1.16] feat(helm): allow externally managed webhook certificates (#7750)
+ * [c4bb8b17a](https://github.com/kubeovn/kube-ovn/commit/c4bb8b17a461c5f3f6af71f4738ed345428e28a6) [release-1.16] Include licenses for bundled image binaries (#7744)
+ * [c2334d73a](https://github.com/kubeovn/kube-ovn/commit/c2334d73afec867aa6a3f7075d45707fbde6e609) prepare for next release
+
+### Contributors
+
+ * renovate[bot]
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.15 (2026-10-21)
 
  * [02fccb4e1](https://github.com/kubeovn/kube-ovn/commit/02fccb4e162d28ec6db6120c89e5f11e9ad138e0) release v1.16.15
@@ -742,6 +778,21 @@
  * jskrill
  * renovate[bot]
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.15.33 (2026-11-01)
+
+ * [693dc630f](https://github.com/kubeovn/kube-ovn/commit/693dc630f64fa5b5ef5369daff6b9dc134fc3782) release v1.15.33
+ * [8f7c2d750](https://github.com/kubeovn/kube-ovn/commit/8f7c2d7502b826629b2df7e89b12581cc8f64718) fix: honor legacy OVN attachment subnet selection (#7821)
+ * [abf236d40](https://github.com/kubeovn/kube-ovn/commit/abf236d408ea28e1b6834864e766272e2a39d83e) fix(deps): update cert-manager to v1.20.5 (#7800)
+ * [2707398f4](https://github.com/kubeovn/kube-ovn/commit/2707398f437ad8943ac83dad5ad7e8d6a0746e93) [release-1.15] fix(controller): cache selectors, index label events, and coalesce policy updates (#7788)
+ * [f968fefcb](https://github.com/kubeovn/kube-ovn/commit/f968fefcb0a0b2b24d6c1f031b71630103c0e959) [release-1.15] fix(daemon): refresh underlay Service flows when OVS ofports change (#7790)
+ * [a34ed9cf2](https://github.com/kubeovn/kube-ovn/commit/a34ed9cf2805ea8987066b103117bfe6127369ee) fix(deps): update Kubernetes and Go x modules on release-1.15 (#7791)
+ * [de42e18f8](https://github.com/kubeovn/kube-ovn/commit/de42e18f88b2c07a63dedae364eff99b2358cac2) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 

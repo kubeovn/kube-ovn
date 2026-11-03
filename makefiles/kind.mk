@@ -628,7 +628,9 @@ kind-install-metallb-pool-from-underlay: kind-install-metallb-pool-from-underlay
 .PHONY: kind-install-vpc-nat-gw
 kind-install-vpc-nat-gw:
 	@$(MAKE) kind-load-image-vpc-nat-gateway
-	@$(MAKE) ENABLE_NAT_GW=true ENABLE_NFTABLE_LB_SVC=true CNI_CONFIG_PRIORITY=10 kind-install
+	# The gateway's nft share DNAT is off by default (the OVN load balancer is the default
+	# implementation): the vpc nat gateway e2e suite opts into it here.
+	@$(MAKE) ENABLE_NAT_GW=true ENABLE_LB=false ENABLE_GW_NFTABLE_LB_SVC=true ENABLE_GW_NFTABLE_SVC_CLUSTER_IP=true CNI_CONFIG_PRIORITY=10 kind-install
 	@$(MAKE) kind-install-multus
 
 .PHONY: kind-install-kubevirt
@@ -882,6 +884,16 @@ kind-install-anp: kind-load-image
 	kubectl apply -f "$(ANP_CR_YAML)"
 	kubectl apply -f "$(BANP_CR_YAML)"
 	kubectl apply -f "$(CNP_CR_YAML)"
+	kubectl annotate crd clusternetworkpolicies.policy.networking.k8s.io policy.networking.k8s.io/bundle-version- policy.networking.k8s.io/channel-
+	@$(MAKE) ENABLE_ANP=true kind-install
+
+.PHONY: kind-install-cnp
+kind-install-cnp: kind-load-image
+	$(call kind_load_image,kube-ovn,$(ANP_TEST_IMAGE),1)
+	kubectl apply -f "$(ANP_CR_YAML)"
+	kubectl apply -f "$(BANP_CR_YAML)"
+	kubectl apply -f "$(CNP_CR_YAML)"
+	kubectl annotate crd adminnetworkpolicies.policy.networking.k8s.io baselineadminnetworkpolicies.policy.networking.k8s.io policy.networking.k8s.io/bundle-version- policy.networking.k8s.io/channel-
 	@$(MAKE) ENABLE_ANP=true kind-install
 
 .PHONY: kind-install-anp-dns-resolver

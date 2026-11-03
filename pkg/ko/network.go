@@ -21,6 +21,11 @@ const annotationPrefix = "ovn.kubernetes.io/"
 type networkSource struct {
 	node        string
 	lsp         string
+	datapath    string
+	bridge      string
+	physicalNIC string
+	vlanID      int
+	kind        sourceKind
 	annotations map[string]string
 	addresses   []string
 	pod         *corev1.Pod
@@ -28,26 +33,65 @@ type networkSource struct {
 
 type podInterface struct {
 	name   string
+	kind   string
 	netns  string
 	ofport int
 }
 
 func (a *Application) addNetworkCommands() {
-	options := captureOptions{}
+	var captureNode, observeAt string
 	capture := &cobra.Command{
-		Use: "capture (--pod POD | --vm VM | --vmi VMI) [flags] -- [TCPDUMP_ARGS...]", DisableFlagsInUseLine: true, Short: "Capture packets in a Pod or KubeVirt network namespace",
+		Use: "capture TARGET [flags] -- [CAPTURE_ARGS...]", DisableFlagsInUseLine: true, Short: "Capture packets from a Kubernetes resource network namespace",
 		Args: func(cmd *cobra.Command, args []string) error {
-			kind, reference, err := options.reference()
+			dash := cmd.ArgsLenAtDash()
+			if dash < 0 {
+				dash = len(args)
+			}
+			if dash != 1 {
+				return errors.New("capture requires exactly one target before --")
+			}
+			ref, err := parseSourceRef(args[0])
 			if err != nil {
 				return err
 			}
-			if err := validateNamespacedReference(kind, reference); err != nil {
+			if captureNode != "" && ref.kind != sourceKindLocalnet && ref.kind != sourceKindLSP && ref.kind != sourceKindLRP {
+				return errors.New("--node is only valid for localnet and OVN port targets")
+			}
+			if ref.kind == sourceKindLRP && observeAt == "" {
+				return errors.New("LRP capture requires --observe-at lsp/NAME")
+			}
+			if ref.kind != sourceKindLRP && observeAt != "" {
+				return errors.New("--observe-at is only valid for LRP capture")
+			}
+			if observeAt != "" {
+				observed, err := parseSourceRef(observeAt)
+				if err != nil {
+					return err
+				}
+				if observed.kind != sourceKindLSP {
+					return errors.New("--observe-at must be lsp/NAME")
+				}
+			}
+			if captureNode != "" {
+				if err := validateResourceName("node", captureNode); err != nil {
+					return err
+				}
+			}
+			options, err := parseCaptureArguments(args[1:])
+			if err != nil {
 				return err
 			}
-			return remoteArguments(cmd, args)
+			if ref.kind == sourceKindNode && options.iface == "" && !options.list {
+				return errors.New("node capture requires -i INTERFACE (or -D to list interfaces)")
+			}
+			return nil
 		},
 		RunE: a.run(func(ctx context.Context, client *Client, args []string) error {
-			target, err := client.captureTarget(ctx, options)
+			ref, err := parseSourceRef(args[0])
+			if err != nil {
+				return err
+			}
+			target, err := client.captureTargetOnNode(ctx, ref, captureNode, observeAt)
 			if err != nil {
 				return err
 			}
@@ -56,28 +100,38 @@ func (a *Application) addNetworkCommands() {
 					return err
 				}
 			}
-			return a.tcpdump(ctx, client, target, args)
+			if target.observation != "" {
+				if _, err := fmt.Fprintln(a.streams.ErrOut, target.observation); err != nil {
+					return err
+				}
+			}
+			return a.tcpdump(ctx, client, target, args[1:])
 		}),
 	}
-	capture.Flags().StringVar(&options.pod, "pod", "", "Pod to capture, optionally qualified by namespace")
-	capture.Flags().StringVar(&options.vm, "vm", "", "KubeVirt VM to capture, optionally qualified by namespace")
-	capture.Flags().StringVar(&options.vmi, "vmi", "", "KubeVirt VMI to capture, optionally qualified by namespace")
+	capture.Flags().StringVar(&captureNode, "node", "", "Node for a localnet capture")
+	capture.Flags().StringVar(&observeAt, "observe-at", "", "Adjacent bound LSP for an LRP capture")
 	a.root.AddCommand(capture)
 	a.addNetworkInspectCommand()
 	a.addTraceCommand()
 }
 
 func (a *Application) addNetworkInspectCommand() {
-	var pod, output string
+	var output string
+	var ref sourceRef
 	command := &cobra.Command{
-		Use:   "inspect --pod [NAMESPACE/]POD",
-		Short: "Show a Pod network namespace, interfaces and veth peers",
+		Use:   "inspect TARGET [flags]",
+		Short: "Show a resource network namespace, interfaces and peers",
 		Args: func(cmd *cobra.Command, args []string) error {
-			if err := cobra.NoArgs(cmd, args); err != nil {
+			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
 				return err
 			}
-			if err := validatePodReference(pod); err != nil {
+			var err error
+			ref, err = parseSourceRef(args[0])
+			if err != nil {
 				return err
+			}
+			if ref.kind == sourceKindLocalnet || ref.kind == sourceKindLSP || ref.kind == sourceKindLRP {
+				return fmt.Errorf("network inspect does not support %s targets", ref.kind)
 			}
 			if output != "table" && output != "json" {
 				return errors.New("--output must be table or json")
@@ -85,36 +139,36 @@ func (a *Application) addNetworkInspectCommand() {
 			return nil
 		},
 		RunE: a.run(func(ctx context.Context, client *Client, _ []string) error {
-			return a.networkInspect(ctx, client, pod, output)
+			return a.networkInspect(ctx, client, ref, output)
 		}),
 	}
-	command.Flags().StringVar(&pod, "pod", "", "Pod to inspect, optionally qualified by namespace")
 	command.Flags().StringVarP(&output, "output", "o", "table", "Output format: table or json")
-	parent := &cobra.Command{Use: "network", Short: "Inspect Pod network namespaces and interfaces"}
+	parent := &cobra.Command{Use: "network", Short: "Inspect resource network namespaces and interfaces"}
 	parent.AddCommand(command)
 	a.root.AddCommand(parent)
 }
 
 type traceOptions struct {
-	pod, node, destination, mac, protocol, engine, arpOperation string
-	port                                                        int
+	target, mac, protocol, engine, arpOperation, sourceIP, sourceMAC, node string
+	port                                                                   int
 }
 
 func (a *Application) addTraceCommand() {
 	options := traceOptions{}
 	var request traceRequest
-	command := &cobra.Command{Use: "trace --pod POD|--node NODE --dst-ip IP", Short: "Trace a packet through OVN and OVS"}
+	command := &cobra.Command{Use: "trace TARGET --target IP [flags]", Short: "Trace a packet through OVN and OVS"}
 	flags := command.Flags()
-	flags.StringVar(&options.pod, "pod", "", "Source pod, optionally qualified by namespace")
-	flags.StringVar(&options.node, "node", "", "Source node (mutually exclusive with --pod)")
-	flags.StringVar(&options.destination, "dst-ip", "", "Destination IPv4 or IPv6 address")
+	flags.StringVar(&options.target, "target", "", "Destination IP address (addr/IP also accepted)")
 	flags.StringVar(&options.mac, "dst-mac", "", "Destination MAC address (auto-detected when omitted)")
+	flags.StringVar(&options.sourceIP, "source-ip", "", "Source IP for an OVN logical port without an address")
+	flags.StringVar(&options.sourceMAC, "source-mac", "", "Source MAC for an OVN logical port without an address")
+	flags.StringVar(&options.node, "node", "", "Node for the OVS trace of a localnet port")
 	flags.StringVar(&options.protocol, "protocol", "icmp", "Packet protocol: icmp, tcp, udp or arp")
 	flags.IntVar(&options.port, "dst-port", 0, "Destination port for TCP or UDP")
 	flags.StringVar(&options.arpOperation, "arp-op", "request", "ARP operation: request or reply")
 	flags.StringVar(&options.engine, "engine", "all", "Trace engines: all (OVN then OVS) or ovn")
 	command.Args = func(cmd *cobra.Command, args []string) error {
-		if err := cobra.NoArgs(cmd, args); err != nil {
+		if err := cobra.ExactArgs(1)(cmd, args); err != nil {
 			return err
 		}
 		if flags.Changed("arp-op") && options.protocol != "arp" {
@@ -124,7 +178,28 @@ func (a *Application) addTraceCommand() {
 			return errors.New("--dst-port requires TCP or UDP")
 		}
 		var err error
-		request, err = options.request()
+		ref, err := parseSourceRef(args[0])
+		if err != nil {
+			return err
+		}
+		if options.node != "" && ref.kind != sourceKindLocalnet && ref.kind != sourceKindLSP {
+			return errors.New("--node is only valid for localnet and localnet LSP targets")
+		}
+		if options.node != "" && options.engine == "ovn" {
+			return errors.New("--node requires the OVS trace engine")
+		}
+		if options.node != "" {
+			if err := validateResourceName("node", options.node); err != nil {
+				return err
+			}
+		}
+		if ref.kind == sourceKindLRP {
+			if flags.Changed("engine") && options.engine != "ovn" {
+				return errors.New("LRP has no OVS interface; use --engine ovn")
+			}
+			options.engine = "ovn"
+		}
+		request, err = options.request(ref)
 		return err
 	}
 	command.RunE = a.run(func(ctx context.Context, client *Client, _ []string) error {
@@ -133,23 +208,18 @@ func (a *Application) addTraceCommand() {
 	a.root.AddCommand(command)
 }
 
-func (o traceOptions) request() (traceRequest, error) {
-	if (o.pod == "") == (o.node == "") {
-		return traceRequest{}, errors.New("choose exactly one of --pod or --node")
-	}
+func (o traceOptions) request(ref sourceRef) (traceRequest, error) {
 	if o.engine != "all" && o.engine != "ovn" {
 		return traceRequest{}, errors.New("--engine must be all or ovn")
 	}
-	reference := o.pod
-	if o.node != "" {
-		if err := validateResourceName("node", o.node); err != nil {
-			return traceRequest{}, err
-		}
-		reference = "node//" + o.node
-	} else if err := validatePodReference(o.pod); err != nil {
+	if o.target == "" {
+		return traceRequest{}, errors.New("--target IP is required")
+	}
+	destination, err := parseTargetAddress(o.target)
+	if err != nil {
 		return traceRequest{}, err
 	}
-	args := []string{reference, o.destination}
+	args := []string{ref.reference(), destination}
 	if o.mac != "" {
 		mac, err := net.ParseMAC(o.mac)
 		if err != nil || len(mac) != 6 {
@@ -164,21 +234,58 @@ func (o traceOptions) request() (traceRequest, error) {
 	case "arp":
 		args = append(args, o.arpOperation)
 	}
-	return parseTrace(args)
+	request, err := parseTrace(args)
+	if err != nil {
+		return traceRequest{}, err
+	}
+	request.node = o.node
+	if o.sourceIP != "" {
+		ip, err := netip.ParseAddr(o.sourceIP)
+		if err != nil || ip.Zone() != "" {
+			return traceRequest{}, fmt.Errorf("invalid --source-ip %q", o.sourceIP)
+		}
+		request.sourceIP = ip.Unmap()
+	}
+	if o.sourceMAC != "" {
+		mac, err := net.ParseMAC(o.sourceMAC)
+		if err != nil || len(mac) != 6 {
+			return traceRequest{}, fmt.Errorf("invalid --source-mac %q", o.sourceMAC)
+		}
+		request.sourceMAC = mac.String()
+	}
+	if ref.kind == sourceKindLocalnet && (!request.sourceIP.IsValid() || request.sourceMAC == "") {
+		return traceRequest{}, errors.New("localnet trace requires --source-ip and --source-mac")
+	}
+	return request, nil
 }
 
 func (c *Client) networkSource(ctx context.Context, reference string) (*networkSource, error) {
-	if node, ok := strings.CutPrefix(reference, "node//"); ok {
-		return c.nodeSource(ctx, node)
-	}
-	pod, err := c.pod(ctx, reference)
+	ref, err := parseSourceRef(reference)
 	if err != nil {
 		return nil, err
 	}
-	if pod.Spec.HostNetwork {
-		return c.nodeSource(ctx, pod.Spec.NodeName)
+	switch ref.kind {
+	case sourceKindNode:
+		return c.nodeSource(ctx, ref.name)
+	case sourceKindVM, sourceKindVMI:
+		target, err := c.captureTarget(ctx, ref)
+		if err != nil {
+			return nil, err
+		}
+		return podNetworkSource(target.pod), nil
+	case sourceKindPod, sourceKindService, sourceKindDeployment, sourceKindDaemonSet, sourceKindStatefulSet, sourceKindReplicaSet, sourceKindReplicationController, sourceKindJob:
+		target, err := c.captureTarget(ctx, ref)
+		if err != nil {
+			return nil, err
+		}
+		pod := target.pod
+		if pod.Spec.HostNetwork {
+			return c.nodeSource(ctx, pod.Spec.NodeName)
+		}
+		return podNetworkSource(pod), nil
+	default:
+		return nil, fmt.Errorf("unsupported source kind %q", ref.kind)
 	}
-	return podNetworkSource(pod), nil
 }
 
 func podNetworkSource(pod *corev1.Pod) *networkSource {
@@ -295,7 +402,7 @@ func ovsMap(value any) map[string]string {
 }
 
 func (c *Client) podInterface(ctx context.Context, target Target, lsp string) (podInterface, error) {
-	rows, err := c.ovsRows(ctx, target, "ovs-vsctl", "name,external_ids,ofport", "Interface", "external_ids:iface-id="+strconv.Quote(lsp))
+	rows, err := c.ovsRows(ctx, target, "ovs-vsctl", "name,type,external_ids,ofport", "Interface", "external_ids:iface-id="+strconv.Quote(lsp))
 	if err != nil {
 		return podInterface{}, err
 	}
@@ -307,7 +414,20 @@ func (c *Client) podInterface(ctx context.Context, target Target, lsp string) (p
 		return podInterface{}, errors.New("OVS interface has no name")
 	}
 	ofport, _ := rows[0]["ofport"].(float64)
-	return podInterface{name: name, netns: ovsMap(rows[0]["external_ids"])["pod_netns"], ofport: int(ofport)}, nil
+	kind, _ := rows[0]["type"].(string)
+	return podInterface{name: name, kind: kind, netns: ovsMap(rows[0]["external_ids"])["pod_netns"], ofport: int(ofport)}, nil
+}
+
+func (c *Client) hostInterface(ctx context.Context, target Target, name string) (podInterface, error) {
+	rows, err := c.ovsRows(ctx, target, "ovs-vsctl", "name,ofport", "Interface", "name="+strconv.Quote(name))
+	if err != nil {
+		return podInterface{}, err
+	}
+	if len(rows) != 1 || rows[0]["name"] != name {
+		return podInterface{}, fmt.Errorf("expected one OVS interface %q, found %d", name, len(rows))
+	}
+	ofport, _ := rows[0]["ofport"].(float64)
+	return podInterface{name: name, ofport: int(ofport)}, nil
 }
 
 func namespaceCommand(netns string, argv ...string) []string {
@@ -321,6 +441,25 @@ func (a *Application) tcpdump(ctx context.Context, client *Client, target captur
 	options, err := parseCaptureArguments(args)
 	if err != nil {
 		return err
+	}
+	if target.node != "" {
+		if target.iface != "" {
+			if options.iface != "" && options.iface != target.iface {
+				return fmt.Errorf("capture interface %q does not match resolved interface %q", options.iface, target.iface)
+			}
+			options.iface = target.iface
+		} else if options.iface == "" && !options.list {
+			return errors.New("node capture requires -i INTERFACE (or -D to list interfaces)")
+		}
+		ovs, err := client.nodeTarget(ctx, target.node, "ovs")
+		if err != nil {
+			return err
+		}
+		netns := target.netns
+		if netns == "" {
+			netns = "/proc/1/ns/net"
+		}
+		return client.Executor.Exec(ctx, ovs, captureCommand(netns, options.iface, options), a.outputStreams())
 	}
 	pod := target.pod
 	ovs, err := client.nodeTarget(ctx, pod.Spec.NodeName, "ovs")
@@ -337,26 +476,39 @@ func (a *Application) tcpdump(ctx context.Context, client *Client, target captur
 		}
 		return client.Executor.Exec(ctx, ovs, captureCommand(netns, name, options), a.outputStreams())
 	}
-	source := podNetworkSource(pod)
-	nic, err := client.podInterface(ctx, ovs, source.lsp)
-	if err != nil || nic.netns == "" {
-		var fallbackErr error
-		netns, fallbackErr = client.podNetNS(ctx, ovs, pod)
-		if fallbackErr != nil {
-			if err != nil {
-				return fmt.Errorf("find capture interface for %s/%s: %w", pod.Namespace, pod.Name, err)
-			}
-			return fmt.Errorf("resolve capture network namespace for %s/%s: %w", pod.Namespace, pod.Name, fallbackErr)
+	var nic podInterface
+	if options.iface != "" {
+		// An explicit -i names an interface inside the Pod network namespace.
+		// Resolve the namespace from all OVS interfaces so secondary Multus
+		// interfaces such as net1 do not depend on the primary LSP lookup.
+		netns, err = client.podNetNS(ctx, ovs, pod)
+		if err != nil {
+			return fmt.Errorf("resolve capture network namespace for %s/%s: %w", pod.Namespace, pod.Name, err)
 		}
 		netns = strings.TrimSpace(netns)
 		if netns == "" {
 			return errors.New("pod network namespace path is empty")
 		}
 	} else {
-		netns = nic.netns
-	}
-	if pod.Annotations[annotationPrefix+"pod_nic_type"] == "internal-port" {
-		if options.iface == "" && nic.name != "" {
+		source := podNetworkSource(pod)
+		nic, err = client.podInterface(ctx, ovs, source.lsp)
+		if err != nil || nic.netns == "" {
+			var fallbackErr error
+			netns, fallbackErr = client.podNetNS(ctx, ovs, pod)
+			if fallbackErr != nil {
+				if err != nil {
+					return fmt.Errorf("find capture interface for %s/%s: %w", pod.Namespace, pod.Name, err)
+				}
+				return fmt.Errorf("resolve capture network namespace for %s/%s: %w", pod.Namespace, pod.Name, fallbackErr)
+			}
+			netns = strings.TrimSpace(netns)
+			if netns == "" {
+				return errors.New("pod network namespace path is empty")
+			}
+		} else {
+			netns = nic.netns
+		}
+		if pod.Annotations[annotationPrefix+"pod_nic_type"] == "internal-port" && nic.name != "" {
 			name = nic.name
 		}
 	}
@@ -386,6 +538,9 @@ func captureCommand(netns, iface string, options packetCaptureOptions) []string 
 type traceRequest struct {
 	reference   string
 	destination netip.Addr
+	sourceIP    netip.Addr
+	sourceMAC   string
+	node        string
 	mac         string
 	protocol    string
 	port        uint16

@@ -49,6 +49,13 @@ including across helper restarts. kubelet restarts the helper independently;
 startup or temporary helper failures are failed dials retried by later probes.
 There is no container startup order requirement.
 
+The daemon intercepts HTTP and gRPC probe ports so kubelet can reach custom VPC
+Pods. TCP probes only check whether a connection opens, so the daemon intercepts
+their ports only after a successful backend dial. An unreachable TCP port is
+removed from the interception rules on the next gateway reconciliation; a port
+shared with an HTTP or gRPC probe follows the same TCP rule. Probe results are
+scoped to the Pod UID so an IP reused by another Pod cannot inherit them.
+
 Enabling TProxy by manually changing only a daemon argument is insufficient:
 the helper container and its shared socket volume must also be present. Upgrade
 the image and Pod template together. The custom VPC probe E2E covers this setup,
