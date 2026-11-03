@@ -304,7 +304,7 @@ func TestGetNextHopAttributeNodeIPsOnlyAppliesWhenNextHopEqualsPodIP(t *testing.
 		config := &Configuration{
 			NodeIPs: map[string]IP{kubeovnv1.ProtocolIPv4: {IP: nodeIP}},
 			PodIPs:  map[string]net.IP{kubeovnv1.ProtocolIPv4: podIP},
-			routeLookup: func(address net.IP) ([]netlink.Route, error) {
+			routeLookup: func(net.IP) ([]netlink.Route, error) {
 				return []netlink.Route{{Src: podIP}}, nil
 			},
 		}
@@ -317,7 +317,7 @@ func TestGetNextHopAttributeNodeIPsOnlyAppliesWhenNextHopEqualsPodIP(t *testing.
 		config := &Configuration{
 			NodeIPs: map[string]IP{kubeovnv1.ProtocolIPv4: {IP: nodeIP}},
 			PodIPs:  map[string]net.IP{kubeovnv1.ProtocolIPv4: podIP},
-			routeLookup: func(address net.IP) ([]netlink.Route, error) {
+			routeLookup: func(net.IP) ([]netlink.Route, error) {
 				return []netlink.Route{{Src: routedSource}}, nil
 			},
 		}
@@ -328,7 +328,7 @@ func TestGetNextHopAttributeNodeIPsOnlyAppliesWhenNextHopEqualsPodIP(t *testing.
 	t.Run("no override configured falls back to routed source", func(t *testing.T) {
 		config := &Configuration{
 			PodIPs: map[string]net.IP{kubeovnv1.ProtocolIPv4: podIP},
-			routeLookup: func(address net.IP) ([]netlink.Route, error) {
+			routeLookup: func(net.IP) ([]netlink.Route, error) {
 				return []netlink.Route{{Src: podIP}}, nil
 			},
 		}
@@ -349,7 +349,7 @@ func TestGetNextHopAttributeAllowedSourceAddressesTakesPrecedenceOverNodeIPs(t *
 		NodeIPs:                map[string]IP{kubeovnv1.ProtocolIPv4: {IP: nodeIP}},
 		PodIPs:                 map[string]net.IP{kubeovnv1.ProtocolIPv4: podIP},
 	}
-	require.NoError(t, config.initNeighborLocalAddressesWithRouteLookup(func(address net.IP) ([]netlink.Route, error) {
+	require.NoError(t, config.initNeighborLocalAddressesWithRouteLookup(func(net.IP) ([]netlink.Route, error) {
 		return []netlink.Route{{Src: whitelisted}}, nil
 	}))
 	controller := &Controller{config: config}
