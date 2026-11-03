@@ -74,6 +74,10 @@ type IPPoolStatus struct {
 	// members of a pool that lists spec.ips.
 	// +optional
 	IPs []string `json:"ips,omitempty"`
+	// PendingIPs is a selection prepared for activation but not committed to IPAM yet.
+	// It must not be restored as an allocatable pool after a controller restart.
+	// +optional
+	PendingIPs []string `json:"pendingIPs,omitempty"`
 	// Number of available IPv4 addresses
 	V4AvailableIPs internal.BigInt `json:"v4AvailableIPs"`
 	// Available IPv4 address range

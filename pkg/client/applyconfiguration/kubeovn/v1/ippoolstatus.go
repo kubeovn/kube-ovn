@@ -28,6 +28,8 @@ type IPPoolStatusApplyConfiguration struct {
 	// IP addresses the pool currently consists of, in allocation order.
 	// Only set when spec.ipCount is used.
 	IPs []string `json:"ips,omitempty"`
+	// PendingIPs is a selection prepared for activation but not committed to IPAM yet.
+	PendingIPs []string `json:"pendingIPs,omitempty"`
 	// Number of available IPv4 addresses
 	V4AvailableIPs *internal.BigInt `json:"v4AvailableIPs,omitempty"`
 	// Available IPv4 address range
@@ -60,6 +62,14 @@ func IPPoolStatus() *IPPoolStatusApplyConfiguration {
 func (b *IPPoolStatusApplyConfiguration) WithIPs(values ...string) *IPPoolStatusApplyConfiguration {
 	for i := range values {
 		b.IPs = append(b.IPs, values[i])
+	}
+	return b
+}
+
+// WithPendingIPs adds the given values to PendingIPs.
+func (b *IPPoolStatusApplyConfiguration) WithPendingIPs(values ...string) *IPPoolStatusApplyConfiguration {
+	for i := range values {
+		b.PendingIPs = append(b.PendingIPs, values[i])
 	}
 	return b
 }

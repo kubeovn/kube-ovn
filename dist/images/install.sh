@@ -919,6 +919,13 @@ spec:
                 items:
                   type: string
                 type: array
+              pendingIPs:
+                description: |-
+                  PendingIPs is a selection prepared for activation but not committed to IPAM yet.
+                  It must not be restored as an allocatable pool after a controller restart.
+                items:
+                  type: string
+                type: array
               v4AvailableIPRange:
                 description: Available IPv4 address range
                 type: string

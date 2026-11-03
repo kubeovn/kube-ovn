@@ -658,6 +658,11 @@ func (in *IPPoolStatus) DeepCopyInto(out *IPPoolStatus) {
 		*out = make([]string, len(*in))
 		copy(*out, *in)
 	}
+	if in.PendingIPs != nil {
+		in, out := &in.PendingIPs, &out.PendingIPs
+		*out = make([]string, len(*in))
+		copy(*out, *in)
+	}
 	in.V4AvailableIPs.DeepCopyInto(&out.V4AvailableIPs)
 	in.V4UsingIPs.DeepCopyInto(&out.V4UsingIPs)
 	in.V6AvailableIPs.DeepCopyInto(&out.V6AvailableIPs)

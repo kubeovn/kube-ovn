@@ -111,15 +111,20 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		}
 		return err
 	}
-	// persist the selection first: after a controller restart the pool is restored from
-	// status.ips, which then already describes the membership waiting to be activated
-	switch {
-	case ippool.Spec.IPCount > 0:
-		if err = c.patchIPPoolIPs(ippool, ips); err != nil {
+	// Persist the selection as pending. It is deliberately not restored into IPAM
+	// after a restart until the address set and activation have both succeeded.
+	if ippool.Spec.IPCount > 0 {
+		if err = c.patchIPPoolPendingIPs(ippool, ips); err != nil {
 			klog.Error(err)
 			return c.recordResourceError(ippool, "UpdateStatusFailed", err)
 		}
-	case len(ippool.Status.IPs) > 0:
+	} else if len(ippool.Status.PendingIPs) > 0 {
+		if err = c.patchIPPoolPendingIPs(ippool, nil); err != nil {
+			klog.Error(err)
+			return c.recordResourceError(ippool, "UpdateStatusFailed", err)
+		}
+	}
+	if ippool.Spec.IPCount <= 0 && len(ippool.Status.IPs) > 0 {
 		// the pool left count mode: clear the recorded addresses, they describe the
 		// former selection and must not be reused when the pool re-enters count mode
 		if err = c.patchIPPoolIPs(ippool, nil); err != nil {
@@ -148,6 +153,16 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 			return errors.Join(err, c.recordResourceError(ippool, "UpdateStatusFailed", patchErr))
 		}
 		return err
+	}
+	if ippool.Spec.IPCount > 0 {
+		if err = c.patchIPPoolIPs(ippool, ips); err != nil {
+			klog.Error(err)
+			return c.recordResourceError(ippool, "UpdateStatusFailed", err)
+		}
+		if err = c.patchIPPoolPendingIPs(ippool, nil); err != nil {
+			klog.Error(err)
+			return c.recordResourceError(ippool, "UpdateStatusFailed", err)
+		}
 	}
 
 	c.updateIPPoolStatistics(ippool)
@@ -207,8 +222,12 @@ func (c *Controller) selectIPPoolIPs(ippool *kubeovnv1.IPPool) ([]string, *kubeo
 
 	// offer the recorded addresses that still belong to the subnet as keep candidates;
 	// IPAM revalidates them against its own state and replaces stale ones itself
-	kept := make([]string, 0, len(ippool.Status.IPs))
-	for _, ip := range ippool.Status.IPs {
+	recorded := ippool.Status.IPs
+	if len(ippool.Status.PendingIPs) > 0 {
+		recorded = ippool.Status.PendingIPs
+	}
+	kept := make([]string, 0, len(recorded))
+	for _, ip := range recorded {
 		if util.CIDRContainIP(subnet.Spec.CIDRBlock, ip) {
 			kept = append(kept, ip)
 		}
@@ -339,7 +358,18 @@ func (c *Controller) patchIPPoolIPs(ippool *kubeovnv1.IPPool, ips []string) erro
 	if slices.Equal(ippool.Status.IPs, ips) {
 		return nil
 	}
-	bytes, err := json.Marshal(map[string]any{"status": map[string]any{"ips": ips}})
+	return c.patchIPPoolStatusIPs(ippool, "ips", ips)
+}
+
+func (c *Controller) patchIPPoolPendingIPs(ippool *kubeovnv1.IPPool, ips []string) error {
+	if slices.Equal(ippool.Status.PendingIPs, ips) {
+		return nil
+	}
+	return c.patchIPPoolStatusIPs(ippool, "pendingIPs", ips)
+}
+
+func (c *Controller) patchIPPoolStatusIPs(ippool *kubeovnv1.IPPool, field string, ips []string) error {
+	bytes, err := json.Marshal(map[string]any{"status": map[string]any{field: ips}})
 	if err != nil {
 		klog.Errorf("failed to generate json representation for IPs of ippool %s: %v", ippool.Name, err)
 		return err
@@ -348,13 +378,18 @@ func (c *Controller) patchIPPoolIPs(ippool *kubeovnv1.IPPool, ips []string) erro
 		klog.Errorf("failed to patch IPs of ippool %s: %v", ippool.Name, err)
 		return err
 	}
-	ippool.Status.IPs = ips
+	if field == "ips" {
+		ippool.Status.IPs = ips
+	} else {
+		ippool.Status.PendingIPs = ips
+	}
 	return nil
 }
 
 func (c *Controller) patchIPPoolStatus(ippool *kubeovnv1.IPPool) error {
 	status := ippool.Status
-	status.IPs = nil // owned by patchIPPoolIPs, see the comment there
+	status.IPs = nil        // owned by patchIPPoolIPs, see the comment there
+	status.PendingIPs = nil // owned by patchIPPoolPendingIPs
 	bytes, err := status.Bytes()
 	if err != nil {
 		klog.Errorf("failed to generate json representation for status of ippool %s: %v", ippool.Name, err)

@@ -830,8 +830,16 @@ func (s *Subnet) selectIPPoolIPsLocked(name string, keep []string, v4Count, v6Co
 	// the usable range subtracts the subnet's reserved addresses: an address moved into
 	// excludeIps is not allocatable even for the pool holding it, so retaining it would
 	// pin an unusable member to the pool instead of replacing it
-	v4 = s.pickIPPoolIPs(name, slices.Clone(keepV4), v4Count, usableRange(s.V4CIDR).Separate(s.V4Reserved), heldV4, defaultV4Available)
-	v6 = s.pickIPPoolIPs(name, slices.Clone(keepV6), v6Count, usableRange(s.V6CIDR).Separate(s.V6Reserved), heldV6, defaultV6Available)
+	v4Range, err := usableRange(s.V4CIDR)
+	if err != nil {
+		return nil, nil, err
+	}
+	v6Range, err := usableRange(s.V6CIDR)
+	if err != nil {
+		return nil, nil, err
+	}
+	v4 = s.pickIPPoolIPs(name, slices.Clone(keepV4), v4Count, v4Range.Separate(s.V4Reserved), heldV4, defaultV4Available)
+	v6 = s.pickIPPoolIPs(name, slices.Clone(keepV6), v6Count, v6Range.Separate(s.V6Reserved), heldV6, defaultV6Available)
 	if len(v4) < v4Count || len(v6) < v6Count {
 		return nil, nil, fmt.Errorf("subnet %s does not have enough free addresses for ippool %s: got %d/%d IPv4 and %d/%d IPv6 addresses",
 			s.Name, name, len(v4), v4Count, len(v6), v6Count)
@@ -887,21 +895,23 @@ func (s *Subnet) pickIPPoolIPs(name string, candidates []string, count int, usab
 
 // usableRange returns the subnet's usable address range, i.e. without the network and
 // broadcast addresses, honoring the point-to-point rules for /31 and /32 prefixes.
-func usableRange(cidr *net.IPNet) *IPRangeList {
+func usableRange(cidr *net.IPNet) (*IPRangeList, error) {
 	if cidr == nil {
-		return NewEmptyIPRangeList()
+		return NewEmptyIPRangeList(), nil
 	}
-	firstIP, err1 := util.FirstIP(cidr.String())
-	lastIP, err2 := util.LastIP(cidr.String())
-	if err1 != nil || err2 != nil {
-		return NewEmptyIPRangeList()
+	firstIP, err := util.FirstIP(cidr.String())
+	if err != nil {
+		return nil, fmt.Errorf("get first usable IP for %s: %w", cidr, err)
+	}
+	lastIP, err := util.LastIP(cidr.String())
+	if err != nil {
+		return nil, fmt.Errorf("get last usable IP for %s: %w", cidr, err)
 	}
 	r, err := NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
 	if err != nil {
-		klog.Error(err)
-		return NewEmptyIPRangeList()
+		return nil, fmt.Errorf("build usable IP range for %s: %w", cidr, err)
 	}
-	return r
+	return r, nil
 }
 
 func takeIPs(list *IPRangeList, count int) []string {

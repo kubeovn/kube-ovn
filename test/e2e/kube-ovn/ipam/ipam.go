@@ -1453,6 +1453,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 		}
 		podClient.DeleteGracefully(podName)
 		podClient.WaitForNotFound(podName)
+		ipName := ovs.PodNameToPortName(podName, namespaceName, util.OvnProvider)
+		framework.ExpectNoError(ipClient.WaitToDisappear(ipName, time.Second, 60*time.Second))
 
 		ginkgo.By("Checking the released addresses return to the pool, not to the default pool")
 		// the pool's membership list does not change, and its free addresses recover

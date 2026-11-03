@@ -756,8 +756,7 @@ func TestHandleAddOrUpdateIPPoolAddressSetWithIPCount(t *testing.T) {
 
 // TestHandleAddOrUpdateIPPoolAddressSetFailureKeepsMembershipInactive pins the
 // exposure invariant: while the address set cannot be reconciled, the new membership
-// must not become allocatable in IPAM - although status.ips already records the
-// selection a retry or a restart restores it from.
+// must not become allocatable in IPAM. The selection is pending until activation succeeds.
 func TestHandleAddOrUpdateIPPoolAddressSetFailureKeepsMembershipInactive(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
 		Name: "subnet12",
@@ -791,8 +790,10 @@ func TestHandleAddOrUpdateIPPoolAddressSetFailureKeepsMembershipInactive(t *test
 
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().IPPools().Get(context.Background(), ippool.Name, metav1.GetOptions{})
 	require.NoError(t, err)
-	require.Equal(t, []string{"10.12.0.2", "10.12.0.3"}, got.Status.IPs,
-		"the selection is persisted for the retry and for the restore after a restart")
+	require.Empty(t, got.Status.IPs,
+		"an unactivated selection must not be presented as the active membership")
+	require.Equal(t, []string{"10.12.0.2", "10.12.0.3"}, got.Status.PendingIPs,
+		"the pending selection is persisted for retry")
 	require.False(t, got.Status.IsReady())
 }
 
