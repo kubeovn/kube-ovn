@@ -64,9 +64,7 @@ func (m *mockCache) List(_ context.Context, list client.ObjectList, opts ...clie
 	}
 	// Service admission reads from the API reader and filters the cluster-wide list in memory.
 	if svcs, ok := list.(*corev1.ServiceList); ok {
-		for _, svc := range m.services {
-			svcs.Items = append(svcs.Items, svc)
-		}
+		svcs.Items = append(svcs.Items, m.services...)
 	}
 	return nil
 }
