@@ -112,7 +112,7 @@ var _ = framework.Describe("[group:service]", func() {
 		_ = podClient.CreateSync(clientPod)
 
 		nodePort := service.Spec.Ports[0].NodePort
-		fnCheck := func(nodeName, nodeIP string, nodePort int32) {
+		checkNodePort := func(podName, nodeName, nodeIP string, nodePort int32) {
 			ginkgo.GinkgoHelper()
 
 			if nodeIP == "" {
@@ -122,32 +122,17 @@ var _ = framework.Describe("[group:service]", func() {
 			ginkgo.By("Checking " + protocol + " connection via node " + nodeName)
 			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", util.JoinHostPort(nodeIP, nodePort))
 			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-				ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, hostPodName))
-				_, err := e2epodoutput.RunHostCmd(namespaceName, hostPodName, cmd)
-				return err == nil, nil
-			}, "")
-		}
-		fnCheckPod := func(nodeName, nodeIP string, nodePort int32) {
-			ginkgo.GinkgoHelper()
-
-			if nodeIP == "" {
-				return
-			}
-			protocol := strings.ToLower(util.CheckProtocol(nodeIP))
-			ginkgo.By("Checking pod " + protocol + " connection via node " + nodeName)
-			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", util.JoinHostPort(nodeIP, nodePort))
-			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-				ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, clientPodName))
-				_, err := e2epodoutput.RunHostCmd(namespaceName, clientPodName, cmd)
+				ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, podName))
+				_, err := e2epodoutput.RunHostCmd(namespaceName, podName, cmd)
 				return err == nil, nil
 			}, "")
 		}
 		for _, node := range nodeList.Items {
 			ipv4, ipv6 := util.GetNodeInternalIP(node)
-			fnCheck(node.Name, ipv4, nodePort)
-			fnCheck(node.Name, ipv6, nodePort)
-			fnCheckPod(node.Name, ipv4, nodePort)
-			fnCheckPod(node.Name, ipv6, nodePort)
+			checkNodePort(hostPodName, node.Name, ipv4, nodePort)
+			checkNodePort(hostPodName, node.Name, ipv6, nodePort)
+			checkNodePort(clientPodName, node.Name, ipv4, nodePort)
+			checkNodePort(clientPodName, node.Name, ipv6, nodePort)
 		}
 	})
 
