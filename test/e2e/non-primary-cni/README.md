@@ -22,7 +22,7 @@ The test suite automatically detects your KIND cluster's bridge network configur
 
 ## Test Scenarios
 
-The test suite covers three main scenarios with enhanced interface handling and dynamic network detection:
+The test suite covers four main scenarios with enhanced interface handling and dynamic network detection:
 
 ### 1. VPC Simple
 - **Purpose**: Tests basic non-primary CNI functionality in VPC mode
@@ -46,6 +46,14 @@ The test suite covers three main scenarios with enhanced interface handling and 
 - **Coverage**: Network isolation, inter-pod communication, logical switches
 - **Interface**: Uses `net1` interface for connectivity tests
 - **Config**: Requires `LogicalNetwork/00-lnet-simple.yaml` test configuration
+
+### 4. VPC Egress Gateway
+- **Purpose**: Tests both the existing external attachment mode and `PrimaryCNI` egress mode
+- **Existing behavior**: Covers the internal NAD default-network and external attachment routing introduced by [PR #7425](https://github.com/kubeovn/kube-ovn/pull/7425), using a gateway without `externalNetworkMode`
+- **Version**: `PrimaryCNI` mode requires Kube-OVN v1.17 or later
+- **Coverage**: Gateway interface roles, routes back to the VPC, internal/external status IPs, OVN reroute next hops, and the source IP observed after SNAT
+- **Networks**: Uses `kind-underlay` for the external macvlan attachment case and Cilium's primary pod network for the `PrimaryCNI` case
+- **Config**: Creates its VPC, subnets, NADs, gateway, and test pods through the E2E clients
 
 ## Prerequisites
 
@@ -91,6 +99,11 @@ make kube-ovn-non-primary-cni-vpc-nat-gw-e2e
 #### Logical Network Simple Tests
 ```bash
 make kube-ovn-non-primary-cni-lnet-simple-e2e
+```
+
+#### VPC Egress Gateway Tests
+```bash
+NON_PRIMARY_CNI_E2E_FOCUS='VPC Egress Gateway' make kube-ovn-non-primary-cni-e2e
 ```
 
 ## Environment Variables

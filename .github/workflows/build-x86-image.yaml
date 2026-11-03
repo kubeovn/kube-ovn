@@ -272,6 +272,8 @@ jobs:
       - name: Unit test
         run: |
           python3 hack/test-ovn-db-mode.py
+          bash dist/images/init-vpc-egress-gateway_test.sh
+          bash dist/images/init-vpc-egress-gateway-primary-cni_test.sh
           make ut
           go test -race ./pkg/ipsec
           go test -race ./pkg/controller -run TestIPsec -count=1
@@ -1815,7 +1817,7 @@ jobs:
       - build-kube-ovn
       - build-e2e-binaries
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
@@ -1929,28 +1931,42 @@ jobs:
           KUBE_OVN_PRIMARY_CNI: "false"
         run: make kube-ovn-non-primary-cni-e2e
 
+      - name: Run PR non-primary CNI egress gateway e2e
+        if: github.event_name == 'pull_request'
+        id: egress_gateway_e2e
+        env:
+          E2E_BRANCH: ${{ github.base_ref }}
+          E2E_IP_FAMILY: ${{ matrix.ip-family }}
+          E2E_NETWORK_MODE: overlay
+          KUBE_OVN_PRIMARY_CNI: "false"
+          NON_PRIMARY_CNI_E2E_FOCUS: "VPC Egress Gateway"
+        run: |
+          if [ -f test/e2e/non-primary-cni/vpc_egress_gateway_test.go ]; then
+            make kube-ovn-non-primary-cni-e2e
+          fi
+
       - name: Collect k8s events
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.egress_gateway_e2e.conclusion == 'failure')
         run: |
           kubectl get events -A -o yaml > non-primary-cni-e2e-${{ matrix.ip-family }}-events.yaml
           tar zcf non-primary-cni-e2e-${{ matrix.ip-family }}-events.tar.gz non-primary-cni-e2e-${{ matrix.ip-family }}-events.yaml
 
       - name: Upload k8s events
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.egress_gateway_e2e.conclusion == 'failure')
         with:
           name: non-primary-cni-e2e-${{ matrix.ip-family }}-events
           path: non-primary-cni-e2e-${{ matrix.ip-family }}-events.tar.gz
 
       - name: Collect apiserver audit logs
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.egress_gateway_e2e.conclusion == 'failure')
         run: |
           docker cp kube-ovn-control-plane:/var/log/kubernetes/kube-apiserver-audit.log .
           tar zcf non-primary-cni-e2e-${{ matrix.ip-family }}-audit-log.tar.gz kube-apiserver-audit.log
 
       - name: Upload apiserver audit logs
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.egress_gateway_e2e.conclusion == 'failure')
         with:
           name: non-primary-cni-e2e-${{ matrix.ip-family }}-audit-log
           path: non-primary-cni-e2e-${{ matrix.ip-family }}-audit-log.tar.gz
@@ -1958,18 +1974,18 @@ jobs:
 
       - name: Check kube ovn pod restarts
         id: check-restarts
-        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')) }}
+        if: ${{ success() || (failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.egress_gateway_e2e.conclusion == 'failure')) }}
         run: make check-kube-ovn-pod-restarts
 
       - name: kubectl ko logs
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.egress_gateway_e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         run: |
           bash .github/scripts/collect-kubectl-ko-log.sh
           mv kubectl-ko-log.tar.gz non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
 
       - name: upload kubectl ko logs
         uses: actions/upload-artifact@v7
-        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure' || steps.egress_gateway_e2e.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
         with:
           name: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log
           path: non-primary-cni-e2e-${{ matrix.ip-family }}-ko-log.tar.gz
