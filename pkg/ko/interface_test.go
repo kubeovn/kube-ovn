@@ -14,10 +14,10 @@ func TestInvalidInterfaceArgumentsNeverConnect(t *testing.T) {
 	cases := [][]string{
 		{"trace", "--pod", "node//worker", "--dst-ip", "10.0.0.1"},
 		{"trace", "--node", "app/pod", "--dst-ip", "10.0.0.1"},
-		{"capture", "--pod", "a/b/c", "--", "-c1"},
-		{"capture", "--pod", "/pod", "--", "-c1"},
-		{"capture", "--vm", "/vm", "--", "-c1"},
-		{"capture", "--vmi", "a/b/c", "--", "-c1"},
+		{"capture", "pod/a/b/c", "--", "-c1"},
+		{"capture", "/pod", "--", "-c1"},
+		{"capture", "vm//vm", "--", "-c1"},
+		{"capture", "vmi/a/b/c", "--", "-c1"},
 		{"capture", "--vm", "vm", "--pod", "pod"},
 		{"capture", "--vm", "vm", "--vmi", "vmi"},
 		{"capture", "--pod", "pod", "--vmi", "vmi"},
@@ -43,16 +43,34 @@ func TestInvalidInterfaceArgumentsNeverConnect(t *testing.T) {
 		{"exec", "vsctl", "--", "show"},
 		{"exec", "ofctl", "--node", "worker", "show", "--", "extra"},
 		{"capture", "--", "-c1"},
-		{"capture", "--pod", "app/web", "-c1"},
+		{"capture", "pod/web", "-c1"},
 		{"trace", "--dst-ip", "10.0.0.1"},
 		{"trace", "--pod", "a", "--node", "b", "--dst-ip", "10.0.0.1"},
-		{"trace", "--pod", "a", "--dst-ip", "bad"},
-		{"trace", "--pod", "a", "--dst-ip", "10.0.0.1", "--protocol", "tcp"},
-		{"trace", "--pod", "a", "--dst-ip", "10.0.0.1", "--dst-port", "80"},
-		{"trace", "--pod", "a", "--dst-ip", "10.0.0.1", "--arp-op", "reply"},
-		{"trace", "--pod", "a", "--dst-ip", "2001:db8::1", "--protocol", "arp"},
-		{"trace", "--pod", "a", "--dst-ip", "10.0.0.1", "--dst-mac", "invalid"},
-		{"trace", "--pod", "a", "--dst-ip", "10.0.0.1", "--engine", "ovs"},
+		{"trace", "pod/a", "--target", "bad"},
+		{"trace", "pod/a", "--target", "addr/10.0.0.1", "--protocol", "tcp"},
+		{"trace", "pod/a", "--target", "addr/10.0.0.1", "--dst-port", "80"},
+		{"trace", "pod/a", "--target", "addr/10.0.0.1", "--arp-op", "reply"},
+		{"trace", "pod/a", "--target", "addr/2001:db8::1", "--protocol", "arp"},
+		{"trace", "pod/a", "--target", "addr/10.0.0.1", "--dst-mac", "invalid"},
+		{"trace", "pod/a", "--target", "addr/10.0.0.1", "--engine", "ovs"},
+		{"trace", "pod/a"},
+		{"trace", "pod/a", "pod/b", "--target", "addr/10.0.0.1"},
+		{"capture", "pod/a", "pod/b"},
+		{"capture", "pod/a", "--", "-c1", "pod/b"},
+		{"trace", "pod/a", "--source", "pod/b", "--target", "addr/10.0.0.1"},
+		{"trace", "svc/app/api", "--target", "addr/10.0.0.1"},
+		{"capture", "pod/app/web", "--", "-c1"},
+		{"network", "inspect"},
+		{"network", "inspect", "--pod", "app/web"},
+		{"network", "inspect", "svc/app/api"},
+		{"network", "inspect", "lsp/web.app"},
+		{"trace", "localnet/underlay", "--target", "addr/10.0.0.1"},
+		{"trace", "localnet/underlay", "--target", "addr/10.0.0.1", "--source-ip", "bad", "--source-mac", "02:00:00:00:00:01"},
+		{"trace", "lrp/router-port", "--target", "addr/10.0.0.1", "--engine", "all"},
+		{"trace", "pod/a", "--target", "addr/10.0.0.1", "--node", "worker"},
+		{"capture", "lrp/router-port"},
+		{"capture", "lrp/router-port", "--observe-at", "pod/a"},
+		{"capture", "pod/a", "--observe-at", "lsp/port"},
 		{"diagnose", "node"},
 		{"diagnose", "subnet", "s", "--tcp-port", "65536"},
 		{"diagnose", "cluster", "--external-address", "example.com"},
@@ -111,9 +129,9 @@ func TestDiagnosticEndpointSyntax(t *testing.T) {
 }
 
 func TestTraceNamedOptions(t *testing.T) {
-	request, err := (traceOptions{node: "worker", destination: "2001:db8::2", protocol: "tcp", port: 443, engine: "ovn"}).request()
+	request, err := (traceOptions{target: "addr/2001:db8::2", protocol: "tcp", port: 443, engine: "ovn"}).request(sourceRef{kind: sourceKindNode, name: "worker"})
 	require.NoError(t, err)
-	require.Equal(t, "node//worker", request.reference)
+	require.Equal(t, "node/worker", request.reference)
 	require.Equal(t, uint16(443), request.port)
 	require.Equal(t, "2001:db8::2", request.destination.String())
 }
@@ -130,8 +148,8 @@ func TestDiagnosticFlagsOverrideEnvironment(t *testing.T) {
 
 func TestValidNamedInterfacesReachClientCreation(t *testing.T) {
 	for _, args := range [][]string{
-		{"trace", "--pod", "app/web", "--dst-ip", "10.0.0.1"},
-		{"trace", "--node", "worker", "--dst-ip", "2001:db8::1", "--protocol", "udp", "--dst-port", "53", "--engine", "ovn"},
+		{"trace", "-n", "app", "pod/web", "--target", "addr/10.0.0.1"},
+		{"trace", "no/worker", "--target", "addr/2001:db8::1", "--protocol", "udp", "--dst-port", "53", "--engine", "ovn"},
 		{"diagnose", "connectivity", "--target", "tcp://192.0.2.1:443", "--target", "udp://[2001:db8::1]:53"},
 		{"diagnose", "cluster", "--external-address", "192.0.2.1", "--external-address", "2001:db8::1"},
 		{"logs"},

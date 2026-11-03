@@ -14,10 +14,6 @@ func validateResourceName(kind, value string) error {
 	return nil
 }
 
-func validatePodReference(value string) error {
-	return validateNamespacedReference("pod", value)
-}
-
 func validateNamespacedReference(kind, value string) error {
 	parts := strings.Split(value, "/")
 	if len(parts) > 2 {

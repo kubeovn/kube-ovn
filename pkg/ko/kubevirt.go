@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,50 +15,81 @@ import (
 
 var vmiResource = schema.GroupVersionResource{Group: "kubevirt.io", Version: "v1", Resource: "virtualmachineinstances"}
 
-type captureOptions struct {
-	pod, vm, vmi string
-}
-
-func (o captureOptions) reference() (string, string, error) {
-	kind, reference := "", ""
-	for _, item := range []struct{ kind, value string }{{"pod", o.pod}, {"vm", o.vm}, {"vmi", o.vmi}} {
-		if item.value == "" {
-			continue
-		}
-		if reference != "" {
-			return "", "", errors.New("specify exactly one of --pod, --vm or --vmi")
-		}
-		kind, reference = item.kind, item.value
-	}
-	if reference == "" {
-		return "", "", errors.New("specify exactly one of --pod, --vm or --vmi")
-	}
-	return kind, reference, nil
-}
-
 type captureTarget struct {
-	pod *corev1.Pod
-	vmi *unstructured.Unstructured
+	pod         *corev1.Pod
+	vmi         *unstructured.Unstructured
+	node        string
+	iface       string
+	netns       string
+	observation string
 }
 
-func (c *Client) captureTarget(ctx context.Context, options captureOptions) (captureTarget, error) {
-	kind, reference, err := options.reference()
-	if err != nil {
-		return captureTarget{}, err
+func (c *Client) captureTarget(ctx context.Context, ref sourceRef) (captureTarget, error) {
+	return c.captureTargetOnNode(ctx, ref, "", "")
+}
+
+func (c *Client) captureTargetOnNode(ctx context.Context, ref sourceRef, nodeHint, observeAt string) (captureTarget, error) {
+	if ref.kind == sourceKindLRP {
+		if observeAt == "" {
+			return captureTarget{}, errors.New("LRP capture requires --observe-at lsp/NAME")
+		}
+		observed, err := parseSourceRef(observeAt)
+		if err != nil || observed.kind != sourceKindLSP {
+			return captureTarget{}, errors.New("--observe-at must be lsp/NAME")
+		}
+		if err := c.checkLRPObservation(ctx, ref.name, observed.name); err != nil {
+			return captureTarget{}, err
+		}
+		target, err := c.captureTargetOnNode(ctx, observed, nodeHint, "")
+		if err != nil {
+			return captureTarget{}, err
+		}
+		target.observation = fmt.Sprintf("Capturing traffic adjacent to LRP %s at LSP %s on node %s interface %s", ref.name, observed.name, target.node, target.iface)
+		return target, nil
 	}
-	if kind == "pod" {
-		pod, err := c.pod(ctx, reference)
+	if ref.kind == sourceKindLocalnet || ref.kind == sourceKindLSP {
+		source, err := c.ovnSource(ctx, ref, nodeHint, true)
+		if err != nil {
+			return captureTarget{}, err
+		}
+		iface := source.physicalNIC
+		netns := ""
+		if iface == "" {
+			ovs, err := c.nodeTarget(ctx, source.node, "ovs")
+			if err != nil {
+				return captureTarget{}, err
+			}
+			nic, err := c.podInterface(ctx, ovs, source.lsp)
+			if err != nil {
+				return captureTarget{}, err
+			}
+			iface = nic.name
+			if nic.kind == "internal" {
+				if nic.netns == "" {
+					return captureTarget{}, fmt.Errorf("internal LSP interface %q has no network namespace", nic.name)
+				}
+				netns = nic.netns
+			}
+		}
+		return captureTarget{node: source.node, iface: iface, netns: netns}, nil
+	}
+	if ref.kind == sourceKindPod {
+		pod, err := c.pod(ctx, ref.name)
 		return captureTarget{pod: pod}, err
 	}
-	namespace, name := c.WorkloadNamespace, reference
-	if ns, n, ok := strings.Cut(reference, "/"); ok {
-		namespace, name = ns, n
+	if ref.kind == sourceKindNode {
+		return captureTarget{node: ref.name}, nil
+	}
+	namespace, name := c.WorkloadNamespace, ref.name
+	if ref.kind != sourceKindVM && ref.kind != sourceKindVMI {
+		pod, err := c.execPod(ctx, string(ref.kind)+"/"+name, "", c.DiscoveryTimeout)
+		return captureTarget{pod: pod}, err
 	}
 	vmi, err := c.Dynamic.Resource(vmiResource).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return captureTarget{}, fmt.Errorf("get VMI %s/%s: %w", namespace, name, err)
 	}
-	if kind == "vm" {
+	if ref.kind == sourceKindVM {
 		resource := schema.GroupVersionResource{Group: "kubevirt.io", Version: "v1", Resource: "virtualmachines"}
 		vm, err := c.Dynamic.Resource(resource).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
 		if err != nil {
@@ -133,12 +163,15 @@ func (c *Client) vmiLauncher(ctx context.Context, vmi *unstructured.Unstructured
 		candidates = append(candidates, pod)
 	}
 	if len(candidates) != 1 {
-		return nil, fmt.Errorf("resolve VMI %s/%s on node %s: expected one running launcher Pod (migration Pod %q), found %d; retry or specify --pod", vmi.GetNamespace(), vmi.GetName(), status.NodeName, preferred, len(candidates))
+		return nil, fmt.Errorf("resolve VMI %s/%s on node %s: expected one running launcher Pod (migration Pod %q), found %d; retry or select the launcher with pod/NAME", vmi.GetNamespace(), vmi.GetName(), status.NodeName, preferred, len(candidates))
 	}
 	return candidates[0], nil
 }
 
 func (c *Client) checkCaptureTarget(ctx context.Context, target captureTarget) error {
+	if target.pod == nil {
+		return nil
+	}
 	if err := c.checkSource(ctx, podNetworkSource(target.pod)); err != nil {
 		return err
 	}

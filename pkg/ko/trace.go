@@ -20,13 +20,31 @@ type tracePlan struct {
 	sourceMAC      string
 	destinationMAC string
 	switchName     string
+	datapath       string
+	bridge         string
+	vlanID         int
 	lsp            string
 }
 
 func (a *Application) trace(ctx context.Context, client *Client, request traceRequest, ovnOnly bool) error {
-	source, err := client.networkSource(ctx, request.reference)
+	ref, err := parseSourceRef(request.reference)
 	if err != nil {
 		return err
+	}
+	var source *networkSource
+	if ref.kind == sourceKindLocalnet || ref.kind == sourceKindLSP || ref.kind == sourceKindLRP {
+		source, err = client.ovnSource(ctx, ref, request.node, !ovnOnly)
+	} else {
+		source, err = client.networkSource(ctx, request.reference)
+	}
+	if err != nil {
+		return err
+	}
+	if request.node != "" && source.kind != sourceKindLocalnet {
+		return errors.New("--node is only valid for a localnet port")
+	}
+	if source.kind == sourceKindLocalnet && (!request.sourceIP.IsValid() || request.sourceMAC == "") {
+		return errors.New("localnet trace requires --source-ip and --source-mac")
 	}
 	plan, err := prepareTrace(source, request)
 	if err != nil {
@@ -36,14 +54,54 @@ func (a *Application) trace(ctx context.Context, client *Client, request traceRe
 	if err != nil {
 		return err
 	}
-	ovs, err := client.nodeTarget(ctx, source.node, "ovs")
-	if err != nil {
-		return err
-	}
+	var ovs Target
 	if plan.destinationMAC == "" {
-		plan.destinationMAC, err = client.destinationMAC(ctx, source, nb, ovs, plan)
-		if err != nil {
-			return err
+		if source.kind == sourceKindLSP {
+			if err := client.populateLSPSubnet(ctx, source); err != nil {
+				return err
+			}
+		}
+		switch source.kind {
+		case sourceKindLRP:
+			plan.destinationMAC = source.annotations[annotationPrefix+"mac_address"]
+		case sourceKindLocalnet:
+			plan.destinationMAC, err = client.logicalPortMAC(ctx, nb, request.destination)
+			if err != nil {
+				return err
+			}
+			if plan.destinationMAC == "" {
+				return errors.New("destination MAC is not a known logical port; specify --dst-mac")
+			}
+		case sourceKindLSP:
+			if source.node == "" {
+				if sameSubnet(request.destination, source.annotations[annotationPrefix+"cidr"]) {
+					plan.destinationMAC, err = client.logicalPortMAC(ctx, nb, request.destination)
+					if err != nil {
+						return err
+					}
+				}
+				if plan.destinationMAC == "" {
+					return errors.New("destination MAC cannot be inferred without a bound node; specify --dst-mac")
+				}
+				break
+			}
+			ovs, err = client.nodeTarget(ctx, source.node, "ovs")
+			if err != nil {
+				return err
+			}
+			plan.destinationMAC, err = client.destinationMAC(ctx, source, nb, ovs, plan)
+			if err != nil {
+				return err
+			}
+		default:
+			ovs, err = client.nodeTarget(ctx, source.node, "ovs")
+			if err != nil {
+				return err
+			}
+			plan.destinationMAC, err = client.destinationMAC(ctx, source, nb, ovs, plan)
+			if err != nil {
+				return err
+			}
 		}
 	}
 	sb, err := client.leader(ctx, "sb")
@@ -59,7 +117,18 @@ func (a *Application) trace(ctx context.Context, client *Client, request traceRe
 	if ovnOnly {
 		return nil
 	}
-	nic, err := client.podInterface(ctx, ovs, source.lsp)
+	if ovs.Pod == "" {
+		ovs, err = client.nodeTarget(ctx, source.node, "ovs")
+		if err != nil {
+			return err
+		}
+	}
+	var nic podInterface
+	if source.kind == sourceKindLocalnet {
+		nic, err = client.hostInterface(ctx, ovs, source.physicalNIC)
+	} else {
+		nic, err = client.podInterface(ctx, ovs, source.lsp)
+	}
 	if err != nil {
 		return err
 	}
@@ -73,18 +142,31 @@ func (a *Application) trace(ctx context.Context, client *Client, request traceRe
 }
 
 func prepareTrace(source *networkSource, request traceRequest) (tracePlan, error) {
-	plan := tracePlan{request: request, lsp: source.lsp, switchName: source.annotations[annotationPrefix+"logical_switch"], destinationMAC: request.mac}
-	if plan.lsp == "" || plan.switchName == "" {
-		return plan, errors.New("source logical port or switch is not ready")
+	plan := tracePlan{request: request, lsp: source.lsp, switchName: source.annotations[annotationPrefix+"logical_switch"], datapath: source.datapath, bridge: source.bridge, vlanID: source.vlanID, destinationMAC: request.mac}
+	if plan.datapath == "" {
+		plan.datapath = plan.switchName
 	}
-	mac, err := net.ParseMAC(source.annotations[annotationPrefix+"mac_address"])
+	if plan.bridge == "" {
+		plan.bridge = "br-int"
+	}
+	if plan.lsp == "" || plan.datapath == "" {
+		return plan, errors.New("source logical port or datapath is not ready")
+	}
+	macAddress := source.annotations[annotationPrefix+"mac_address"]
+	if request.sourceMAC != "" {
+		macAddress = request.sourceMAC
+	}
+	mac, err := net.ParseMAC(macAddress)
 	if err != nil || len(mac) != 6 {
 		return plan, errors.New("source MAC address is not ready")
 	}
 	plan.sourceMAC = mac.String()
 	addresses := source.addresses
+	if request.sourceIP.IsValid() {
+		addresses = []string{request.sourceIP.String()}
+	}
 	// ARP originates from the OVN port, not a node external/InternalIP address.
-	if request.protocol == "arp" {
+	if request.protocol == "arp" && !request.sourceIP.IsValid() {
 		addresses = strings.Split(source.annotations[annotationPrefix+"ip_address"], ",")
 	}
 	for _, candidate := range addresses {
@@ -96,6 +178,9 @@ func prepareTrace(source *networkSource, request traceRequest) (tracePlan, error
 	}
 	if !plan.sourceIP.IsValid() {
 		return plan, errors.New("source has no address in the destination family")
+	}
+	if source.kind == sourceKindLocalnet && source.annotations[annotationPrefix+"cidr"] != "" && !sameSubnet(plan.sourceIP, source.annotations[annotationPrefix+"cidr"]) {
+		return plan, errors.New("source IP is outside the localnet subnet")
 	}
 	if request.protocol == "arp" && !request.arpReply && request.mac == "" {
 		plan.destinationMAC = "ff:ff:ff:ff:ff:ff"
@@ -111,7 +196,7 @@ func (p tracePlan) ovnCommand() []string {
 			op, targetMAC = 2, p.destinationMAC
 		}
 		match := fmt.Sprintf("%s && arp.op == %d && arp.sha == %s && arp.tha == %s && arp.spa == %s && arp.tpa == %s", base, op, p.sourceMAC, targetMAC, p.sourceIP, p.request.destination)
-		return []string{"ovn-trace", p.switchName, match}
+		return []string{"ovn-trace", p.datapath, match}
 	}
 	family := 4
 	if p.request.destination.Is6() {
@@ -130,11 +215,14 @@ func (p tracePlan) ovnCommand() []string {
 			match += " && tcp.flags == 2"
 		}
 	}
-	return []string{"ovn-trace", "--ct=new", "--ct=new", "--ct=new", "--ct=new", p.switchName, match}
+	return []string{"ovn-trace", "--ct=new", "--ct=new", "--ct=new", "--ct=new", p.datapath, match}
 }
 
 func (p tracePlan) ovsCommand(port int) []string {
 	base := fmt.Sprintf("in_port=%d,dl_src=%s,dl_dst=%s", port, p.sourceMAC, p.destinationMAC)
+	if p.vlanID > 0 {
+		base += fmt.Sprintf(",dl_vlan=%d", p.vlanID)
+	}
 	var flow string
 	if p.request.protocol == "arp" {
 		op, targetMAC := 1, "00:00:00:00:00:00"
@@ -153,7 +241,7 @@ func (p tracePlan) ovsCommand(port int) []string {
 			flow += fmt.Sprintf(",%s_src=1000,%s_dst=%d", p.request.protocol, p.request.protocol, p.request.port)
 		}
 	}
-	return []string{"ovs-appctl", "ofproto/trace", "br-int", flow}
+	return []string{"ovs-appctl", "ofproto/trace", p.bridge, flow}
 }
 
 func sameSubnet(address netip.Addr, cidrs string) bool {

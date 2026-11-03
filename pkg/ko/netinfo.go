@@ -16,7 +16,9 @@ import (
 )
 
 type podNetworkInfo struct {
-	Namespace   string                `json:"namespace"`
+	Kind        string                `json:"kind,omitempty"`
+	Target      string                `json:"target,omitempty"`
+	Namespace   string                `json:"namespace,omitempty"`
 	Name        string                `json:"name"`
 	Node        string                `json:"node"`
 	NetNS       string                `json:"netns"`
@@ -87,11 +89,7 @@ type ipJSONAddr struct {
 	PrefixLen int    `json:"prefixlen"`
 }
 
-func (c *Client) podNetwork(ctx context.Context, reference string) (*podNetworkInfo, error) {
-	pod, err := c.pod(ctx, reference)
-	if err != nil {
-		return nil, err
-	}
+func (c *Client) podNetwork(ctx context.Context, pod *corev1.Pod) (*podNetworkInfo, error) {
 	target, err := c.nodeTarget(ctx, pod.Spec.NodeName, "ovs")
 	if err != nil {
 		return nil, err
@@ -148,6 +146,40 @@ func (c *Client) podNetwork(ctx context.Context, reference string) (*podNetworkI
 		case !pod.Spec.HostNetwork && link.kind() == "veth":
 			if peer, ok := hostByIndex[link.LinkIndex]; ok && peer.Kind == "veth" {
 				item.HostPeer = new(peer)
+			}
+		}
+		result.Interfaces = append(result.Interfaces, item)
+	}
+	return result, nil
+}
+
+func (c *Client) nodeNetwork(ctx context.Context, name string) (*podNetworkInfo, error) {
+	target, err := c.nodeTarget(ctx, name, "ovs")
+	if err != nil {
+		return nil, err
+	}
+	const netns = "/proc/1/ns/net"
+	links, err := c.ipLinks(ctx, target, netns)
+	if err != nil {
+		return nil, fmt.Errorf("inspect node network namespace %s: %w", netns, err)
+	}
+	byIndex := make(map[int]networkLink, len(links))
+	byName := make(map[string]networkLink, len(links))
+	for _, link := range links {
+		byIndex[link.Index] = link.networkLink()
+		byName[link.Name] = link.networkLink()
+	}
+	result := &podNetworkInfo{Kind: "node", Name: name, Node: name, NetNS: netns, HostNetwork: true, Interfaces: make([]podNetworkInterface, 0, len(links))}
+	for _, link := range links {
+		item := link.podNetworkInterface()
+		switch {
+		case link.isMacvlanOrIPVLAN():
+			if parent, ok := link.parentLink(byName, byIndex, byIndex); ok && parent.Index != link.Index {
+				item.Parent = new(parent)
+			}
+		case link.LinkNetNSID == nil && link.kind() == "veth":
+			if peer, ok := byIndex[link.LinkIndex]; ok && peer.Index != link.Index {
+				item.Peer = new(peer)
 			}
 		}
 		result.Interfaces = append(result.Interfaces, item)
@@ -292,8 +324,26 @@ func (link ipJSONLink) addresses() []string {
 	return addresses
 }
 
-func (a *Application) networkInspect(ctx context.Context, client *Client, pod, output string) error {
-	info, err := client.podNetwork(ctx, pod)
+func (a *Application) networkInspect(ctx context.Context, client *Client, ref sourceRef, output string) error {
+	var info *podNetworkInfo
+	var err error
+	if ref.kind == sourceKindNode {
+		info, err = client.nodeNetwork(ctx, ref.name)
+	} else {
+		target, targetErr := client.captureTarget(ctx, ref)
+		if targetErr != nil {
+			return targetErr
+		}
+		info, err = client.podNetwork(ctx, target.pod)
+		if err == nil {
+			if err = client.checkCaptureTarget(ctx, target); err != nil {
+				return err
+			}
+			if ref.kind != sourceKindPod {
+				info.Target = ref.reference()
+			}
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -308,7 +358,17 @@ func (a *Application) networkInspect(ctx context.Context, client *Client, pod, o
 }
 
 func writePodNetwork(out io.Writer, info *podNetworkInfo) error {
-	if _, err := fmt.Fprintf(out, "Pod: %s/%s\nNode: %s\nNetwork namespace: %s\nHost network: %t\nInterfaces:\n", info.Namespace, info.Name, info.Node, info.NetNS, info.HostNetwork); err != nil {
+	if info.Target != "" {
+		if _, err := fmt.Fprintf(out, "Target: %s\n", info.Target); err != nil {
+			return err
+		}
+	}
+	if info.Kind != "node" {
+		if _, err := fmt.Fprintf(out, "Pod: %s/%s\n", info.Namespace, info.Name); err != nil {
+			return err
+		}
+	}
+	if _, err := fmt.Fprintf(out, "Node: %s\nNetwork namespace: %s\nHost network: %t\nInterfaces:\n", info.Node, info.NetNS, info.HostNetwork); err != nil {
 		return err
 	}
 	if len(info.Interfaces) == 0 {
