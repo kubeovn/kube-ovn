@@ -40,8 +40,8 @@ github.com/cenkalti/backoff/v7 v7.0.3 h1:oJlXCmDgfNcGYViwioz1cZ1kHebejP4OLfJ/gqM
 github.com/cenkalti/backoff/v7 v7.0.3/go.mod h1:qcKBGwsu4hpxHtQ8tWYsQ+ifzx2+sS+Xx/3jfe30lI8=
 github.com/cenkalti/hub v1.0.2 h1:Nqv9TNaA9boeO2wQFW8o87BY3zKthtnzXmWGmJqhAV8=
 github.com/cenkalti/hub v1.0.2/go.mod h1:8LAFAZcCasb83vfxatMUnZHRoQcffho2ELpHb+kaTJU=
-github.com/cenkalti/rpc2 v1.0.6 h1:TvFGIbaXGeHDSZeMyhdGEfRWBBpFFnlAIiAeZoRyVX0=
-github.com/cenkalti/rpc2 v1.0.6/go.mod h1:2yfU5b86vOr16+iY1jN3MvT6Kxc9Nf8j5iZWwUf7iaw=
+github.com/cenkalti/rpc2 v1.0.8 h1:YWxn4hhiGhnqUUz9ACQoFH+P5llU+YGrRdyKguM7vyA=
+github.com/cenkalti/rpc2 v1.0.8/go.mod h1:2yfU5b86vOr16+iY1jN3MvT6Kxc9Nf8j5iZWwUf7iaw=
 github.com/cert-manager/cert-manager v1.21.3 h1:s5xNJPfWSiBWLAxMmXw8runfcXMVVWM4kcMpZ1OODbY=
 github.com/cert-manager/cert-manager v1.21.3/go.mod h1:Y0beWPQTPpBNIdxwDX2EAL24ONep1H4jGOmSKPvoa0I=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
