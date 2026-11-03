@@ -348,6 +348,11 @@ validatingWebhook:
   # -- Labels to be added to kube-ovn-webhook pods.
   # @section -- Validating webhook configuration
   podLabels: {}
+  # -- Tolerations for kube-ovn-webhook pods.
+  # @section -- Validating webhook configuration
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
   # -- Extra environment variables to be added to kube-ovn-webhook pods.
   # @section -- Validating webhook configuration
   extraEnv: []
@@ -888,6 +893,13 @@ monitor:
   # -- Labels to be added to kube-ovn-monitor pods.
   # @section -- OVN monitoring daemon configuration
   podLabels: {}
+  # -- Tolerations for kube-ovn-monitor pods.
+  # @section -- OVN monitoring daemon configuration
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - key: CriticalAddonsOnly
+      operator: Exists
 
   # -- Extra environment variables to be added to kube-ovn-monitor pods.
   # @section -- OVN monitoring daemon configuration
@@ -989,6 +1001,13 @@ controller:
   # -- Labels to be added to kube-ovn-controller pods.
   # @section -- Kube-OVN controller configuration
   podLabels: {}
+  # -- Tolerations for kube-ovn-controller pods.
+  # @section -- Kube-OVN controller configuration
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - key: CriticalAddonsOnly
+      operator: Exists
 
   # -- Extra environment variables to be added to kube-ovn-controller pods.
   # @section -- Kube-OVN controller configuration
@@ -1078,6 +1097,15 @@ central:
   # -- Labels to be added to ovn-central pods.
   # @section -- OVN-central daemon configuration
   podLabels: {}
+  # -- Tolerations for ovn-central pods.
+  # @section -- OVN-central daemon configuration
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - effect: NoExecute
+      operator: Exists
+    - key: CriticalAddonsOnly
+      operator: Exists
   # -- Extra environment variables to be added to ovn-central pods.
   # @section -- OVN-central daemon configuration
   extraEnv: []
@@ -1189,6 +1217,15 @@ ic:
     # --     - antarctica-east1
     # --     - antarctica-west1
     requiredDuringSchedulingIgnoredDuringExecution: []
+  # -- Tolerations for ovn-ic-controller pods.
+  # @section -- OVN IC controller configuration
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - effect: NoExecute
+      operator: Exists
+    - key: CriticalAddonsOnly
+      operator: Exists
 
   # -- Extra environment variables to be added to ovn-ic-controller pods.
   # @section -- OVN IC controller configuration

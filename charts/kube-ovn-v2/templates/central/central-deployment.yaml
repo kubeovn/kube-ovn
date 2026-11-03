@@ -50,12 +50,7 @@ spec:
         type: infra
     spec:
       tolerations:
-        - effect: NoSchedule
-          operator: Exists
-        - effect: NoExecute
-          operator: Exists
-        - key: CriticalAddonsOnly
-          operator: Exists
+        {{- toYaml .Values.central.tolerations | nindent 8 }}
       affinity:
         {{- include "kube-ovn.affinities.nodeAffinity" (dict "hardcodedRequired" (ternary (list) (include "kubeovn.masterNodeRequired" . | fromYamlArray) .Values.central.hcp.enabled) "userPreferred" .Values.central.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution "userRequired" .Values.central.nodeAffinity.requiredDuringSchedulingIgnoredDuringExecution) | nindent 8 }}
         podAntiAffinity:
