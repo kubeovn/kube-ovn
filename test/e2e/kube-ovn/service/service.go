@@ -28,7 +28,7 @@ var _ = framework.Describe("[group:service]", func() {
 	var serviceClient *framework.ServiceClient
 	var podClient *framework.PodClient
 	var subnetClient *framework.SubnetClient
-	var namespaceName, serviceName, podName, hostPodName, subnetName, cidr string
+	var namespaceName, serviceName, podName, hostPodName, clientPodName, subnetName, cidr string
 
 	ginkgo.BeforeEach(func() {
 		cs = f.ClientSet
@@ -39,19 +39,22 @@ var _ = framework.Describe("[group:service]", func() {
 		serviceName = "service-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
 		hostPodName = "pod-" + framework.RandomSuffix()
+		clientPodName = "pod-" + framework.RandomSuffix()
 		subnetName = "subnet-" + framework.RandomSuffix()
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 	})
 	ginkgo.AfterEach(func() {
 		// Level 1: Delete all independent resources in parallel
-		ginkgo.By("Deleting service " + serviceName + ", pods " + podName + " and " + hostPodName)
+		ginkgo.By("Deleting service " + serviceName + ", pods " + podName + ", " + hostPodName + " and " + clientPodName)
 		serviceClient.Delete(serviceName)
 		podClient.DeleteGracefully(podName)
 		podClient.DeleteGracefully(hostPodName)
+		podClient.DeleteGracefully(clientPodName)
 
 		framework.ExpectNoError(serviceClient.WaitToDisappear(serviceName, 0, 2*time.Minute))
 		podClient.WaitForNotFound(podName)
 		podClient.WaitForNotFound(hostPodName)
+		podClient.WaitForNotFound(clientPodName)
 
 		// Level 2: Subnet (needs pods deleted first)
 		ginkgo.By("Deleting subnet " + subnetName)
@@ -103,6 +106,11 @@ var _ = framework.Describe("[group:service]", func() {
 		hostPod.Spec.NodeName = hostNodeName
 		_ = podClient.CreateSync(hostPod)
 
+		ginkgo.By("Creating a client pod on node " + hostNodeName)
+		clientPod := framework.MakePod(namespaceName, clientPodName, nil, nil, f.KubeOVNImage, cmd, nil)
+		clientPod.Spec.NodeName = hostNodeName
+		_ = podClient.CreateSync(clientPod)
+
 		nodePort := service.Spec.Ports[0].NodePort
 		fnCheck := func(nodeName, nodeIP string, nodePort int32) {
 			ginkgo.GinkgoHelper()
@@ -119,10 +127,27 @@ var _ = framework.Describe("[group:service]", func() {
 				return err == nil, nil
 			}, "")
 		}
+		fnCheckPod := func(nodeName, nodeIP string, nodePort int32) {
+			ginkgo.GinkgoHelper()
+
+			if nodeIP == "" {
+				return
+			}
+			protocol := strings.ToLower(util.CheckProtocol(nodeIP))
+			ginkgo.By("Checking pod " + protocol + " connection via node " + nodeName)
+			cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", util.JoinHostPort(nodeIP, nodePort))
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+				ginkgo.By(fmt.Sprintf(`Executing %q in pod %s/%s`, cmd, namespaceName, clientPodName))
+				_, err := e2epodoutput.RunHostCmd(namespaceName, clientPodName, cmd)
+				return err == nil, nil
+			}, "")
+		}
 		for _, node := range nodeList.Items {
 			ipv4, ipv6 := util.GetNodeInternalIP(node)
 			fnCheck(node.Name, ipv4, nodePort)
 			fnCheck(node.Name, ipv6, nodePort)
+			fnCheckPod(node.Name, ipv4, nodePort)
+			fnCheckPod(node.Name, ipv6, nodePort)
 		}
 	})
 
