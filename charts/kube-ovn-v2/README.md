@@ -670,6 +670,28 @@ false
 </td>
 			<td>ovn-central resource limits & requests. ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/</td>
 		</tr>
+		<tr>
+			<td>central.tolerations</td>
+			<td>list</td>
+			<td><pre lang="json">
+[
+  {
+    "effect": "NoSchedule",
+    "operator": "Exists"
+  },
+  {
+    "effect": "NoExecute",
+    "operator": "Exists"
+  },
+  {
+    "key": "CriticalAddonsOnly",
+    "operator": "Exists"
+  }
+]
+</pre>
+</td>
+			<td>Tolerations for ovn-central pods.</td>
+		</tr>
 	</tbody>
 </table>
 <h3>OVN-central daemon configuration.</h3>
@@ -1086,6 +1108,24 @@ false
 </td>
 			<td>Enable the deployment of the ServiceMonitor for the Kube-OVN controller.</td>
 		</tr>
+		<tr>
+			<td>controller.tolerations</td>
+			<td>list</td>
+			<td><pre lang="json">
+[
+  {
+    "effect": "NoSchedule",
+    "operator": "Exists"
+  },
+  {
+    "key": "CriticalAddonsOnly",
+    "operator": "Exists"
+  }
+]
+</pre>
+</td>
+			<td>Tolerations for kube-ovn-controller pods.</td>
+		</tr>
 	</tbody>
 </table>
 <h3>Extra objects</h3>
@@ -1317,6 +1357,28 @@ false
 </td>
 			<td>More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity</td>
 		</tr>
+		<tr>
+			<td>ic.tolerations</td>
+			<td>list</td>
+			<td><pre lang="json">
+[
+  {
+    "effect": "NoSchedule",
+    "operator": "Exists"
+  },
+  {
+    "effect": "NoExecute",
+    "operator": "Exists"
+  },
+  {
+    "key": "CriticalAddonsOnly",
+    "operator": "Exists"
+  }
+]
+</pre>
+</td>
+			<td>Tolerations for ovn-ic-controller pods.</td>
+		</tr>
 	</tbody>
 </table>
 <h3>Kubelet configuration</h3>
@@ -1506,6 +1568,24 @@ false
 </pre>
 </td>
 			<td>Enable the deployment of the ServiceMonitor for the kube-ovn-monitor.</td>
+		</tr>
+		<tr>
+			<td>monitor.tolerations</td>
+			<td>list</td>
+			<td><pre lang="json">
+[
+  {
+    "effect": "NoSchedule",
+    "operator": "Exists"
+  },
+  {
+    "key": "CriticalAddonsOnly",
+    "operator": "Exists"
+  }
+]
+</pre>
+</td>
+			<td>Tolerations for kube-ovn-monitor pods.</td>
 		</tr>
 	</tbody>
 </table>
@@ -2549,6 +2629,20 @@ false
 </td>
 			<td>Labels to be added to kube-ovn-webhook pods.</td>
 		</tr>
+		<tr>
+			<td>validatingWebhook.tolerations</td>
+			<td>list</td>
+			<td><pre lang="json">
+[
+  {
+    "effect": "NoSchedule",
+    "operator": "Exists"
+  }
+]
+</pre>
+</td>
+			<td>Tolerations for kube-ovn-webhook pods.</td>
+		</tr>
 	</tbody>
 </table>
 
@@ -2616,6 +2710,87 @@ false
 		<td>- antarctica-west1</td>
 	</tr>
 	<tr>
+		<td>ipsec.certManager.enabled</td>
+		<td>bool</td>
+		<td><pre lang="json">
+false
+</pre>
+</td>
+		<td></td>
+	</tr>
+	<tr>
+		<td>ipsec.certManager.issuerName</td>
+		<td>string</td>
+		<td><pre lang="json">
+"kube-ovn"
+</pre>
+</td>
+		<td></td>
+	</tr>
+	<tr>
+		<td>ipsec.certificateDuration</td>
+		<td>int</td>
+		<td><pre lang="json">
+63072000
+</pre>
+</td>
+		<td></td>
+	</tr>
+	<tr>
+		<td>ipsec.priority</td>
+		<td>int</td>
+		<td><pre lang="json">
+-5
+</pre>
+</td>
+		<td></td>
+	</tr>
+	<tr>
+		<td>ipsec.requestTimeout</td>
+		<td>string</td>
+		<td><pre lang="json">
+"300s"
+</pre>
+</td>
+		<td></td>
+	</tr>
+	<tr>
+		<td>ipsec.resources.limits.cpu</td>
+		<td>string</td>
+		<td><pre lang="json">
+"1000m"
+</pre>
+</td>
+		<td></td>
+	</tr>
+	<tr>
+		<td>ipsec.resources.limits.memory</td>
+		<td>string</td>
+		<td><pre lang="json">
+"256Mi"
+</pre>
+</td>
+		<td></td>
+	</tr>
+	<tr>
+		<td>ipsec.resources.requests.cpu</td>
+		<td>string</td>
+		<td><pre lang="json">
+"10m"
+</pre>
+</td>
+		<td></td>
+	</tr>
+	<tr>
+		<td>ipsec.resources.requests.memory</td>
+		<td>string</td>
+		<td><pre lang="json">
+"64Mi"
+</pre>
+</td>
+		<td></td>
+	</tr>
+	<tr>
 		<td>monitor.nodeAffinity.preferredDuringSchedulingIgnoredDuringExecution</td>
 		<td>list</td>
 		<td><pre lang="json">
@@ -2644,3 +2819,4 @@ true
 	</tr>
 	</tbody>
 </table>
+
