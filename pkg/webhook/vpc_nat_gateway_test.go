@@ -13,7 +13,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/cache"
@@ -63,18 +62,9 @@ func (m *mockCache) List(_ context.Context, list client.ObjectList, opts ...clie
 	if dnats, ok := list.(*ovnv1.IptablesDnatRuleList); ok && len(opts) == 0 {
 		dnats.Items = m.dnatRules
 	}
-	// Services are read through the nftable lb eip index, which the hook registers on the real
-	// cache; apply the same field selection here so the mock answers what the index would.
+	// Service admission reads from the API reader and filters the cluster-wide list in memory.
 	if svcs, ok := list.(*corev1.ServiceList); ok {
-		listOpts := &client.ListOptions{}
-		for _, opt := range opts {
-			opt.ApplyToList(listOpts)
-		}
 		for _, svc := range m.services {
-			if listOpts.FieldSelector != nil &&
-				!listOpts.FieldSelector.Matches(fields.Set{nftableLbSvcEipIndex: svc.Annotations[util.EipAnnotation]}) {
-				continue
-			}
 			svcs.Items = append(svcs.Items, svc)
 		}
 	}
