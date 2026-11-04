@@ -476,10 +476,13 @@ func (config *Configuration) loadFileConfig() (*Configuration, error) {
 	return &cfg, nil
 }
 
-func (config *Configuration) validateNodeIPs() error {
-	for family, address := range config.NodeIPs {
+// validateIPByFamilyMap validates a map[string]IP keyed by protocol family (IPv4/IPv6),
+// used for options such as node-ips and next-hops that configure a single
+// address per address family.
+func validateIPByFamilyMap(fieldName string, m map[string]IP) error {
+	for family, address := range m {
 		if family != kubeovnv1.ProtocolIPv4 && family != kubeovnv1.ProtocolIPv6 {
-			return fmt.Errorf("invalid node-ips key %q: expected IPv4 or IPv6", family)
+			return fmt.Errorf("invalid %s key %q: expected IPv4 or IPv6", fieldName, family)
 		}
 		// Empty and null values clear the corresponding CLI override.
 		if address.IP == nil {
@@ -487,27 +490,18 @@ func (config *Configuration) validateNodeIPs() error {
 		}
 		if (family == kubeovnv1.ProtocolIPv4 && address.To4() == nil) ||
 			(family == kubeovnv1.ProtocolIPv6 && (address.To16() == nil || address.To4() != nil)) {
-			return fmt.Errorf("invalid node-ips %s address %s: expected %s", family, address, family)
+			return fmt.Errorf("invalid %s %s address %s: expected %s", fieldName, family, address, family)
 		}
 	}
 	return nil
 }
 
+func (config *Configuration) validateNodeIPs() error {
+	return validateIPByFamilyMap("node-ips", config.NodeIPs)
+}
+
 func (config *Configuration) validateNextHops() error {
-	for family, address := range config.NextHops {
-		if family != kubeovnv1.ProtocolIPv4 && family != kubeovnv1.ProtocolIPv6 {
-			return fmt.Errorf("invalid next-hops key %q: expected IPv4 or IPv6", family)
-		}
-		// Empty and null values clear the corresponding CLI override.
-		if address.IP == nil {
-			continue
-		}
-		if (family == kubeovnv1.ProtocolIPv4 && address.To4() == nil) ||
-			(family == kubeovnv1.ProtocolIPv6 && (address.To16() == nil || address.To4() != nil)) {
-			return fmt.Errorf("invalid next-hops %s address %s: expected %s", family, address, family)
-		}
-	}
-	return nil
+	return validateIPByFamilyMap("next-hops", config.NextHops)
 }
 
 func (config *Configuration) hasFileField(name string, nonZero bool) bool {
@@ -521,8 +515,8 @@ func (config *Configuration) hasFileField(name string, nonZero bool) bool {
 // mergeFileConfig merges the file config into the current config.
 // Variables from the file will override command line arguments and the default configuration.
 func (config *Configuration) mergeFileConfig(cfg *Configuration) {
-	config.mergeFileNodeIPs(cfg)
-	config.mergeFileNextHops(cfg)
+	config.NodeIPs = mergeFileIPByFamilyMap("node-ips", config.NodeIPs, cfg)
+	config.NextHops = mergeFileIPByFamilyMap("next-hops", config.NextHops, cfg)
 	config.mergeFileBooleans(cfg)
 	if cfg.hasFileField("grpc-host", cfg.GrpcHost.IP != nil) {
 		config.GrpcHost = cfg.GrpcHost
@@ -590,46 +584,35 @@ func (config *Configuration) mergeFileConfig(cfg *Configuration) {
 	}
 }
 
-func (config *Configuration) mergeFileNodeIPs(cfg *Configuration) {
-	if !cfg.hasFileField("node-ips", cfg.NodeIPs != nil) {
-		return
+// mergeFileIPByFamilyMap merges a map[string]IP field (keyed by protocol family) from the
+// file config into the current value. An empty or null map clears all overrides; individual
+// entries with a null/empty address clear just that family, otherwise they replace it.
+func mergeFileIPByFamilyMap(fieldName string, current map[string]IP, cfg *Configuration) map[string]IP {
+	var fileValue map[string]IP
+	switch fieldName {
+	case "node-ips":
+		fileValue = cfg.NodeIPs
+	case "next-hops":
+		fileValue = cfg.NextHops
 	}
-	// An empty or null map clears all overrides; individual entries merge by family.
-	if len(cfg.NodeIPs) == 0 {
-		config.NodeIPs = nil
-		return
-	}
-	if config.NodeIPs == nil {
-		config.NodeIPs = make(map[string]IP)
-	}
-	for family, address := range cfg.NodeIPs {
-		if address.IP == nil {
-			delete(config.NodeIPs, family)
-		} else {
-			config.NodeIPs[family] = address
-		}
-	}
-}
 
-func (config *Configuration) mergeFileNextHops(cfg *Configuration) {
-	if !cfg.hasFileField("next-hops", cfg.NextHops != nil) {
-		return
+	if !cfg.hasFileField(fieldName, fileValue != nil) {
+		return current
 	}
-	// An empty or null map clears all overrides; individual entries merge by family.
-	if len(cfg.NextHops) == 0 {
-		config.NextHops = nil
-		return
+	if len(fileValue) == 0 {
+		return nil
 	}
-	if config.NextHops == nil {
-		config.NextHops = make(map[string]IP)
+	if current == nil {
+		current = make(map[string]IP)
 	}
-	for family, address := range cfg.NextHops {
+	for family, address := range fileValue {
 		if address.IP == nil {
-			delete(config.NextHops, family)
+			delete(current, family)
 		} else {
-			config.NextHops[family] = address
+			current[family] = address
 		}
 	}
+	return current
 }
 
 func (config *Configuration) mergeFileBooleans(cfg *Configuration) {
