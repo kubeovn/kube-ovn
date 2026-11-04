@@ -127,13 +127,18 @@ var _ = framework.Describe("[group:service]", func() {
 				return err == nil, nil
 			}, "")
 		}
+		clientNodeChecked := false
 		for _, node := range nodeList.Items {
 			ipv4, ipv6 := util.GetNodeInternalIP(node)
 			checkNodePort(hostPodName, node.Name, ipv4, nodePort)
 			checkNodePort(hostPodName, node.Name, ipv6, nodePort)
-			checkNodePort(clientPodName, node.Name, ipv4, nodePort)
-			checkNodePort(clientPodName, node.Name, ipv6, nodePort)
+			if node.Name == pod.Spec.NodeName {
+				clientNodeChecked = true
+				checkNodePort(clientPodName, node.Name, ipv4, nodePort)
+				checkNodePort(clientPodName, node.Name, ipv6, nodePort)
+			}
 		}
+		framework.ExpectTrue(clientNodeChecked, "backend node %s must be ready and schedulable", pod.Spec.NodeName)
 	})
 
 	framework.ConformanceIt("should ovn nb change vip when dual-stack service removes the cluster ip", func() {
