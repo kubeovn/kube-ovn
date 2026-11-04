@@ -756,7 +756,7 @@ func TestHandleAddOrUpdateIPPoolAddressSetWithIPCount(t *testing.T) {
 
 // TestHandleAddOrUpdateIPPoolAddressSetFailureKeepsMembershipInactive pins the
 // exposure invariant: while the address set cannot be reconciled, the new membership
-// must not become allocatable in IPAM. The selection is pending until activation succeeds.
+// must not become allocatable or persisted as an accepted membership.
 func TestHandleAddOrUpdateIPPoolAddressSetFailureKeepsMembershipInactive(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
 		Name: "subnet12",
@@ -792,8 +792,6 @@ func TestHandleAddOrUpdateIPPoolAddressSetFailureKeepsMembershipInactive(t *test
 	require.NoError(t, err)
 	require.Empty(t, got.Status.IPs,
 		"an unactivated selection must not be presented as the active membership")
-	require.Equal(t, []string{"10.12.0.2", "10.12.0.3"}, got.Status.PendingIPs,
-		"the pending selection is persisted for retry")
 	require.False(t, got.Status.IsReady())
 }
 

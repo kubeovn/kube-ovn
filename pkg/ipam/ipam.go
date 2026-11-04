@@ -551,7 +551,7 @@ func (ipam *IPAM) SelectIPPoolIPs(subnet, name string, keep []string, v4Count, v
 
 // ActivateIPPoolIPs verifies and commits a membership previously picked by
 // SelectIPPoolIPs, see Subnet.ActivateIPPoolIPs.
-func (ipam *IPAM) ActivateIPPoolIPs(subnet, name string, selected []string, v4Count, v6Count int) error {
+func (ipam *IPAM) ActivateIPPoolIPs(subnet, name string, selected []string, v4Count, v6Count int, persist func() error) error {
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
 
@@ -559,7 +559,7 @@ func (ipam *IPAM) ActivateIPPoolIPs(subnet, name string, selected []string, v4Co
 	if s == nil {
 		return fmt.Errorf("subnet %s does not exist in IPAM", subnet)
 	}
-	return s.ActivateIPPoolIPs(name, selected, v4Count, v6Count)
+	return s.ActivateIPPoolIPs(name, selected, v4Count, v6Count, persist)
 }
 
 func (ipam *IPAM) RemoveIPPool(subnet, ippool string) {

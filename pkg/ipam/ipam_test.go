@@ -1599,13 +1599,13 @@ func TestIPAMSelectIPPoolIPs(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.0.0.2", "10.0.0.3"}, v4)
 	require.Empty(t, v6, "an IPv4 subnet has no free IPv6 address")
-	require.NoError(t, ipam.ActivateIPPoolIPs("subnetSelect", "pool1", v4, 2, 0))
+	require.NoError(t, ipam.ActivateIPPoolIPs("subnetSelect", "pool1", v4, 2, 0, nil))
 
 	// the activation holds: another pool cannot pick the same addresses
 	v4, _, err = ipam.SelectIPPoolIPs("subnetSelect", "pool2", nil, 1, 0)
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.0.0.4"}, v4)
-	require.NoError(t, ipam.ActivateIPPoolIPs("subnetSelect", "pool2", v4, 1, 0))
+	require.NoError(t, ipam.ActivateIPPoolIPs("subnetSelect", "pool2", v4, 1, 0, nil))
 
 	// re-selecting recovers the held selection, e.g. after a failed status update
 	v4, _, err = ipam.SelectIPPoolIPs("subnetSelect", "pool1", nil, 1, 0)
@@ -1614,7 +1614,7 @@ func TestIPAMSelectIPPoolIPs(t *testing.T) {
 
 	_, _, err = ipam.SelectIPPoolIPs("unknownSubnet", "pool1", nil, 1, 0)
 	require.ErrorContains(t, err, "does not exist in IPAM")
-	err = ipam.ActivateIPPoolIPs("unknownSubnet", "pool1", []string{"10.0.0.5"}, 1, 0)
+	err = ipam.ActivateIPPoolIPs("unknownSubnet", "pool1", []string{"10.0.0.5"}, 1, 0, nil)
 	require.ErrorContains(t, err, "does not exist in IPAM")
 }
 
@@ -1633,7 +1633,7 @@ func TestIPAMActivateIPPoolIPsSelectionChanged(t *testing.T) {
 	_, _, _, err = ipam.GetStaticAddress("pod1.default", "nic1", "10.0.0.2", nil, "subnetRace", false)
 	require.NoError(t, err)
 
-	err = ipam.ActivateIPPoolIPs("subnetRace", "pool1", v4, 2, 0)
+	err = ipam.ActivateIPPoolIPs("subnetRace", "pool1", v4, 2, 0, nil)
 	require.ErrorIs(t, err, ErrSelectionChanged)
 	require.Nil(t, ipam.Subnets["subnetRace"].IPPools["pool1"])
 
@@ -1641,5 +1641,5 @@ func TestIPAMActivateIPPoolIPsSelectionChanged(t *testing.T) {
 	v4, _, err = ipam.SelectIPPoolIPs("subnetRace", "pool1", v4, 2, 0)
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.0.0.1", "10.0.0.3"}, v4)
-	require.NoError(t, ipam.ActivateIPPoolIPs("subnetRace", "pool1", v4, 2, 0))
+	require.NoError(t, ipam.ActivateIPPoolIPs("subnetRace", "pool1", v4, 2, 0, nil))
 }

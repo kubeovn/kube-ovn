@@ -1725,7 +1725,7 @@ func TestSubnetSelectIPPoolIPs(t *testing.T) {
 	require.Equal(t, []string{"10.0.0.3", "10.0.0.4", "10.0.0.5"}, v4)
 	require.Equal(t, []string{"2001:db8::2", "2001:db8::3"}, v6)
 	require.Nil(t, subnet.IPPools["pool1"])
-	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", append(slices.Clone(v4), v6...), 3, 2))
+	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", append(slices.Clone(v4), v6...), 3, 2, nil))
 	require.NotNil(t, subnet.IPPools["pool1"])
 
 	// the activation holds: another pool cannot pick the same addresses
@@ -1733,7 +1733,7 @@ func TestSubnetSelectIPPoolIPs(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.0.0.6", "10.0.0.7"}, v4)
 	require.Equal(t, []string{"2001:db8::4"}, v6)
-	require.NoError(t, subnet.ActivateIPPoolIPs("pool2", append(slices.Clone(v4), v6...), 2, 1))
+	require.NoError(t, subnet.ActivateIPPoolIPs("pool2", append(slices.Clone(v4), v6...), 2, 1, nil))
 
 	// re-selecting recovers the held selection, e.g. after a failed status update
 	v4, v6, err = subnet.SelectIPPoolIPs("pool1", nil, 2, 1)
@@ -1754,7 +1754,7 @@ func TestSubnetSelectIPPoolIPs(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.0.0.3", "10.0.0.4"}, v4)
 	require.Empty(t, v6)
-	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", v4, 2, 0))
+	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", v4, 2, 0, nil))
 	require.Equal(t, "10.0.0.3-10.0.0.4", subnet.IPPools["pool1"].V4IPs.String())
 	require.Empty(t, subnet.IPPools["pool1"].V6IPs.String())
 
@@ -1790,7 +1790,7 @@ func TestSubnetWithoutCIDRSelectIPPoolIPs(t *testing.T) {
 	require.Empty(t, v6)
 
 	// and neither must an activation on it
-	require.Error(t, (&Subnet{}).ActivateIPPoolIPs("pool1", nil, 0, 0))
+	require.Error(t, (&Subnet{}).ActivateIPPoolIPs("pool1", nil, 0, 0, nil))
 }
 
 // TestSubnetSelectIPPoolIPsDropsExcluded covers a subnet's excludeIps growing over an
@@ -1803,7 +1803,7 @@ func TestSubnetSelectIPPoolIPsDropsExcluded(t *testing.T) {
 	v4, _, err := subnet.SelectIPPoolIPs("pool1", nil, 2, 0)
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.0.0.1", "10.0.0.2"}, v4)
-	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", v4, 2, 0))
+	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", v4, 2, 0, nil))
 
 	// excludeIps grows over 10.0.0.2, as AddOrUpdateSubnet applies it in place
 	subnet.V4Reserved, err = NewIPRangeListFrom("10.0.0.2")
@@ -1813,7 +1813,7 @@ func TestSubnetSelectIPPoolIPsDropsExcluded(t *testing.T) {
 	v4, _, err = subnet.SelectIPPoolIPs("pool1", []string{"10.0.0.1", "10.0.0.2"}, 2, 0)
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.0.0.1", "10.0.0.3"}, v4)
-	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", v4, 2, 0))
+	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", v4, 2, 0, nil))
 
 	// the committed pool no longer claims the reserved address
 	ip, err := NewIP("10.0.0.2")
@@ -1845,7 +1845,7 @@ func TestSubnetActivateIPPoolIPsSelectionChanged(t *testing.T) {
 	require.NoError(t, err)
 
 	// the activation rejects the stale selection and commits nothing
-	err = subnet.ActivateIPPoolIPs("pool1", v4, 2, 0)
+	err = subnet.ActivateIPPoolIPs("pool1", v4, 2, 0, nil)
 	require.ErrorIs(t, err, ErrSelectionChanged)
 	require.Nil(t, subnet.IPPools["pool1"])
 
@@ -1853,6 +1853,6 @@ func TestSubnetActivateIPPoolIPsSelectionChanged(t *testing.T) {
 	v4, _, err = subnet.SelectIPPoolIPs("pool1", v4, 2, 0)
 	require.NoError(t, err)
 	require.Equal(t, []string{"10.0.0.1", "10.0.0.3"}, v4)
-	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", v4, 2, 0))
+	require.NoError(t, subnet.ActivateIPPoolIPs("pool1", v4, 2, 0, nil))
 	require.NotNil(t, subnet.IPPools["pool1"])
 }

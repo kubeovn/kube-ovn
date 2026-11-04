@@ -787,14 +787,10 @@ func (s *Subnet) SelectIPPoolIPs(name string, keep []string, v4Count, v6Count in
 	return s.selectIPPoolIPsLocked(name, keep, v4Count, v6Count)
 }
 
-// ActivateIPPoolIPs verifies and commits a membership previously picked by
-// SelectIPPoolIPs, releasing previously held addresses that are not part of it like
-// setIPPoolLocked does. It fails without committing anything when recomputing the
-// selection no longer yields exactly selected - e.g. one of the picked addresses was
-// allocated from the default pool while the pool's data plane was being prepared - so
-// that consumers never observe a membership differing from what the pool published;
-// the caller retries and the next selection drops the conflicting entry.
-func (s *Subnet) ActivateIPPoolIPs(name string, selected []string, v4Count, v6Count int) error {
+// ActivateIPPoolIPs revalidates the selection under the subnet lock, then persists
+// it before making it allocatable. A failed persistence leaves membership unchanged.
+// persist must not call IPAM methods because the locks are held until it returns.
+func (s *Subnet) ActivateIPPoolIPs(name string, selected []string, v4Count, v6Count int, persist func() error) error {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
@@ -809,6 +805,11 @@ func (s *Subnet) ActivateIPPoolIPs(name string, selected []string, v4Count, v6Co
 	if !slices.Equal(v4, selV4) || !slices.Equal(v6, selV6) {
 		return fmt.Errorf("%w: ippool %s in subnet %s, the published selection %v is stale now, select again",
 			ErrSelectionChanged, name, s.Name, selected)
+	}
+	if persist != nil {
+		if err := persist(); err != nil {
+			return err
+		}
 	}
 	return s.setIPPoolLocked(name, selected)
 }
