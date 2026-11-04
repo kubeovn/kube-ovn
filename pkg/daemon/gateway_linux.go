@@ -13,7 +13,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/kubeovn/felix/ipsets"
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
@@ -25,6 +24,7 @@ import (
 	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipsets"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -137,12 +137,14 @@ func (c *Controller) setIPSet() error {
 		if err := c.reconcileNatOutGoingPolicyIPset(allSubnets, protocol); err != nil {
 			return err
 		}
-		c.ipsets[protocol].ApplyUpdates()
+		if err := c.ipsets[protocol].ApplyUpdates(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (c *Controller) gcIPSet() {
+func (c *Controller) gcIPSet() error {
 	protocols := make([]string, 0, 2)
 	if c.protocol == kubeovnv1.ProtocolDual {
 		protocols = append(protocols, kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
@@ -154,8 +156,11 @@ func (c *Controller) gcIPSet() {
 		if c.ipsets[protocol] == nil {
 			continue
 		}
-		c.ipsets[protocol].ApplyDeletions()
+		if err := c.ipsets[protocol].ApplyDeletions(); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (c *Controller) addNatOutGoingPolicyRuleIPset(rule kubeovnv1.NatOutgoingPolicyRuleStatus, protocol string) {
@@ -185,7 +190,7 @@ func (c *Controller) removeNatOutGoingPolicyRuleIPset(protocol string, natPolicy
 		return err
 	}
 	for _, set := range sets {
-		if isNatOutGoingPolicyRuleIPSet(set) {
+		if setProtocol, owned := kubeOVNIPSetProtocol(set); owned && setProtocol == protocol && isNatOutGoingPolicyRuleIPSet(set) {
 			ruleID, _ := getNatOutGoingPolicyRuleIPSetItem(set)
 			if !natPolicyRuleIDs.Has(ruleID) {
 				c.ipsets[protocol].RemoveIPSet(formatIPsetUnPrefix(set))
@@ -1162,27 +1167,11 @@ func (c *Controller) cleanupKubeOVNIptablesAndIPSets() error {
 		}
 	}
 
-	if c.k8sipsets == nil {
-		return nil
-	}
-	sets, err := c.k8sipsets.ListSets()
-	if err != nil {
-		return fmt.Errorf("list Kube-OVN ipsets: %w", err)
-	}
-	for _, name := range sets {
-		protocol, owned := kubeOVNIPSetProtocol(name)
-		if !owned {
-			continue
-		}
-		if manager := c.ipsets[protocol]; manager != nil {
-			manager.RemoveIPSet(formatIPsetUnPrefix(name))
-		}
-	}
 	for _, protocol := range getProtocols(c.protocol) {
 		if manager := c.ipsets[protocol]; manager != nil {
-			manager.QueueResync()
-			manager.ApplyUpdates()
-			manager.ApplyDeletions()
+			if err := manager.Cleanup(); err != nil {
+				return err
+			}
 		}
 	}
 
