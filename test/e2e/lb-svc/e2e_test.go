@@ -153,7 +153,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		labels := map[string]string{"app": serviceName}
 		port := 8000 + rand.Int32N(1000)
 		targetPort := port
-		if !f.VersionPriorTo(1, 17) {
+		if !f.VersionPriorTo(1, 16) {
 			targetPort += 10000
 		}
 		args := []string{"netexec", "--http-port", strconv.Itoa(int(targetPort))}
@@ -231,7 +231,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 			return
 		}
 
-		if !f.VersionPriorTo(1, 17) {
+		if !f.VersionPriorTo(1, 16) {
 			ginkgo.By("Updating the service port while keeping the backend port unchanged")
 			oldPort := port
 			port++
