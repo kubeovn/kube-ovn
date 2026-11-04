@@ -515,8 +515,8 @@ func (config *Configuration) hasFileField(name string, nonZero bool) bool {
 // mergeFileConfig merges the file config into the current config.
 // Variables from the file will override command line arguments and the default configuration.
 func (config *Configuration) mergeFileConfig(cfg *Configuration) {
-	config.NodeIPs = mergeFileIPByFamilyMap("node-ips", config.NodeIPs, cfg)
-	config.NextHops = mergeFileIPByFamilyMap("next-hops", config.NextHops, cfg)
+	config.NodeIPs = mergeFileIPByFamilyMap("node-ips", config.NodeIPs, cfg.NodeIPs, cfg)
+	config.NextHops = mergeFileIPByFamilyMap("next-hops", config.NextHops, cfg.NextHops, cfg)
 	config.mergeFileBooleans(cfg)
 	if cfg.hasFileField("grpc-host", cfg.GrpcHost.IP != nil) {
 		config.GrpcHost = cfg.GrpcHost
@@ -585,17 +585,11 @@ func (config *Configuration) mergeFileConfig(cfg *Configuration) {
 }
 
 // mergeFileIPByFamilyMap merges a map[string]IP field (keyed by protocol family) from the
-// file config into the current value. An empty or null map clears all overrides; individual
-// entries with a null/empty address clear just that family, otherwise they replace it.
-func mergeFileIPByFamilyMap(fieldName string, current map[string]IP, cfg *Configuration) map[string]IP {
-	var fileValue map[string]IP
-	switch fieldName {
-	case "node-ips":
-		fileValue = cfg.NodeIPs
-	case "next-hops":
-		fileValue = cfg.NextHops
-	}
-
+// file config into the current value. fileValue must be the corresponding field read
+// directly from cfg by the caller, so the compiler enforces that fieldName and fileValue
+// stay in sync. An empty or null map clears all overrides; individual entries with a
+// null/empty address clear just that family, otherwise they replace it.
+func mergeFileIPByFamilyMap(fieldName string, current, fileValue map[string]IP, cfg *Configuration) map[string]IP {
 	if !cfg.hasFileField(fieldName, fileValue != nil) {
 		return current
 	}
