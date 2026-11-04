@@ -508,21 +508,34 @@ func TestControllerProviderRouterPortRA(t *testing.T) {
 }
 
 func TestControllerProviderLogicalSwitchAndDHCP(t *testing.T) {
-	backend := newTableBackend(&ovnnb.LogicalRouter{UUID: "lr-1", Name: "vpc-1"})
-	database := table.NewDatabase(backend, time.Second, table.RetryPolicy{})
-	controller := &Controller{OVNNbTables: database}
+	client := newInMemoryOVNNbClient(t)
+	controller := &Controller{OVNNbTables: client}
+	require.NoError(t, client.CreateLogicalRouter("vpc-1"))
 
 	require.NoError(t, controller.createLogicalSwitch("subnet-1", "vpc-1", "10.0.0.0/24", "10.0.0.1", "", false, false))
-	require.Equal(t, 1, backend.createCalls)
-	_, err := controller.updateSubnetDHCPOptionsTable(&kubeovnv1.Subnet{
+	switchRow, err := client.GetLogicalSwitch("subnet-1", false)
+	require.NoError(t, err)
+	require.True(t, ovsdb.IsValidUUID(switchRow.UUID))
+	subnet := &kubeovnv1.Subnet{
 		Name: "subnet-1",
 		Spec: kubeovnv1.SubnetSpec{
 			CIDRBlock: "10.0.0.0/24", Gateway: "10.0.0.1", Protocol: kubeovnv1.ProtocolIPv4,
 			EnableDHCP: true, DHCPv4Options: "dns_server=8.8.8.8",
 		},
-	}, 1450)
+	}
+	var uuids *ovs.DHCPOptionsUUIDs
+	require.Eventually(t, func() bool {
+		uuids, err = controller.updateSubnetDHCPOptionsTable(subnet, 1450)
+		return err == nil
+	}, time.Second, time.Millisecond)
 	require.NoError(t, err)
-	require.Equal(t, 2, backend.createCalls)
+	require.True(t, ovsdb.IsValidUUID(uuids.DHCPv4OptionsUUID))
+	rows, err := client.ListDHCPOptions(true, map[string]string{ovs.LogicalSwitchKey: subnet.Name})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	require.Equal(t, uuids.DHCPv4OptionsUUID, rows[0].UUID)
+	require.Equal(t, "10.0.0.0/24", rows[0].Cidr)
+	require.Equal(t, "8.8.8.8", rows[0].Options["dns_server"])
 }
 
 func TestControllerProviderLogicalSwitchACL(t *testing.T) {

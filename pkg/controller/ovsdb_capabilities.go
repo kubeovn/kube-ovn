@@ -98,7 +98,7 @@ func (c *Controller) reconcileGatewayBFDWithCleanupBackend(
 		}
 		return reconcileGatewayBFDWithCleanup(c.OVNNbClient, bfdIP, lrpName, nextHops, minTX, minRX, multiplier, externalIDs)
 	}
-	return c.reconcileGatewayBFDWithCleanupTable(bfdIP, lrpName, nextHops, minTX, minRX, multiplier, externalIDs)
+	return reconcileGatewayBFDWithCleanup(gatewayTableClient{c}, bfdIP, lrpName, nextHops, minTX, minRX, multiplier, externalIDs)
 }
 
 func (c *Controller) reconcileGatewayBFDBackend(
@@ -110,7 +110,7 @@ func (c *Controller) reconcileGatewayBFDBackend(
 		}
 		return reconcileGatewayBFD(c.OVNNbClient, bfdIP, lrpName, nextHops, minTX, minRX, multiplier, externalIDs)
 	}
-	return c.reconcileGatewayBFDTable(bfdIP, lrpName, nextHops, minTX, minRX, multiplier, externalIDs)
+	return reconcileGatewayBFD(gatewayTableClient{c}, bfdIP, lrpName, nextHops, minTX, minRX, multiplier, externalIDs)
 }
 
 func (c *Controller) cleanupStaleBFDBackend(staleBFDIDs set.Set[string]) error {
@@ -120,5 +120,5 @@ func (c *Controller) cleanupStaleBFDBackend(staleBFDIDs set.Set[string]) error {
 		}
 		return cleanupStaleBFD(c.OVNNbClient, staleBFDIDs)
 	}
-	return c.cleanupStaleBFDTable(staleBFDIDs)
+	return cleanupStaleBFD(gatewayTableClient{c}, staleBFDIDs)
 }

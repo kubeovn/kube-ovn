@@ -1023,7 +1023,7 @@ func (c *Controller) getDHCPOptionsTable(lsName, portName, protocol string, igno
 		return nil, fmt.Errorf("list %s DHCP options: %w", protocol, err)
 	}
 	return table.Unique(rows, ignoreNotFound,
-		fmt.Errorf("DHCP options not found for switch %s port %s", lsName, portName),
+		fmt.Errorf("DHCP options not found for switch %s port %s: %w", lsName, portName, table.ErrNotFound),
 		fmt.Errorf("multiple %s DHCP options for switch %s port %s", protocol, lsName, portName))
 }
 
@@ -1082,12 +1082,10 @@ func (c *Controller) updateDHCPOptionTable(lsName, portName, cidr, protocol, gat
 	if err := table.Create(context.Background(), c.OVNNbTables, &ovnnb.DHCPOptions{}, "dhcp-options-create", created); err != nil {
 		return "", err
 	}
-	if current, err = c.getDHCPOptionsTable(lsName, portName, protocol, true); err != nil {
+	if current, err = c.getDHCPOptionsTable(lsName, portName, protocol, false); err != nil {
 		return "", err
-	} else if current != nil {
-		return current.UUID, nil
 	}
-	return created.UUID, nil
+	return current.UUID, nil
 }
 
 func (c *Controller) updateSubnetDHCPOptionsTable(subnet *kubeovnv1.Subnet, mtu int) (*ovs.DHCPOptionsUUIDs, error) {
@@ -2560,10 +2558,7 @@ func (c *Controller) createBFD(logicalPort, destination string, minRx, minTx, de
 		return nil, fmt.Errorf("failed to list BFD after creation: %w", err)
 	}
 	if len(created) == 0 {
-		// A provider may acknowledge the transaction before its monitor cache
-		// observes the inserted row. The named UUID remains valid for callers
-		// composing the next operation, so return the created model in that case.
-		return row, nil
+		return nil, fmt.Errorf("BFD with logical_port=%s and dst_ip=%s not found after creation: %w", logicalPort, destination, table.ErrNotFound)
 	}
 	return &created[0], nil
 }

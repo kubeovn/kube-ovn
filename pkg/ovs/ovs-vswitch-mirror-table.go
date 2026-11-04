@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 
+	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
@@ -162,29 +163,17 @@ func ConfigVswitchInterfaceMirror(ctx context.Context, provider table.Provider, 
 			return fmt.Errorf("find port failed, interface=%s, count=%d", ifaceID, len(ports))
 		}
 
-		desired := slices.Clone(mirror.SelectDstPort)
+		mutator := ovsdb.MutateOperationDelete
 		if open {
-			if slices.Contains(desired, ports[0].UUID) {
-				continue
-			}
-			desired = append(desired, ports[0].UUID)
-		} else {
-			desired = slices.DeleteFunc(desired, func(uuid string) bool {
-				return uuid == ports[0].UUID
-			})
-			if slices.Equal(desired, mirror.SelectDstPort) {
-				continue
-			}
+			mutator = ovsdb.MutateOperationInsert
 		}
-
-		selector := &mirrorTableRow{UUID: mirror.UUID}
-		update := &mirrorTableRow{UUID: mirror.UUID, SelectDstPort: desired}
-		updateOps, err := mirrorTable.UpdateOps(selector, update, &update.SelectDstPort)
+		mutationOps, err := mirrorTable.MutateOps(&mirror, model.Mutation{
+			Field: &mirror.SelectDstPort, Value: []string{ports[0].UUID}, Mutator: mutator,
+		})
 		if err != nil {
-			return fmt.Errorf("update mirror %q operation: %w", util.MirrorDefaultName, err)
+			return fmt.Errorf("mutate mirror %q operation: %w", util.MirrorDefaultName, err)
 		}
-		operations = append(operations, updateOps...)
-		mirror.SelectDstPort = desired
+		operations = append(operations, mutationOps...)
 	}
 	return transactTable(ctx, mirrorTable, "vswitch-mirror-interface-config", operations)
 }

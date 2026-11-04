@@ -151,6 +151,45 @@ func (t *OptionalTable) UpdateOps(selector, update model.Model, fields ...any) (
 	}}, nil
 }
 
+// MutateOps builds schema-checked mutations selected by the model UUID.
+func (t *OptionalTable) MutateOps(selector model.Model, mutations ...model.Mutation) ([]ovsdb.Operation, error) {
+	table, err := t.ensure()
+	if err != nil {
+		return nil, err
+	}
+	info, err := t.mapperInfo(table, selector)
+	if err != nil {
+		return nil, err
+	}
+	uuid, err := info.FieldByColumn("_uuid")
+	if err != nil {
+		return nil, fmt.Errorf("optional table %s selector has no UUID: %w", t.tableName, err)
+	}
+	uuidString, ok := uuid.(string)
+	if !ok || uuidString == "" {
+		return nil, fmt.Errorf("optional table %s mutation requires a UUID selector", t.tableName)
+	}
+	mapperInstance := mapper.NewMapper(t.db.Schema())
+	ovsMutations := make([]ovsdb.Mutation, 0, len(mutations))
+	for _, mutation := range mutations {
+		column, err := info.ColumnByPtr(mutation.Field)
+		if err != nil {
+			return nil, fmt.Errorf("find mutation column for optional table %s: %w", t.tableName, err)
+		}
+		ovsMutation, err := mapperInstance.NewMutation(info, column, mutation.Mutator, mutation.Value)
+		if err != nil {
+			return nil, fmt.Errorf("build mutation for optional table %s: %w", t.tableName, err)
+		}
+		ovsMutations = append(ovsMutations, *ovsMutation)
+	}
+	return []ovsdb.Operation{{
+		Op:        ovsdb.OperationMutate,
+		Table:     t.tableName,
+		Where:     []ovsdb.Condition{{Column: "_uuid", Function: ovsdb.ConditionEqual, Value: ovsdb.UUID{GoUUID: uuidString}}},
+		Mutations: ovsMutations,
+	}}, nil
+}
+
 // DeleteOps builds delete operations selected by model UUIDs.
 func (t *OptionalTable) DeleteOps(selectors ...model.Model) ([]ovsdb.Operation, error) {
 	table, err := t.ensure()

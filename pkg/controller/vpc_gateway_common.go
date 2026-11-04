@@ -18,7 +18,6 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnv1lister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -237,7 +236,7 @@ func mergeGatewayAffinity(affinities ...*corev1.Affinity) *corev1.Affinity {
 //   - bfdMap: Map of nexthop IP to BFD UUID
 //   - staleBFDIDs: Set of stale BFD UUIDs to delete
 func reconcileGatewayBFD(
-	ovnClient ovs.NbClient,
+	ovnClient gatewayBFDClient,
 	bfdIP string,
 	lrpName string,
 	nextHops set.Set[string],
@@ -292,7 +291,7 @@ func reconcileGatewayBFD(
 }
 
 // cleanupStaleBFD deletes stale BFD sessions that are no longer needed.
-func cleanupStaleBFD(ovnClient ovs.NbClient, staleBFDIDs set.Set[string]) error {
+func cleanupStaleBFD(ovnClient gatewayBFDClient, staleBFDIDs set.Set[string]) error {
 	for _, bfdID := range staleBFDIDs.UnsortedList() {
 		if err := ovnClient.DeleteBFD(bfdID); err != nil {
 			klog.Errorf("failed to delete bfd %s: %v", bfdID, err)
@@ -301,68 +300,6 @@ func cleanupStaleBFD(ovnClient ovs.NbClient, staleBFDIDs set.Set[string]) error 
 		klog.V(3).Infof("deleted stale BFD session %s", bfdID)
 	}
 	return nil
-}
-
-// reconcileGatewayBFDTable is the provider-native equivalent of
-// reconcileGatewayBFD. It keeps BFD reconciliation in the controller's table
-// facade so callers do not need a concrete ovs.NbClient.
-func (c *Controller) reconcileGatewayBFDTable(
-	bfdIP, lrpName string, nextHops set.Set[string], minTX, minRX, multiplier int32, externalIDs map[string]string,
-) (bfdIDs set.Set[string], bfdMap map[string]string, staleBFDIDs set.Set[string], err error) {
-	bfdList, err := c.findBFD(externalIDs)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	bfdIDs = set.New[string]()
-	staleBFDIDs = set.New[string]()
-	remaining := nextHops.Clone()
-	bfdMap = make(map[string]string, remaining.Len())
-	for i := range bfdList {
-		bfd := &bfdList[i]
-		if bfdIP == "" || bfd.LogicalPort != lrpName || !remaining.Has(bfd.DstIP) {
-			staleBFDIDs.Insert(bfd.UUID)
-		}
-		if bfdIP == "" || (bfd.LogicalPort == lrpName && remaining.Has(bfd.DstIP)) {
-			if bfdIP != "" {
-				bfdIDs.Insert(bfd.UUID)
-				bfdMap[bfd.DstIP] = bfd.UUID
-			}
-			remaining.Delete(bfd.DstIP)
-		}
-	}
-	if bfdIP != "" {
-		for _, dstIP := range remaining.UnsortedList() {
-			bfd, createErr := c.createBFD(lrpName, dstIP, int(minTX), int(minRX), int(multiplier), externalIDs)
-			if createErr != nil {
-				return nil, nil, nil, createErr
-			}
-			bfdIDs.Insert(bfd.UUID)
-			bfdMap[dstIP] = bfd.UUID
-		}
-	}
-	return bfdIDs, bfdMap, staleBFDIDs, nil
-}
-
-func (c *Controller) cleanupStaleBFDTable(staleBFDIDs set.Set[string]) error {
-	for _, bfdID := range staleBFDIDs.UnsortedList() {
-		if err := c.deleteBFD(bfdID); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func (c *Controller) reconcileGatewayBFDWithCleanupTable(
-	bfdIP, lrpName string, nextHops set.Set[string], minTX, minRX, multiplier int32, externalIDs map[string]string,
-) (set.Set[string], error) {
-	bfdIDs, _, staleBFDIDs, err := c.reconcileGatewayBFDTable(bfdIP, lrpName, nextHops, minTX, minRX, multiplier, externalIDs)
-	if err != nil {
-		return nil, err
-	}
-	if err := c.cleanupStaleBFDTable(staleBFDIDs); err != nil {
-		return nil, err
-	}
-	return bfdIDs, nil
 }
 
 // reconcileGatewayBFDWithCleanup reconciles OVN BFD sessions for a gateway and cleans up stale sessions.
@@ -380,7 +317,7 @@ func (c *Controller) reconcileGatewayBFDWithCleanupTable(
 //   - bfdIDs: Set of active BFD UUIDs
 //   - error: Any error encountered during reconciliation or cleanup
 func reconcileGatewayBFDWithCleanup(
-	ovnClient ovs.NbClient,
+	ovnClient gatewayBFDClient,
 	bfdIP string,
 	lrpName string,
 	nextHops set.Set[string],
@@ -535,7 +472,7 @@ func resolveInternalCIDRs(subnetLister kubeovnv1lister.SubnetLister, subnetNames
 //
 // Returns error if any OVN operation fails.
 func reconcileNatGatewayPolicies(
-	ovnClient ovs.NbClient,
+	ovnClient gatewayPolicyClient,
 	gwName string,
 	lrName string,
 	af int,
@@ -652,9 +589,8 @@ func reconcileNatGatewayPolicies(
 	return nil
 }
 
-// reconcileNatGatewayPolicies uses the controller table facade for NAT
-// gateway policy reconciliation. The legacy free function above remains for
-// compatibility with existing callers and tests.
+// reconcileNatGatewayPolicies uses the same reconciliation algorithm for table
+// providers and legacy clients; only the OVN access operations differ.
 func (c *Controller) reconcileNatGatewayPolicies(
 	gwName, lrName string, af int, bfdEnabled bool, bfdIDs set.Set[string],
 	internalCIDRs []string, nextHops, externalIDs map[string]string,
@@ -662,67 +598,5 @@ func (c *Controller) reconcileNatGatewayPolicies(
 	if c.OVNNbTables == nil {
 		return fmt.Errorf("OVN NB table provider is nil for NAT gateway %q", gwName)
 	}
-	if len(internalCIDRs) == 0 || len(nextHops) == 0 {
-		if err := c.deleteLogicalRouterPolicies(lrName, util.NatGatewayPolicyPriority, externalIDs); err != nil {
-			return err
-		}
-		return c.deleteLogicalRouterPolicies(lrName, util.NatGatewayDropPolicyPriority, externalIDs)
-	}
-	policies, err := c.listLogicalRouterPolicies(lrName, util.NatGatewayPolicyPriority, externalIDs, false)
-	if err != nil {
-		return err
-	}
-	matches := set.New[string]()
-	for _, cidr := range internalCIDRs {
-		matches.Insert(fmt.Sprintf("ip%d.src == %s", af, cidr))
-	}
-	bfdIPs := set.New(slices.Collect(maps.Values(nextHops))...)
-	bfdSessions := bfdIDs.UnsortedList()
-	for _, policy := range policies {
-		if matches.Has(policy.Match) {
-			if !bfdIPs.Equal(set.New(policy.Nexthops...)) || !bfdIDs.Equal(set.New(policy.BFDSessions...)) {
-				policy.Nexthops, policy.BFDSessions = bfdIPs.UnsortedList(), bfdSessions
-				if err := c.updateLogicalRouterPolicy(policy, &policy.Nexthops, &policy.BFDSessions); err != nil {
-					return err
-				}
-			}
-			matches.Delete(policy.Match)
-			continue
-		}
-		if err := c.deleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
-			return err
-		}
-	}
-	for _, match := range matches.UnsortedList() {
-		if err := c.addLogicalRouterPolicy(lrName, util.NatGatewayPolicyPriority, match, ovnnb.LogicalRouterPolicyActionReroute, bfdIPs.UnsortedList(), bfdSessions, externalIDs); err != nil {
-			return err
-		}
-	}
-
-	if !bfdEnabled {
-		return c.deleteLogicalRouterPolicies(lrName, util.NatGatewayDropPolicyPriority, externalIDs)
-	}
-	policies, err = c.listLogicalRouterPolicies(lrName, util.NatGatewayDropPolicyPriority, externalIDs, false)
-	if err != nil {
-		return err
-	}
-	matches = set.New[string]()
-	for _, cidr := range internalCIDRs {
-		matches.Insert(fmt.Sprintf("ip%d.src == %s", af, cidr))
-	}
-	for _, policy := range policies {
-		if matches.Has(policy.Match) {
-			matches.Delete(policy.Match)
-			continue
-		}
-		if err := c.deleteLogicalRouterPolicyByUUID(lrName, policy.UUID); err != nil {
-			return err
-		}
-	}
-	for _, match := range matches.UnsortedList() {
-		if err := c.addLogicalRouterPolicy(lrName, util.NatGatewayDropPolicyPriority, match, ovnnb.LogicalRouterPolicyActionDrop, nil, nil, externalIDs); err != nil {
-			return err
-		}
-	}
-	return nil
+	return reconcileNatGatewayPolicies(gatewayTableClient{c}, gwName, lrName, af, bfdEnabled, bfdIDs, internalCIDRs, nextHops, externalIDs)
 }
