@@ -25,6 +25,7 @@ var _ = framework.SerialDescribe("[group:non-primary-cni]", func() {
 
 	ginkgo.Context("VPC Egress Gateway", ginkgo.Label("Feature:VPC-Egress-Gateway"), func() {
 		ginkgo.It("uses the internal NAD as default and SNATs through the external attachment", func() {
+			f.SkipVersionPriorTo(1, 17, "VPC Egress Gateway non-primary CNI default network requires v1.17+")
 			runNonPrimaryVpcEgressGatewayCase(f, apiv1.ExternalNetworkModeAttachment)
 		})
 
