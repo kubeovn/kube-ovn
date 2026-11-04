@@ -110,7 +110,7 @@ func (t *ipamTest) resizeCountPool() {
 	pod := framework.MakePod(t.namespaceName, t.podName, nil, annotations, "", nil, nil)
 	pod = t.podClient.CreateSync(pod)
 	for ip := range strings.SplitSeq(pod.Annotations[util.IPAddressAnnotation], ",") {
-		framework.ExpectContainElement(shrunk.Status.IPs, ip)
+		framework.ExpectContainElement(regrown.Status.IPs, ip)
 	}
 }
 
