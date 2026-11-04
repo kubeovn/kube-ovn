@@ -35,7 +35,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.34.0
 	github.com/onsi/gomega v1.44.0
 	github.com/osrg/gobgp/v4 v4.11.0
-	github.com/ovn-kubernetes/libovsdb v0.9.0
+	github.com/ovn-kubernetes/libovsdb v0.9.1
 	github.com/parnurzeal/gorequest v0.3.0
 	github.com/prometheus-community/pro-bing v0.9.1
 	github.com/prometheus/client_golang v1.25.0
