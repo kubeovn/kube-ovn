@@ -40,7 +40,6 @@ require (
 	github.com/prometheus-community/pro-bing v0.9.1
 	github.com/prometheus/client_golang v1.25.0
 	github.com/puzpuzpuz/xsync/v4 v4.5.0
-	github.com/safchain/ethtool v0.7.0
 	github.com/scylladb/go-set v1.0.2
 	github.com/sirupsen/logrus v1.10.2
 	github.com/spf13/cobra v1.10.2
@@ -48,7 +47,7 @@ require (
 	github.com/stretchr/testify v1.12.1
 	github.com/ti-mo/conntrack v0.6.0
 	github.com/ti-mo/netfilter v0.5.3
-	github.com/vishvananda/netlink v1.3.2-0.20260402033159-af2a3ea580ab
+	github.com/vishvananda/netlink v1.3.2-0.20261102090517-2cd1a50c5846
 	go.podman.io/image/v5 v5.42.0
 	go.uber.org/mock v0.6.0
 	go.uber.org/zap v1.28.0
@@ -217,6 +216,7 @@ require (
 	github.com/prometheus/procfs v0.22.0 // indirect
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
+	github.com/safchain/ethtool v0.7.0 // indirect
 	github.com/sagikazarmark/locafero v0.12.0 // indirect
 	github.com/segmentio/fasthash v1.0.3 // indirect
 	github.com/smartystreets/goconvey v1.8.1 // indirect

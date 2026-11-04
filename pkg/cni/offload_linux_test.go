@@ -1,31 +1,35 @@
 package cni
 
 import (
+	"errors"
 	"testing"
 
-	"github.com/safchain/ethtool"
 	"github.com/stretchr/testify/require"
+	"github.com/vishvananda/netlink"
+	"golang.org/x/sys/unix"
 )
 
 func TestTXChecksumFeatureSelection(t *testing.T) {
-	features := map[string]ethtool.FeatureState{
-		"tx-checksum-ipv4":       {Available: true, Active: true},
-		"tx-checksum-ip-generic": {Available: true, Requested: true},
-		"tx-checksum-ipv6":       {Available: true, NeverChanged: true},
+	features := map[string]netlink.NetDevFeature{
+		"tx-checksum-ipv4":       {Hardware: true, Active: true},
+		"tx-checksum-ip-generic": {Hardware: true, Wanted: true},
+		"tx-checksum-ipv6":       {Hardware: true, NoChange: true},
 		"tx-checksum-sctp":       {Active: true},
-		"rx-checksum":            {Available: true, Active: true},
+		"rx-checksum":            {Hardware: true, Active: true},
 	}
 	require.Equal(t, map[string]bool{"tx-checksum-ipv4": false, "tx-checksum-ip-generic": false}, txChecksumChanges(features))
 }
 
 func TestOffloadProbeWithoutHostTools(t *testing.T) {
 	t.Setenv("PATH", "/missing-host-tools")
-	handle, err := ethtool.NewEthtool()
+	// Exercise the real generic-netlink read against an existing device without
+	// depending on the ethtool executable.
+	link, err := netlink.LinkByName("lo")
 	require.NoError(t, err)
-	defer handle.Close()
-	// Exercise the real ioctl read against an existing device, without privileges
-	// for changing the host network or a dependency on the ethtool executable.
-	features, err := handle.FeaturesWithState("lo")
+	features, err := netlink.NetDevFeaturesGet(link.Attrs().Index)
+	if errors.Is(err, unix.ENOENT) || errors.Is(err, unix.EOPNOTSUPP) {
+		t.Skipf("ethtool generic-netlink features are unavailable: %v", err)
+	}
 	require.NoError(t, err)
 	require.NotEmpty(t, features)
 	if len(txChecksumChanges(features)) != 0 {
