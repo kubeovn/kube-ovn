@@ -208,7 +208,7 @@ func decodeOptionalRows(schema ovsdb.DatabaseSchema, tableName string, table ovs
 		} else {
 			modelValue = reflect.New(elementType)
 		}
-		modelRow, ok := modelValue.Interface().(model.Model)
+		modelRow, ok := reflect.TypeAssert[model.Model](modelValue)
 		if !ok {
 			return fmt.Errorf("optional table %s result element is not a struct model", tableName)
 		}

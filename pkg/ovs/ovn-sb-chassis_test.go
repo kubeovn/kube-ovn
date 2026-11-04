@@ -36,7 +36,7 @@ func countChassisPrivate(t *testing.T, sbClient *OVNSbClient, name string) int {
 		Table: ovnsb.ChassisPrivateTable,
 		Where: []ovsdb.Condition{ovsdb.NewCondition("name", ovsdb.ConditionEqual, name)},
 	}
-	results, err := sbClient.Client.Transact(context.Background(), op)
+	results, err := sbClient.TransactResults(context.Background(), op)
 	require.NoError(t, err)
 	require.Len(t, results, 1)
 	require.Empty(t, results[0].Error)

@@ -75,6 +75,23 @@ func (ovsTransactionObserver) ObserveTransaction(event table.TransactionEvent) {
 	ovsClientRequestLatency.WithLabelValues(event.Database, event.Method, code).Observe(elapsed)
 }
 
+// ovsTracingBackend keeps transaction correlation at the transport boundary.
+// The database observer separately records labels and latency for each call.
+type ovsTracingBackend struct{ table.Backend }
+
+func (b ovsTracingBackend) Transact(ctx context.Context, operations ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	if !klog.V(4).Enabled() {
+		return b.Backend.Transact(ctx, operations...)
+	}
+	transaction := transactionSequence.Add(1)
+	ctx = klog.NewContext(ctx, klog.Background().WithName("libovsdb").WithValues("transaction", transaction))
+	klog.V(4).InfoS("OVSDB transaction started", "transaction", transaction, "operations", operations)
+	start := time.Now()
+	results, err := b.Backend.Transact(ctx, operations...)
+	klog.V(4).InfoS("OVSDB transaction returned", "transaction", transaction, "elapsedMs", float64(time.Since(start)/time.Millisecond), "error", err, "results", results)
+	return results, err
+}
+
 var transactionSequence atomic.Uint64
 
 const (

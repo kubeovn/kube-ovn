@@ -26,16 +26,29 @@ func (c *OVNSbClient) UpdateChassis(chassis *ovnsb.Chassis, fields ...any) error
 func (c *OVNSbClient) DeleteChassis(chassisName string) error {
 	chassis, err := c.GetChassis(chassisName, true)
 	if err != nil {
-		return logErr(err)
+		klog.Error(err)
+		return err
 	}
 	if chassis == nil {
 		return nil
 	}
-	ops, err := c.Database.Table(&ovnsb.Chassis{}).DeleteOps(chassis)
-	return transactGeneratedOn(c, "chassis-del", ops, err,
-		wrapErr("failed to generate delete chassis operations for node %s: %w", chassis.Hostname),
-		wrapErr("failed to delete chassis for node %s: %w", chassis.Hostname),
-	)
+	ops, err := c.Database.Where(chassis).Delete()
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to generate delete chassis operations for node %s: %w", chassis.Hostname, err)
+	}
+	// chassis_private is not monitored, delete it by the indexed name column
+	privateOps, err := c.Database.Where(&ovnsb.ChassisPrivate{Name: chassisName}).Delete()
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to generate delete chassis_private operations for node %s: %w", chassis.Hostname, err)
+	}
+	ops = append(ops, privateOps...)
+	if err = c.Transact("chassis-del", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to delete chassis for node %s: %w", chassis.Hostname, err)
+	}
+	return nil
 }
 
 // GetChassis return south bound db chassis from cache

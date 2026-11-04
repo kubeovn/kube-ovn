@@ -293,7 +293,7 @@ func connectOvsdb(dbName, addr string, dbModel model.ClientDBModel, monitors []t
 }
 
 func newObservedDatabase(backend table.Backend, timeout int, name string) *table.Database {
-	return table.NewDatabase(backend, time.Duration(timeout)*time.Second, table.RetryPolicy{},
+	return table.NewDatabase(ovsTracingBackend{Backend: backend}, time.Duration(timeout)*time.Second, table.RetryPolicy{},
 		table.WithDatabaseName(name), table.WithTransactionObserver(ovsTransactionObserver{}))
 }
 

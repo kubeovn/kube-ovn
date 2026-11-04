@@ -64,6 +64,7 @@ IFACE=${IFACE:-}
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_TPROXY=${ENABLE_TPROXY:-false}
+ENABLE_RECOMPUTE=${ENABLE_RECOMPUTE:-false}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
 ENABLE_OVN_IPSEC=${ENABLE_OVN_IPSEC:-false}
@@ -9549,6 +9550,7 @@ ${IPSEC_CLEANUP_INIT}
           - --gateway-netfilter-detect-timeout=$GATEWAY_NETFILTER_DETECT_TIMEOUT
           - --kubelet-dir=$KUBELET_DIR
           - --enable-tproxy=$ENABLE_TPROXY
+          - --enable-recompute=$ENABLE_RECOMPUTE
           - --secure-serving=${SECURE_SERVING}
           - --set-vxlan-tx-off=$SET_VXLAN_TX_OFF
           - --host-tunnel-src=$HOST_TUNNEL_SRC

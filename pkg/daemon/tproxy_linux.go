@@ -160,6 +160,7 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 		}
 		iface := ovs.PodNameToPortName(podName, pod.Namespace, provider)
 		nsName, err := c.getInterfacePodNs(iface)
+		_, tcpPorts := getProbePorts(pod)
 		if err != nil {
 			klog.Errorf("failed to get netns for pod %s/%s: %v", pod.Namespace, pod.Name, err)
 		} else if nsName == "" {

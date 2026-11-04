@@ -312,16 +312,18 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 			}
 			belongsToOwner = true
 
-			err = c.deleteLoadBalancerHealthCheck(lb.Name, lbhc.UUID)
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete load balancer health check %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
-				return err
-			}
+			if !atomicLB {
+				err = c.deleteLoadBalancerHealthCheck(lb.Name, lbhc.UUID)
+				if err != nil && !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete load balancer health check %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
+					return err
+				}
 
-			err = c.deleteLoadBalancerIPPortMapping(lb.Name, lbhc.Vip)
-			if err != nil && !k8serrors.IsNotFound(err) {
-				klog.Errorf("failed to delete ip port mappings %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
-				return err
+				err = c.deleteLoadBalancerIPPortMapping(lb.Name, lbhc.Vip)
+				if err != nil && !k8serrors.IsNotFound(err) {
+					klog.Errorf("failed to delete ip port mappings %s from load balancer matched vip %s, err: %v", lbhc.Vip, lb.Name, err)
+					return err
+				}
 			}
 		}
 
@@ -346,7 +348,7 @@ func (c *Controller) handleDelSwitchLBRule(info *SwitchLBRuleInfo) error {
 		vips[subnetForVip] = struct{}{}
 	}
 
-	if lbhcUUIDsToDelete.Len() > 0 {
+	if !atomicLB && lbhcUUIDsToDelete.Len() > 0 {
 		if err = c.deleteLoadBalancerHealthChecks(
 			func(lbhc *ovnnb.LoadBalancerHealthCheck) bool {
 				return lbhcUUIDsToDelete.Has(lbhc.UUID)

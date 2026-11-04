@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	openvswitch "github.com/digitalocean/go-openvswitch/ovs"

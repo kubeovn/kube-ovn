@@ -1,34 +1,29 @@
 package daemon
 
 import (
-	"os"
-	"path/filepath"
+	"context"
 	"strings"
 	"testing"
 
+	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 )
 
 func TestUnderlayServiceFlowTracksPatchOfport(t *testing.T) {
-	dir := t.TempDir()
-	patchOfportFile := filepath.Join(dir, "patch-ofport")
-	underlayOfportFile := filepath.Join(dir, "underlay-ofport")
-	require.NoError(t, os.WriteFile(patchOfportFile, []byte("-1\n"), 0o600))
-	require.NoError(t, os.WriteFile(underlayOfportFile, []byte("3\n"), 0o600))
-	require.NoError(t, os.WriteFile(filepath.Join(dir, "ovs-vsctl"), []byte(`#!/bin/sh
-case "$*" in
-  *" eth1 ofport") cat "$UNDERLAY_OFPORT_FILE" ;;
-  *" patch-localnet.underlay-to-br-int ofport") cat "$PATCH_OFPORT_FILE" ;;
-  *) exit 1 ;;
-esac
-`), 0o755))
-	t.Setenv("PATH", dir+":"+os.Getenv("PATH"))
-	t.Setenv("PATCH_OFPORT_FILE", patchOfportFile)
-	t.Setenv("UNDERLAY_OFPORT_FILE", underlayOfportFile)
+	interfaces := flowInterfaceProvider{
+		"eth1":                              {Name: "eth1", Ofport: new(3)},
+		"patch-localnet.underlay-to-br-int": {Name: "patch-localnet.underlay-to-br-int", Ofport: new(-1)},
+	}
+	patch := interfaces["patch-localnet.underlay-to-br-int"]
+	underlay := interfaces["eth1"]
 
 	c := &Controller{
-		flowCache: make(map[string]map[string]LbServiceRules),
-		flowChan:  make(chan struct{}, 1),
+		vswitchTables: interfaces,
+		flowCache:     make(map[string]map[string]LbServiceRules),
+		flowChan:      make(chan struct{}, 1),
 	}
 	rule := LbServiceRules{
 		IP: "172.19.0.100", Port: 80, Protocol: "TCP", DstMac: "00:00:00:01:00:01",
@@ -37,7 +32,7 @@ esac
 	require.ErrorIs(t, c.AddOrUpdateUnderlaySubnetSvcLocalFlowCache(rule), errUnderlayLocalnetPatchNotReady)
 	require.Empty(t, c.storeFlowCache()["br-provider"])
 
-	require.NoError(t, os.WriteFile(patchOfportFile, []byte("5\n"), 0o600))
+	patch.Ofport = new(5)
 	require.NoError(t, c.AddOrUpdateUnderlaySubnetSvcLocalFlowCache(rule))
 
 	checkOutput := func(want string) {
@@ -48,20 +43,39 @@ esac
 	}
 	checkOutput("5")
 
-	require.NoError(t, os.WriteFile(patchOfportFile, []byte("6\n"), 0o600))
+	patch.Ofport = new(6)
 	checkOutput("6")
 
-	require.NoError(t, os.WriteFile(patchOfportFile, []byte("-1\n"), 0o600))
+	patch.Ofport = new(-1)
 	require.Empty(t, c.storeFlowCache()["br-provider"])
 
-	require.NoError(t, os.WriteFile(patchOfportFile, []byte("missing\n"), 0o600))
+	patch.Ofport = nil
 	require.Empty(t, c.storeFlowCache()["br-provider"])
 
-	require.NoError(t, os.WriteFile(patchOfportFile, []byte("7\n"), 0o600))
+	patch.Ofport = new(7)
 	checkOutput("7")
 
-	require.NoError(t, os.WriteFile(underlayOfportFile, []byte("-1\n"), 0o600))
+	underlay.Ofport = new(-1)
 	require.Empty(t, c.storeFlowCache()["br-provider"])
-	require.NoError(t, os.WriteFile(underlayOfportFile, []byte("3\n"), 0o600))
+	underlay.Ofport = new(3)
 	checkOutput("7")
+}
+
+type flowInterfaceProvider map[string]*vswitch.Interface
+
+func (p flowInterfaceProvider) Table(model.Model) table.Handle { return flowInterfaceHandle{rows: p} }
+
+type flowInterfaceHandle struct {
+	table.Handle
+	rows flowInterfaceProvider
+}
+
+func (h flowInterfaceHandle) Filter(_ context.Context, predicate, result any) error {
+	rows := result.(*[]vswitch.Interface)
+	for _, row := range h.rows {
+		if predicate.(func(*vswitch.Interface) bool)(row) {
+			*rows = append(*rows, *row)
+		}
+	}
+	return nil
 }

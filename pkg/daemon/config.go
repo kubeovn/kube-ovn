@@ -15,7 +15,6 @@ import (
 	"sync"
 	"time"
 
-	certmanagerclientset "github.com/cert-manager/cert-manager/pkg/client/clientset/versioned"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/sirupsen/logrus"
@@ -43,21 +42,20 @@ type Configuration struct {
 	CniConfName      string
 
 	// interface being used for tunnel
-	tunnelIface       string
-	Iface             string
-	HostTunnelSrc     bool
-	DPDKTunnelIface   string
-	MTU               int
-	MaxMTU            int
-	MSS               int
-	EnableMirror      bool
-	MirrorNic         string
-	BindSocket        string
-	OvsSocket         string
-	KubeConfigFile    string
-	KubeClient        kubernetes.Interface
-	KubeOvnClient     clientset.Interface
-	CertManagerClient certmanagerclientset.Interface
+	tunnelIface     string
+	Iface           string
+	HostTunnelSrc   bool
+	DPDKTunnelIface string
+	MTU             int
+	MaxMTU          int
+	MSS             int
+	EnableMirror    bool
+	MirrorNic       string
+	BindSocket      string
+	OvsSocket       string
+	KubeConfigFile  string
+	KubeClient      kubernetes.Interface
+	KubeOvnClient   clientset.Interface
 	// VswitchTables is injected before Init so startup OVSDB writes use the
 	// same generic database handle as the daemon controller.
 	VswitchTables                 table.Provider
@@ -86,6 +84,7 @@ type Configuration struct {
 	TCPConnCheckPort              int32
 	UDPConnCheckPort              int32
 	EnableTProxy                  bool
+	EnableRecompute               bool
 	SetVxlanTxOff                 bool
 	LogPerm                       string
 	EnableNonPrimaryCNI           bool
@@ -143,11 +142,8 @@ func ParseFlags() *Configuration {
 		argEnableVerboseConnCheck        = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check listen port")
 		argTCPConnectivityCheckPort      = pflag.Int32("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
 		argUDPConnectivityCheckPort      = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
+		argEnableRecompute               = pflag.Bool("enable-recompute", false, "Enable periodic ovn-controller recompute")
 		argEnableTProxy                  = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
-		argEnableOVNIPSec                = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
-		argCertManagerIPSecCert          = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
-		argCertManagerIssuerName         = pflag.String("cert-manager-issuer-name", "kube-ovn", "The cert-manager issuer name to request certificates from")
-		argOVNIPSecCertDuration          = pflag.Int("ovn-ipsec-cert-duration", 2*365*24*60*60, "The duration requested for IPSec certificates (seconds)")
 		argSetVxlanTxOff                 = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
 		argLogPerm                       = pflag.String("log-perm", "640", "The permission for the log file")
 		argGatewayNetfilterMode          = pflag.String("gateway-netfilter-mode", "auto", "gateway netfilter backend: auto, iptables, or nftables")
@@ -222,6 +218,7 @@ func ParseFlags() *Configuration {
 		TCPConnCheckPort:          *argTCPConnectivityCheckPort,
 		UDPConnCheckPort:          *argUDPConnectivityCheckPort,
 		EnableTProxy:              *argEnableTProxy,
+		EnableRecompute:           *argEnableRecompute,
 		SetVxlanTxOff:             *argSetVxlanTxOff,
 		LogPerm:                   *argLogPerm,
 		TLSMinVersion:             *argTLSMinVersion,
@@ -638,14 +635,6 @@ func (config *Configuration) updateOpenVSwitchExternalIDs(method string, updates
 		return err
 	}
 	return config.updateOpenVSwitchMap(method, row, row.ExternalIDs, &row.ExternalIDs, updates)
-}
-
-func (config *Configuration) updateOpenVSwitchOtherConfig(method string, updates map[string]*string) error {
-	row, err := config.openVSwitchRow()
-	if err != nil {
-		return err
-	}
-	return config.updateOpenVSwitchMap(method, row, row.OtherConfig, &row.OtherConfig, updates)
 }
 
 func (config *Configuration) updateOpenVSwitchMap(method string, row *vswitch.OpenvSwitch, current map[string]string, field any, updates map[string]*string) error {

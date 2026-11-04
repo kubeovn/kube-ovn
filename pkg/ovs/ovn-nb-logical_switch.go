@@ -9,6 +9,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"k8s.io/klog/v2"
 
+	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/nbops"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -33,7 +34,8 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 
 	exist, err := c.LogicalSwitchExists(lsName)
 	if err != nil {
-		return logErr(err)
+		klog.Error(err)
+		return err
 	}
 
 	// Reconcile existing patch ports in a single transaction.
@@ -57,18 +59,12 @@ func (c *OVNNbClient) CreateLogicalSwitch(lsName, lrName, cidrBlock, gateway, ga
 		}
 	}
 
-	if needRouter && switchNetworks != "" {
-		if err := c.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, switchNetworks, gatewayMAC); err != nil {
-			return logErr(err)
-		}
-	} else {
-		if randomAllocateGW {
-			return nil
-		}
-
-		if err := c.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
-			return logWrap(err, wrapErr("remove router type port %s and %s: %w", lspName, lrpName))
-		}
+	if randomAllocateGW {
+		return nil
+	}
+	if err := c.RemoveLogicalPatchPort(lspName, lrpName); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("remove router type port %s and %s: %w", lspName, lrpName, err)
 	}
 
 	return nil

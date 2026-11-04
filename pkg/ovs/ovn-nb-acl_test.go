@@ -3335,7 +3335,7 @@ func (suite *OvnClientTestSuite) testMigrateACLTier() {
 
 	getTier := func(match string) int {
 		var acls []ovnnb.ACL
-		err := nbClient.ovsDbClient.WhereCache(func(acl *ovnnb.ACL) bool {
+		err := nbClient.WhereCache(func(acl *ovnnb.ACL) bool {
 			return acl.Match == match
 		}).List(context.Background(), &acls)
 		require.NoError(t, err)

@@ -1004,33 +1004,6 @@ func (c *Controller) cleanVswitchInterface(name string) error {
 	return cleaner.CleanInterface(name)
 }
 
-func (c *Controller) runIPSecWorker() {
-	for c.processNextIPSecWorkItem() {
-	}
-}
-
-func (c *Controller) processNextIPSecWorkItem() bool {
-	key, shutdown := c.ipsecQueue.Get()
-	if shutdown {
-		return false
-	}
-	defer c.ipsecQueue.Done(key)
-
-	err := func(key string) error {
-		if err := c.SyncIPSecKeys(key); err != nil {
-			c.ipsecQueue.AddRateLimited(key)
-			return fmt.Errorf("error syncing %q: %w, requeuing", key, err)
-		}
-		c.ipsecQueue.Forget(key)
-		return nil
-	}(key)
-	if err != nil {
-		utilruntime.HandleError(err)
-		return true
-	}
-	return true
-}
-
 func (c *Controller) runUpdateNodeWorker() {
 	for c.processNextUpdateNodeWorkItem() {
 	}

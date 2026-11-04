@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -111,45 +112,6 @@ func sameSubnetACLMatch(ipSuffix, cidr string) ACLMatch {
 		NewACLMatch(ipSuffix+".src", "==", cidr, ""),
 		NewACLMatch(ipSuffix+".dst", "==", cidr, ""),
 	)
-}
-
-func networkPolicyPortMatches(allowedIPMatch ACLMatch, pgName, direction string, npp []netv1.NetworkPolicyPort, namedPortMap map[string]*util.NamedPortInfo) []string {
-	if len(npp) == 0 {
-		return []string{allowedIPMatch.String()}
-	}
-	matches := make([]string, 0, len(npp))
-	for _, port := range npp {
-		protocol := strings.ToLower(string(*port.Protocol))
-		if port.Port == nil {
-			matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(protocol, "", "", "")).String())
-			continue
-		}
-		tcpKey := protocol + ".dst"
-		if port.EndPort == nil {
-			var portID int32
-			if port.Port.Type == intstr.Int {
-				portID = port.Port.IntVal
-			} else {
-				if namedPortMap == nil {
-					continue
-				}
-				info, ok := namedPortMap[port.Port.StrVal]
-				if !ok {
-					klog.Errorf("no named port with name %s found in pg %s (%s)", port.Port.StrVal, pgName, direction)
-					continue
-				}
-				portID = info.PortID
-			}
-			matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(tcpKey, "==", strconv.Itoa(int(portID)), "")).String())
-			continue
-		}
-		if port.Port.Type == intstr.String {
-			klog.Errorf("named port %s with endPort is not supported in pg %s (%s), skipping", port.Port.StrVal, pgName, direction)
-			continue
-		}
-		matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(tcpKey, "<=", strconv.Itoa(int(port.Port.IntVal)), strconv.Itoa(int(*port.EndPort)))).String())
-	}
-	return matches
 }
 
 func aclIPSuffix(protocol string) string {
@@ -1250,22 +1212,102 @@ func (c *OVNNbClient) newSgRuleACL(sgName, direction string, rule kubeovnv1.Secu
 }
 
 func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direction string, npp []netv1.NetworkPolicyPort, namedPortMap map[string]*util.NamedPortInfo) []string {
-	ipSuffix := aclIPSuffix(protocol)
+	ipSuffix := "ip4"
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		ipSuffix = "ip6"
+	}
 
 	// ingress rule
-	srcOrDst, portDirection := aclSrcOrDst(direction), aclPortDirection(direction)
+	srcOrDst, portDirection := "src", "outport"
+	if direction == ovnnb.ACLDirectionFromLport { // egress rule
+		srcOrDst = "dst"
+		portDirection = "inport"
+	}
 
 	ipKey := ipSuffix + "." + srcOrDst
 
 	// match all traffic to or from pgName
-	allIPMatch := aclPGIPMatch(pgName, portDirection)
+	allIPMatch := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch("ip", "", "", ""),
+	)
 
 	allowedIPMatch := NewAndACLMatch(
 		allIPMatch,
 		NewACLMatch(ipKey, "==", "$"+asAllowName, ""),
 		NewACLMatch(ipKey, "!=", "$"+asExceptName, ""),
 	)
-	return networkPolicyPortMatches(allowedIPMatch, pgName, direction, npp, namedPortMap)
+
+	matches := make([]string, 0, len(npp))
+
+	// allow allowed ip traffic but except
+	if len(npp) == 0 {
+		return []string{allowedIPMatch.String()}
+	}
+
+	for _, port := range npp {
+		protocol := strings.ToLower(string(*port.Protocol))
+
+		// allow all tcp or udp traffic
+		if port.Port == nil {
+			allLayer4Match := NewAndACLMatch(
+				allowedIPMatch,
+				NewACLMatch(protocol, "", "", ""),
+			)
+
+			matches = append(matches, allLayer4Match.String())
+			continue
+		}
+
+		// allow one tcp or udp port traffic
+		if port.EndPort == nil {
+			tcpKey := protocol + ".dst"
+
+			var portID int32
+			if port.Port.Type == intstr.Int {
+				portID = port.Port.IntVal
+			} else {
+				if namedPortMap == nil {
+					continue
+				}
+				info, ok := namedPortMap[port.Port.StrVal]
+				if !ok {
+					// no allow ACL generated = deny-all for this named port
+					klog.Errorf("no named port with name %s found in pg %s (%s)", port.Port.StrVal, pgName, direction)
+					continue
+				}
+				if !strings.EqualFold(info.Protocol, protocol) {
+					continue
+				}
+				portID = info.PortID
+			}
+
+			oneTCPMatch := NewAndACLMatch(
+				allowedIPMatch,
+				NewACLMatch(tcpKey, "==", strconv.Itoa(int(portID)), ""),
+			)
+
+			matches = append(matches, oneTCPMatch.String())
+
+			continue
+		}
+
+		// named port with endPort range is not supported
+		if port.Port.Type == intstr.String {
+			klog.Errorf("named port %s with endPort is not supported in pg %s (%s), skipping", port.Port.StrVal, pgName, direction)
+			continue
+		}
+
+		// allow several tcp or udp port traffic
+		tcpKey := protocol + ".dst"
+		severalTCPMatch := NewAndACLMatch(
+			allowedIPMatch,
+			NewACLMatch(tcpKey, "<=", strconv.Itoa(int(port.Port.IntVal)), strconv.Itoa(int(*port.EndPort))),
+		)
+		matches = append(matches, severalTCPMatch.String())
+	}
+
+	return matches
 }
 
 // newIPBlockACLMatch builds ACL match strings for ipBlock peers with per-CIDR scoped except.
@@ -1273,9 +1315,16 @@ func newNetworkPolicyACLMatch(pgName, asAllowName, asExceptName, protocol, direc
 // CIDR and except values directly in the match expression, ensuring that except entries from
 // one ipBlock do not affect other peers in the same NetworkPolicy rule.
 func newIPBlockACLMatch(pgName, protocol, direction string, ipBlocks []netv1.IPBlock, npp []netv1.NetworkPolicyPort, namedPortMap map[string]*util.NamedPortInfo) []string {
-	ipSuffix := aclIPSuffix(protocol)
+	ipSuffix := "ip4"
+	if protocol == kubeovnv1.ProtocolIPv6 {
+		ipSuffix = "ip6"
+	}
 
-	srcOrDst, portDirection := aclSrcOrDst(direction), aclPortDirection(direction)
+	srcOrDst, portDirection := "src", "outport"
+	if direction == ovnnb.ACLDirectionFromLport {
+		srcOrDst = "dst"
+		portDirection = "inport"
+	}
 
 	ipKey := ipSuffix + "." + srcOrDst
 
@@ -1324,10 +1373,60 @@ func newIPBlockACLMatch(pgName, protocol, direction string, ipBlocks []netv1.IPB
 		ipBlockL3Match = NewOrACLMatch(perBlockMatches...)
 	}
 
-	allIPMatch := aclPGIPMatch(pgName, portDirection)
+	allIPMatch := NewAndACLMatch(
+		NewACLMatch(portDirection, "==", "@"+pgName, ""),
+		NewACLMatch("ip", "", "", ""),
+	)
 
 	allowedIPMatch := NewAndACLMatch(allIPMatch, NewGroupACLMatch(ipBlockL3Match))
-	return networkPolicyPortMatches(allowedIPMatch, pgName, direction, npp, namedPortMap)
+
+	if len(npp) == 0 {
+		return []string{allowedIPMatch.String()}
+	}
+
+	matches := make([]string, 0, len(npp))
+	for _, port := range npp {
+		protocol := strings.ToLower(string(*port.Protocol))
+
+		if port.Port == nil {
+			matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(protocol, "", "", "")).String())
+			continue
+		}
+
+		if port.EndPort == nil {
+			tcpKey := protocol + ".dst"
+			var portID int32
+			if port.Port.Type == intstr.Int {
+				portID = port.Port.IntVal
+			} else {
+				if namedPortMap == nil {
+					continue
+				}
+				info, ok := namedPortMap[port.Port.StrVal]
+				if !ok {
+					klog.Errorf("no named port with name %s found in pg %s (%s)", port.Port.StrVal, pgName, direction)
+					continue
+				}
+				if !strings.EqualFold(info.Protocol, protocol) {
+					continue
+				}
+				portID = info.PortID
+			}
+			matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(tcpKey, "==", strconv.Itoa(int(portID)), "")).String())
+			continue
+		}
+
+		// named port with endPort range is not supported
+		if port.Port.Type == intstr.String {
+			klog.Errorf("named port %s with endPort is not supported in pg %s (%s), skipping", port.Port.StrVal, pgName, direction)
+			continue
+		}
+
+		tcpKey := protocol + ".dst"
+		matches = append(matches, NewAndACLMatch(allowedIPMatch, NewACLMatch(tcpKey, "<=", strconv.Itoa(int(port.Port.IntVal)), strconv.Itoa(int(*port.EndPort)))).String())
+	}
+
+	return matches
 }
 
 // UpdateIngressIPBlockACLOps returns operations that create ingress ACLs for ipBlock peers
@@ -1614,23 +1713,38 @@ func newCnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1al
 }
 
 func (c *OVNNbClient) MigrateACLTier() error {
-	aclList, err := filterTimeout(c.Database, &ovnnb.ACL{}, func(acl *ovnnb.ACL) bool { return acl.Tier == 0 })
-	if err != nil {
-		return logFmt("failed to list acls with tier 0: %w", err)
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+
+	var aclList []ovnnb.ACL
+	if err := c.Database.WhereCache(func(acl *ovnnb.ACL) bool {
+		// Skip ACLs that don't belong to kube-ovn, e.g. those managed by OpenStack Neutron
+		return acl.Tier == 0 && acl.ExternalIDs["vendor"] == util.CniTypeName
+	}).List(ctx, &aclList); err != nil {
+		err = fmt.Errorf("failed to list kube-ovn acls with tier 0: %w", err)
+		klog.Error(err)
+		return err
 	}
 
 	ops := make([]ovsdb.Operation, 0, len(aclList))
 	for _, acl := range aclList {
 		acl.Tier = util.NetpolACLTier
-		op, err := c.Database.Table(&ovnnb.ACL{}).UpdateOps(&acl, &acl, &acl.Tier)
+		op, err := c.Where(&acl).Update(&acl, &acl.Tier)
 		if err != nil {
-			return logWrap(err, wrapErr("failed to generate operations for updating acl %s tier: %w", acl.UUID))
+			klog.Error(err)
+			return fmt.Errorf("failed to generate operations for updating acl %s tier: %w", acl.UUID, err)
 		}
 		ops = append(ops, op...)
 	}
-	if err := transactOps(c, "acl-migrate-tier", ops); err != nil {
-		return logWrap(err, wrapErr("failed to migrate acl tier: %w"))
+	if len(ops) == 0 {
+		return nil
 	}
+
+	if err := c.Transact("acl-migrate-tier", ops); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("failed to migrate acl tier: %w", err)
+	}
+
 	return nil
 }
 

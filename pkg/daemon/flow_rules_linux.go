@@ -105,7 +105,7 @@ func (c *Controller) getPortID(portName string) (int, error) {
 	if err != nil {
 		return 0, fmt.Errorf("failed to get ofport for interface %s: %w", portName, err)
 	}
-	if len(interfaces) != 1 || interfaces[0].Ofport == nil {
+	if len(interfaces) != 1 || interfaces[0].Ofport == nil || *interfaces[0].Ofport <= 0 {
 		return 0, fmt.Errorf("interface %s has no ofport", portName)
 	}
 	return *interfaces[0].Ofport, nil

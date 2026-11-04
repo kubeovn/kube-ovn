@@ -298,7 +298,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 
 		if len(v4Addrs) != 0 && (len(rulePorts) == 0 || len(numericPorts) != 0) {
 			aclName := fmt.Sprintf("anp/%s/ingress/%s/%d", anpName, kubeovnv1.ProtocolIPv4, index)
-			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, ingressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, rulePorts, true, false)
+			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, ingressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, numericPorts, true, false)
 			if err != nil {
 				klog.Errorf("failed to add v4 ingress acls for anp %s: %v", key, err)
 				return err
@@ -308,7 +308,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 
 		if len(v6Addrs) != 0 && (len(rulePorts) == 0 || len(numericPorts) != 0) {
 			aclName := fmt.Sprintf("anp/%s/ingress/%s/%d", anpName, kubeovnv1.ProtocolIPv6, index)
-			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, ingressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, rulePorts, true, false)
+			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, ingressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, numericPorts, true, false)
 			if err != nil {
 				klog.Errorf("failed to add v6 ingress acls for anp %s: %v", key, err)
 				return err
@@ -326,7 +326,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 				variantPort := namedPortNumber(variant.protocol, variant.port)
 				if len(v4Addrs) != 0 {
 					variantACL := fmt.Sprintf("anp/%s/ingress/%s/%d/named/%s/%s/%d", anpName, kubeovnv1.ProtocolIPv4, index, variant.name, variant.protocol, variant.port)
-					ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(variant.pgName, ingressAsV4Name, kubeovnv1.ProtocolIPv4, variantACL, aclPriority, aclAction, logActions, []v1alpha1.AdminNetworkPolicyPort{variantPort}, true, false)
+					ops, err := aclBuilder.UpdateAnpRuleACLOps(variant.pgName, ingressAsV4Name, kubeovnv1.ProtocolIPv4, variantACL, aclPriority, aclAction, logActions, []v1alpha1.AdminNetworkPolicyPort{variantPort}, true, false)
 					if err != nil {
 						return err
 					}
@@ -334,7 +334,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 				}
 				if len(v6Addrs) != 0 {
 					variantACL := fmt.Sprintf("anp/%s/ingress/%s/%d/named/%s/%s/%d", anpName, kubeovnv1.ProtocolIPv6, index, variant.name, variant.protocol, variant.port)
-					ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(variant.pgName, ingressAsV6Name, kubeovnv1.ProtocolIPv6, variantACL, aclPriority, aclAction, logActions, []v1alpha1.AdminNetworkPolicyPort{variantPort}, true, false)
+					ops, err := aclBuilder.UpdateAnpRuleACLOps(variant.pgName, ingressAsV6Name, kubeovnv1.ProtocolIPv6, variantACL, aclPriority, aclAction, logActions, []v1alpha1.AdminNetworkPolicyPort{variantPort}, true, false)
 					if err != nil {
 						return err
 					}
@@ -413,7 +413,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 		// Domain names may not be resolved initially but will be updated later
 		if (len(v4Addrs) != 0 || hasDomainNames) && (len(rulePorts) == 0 || len(numericPorts) != 0) {
 			aclName := fmt.Sprintf("anp/%s/egress/%s/%d", anpName, kubeovnv1.ProtocolIPv4, index)
-			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, egressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, rulePorts, false, false)
+			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, egressAsV4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, numericPorts, false, false)
 			if err != nil {
 				klog.Errorf("failed to add v4 egress acls for anp %s: %v", key, err)
 				return err
@@ -423,7 +423,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 
 		if (len(v6Addrs) != 0 || hasDomainNames) && (len(rulePorts) == 0 || len(numericPorts) != 0) {
 			aclName := fmt.Sprintf("anp/%s/egress/%s/%d", anpName, kubeovnv1.ProtocolIPv6, index)
-			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, egressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, rulePorts, false, false)
+			ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, egressAsV6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, numericPorts, false, false)
 			if err != nil {
 				klog.Errorf("failed to add v6 egress acls for anp %s: %v", key, err)
 				return err
@@ -448,7 +448,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 					}
 					desiredEgressAddrSet.Add(v4Name)
 					aclName := fmt.Sprintf("anp/%s/egress/%s/%d/named/%s/%s/%d", anpName, kubeovnv1.ProtocolIPv4, index, *port.NamedPort, variant.protocol, variant.port)
-					ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, v4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, []v1alpha1.AdminNetworkPolicyPort{variantPort}, false, false)
+					ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, v4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, aclAction, logActions, []v1alpha1.AdminNetworkPolicyPort{variantPort}, false, false)
 					if err != nil {
 						return err
 					}
@@ -460,7 +460,7 @@ func (c *Controller) handleAddAnp(key string) (err error) {
 					}
 					desiredEgressAddrSet.Add(v6Name)
 					aclName := fmt.Sprintf("anp/%s/egress/%s/%d/named/%s/%s/%d", anpName, kubeovnv1.ProtocolIPv6, index, *port.NamedPort, variant.protocol, variant.port)
-					ops, err := c.OVNNbClient.UpdateAnpRuleACLOps(pgName, v6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, []v1alpha1.AdminNetworkPolicyPort{variantPort}, false, false)
+					ops, err := aclBuilder.UpdateAnpRuleACLOps(pgName, v6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, aclAction, logActions, []v1alpha1.AdminNetworkPolicyPort{variantPort}, false, false)
 					if err != nil {
 						return err
 					}

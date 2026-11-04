@@ -1,6 +1,7 @@
 package ovs
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
+	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/nbops"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -16,15 +18,72 @@ import (
 
 // CreateLogicalRouter create logical router in ovn
 func (c *OVNNbClient) CreateLogicalRouter(lrName string) error {
-	if err := requireName(lrName, "empty logical router name"); err != nil {
-		return err
+	return c.CreateLogicalRouterWithOptions(lrName, nil)
+}
+
+// CreateLogicalRouterWithOptions creates a logical router and applies its
+// initial options atomically when the row does not already exist.
+func (c *OVNNbClient) CreateLogicalRouterWithOptions(lrName string, options map[string]string) error {
+	if lrName == "" {
+		return errors.New("empty logical router name")
 	}
-	row := &ovnnb.LogicalRouter{
+
+	// Fast path: return early if any row with this name already exists.
+	// Unlike LogicalRouterExists, this tolerates pre-existing duplicates.
+	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
+	defer cancel()
+	var existing []ovnnb.LogicalRouter
+	if err := c.WhereCache(func(lr *ovnnb.LogicalRouter) bool {
+		return lr.Name == lrName
+	}).List(ctx, &existing); err != nil {
+		klog.Error(err)
+		return fmt.Errorf("check existence of logical router %s: %w", lrName, err)
+	}
+	if len(existing) > 0 {
+		if options == nil {
+			return nil
+		}
+		lr := existing[0]
+		if maps.Equal(lr.Options, options) {
+			return nil
+		}
+		lr.Options = options
+		ops, err := c.UpdateLogicalRouterOp(&lr, &lr.Options)
+		if err != nil {
+			return fmt.Errorf("generate operations for updating logical router %s: %w", lrName, err)
+		}
+		if err := c.Transact("lr-create-or-update", ops); err != nil {
+			return fmt.Errorf("update logical router %s: %w", lrName, err)
+		}
+		return nil
+	}
+
+	// Slow path: atomic Wait + Insert to prevent concurrent duplicate creation.
+	lr := &ovnnb.LogicalRouter{
 		Name:        lrName,
 		Options:     options,
 		ExternalIDs: map[string]string{"vendor": util.CniTypeName},
 	}
-	return logErr(c.logicalRouterTable().createIfAbsentAtomic(lrName, "lr-add", ovnnb.LogicalRouterTable, row))
+
+	createOps, err := c.Create(lr)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("generate operations for creating logical router %s: %w", lrName, err)
+	}
+
+	waitOp := ConstructWaitForNameNotExistsOperation(lrName, "Logical_Router")
+	ops := append([]ovsdb.Operation{waitOp}, createOps...)
+
+	created, err := c.TransactConditional("lr-add", ops)
+	if err != nil {
+		klog.Error(err)
+		return fmt.Errorf("create logical router %s: %w", lrName, err)
+	}
+	if !created && options != nil {
+		return fmt.Errorf("logical router %s was created concurrently; retry applying options", lrName)
+	}
+
+	return nil
 }
 
 // UpdateLogicalRouter update logical router

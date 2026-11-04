@@ -1272,8 +1272,13 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to set NB_Global option skip_conntrack_ipcidrs")
 	}
 
-	if err := c.setNBGlobalIPSec(c.config.EnableOVNIPSec); err != nil {
-		util.LogFatalAndExit(err, "failed to set NB_Global ipsec")
+	if c.config.EnableOVNIPSec && !c.config.CertManagerIPSecCert {
+		if err := c.InitDefaultOVNIPsecCA(); err != nil {
+			util.LogFatalAndExit(err, "failed to init ovn ipsec CA")
+		}
+	}
+	if err := c.reconcileIPsecCoordination(ctx); err != nil {
+		klog.ErrorS(err, "Initialize IPsec coordination")
 	}
 
 	if err := c.InitOVN(); err != nil {

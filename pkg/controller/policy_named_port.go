@@ -374,20 +374,20 @@ func (c *Controller) ensurePolicyNamedPortGroups(externalID, externalValue strin
 	desired := make(map[string]struct{}, len(variants))
 	for _, variant := range variants {
 		desired[variant.pgName] = struct{}{}
-		if err := c.OVNNbClient.CreatePortGroup(variant.pgName, map[string]string{
+		if err := c.createPortGroup(variant.pgName, map[string]string{
 			externalID:                externalValue,
 			networkPolicyNamedPortKey: "true",
 		}); err != nil {
 			return err
 		}
-		if err := c.OVNNbClient.PortGroupSetPorts(variant.pgName, variant.ports); err != nil {
+		if err := c.setPortGroupPorts(variant.pgName, variant.ports); err != nil {
 			return err
 		}
-		if err := c.OVNNbClient.DeleteAcls(variant.pgName, portGroupKey, "to-lport", nil); err != nil {
+		if err := c.deletePortGroupACLs(variant.pgName, "to-lport", nil); err != nil {
 			return err
 		}
 	}
-	groups, err := c.OVNNbClient.ListPortGroups(map[string]string{externalID: externalValue, networkPolicyNamedPortKey: "true"})
+	groups, err := c.listPortGroups(map[string]string{externalID: externalValue, networkPolicyNamedPortKey: "true"})
 	if err != nil {
 		return err
 	}
@@ -395,7 +395,7 @@ func (c *Controller) ensurePolicyNamedPortGroups(externalID, externalValue strin
 		if _, ok := desired[group.Name]; ok {
 			continue
 		}
-		if err := c.OVNNbClient.DeletePortGroup(group.Name); err != nil {
+		if err := c.deletePortGroups(group.Name); err != nil {
 			return err
 		}
 	}
@@ -403,12 +403,12 @@ func (c *Controller) ensurePolicyNamedPortGroups(externalID, externalValue strin
 }
 
 func (c *Controller) deletePolicyNamedPortGroups(externalID, externalValue string) error {
-	groups, err := c.OVNNbClient.ListPortGroups(map[string]string{externalID: externalValue, networkPolicyNamedPortKey: "true"})
+	groups, err := c.listPortGroups(map[string]string{externalID: externalValue, networkPolicyNamedPortKey: "true"})
 	if err != nil {
 		return err
 	}
 	for _, group := range groups {
-		if err := c.OVNNbClient.DeletePortGroup(group.Name); err != nil {
+		if err := c.deletePortGroups(group.Name); err != nil {
 			return err
 		}
 	}

@@ -122,9 +122,17 @@ func (c *OVNNbClient) requireLogicalRouterPort(lrpName string) (*ovnnb.LogicalRo
 }
 
 func (c *OVNNbClient) UpdateLogicalRouterPortRA(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) error {
-	lrp, err := c.requireLogicalRouterPort(lrpName)
+	ops, err := c.logicalRouterPortRAOp(lrpName, ipv6RAConfigsStr, enableIPv6RA)
 	if err != nil {
 		return err
+	}
+	return c.Transact("lrp-update", ops)
+}
+
+func (c *OVNNbClient) logicalRouterPortRAOp(lrpName, ipv6RAConfigsStr string, enableIPv6RA bool) ([]ovsdb.Operation, error) {
+	lrp, err := c.requireLogicalRouterPort(lrpName)
+	if err != nil {
+		return nil, err
 	}
 
 	if !enableIPv6RA {

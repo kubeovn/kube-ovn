@@ -106,7 +106,7 @@ func (c *Controller) syncSecurityGroup() error {
 // updateDenyAllSgPorts set lsp to deny which security_groups is not empty
 func (c *Controller) updateDenyAllSgPorts() error {
 	// list all lsp which security_groups is not empty
-	lsps, err := c.listLogicalSwitchPorts(true, map[string]string{sgsKey: ""}, func(lsp *ovnnb.LogicalSwitchPort) bool { return lsp.Type == "" })
+	lsps, err := c.listNormalLogicalSwitchPorts(true, map[string]string{sgsKey: ""})
 	if err != nil {
 		klog.Errorf("list logical switch ports with security_groups is not empty: %v", err)
 		return err
@@ -350,6 +350,9 @@ func securityGroupACL(parent string, direction ovnnb.ACLDirection, priority any,
 }
 
 func (c *Controller) createSgDenyAllACL(sgName string) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateSgDenyAllACL(sgName)
+	}
 	pgName := ovs.GetSgPortGroupName(sgName)
 	acls := make([]*ovnnb.ACL, 0, 2*(util.SecurityGroupAPITierMaximum-util.SecurityGroupAPITierMinimum+1))
 	for tier := util.SecurityGroupAPITierMinimum; tier <= util.SecurityGroupAPITierMaximum; tier++ {
@@ -363,6 +366,9 @@ func (c *Controller) createSgDenyAllACL(sgName string) error {
 }
 
 func (c *Controller) createSgBaseACL(sgName string, direction ovnnb.ACLDirection) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.CreateSgBaseACL(sgName, direction)
+	}
 	pgName := ovs.GetSgPortGroupName(sgName)
 	portDirection := "outport"
 	dhcpv4Src, dhcpv4Dst := "67", "68"
@@ -391,6 +397,9 @@ func (c *Controller) createSgBaseACL(sgName string, direction ovnnb.ACLDirection
 }
 
 func (c *Controller) updateSgACL(sg *kubeovnv1.SecurityGroup, direction ovnnb.ACLDirection) error {
+	if c.OVNNbTables == nil {
+		return c.OVNNbClient.UpdateSgACL(sg, direction)
+	}
 	pgName := ovs.GetSgPortGroupName(sg.Name)
 	if err := c.deletePortGroupACLs(pgName, direction, nil); err != nil {
 		return fmt.Errorf("delete direction %s ACLs from port group %s: %w", direction, pgName, err)
@@ -525,6 +534,9 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
 	klog.Infof("sync lsp for security group %s", key)
 
+	// Keep deny-all membership independent of whether the group's OVN resources are ready.
+	c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
+
 	sgPorts, err := c.listLogicalSwitchPorts(false, map[string]string{"associated_sg_" + key: "true"}, nil)
 	if err != nil {
 		klog.Errorf("failed to find logical port, %v", err)
@@ -635,27 +647,4 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 	c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
 
 	return nil
-}
-
-// securityGroupAllNotExist return true if all sgs does not exist
-func (c *Controller) securityGroupAllNotExist(sgs []string) (bool, error) {
-	if len(sgs) == 0 {
-		return true, nil
-	}
-
-	notExistsCount := 0
-	// sgs format: sg1/sg2/sg3
-	for _, sg := range sgs {
-		ok, err := c.portGroupExists(ovs.GetSgPortGroupName(sg))
-		if err != nil {
-			klog.Error(err)
-			return true, err
-		}
-
-		if !ok {
-			notExistsCount++
-		}
-	}
-
-	return notExistsCount == len(sgs), nil
 }
