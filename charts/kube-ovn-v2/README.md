@@ -1,6 +1,6 @@
 # Helm chart for Kube-OVN
 
-![Version: v1.16.0](https://img.shields.io/badge/Version-v1.16.0-informational?style=flat-square)
+![Version: v1.16.17](https://img.shields.io/badge/Version-v1.16.17-informational?style=flat-square)
 
 This is the v2 of the Helm Chart, replacing the first version in the long term.
 Make sure to adjust your old values with the new ones and pre-generate your templates with a dry-run to ensure no breaking change occurs.
@@ -12,7 +12,7 @@ Make sure to adjust your old values with the new ones and pre-generate your temp
 The Helm chart is available from GitHub Container Registry:
 
 ```bash
-helm install kube-ovn oci://ghcr.io/kubeovn/charts/kube-ovn-v2 --version v1.16.0
+helm install kube-ovn oci://ghcr.io/kubeovn/charts/kube-ovn-v2 --version v1.16.17
 ```
 
 ### From Source
@@ -670,6 +670,28 @@ false
 </td>
 			<td>ovn-central resource limits & requests. ref: https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/</td>
 		</tr>
+		<tr>
+			<td>central.tolerations</td>
+			<td>list</td>
+			<td><pre lang="json">
+[
+  {
+    "effect": "NoSchedule",
+    "operator": "Exists"
+  },
+  {
+    "effect": "NoExecute",
+    "operator": "Exists"
+  },
+  {
+    "key": "CriticalAddonsOnly",
+    "operator": "Exists"
+  }
+]
+</pre>
+</td>
+			<td>Tolerations for ovn-central pods.</td>
+		</tr>
 	</tbody>
 </table>
 <h3>OVN-central daemon configuration.</h3>
@@ -745,7 +767,7 @@ false
   "images": {
     "kubeovn": {
       "repository": "kube-ovn",
-      "tag": "v1.16.0"
+      "tag": "v1.16.17"
     }
   },
   "registry": {
@@ -1086,6 +1108,24 @@ false
 </td>
 			<td>Enable the deployment of the ServiceMonitor for the Kube-OVN controller.</td>
 		</tr>
+		<tr>
+			<td>controller.tolerations</td>
+			<td>list</td>
+			<td><pre lang="json">
+[
+  {
+    "effect": "NoSchedule",
+    "operator": "Exists"
+  },
+  {
+    "key": "CriticalAddonsOnly",
+    "operator": "Exists"
+  }
+]
+</pre>
+</td>
+			<td>Tolerations for kube-ovn-controller pods.</td>
+		</tr>
 	</tbody>
 </table>
 <h3>Extra objects</h3>
@@ -1317,6 +1357,28 @@ false
 </td>
 			<td>More information on formatting nodeAffinity can be found at https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#node-affinity</td>
 		</tr>
+		<tr>
+			<td>ic.tolerations</td>
+			<td>list</td>
+			<td><pre lang="json">
+[
+  {
+    "effect": "NoSchedule",
+    "operator": "Exists"
+  },
+  {
+    "effect": "NoExecute",
+    "operator": "Exists"
+  },
+  {
+    "key": "CriticalAddonsOnly",
+    "operator": "Exists"
+  }
+]
+</pre>
+</td>
+			<td>Tolerations for ovn-ic-controller pods.</td>
+		</tr>
 	</tbody>
 </table>
 <h3>Kubelet configuration</h3>
@@ -1507,6 +1569,24 @@ false
 </td>
 			<td>Enable the deployment of the ServiceMonitor for the kube-ovn-monitor.</td>
 		</tr>
+		<tr>
+			<td>monitor.tolerations</td>
+			<td>list</td>
+			<td><pre lang="json">
+[
+  {
+    "effect": "NoSchedule",
+    "operator": "Exists"
+  },
+  {
+    "key": "CriticalAddonsOnly",
+    "operator": "Exists"
+  }
+]
+</pre>
+</td>
+			<td>Tolerations for kube-ovn-monitor pods.</td>
+		</tr>
 	</tbody>
 </table>
 <h3>NAT gateways configuration</h3>
@@ -1576,7 +1656,7 @@ false
 			<td>natGw.bgpSpeaker.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.16.0"
+"v1.16.17"
 </pre>
 </td>
 			<td>Image tag.</td>
@@ -1612,7 +1692,7 @@ false
 			<td>natGw.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.16.0"
+"v1.16.17"
 </pre>
 </td>
 			<td>Image tag.</td>
@@ -2114,7 +2194,7 @@ false
 			<td>ovsOvn.dpdkHybrid.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.16.0"
+"v1.16.17-dpdk"
 </pre>
 </td>
 			<td>DPDK image tag.</td>
@@ -2548,6 +2628,20 @@ false
 </pre>
 </td>
 			<td>Labels to be added to kube-ovn-webhook pods.</td>
+		</tr>
+		<tr>
+			<td>validatingWebhook.tolerations</td>
+			<td>list</td>
+			<td><pre lang="json">
+[
+  {
+    "effect": "NoSchedule",
+    "operator": "Exists"
+  }
+]
+</pre>
+</td>
+			<td>Tolerations for kube-ovn-webhook pods.</td>
 		</tr>
 	</tbody>
 </table>
