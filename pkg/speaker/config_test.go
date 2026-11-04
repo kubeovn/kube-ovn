@@ -1206,6 +1206,38 @@ func TestConfiguration_MergeFileConfig_NodeIPs(t *testing.T) {
 	}
 }
 
+func TestConfiguration_MergeFileConfig_NextHops(t *testing.T) {
+	ipv4, ipv6 := IP{IP: net.ParseIP("192.0.2.1")}, IP{IP: net.ParseIP("2001:db8::1")}
+	replacement := IP{IP: net.ParseIP("192.0.2.2")}
+	tests := []struct {
+		name        string
+		yamlContent string
+		want        map[string]IP
+	}{
+		{"omitted", "{}", map[string]IP{"IPv4": ipv4, "IPv6": ipv6}},
+		{"null map", "next-hops: null", nil},
+		{"empty map", "next-hops: {}", nil},
+		{"null IPv4", "next-hops: {IPv4: null}", map[string]IP{"IPv6": ipv6}},
+		{"empty IPv4", `next-hops: {IPv4: ""}`, map[string]IP{"IPv6": ipv6}},
+		{"null IPv6", "next-hops: {IPv6: null}", map[string]IP{"IPv4": ipv4}},
+		{"empty IPv6", `next-hops: {IPv6: ""}`, map[string]IP{"IPv4": ipv4}},
+		{"replace IPv4", "next-hops: {IPv4: 192.0.2.2}", map[string]IP{"IPv4": replacement, "IPv6": ipv6}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := Configuration{
+				ConfigFile: filepath.Join(t.TempDir(), "speaker.yaml"),
+				NextHops:   map[string]IP{"IPv4": ipv4, "IPv6": ipv6},
+			}
+			require.NoError(t, os.WriteFile(config.ConfigFile, []byte(tt.yamlContent), 0o600))
+			cfg, err := config.loadFileConfig()
+			require.NoError(t, err)
+			config.mergeFileConfig(cfg)
+			require.Equal(t, tt.want, config.NextHops)
+		})
+	}
+}
+
 func TestConfiguration_MergeFileConfig_YAMLBooleans(t *testing.T) {
 	fields := []struct {
 		name string
