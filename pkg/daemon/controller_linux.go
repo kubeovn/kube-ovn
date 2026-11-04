@@ -17,7 +17,6 @@ import (
 	ovsutil "github.com/digitalocean/go-openvswitch/ovs"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
-	"github.com/kubeovn/felix/ipsets"
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
@@ -31,6 +30,7 @@ import (
 	k8siptables "k8s.io/kubernetes/pkg/util/iptables"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipsets"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -158,7 +158,7 @@ func (c *Controller) initRuntime() error {
 				c.iptablesObsolete[kubeovnv1.ProtocolIPv4] = ipt
 			}
 		}
-		c.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
+		c.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(netlink.FAMILY_V4, IPSetPrefix)
 		c.k8siptables[kubeovnv1.ProtocolIPv4] = k8siptables.New(k8siptables.ProtocolIPv4)
 	}
 	if c.protocol == kubeovnv1.ProtocolIPv6 || c.protocol == kubeovnv1.ProtocolDual {
@@ -181,7 +181,7 @@ func (c *Controller) initRuntime() error {
 				c.iptablesObsolete[kubeovnv1.ProtocolIPv6] = ipt
 			}
 		}
-		c.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
+		c.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(netlink.FAMILY_V6, IPSetPrefix)
 		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(k8siptables.ProtocolIPv6)
 	}
 
