@@ -2,6 +2,7 @@ package controller
 
 import (
 	"encoding/hex"
+	"errors"
 	"testing"
 
 	"github.com/cnf/structhash"
@@ -71,6 +72,93 @@ func Test_updateDenyAllSgPortsIncludesPortsWithMissingSecurityGroups(t *testing.
 	mockOvnClient.EXPECT().PortGroupSetPorts(ovs.GetSgPortGroupName(util.DenyAllSecurityGroup), []string{"early", "existing"}).Return(nil)
 
 	require.NoError(t, ctrl.updateDenyAllSgPorts())
+}
+
+func TestSyncSgLogicalPortQueuesDenyAllWhenPortGroupIsNotReady(t *testing.T) {
+	fc := newFakeController(t)
+	ctrl := fc.fakeController
+	ctrl.sgKeyMutex = keymutex.NewHashed(0)
+	ctrl.addOrUpdateSgQueue = newTypedRateLimitingQueue[string](t.Name(), nil)
+	t.Cleanup(ctrl.addOrUpdateSgQueue.ShutDown)
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(&kubeovnv1.SecurityGroup{Name: "later"}))
+	ctrl.sgsLister = kubeovnlister.NewSecurityGroupLister(indexer)
+	ports := []ovnnb.LogicalSwitchPort{{Name: "early", ExternalIDs: map[string]string{sgsKey: "later"}}}
+	pgErr := errors.New("port group is not ready")
+	fc.mockOvnClient.EXPECT().ListLogicalSwitchPorts(false, map[string]string{"associated_sg_later": "true"}, nil).Return(ports, nil)
+	fc.mockOvnClient.EXPECT().PortGroupSetPorts("", []string{"early"}).Return(pgErr)
+
+	require.ErrorIs(t, ctrl.syncSgLogicalPort("later"), pgErr)
+	require.Equal(t, 1, ctrl.addOrUpdateSgQueue.Len())
+	key, shutdown := ctrl.addOrUpdateSgQueue.Get()
+	require.False(t, shutdown)
+	defer ctrl.addOrUpdateSgQueue.Done(key)
+	require.Equal(t, util.DenyAllSecurityGroup, key)
+	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, map[string]string{sgsKey: ""}).Return(ports, nil)
+	fc.mockOvnClient.EXPECT().PortGroupSetPorts(ovs.GetSgPortGroupName(util.DenyAllSecurityGroup), []string{"early"}).Return(nil)
+	require.NoError(t, ctrl.handleAddOrUpdateSg(key, false))
+}
+
+func TestReconcilePortSgRefreshesDenyAllAfterMetadataIsWritten(t *testing.T) {
+	for _, tc := range []struct {
+		name, oldGroup, newGroup string
+	}{
+		{name: "add missing group", newGroup: "later"},
+		{name: "remove missing group", oldGroup: "later"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fc := newFakeController(t)
+			ctrl := fc.fakeController
+			ctrl.addOrUpdateSgQueue = newTypedRateLimitingQueue[string](t.Name()+"deny-all", nil)
+			ctrl.syncSgPortsQueue = newTypedRateLimitingQueue[string](t.Name()+"ports", nil)
+			t.Cleanup(ctrl.addOrUpdateSgQueue.ShutDown)
+			t.Cleanup(ctrl.syncSgPortsQueue.ShutDown)
+			port := &ovnnb.LogicalSwitchPort{Name: "early", ExternalIDs: map[string]string{sgsKey: tc.oldGroup}}
+			associated := "true"
+			if tc.oldGroup != "" {
+				port.ExternalIDs["associated_sg_later"] = "true"
+				associated = "false"
+			}
+			fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(port.Name, false).Return(port, nil)
+			fc.mockOvnClient.EXPECT().SetLogicalSwitchPortExternalIDs(port.Name, map[string]string{"associated_sg_later": associated}).Return(nil)
+			fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, map[string]string{sgsKey: ""}).DoAndReturn(func(bool, map[string]string) ([]ovnnb.LogicalSwitchPort, error) {
+				if port.ExternalIDs[sgsKey] == "" {
+					return nil, nil
+				}
+				return []ovnnb.LogicalSwitchPort{*port}, nil
+			}).Times(2)
+			oldPorts, newPorts := []string{}, []string{}
+			if tc.oldGroup != "" {
+				oldPorts = append(oldPorts, port.Name)
+			}
+			if tc.newGroup != "" {
+				newPorts = append(newPorts, port.Name)
+			}
+			gomock.InOrder(
+				fc.mockOvnClient.EXPECT().PortGroupSetPorts(ovs.GetSgPortGroupName(util.DenyAllSecurityGroup), gomock.Eq(oldPorts)).Return(nil),
+				fc.mockOvnClient.EXPECT().PortGroupSetPorts(ovs.GetSgPortGroupName(util.DenyAllSecurityGroup), gomock.Eq(newPorts)).Return(nil),
+			)
+			fc.mockOvnClient.EXPECT().SetLogicalSwitchPortExternalIDs(port.Name, map[string]string{sgsKey: tc.newGroup}).DoAndReturn(func(string, map[string]string) error {
+				// Consume the earlier SG event and deny-all scan before the metadata write.
+				for ctrl.syncSgPortsQueue.Len() != 0 {
+					key, shutdown := ctrl.syncSgPortsQueue.Get()
+					require.False(t, shutdown)
+					ctrl.syncSgPortsQueue.Done(key)
+				}
+				require.NoError(t, ctrl.updateDenyAllSgPorts())
+				port.ExternalIDs[sgsKey] = tc.newGroup
+				return nil
+			})
+
+			require.NoError(t, ctrl.reconcilePortSg(port.Name, tc.newGroup))
+			require.Equal(t, 1, ctrl.addOrUpdateSgQueue.Len())
+			key, shutdown := ctrl.addOrUpdateSgQueue.Get()
+			require.False(t, shutdown)
+			defer ctrl.addOrUpdateSgQueue.Done(key)
+			require.Equal(t, util.DenyAllSecurityGroup, key)
+			require.NoError(t, ctrl.updateDenyAllSgPorts())
+		})
+	}
 }
 
 func TestHandleAddOrUpdateSgForceRecordsRuleHashes(t *testing.T) {

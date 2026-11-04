@@ -349,6 +349,9 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
 	klog.Infof("sync lsp for security group %s", key)
 
+	// Keep deny-all membership independent of whether the group's OVN resources are ready.
+	c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
+
 	sgPorts, err := c.OVNNbClient.ListLogicalSwitchPorts(false, map[string]string{"associated_sg_" + key: "true"}, nil)
 	if err != nil {
 		klog.Errorf("failed to find logical port, %v", err)
@@ -382,9 +385,6 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.Warningf("no security group %s", key)
-			// The security group is gone, trigger an update of the deny-all security group
-			// to re-evaluate which ports should be included.
-			c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
 			return nil
 		}
 		klog.Errorf("failed to get security group %s: %v", key, err)
@@ -408,7 +408,6 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		return err
 	}
 
-	c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
 	return nil
 }
 
@@ -458,6 +457,9 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 		klog.Errorf("set logical switch port %s external_ids: %v", portName, err)
 		return err
 	}
+
+	// Earlier SG events may have been processed before security_groups was persisted.
+	c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
 
 	return nil
 }
