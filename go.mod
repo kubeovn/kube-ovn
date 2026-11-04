@@ -22,7 +22,7 @@ require (
 	github.com/k8snetworkplumbingwg/sriovnet v1.3.0
 	github.com/kubeovn/dbus/v5 v5.0.0-20260127130047-cf3ab180f3cc
 	github.com/kubeovn/felix v0.0.0-20240506083207-ed396be1b6cf
-	github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca
+	github.com/kubeovn/go-iptables v0.0.0-20261104030023-601476609404
 	github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20260127125406-1297b522ba92
 	github.com/kubeovn/ovsdb v0.0.0-20240410091831-5dd26006c475
 	github.com/mdlayher/arp v0.0.0-20260528070854-93566ba168e9

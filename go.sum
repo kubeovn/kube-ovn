@@ -338,8 +338,8 @@ github.com/kubeovn/dbus/v5 v5.0.0-20260127130047-cf3ab180f3cc h1:kf8P2psxxkT8KLA
 github.com/kubeovn/dbus/v5 v5.0.0-20260127130047-cf3ab180f3cc/go.mod h1:/wqWGKah+lXMG53PEpXRrRJgLmrLc8eZxE7vaTEIvko=
 github.com/kubeovn/felix v0.0.0-20240506083207-ed396be1b6cf h1:YO+anuZKagUda5iejzt070Lvq3zI57EfbEZr7UWO7nc=
 github.com/kubeovn/felix v0.0.0-20240506083207-ed396be1b6cf/go.mod h1:ulxnUH9cbIOtCH+exhJPeV2mleh+bDv67WKsl/MVU/g=
-github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca h1:fTMjoho2et9nKVOFrjzVEWVd9XD1zzxOYrlxxZpO0fU=
-github.com/kubeovn/go-iptables v0.0.0-20230322103850-8619a8ab3dca/go.mod h1:jY1XeGzkx8ASNJ+SqQSxTESNXARkjvt+I6IJOTnzIjw=
+github.com/kubeovn/go-iptables v0.0.0-20261104030023-601476609404 h1:TANqGtZVOXf+YdUxBsNkFGf3jB1aQzvwCTiB60BXy8U=
+github.com/kubeovn/go-iptables v0.0.0-20261104030023-601476609404/go.mod h1:jY1XeGzkx8ASNJ+SqQSxTESNXARkjvt+I6IJOTnzIjw=
 github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20260127125406-1297b522ba92 h1:6x474ooEGbRRS5YD6TFH4HOkF9Ag8IepQF1VhT+tbMw=
 github.com/kubeovn/gonetworkmanager/v3 v3.0.0-20260127125406-1297b522ba92/go.mod h1:/SGJYGjOEAz+rw8JvkkbpcAyjQF1v4XPgpn1HqRg1fs=
 github.com/kubeovn/kubevirt-client-go v0.0.0-20260903111510-fc88ccd3d6e8 h1:4vSHwLAMWWuaamBNVJY9S06ZNCrl7cPY+dnlpq1S6uI=
