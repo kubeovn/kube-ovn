@@ -334,8 +334,17 @@ func (c *Controller) patchIPPoolIPs(ippool *kubeovnv1.IPPool, ips []string) erro
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if _, err = c.config.KubeOvnClient.KubeovnV1().IPPools().Patch(ctx, ippool.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-		klog.Errorf("failed to patch IPs of ippool %s: %v", ippool.Name, err)
-		return err
+		// A failed response does not imply a failed write; reconcile from the API, not the informer.
+		readCtx, readCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer readCancel()
+		persisted, readErr := c.config.KubeOvnClient.KubeovnV1().IPPools().Get(readCtx, ippool.Name, metav1.GetOptions{})
+		if readErr != nil {
+			return errors.Join(err, readErr)
+		}
+		if persisted.UID != ippool.UID || !slices.Equal(persisted.Status.IPs, ips) {
+			klog.Errorf("failed to patch IPs of ippool %s: %v", ippool.Name, err)
+			return err
+		}
 	}
 	ippool.Status.IPs = ips
 	return nil
