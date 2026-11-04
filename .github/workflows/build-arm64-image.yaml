@@ -57,9 +57,13 @@ jobs:
             ${{ runner.os }}-go-${{ env.GO_VERSION }}-arm64-${{ github.ref_name }}-
             ${{ runner.os }}-go-${{ env.GO_VERSION }}-arm64-${{ github.base_ref }}-
 
+      - name: Install Trivy
+        uses: ./.github/actions/setup-trivy
+
       - name: Scan base image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
+          skip-setup-trivy: true
           scan-type: image
           scanners: vuln
           image-ref: docker.io/kubeovn/kube-ovn-base:${{ env.TAG }}
