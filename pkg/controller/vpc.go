@@ -191,13 +191,7 @@ func (c *Controller) handleUpdateVpcStatus(key string) error {
 	if !vpc.Spec.BFDPort.IsEnabled() && !vpc.Status.BFDPort.IsEmpty() {
 		vpc.Status.BFDPort.Clear()
 	}
-	bytes, err := vpc.Status.Bytes()
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-
-	vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
+	vpc, err = c.patchVpcStatus(vpc, &cachedVpc.Status)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -586,6 +580,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		return err
 	}
 
+	originalStatus := vpc.Status.DeepCopy()
 	vpc.Status.Subnets = vpcSubnets
 	vpc.Status.DefaultLogicalSwitch = defaultSubnet
 	vpc.Status.Router = key
@@ -604,12 +599,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		vpc.Status.SctpLoadBalancer = vpcLb.SctpLoadBalancer
 		vpc.Status.SctpSessionLoadBalancer = vpcLb.SctpSessLoadBalancer
 	}
-	bytes, err := vpc.Status.Bytes()
-	if err != nil {
-		klog.Error(err)
-		return err
-	}
-	vpc, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(), vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
+	vpc, err = c.patchVpcStatus(vpc, originalStatus)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -651,6 +641,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 		}
 	}
 
+	originalStatus = vpc.Status.DeepCopy()
 	bfdPortName, bfdPortNodes, err := c.reconcileVpcBfdLRP(vpc)
 	if err != nil {
 		klog.Error(err)
@@ -665,8 +656,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) error {
 			Nodes: bfdPortNodes,
 		}
 	}
-	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().
-		UpdateStatus(context.Background(), vpc, metav1.UpdateOptions{}); err != nil {
+	if _, err = c.patchVpcStatus(vpc, originalStatus); err != nil {
 		klog.Error(err)
 		return err
 	}
@@ -1485,16 +1475,10 @@ func (c *Controller) patchVpcBfdStatus(key string) error {
 	}
 
 	if cachedVpc.Status.EnableBfd != cachedVpc.Spec.EnableBfd {
-		status := cachedVpc.Status.DeepCopy()
-		status.EnableExternal = cachedVpc.Spec.EnableExternal
-		status.EnableBfd = cachedVpc.Spec.EnableBfd
-		bytes, err := status.Bytes()
-		if err != nil {
-			klog.Errorf("failed to marshal vpc status: %v", err)
-			return err
-		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
-			cachedVpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		vpc := cachedVpc.DeepCopy()
+		vpc.Status.EnableExternal = cachedVpc.Spec.EnableExternal
+		vpc.Status.EnableBfd = cachedVpc.Spec.EnableBfd
+		if _, err = c.patchVpcStatus(vpc, &cachedVpc.Status); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -1527,16 +1511,24 @@ func (c *Controller) updateVpcExternalStatus(key string) error {
 		vpc.Status.ExtraExternalSubnets = nil
 	}
 
-	bytes, err := vpc.Status.Bytes()
-	if err != nil {
-		klog.Errorf("failed to get vpc bytes, %v", err)
-		return err
-	}
-	if _, err = c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
-		vpc.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+	if _, err = c.patchVpcStatus(vpc, &cachedVpc.Status); err != nil {
 		klog.Errorf("failed to patch vpc %s, %v", key, err)
 		return err
 	}
 
 	return nil
+}
+
+// Only patch fields changed by this reconciliation. Unchanged fields may have
+// been updated by another worker since the informer snapshot was taken.
+func (c *Controller) patchVpcStatus(vpc *kubeovnv1.Vpc, original *kubeovnv1.VpcStatus) (*kubeovnv1.Vpc, error) {
+	patch, err := util.GenerateMergePatchPayload(
+		&kubeovnv1.Vpc{Status: *original},
+		&kubeovnv1.Vpc{Status: vpc.Status},
+	)
+	if err != nil {
+		return nil, err
+	}
+	return c.config.KubeOvnClient.KubeovnV1().Vpcs().Patch(context.Background(),
+		vpc.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "status")
 }
