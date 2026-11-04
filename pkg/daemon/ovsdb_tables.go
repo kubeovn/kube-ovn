@@ -163,7 +163,9 @@ func (c *Controller) listVswitchBridgePorts(bridgeName string) ([]vswitch.Port, 
 	}
 	portIDs := bridges[0].Ports
 	return c.listVswitchPorts(func(port *vswitch.Port) bool {
-		return slices.Contains(portIDs, port.UUID)
+		// Match ovs-vsctl list-ports: the bridge's local port is not a NIC
+		// and must remain intact until provider addresses have been restored.
+		return port.Name != bridgeName && slices.Contains(portIDs, port.UUID)
 	})
 }
 
