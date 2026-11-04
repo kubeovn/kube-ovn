@@ -339,11 +339,7 @@ func (c *Controller) updatePodAttachNets(pod *corev1.Pod, svc *corev1.Service) e
 		}
 
 		var rules []string
-		targetPort := port.TargetPort.IntValue()
-		if targetPort == 0 {
-			targetPort = int(port.Port)
-		}
-		rules = append(rules, fmt.Sprintf("%s,%d,%s,%s,%d,%s", loadBalancerIP, port.Port, protocol, svc.Spec.ClusterIP, targetPort, defaultGateway))
+		rules = append(rules, fmt.Sprintf("%s,%d,%s,%s,%d,%s", loadBalancerIP, port.Port, protocol, svc.Spec.ClusterIP, port.Port, defaultGateway))
 		klog.Infof("add dnat rules for lb svc pod, %v", rules)
 		if err := c.execNatRules(pod, podDNATAdd, rules); err != nil {
 			klog.Errorf("failed to add dnat for pod, err: %v", err)
@@ -447,11 +443,7 @@ func (c *Controller) delDnatRules(pod *corev1.Pod, toDel []corev1.ServicePort, s
 		}
 
 		var rules []string
-		targetPort := port.TargetPort.IntValue()
-		if targetPort == 0 {
-			targetPort = int(port.Port)
-		}
-		rules = append(rules, fmt.Sprintf("%s,%d,%s,%s,%d", loadBalancerIP, port.Port, protocol, svc.Spec.ClusterIP, targetPort))
+		rules = append(rules, fmt.Sprintf("%s,%d,%s,%s,%d", loadBalancerIP, port.Port, protocol, svc.Spec.ClusterIP, port.Port))
 		klog.Infof("delete dnat rules for lb svc pod, %v", rules)
 		if err := c.execNatRules(pod, podDNATDel, rules); err != nil {
 			klog.Errorf("failed to del dnat rules for pod, err: %v", err)
