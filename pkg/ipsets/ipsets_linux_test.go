@@ -101,6 +101,7 @@ func (f *fakeNetlink) IpsetSwap(a, b string) error {
 		return unix.EINVAL
 	}
 	f.sets[a].Entries, f.sets[b].Entries = f.sets[b].Entries, f.sets[a].Entries
+	f.sets[a].MaxElements, f.sets[b].MaxElements = f.sets[b].MaxElements, f.sets[a].MaxElements
 	return nil
 }
 
@@ -203,9 +204,21 @@ func TestIPSetAtomicReplacementAndRecovery(t *testing.T) {
 	}
 }
 
+func TestIPSetCapacityDriftRecovery(t *testing.T) {
+	manager, fake := newTestIPSets(netlink.FAMILY_V4)
+	metadata := IPSetMetadata{SetID: "services", Type: IPSetTypeHashNet, MaxSize: 1048576}
+	manager.AddOrReplaceIPSet(metadata, []string{"10.0.0.0/24"})
+	require.NoError(t, manager.ApplyUpdates())
+	fake.sets["ovn40services"].MaxElements = 1
+	fake.calls = nil
+	require.NoError(t, manager.ApplyUpdates())
+	require.EqualValues(t, metadata.MaxSize, fake.sets["ovn40services"].MaxElements)
+	require.Contains(t, fake.calls, "swap ovn40services")
+}
+
 func TestIPSetGarbageCollection(t *testing.T) {
 	manager, fake := newTestIPSets(netlink.FAMILY_V4)
-	for _, name := range []string{"ovn40stale", "ovn4t0", "ovn60services", "KUBE-CLUSTER-IP"} {
+	for _, name := range []string{"ovn40stale", "ovn4t0", "ovn4external", "ovn60services", "KUBE-CLUSTER-IP"} {
 		fake.sets[name] = &netlink.IPSetResult{SetName: name}
 	}
 	manager.AddOrReplaceIPSet(IPSetMetadata{SetID: "services", Type: IPSetTypeHashNet}, []string{"10.0.0.0/24"})
@@ -217,6 +230,7 @@ func TestIPSetGarbageCollection(t *testing.T) {
 	require.NoError(t, manager.ApplyDeletions())
 	require.NotContains(t, fake.sets, "ovn40stale")
 	require.NotContains(t, fake.sets, "ovn4t0")
+	require.Contains(t, fake.sets, "ovn4external")
 	require.Contains(t, fake.sets, "ovn60services")
 	require.Contains(t, fake.sets, "KUBE-CLUSTER-IP")
 
@@ -291,7 +305,7 @@ func TestIPSetHostMaskComparison(t *testing.T) {
 
 func TestIPSetCleanup(t *testing.T) {
 	manager, fake := newTestIPSets(netlink.FAMILY_V4)
-	for _, name := range []string{"ovn40services", "ovn4t0", "ovn4t-replace", "ovn60services", "KUBE-CLUSTER-IP"} {
+	for _, name := range []string{"ovn40services", "ovn4t0", "ovn4t-replace", "ovn4external", "ovn60services", "KUBE-CLUSTER-IP"} {
 		fake.sets[name] = &netlink.IPSetResult{SetName: name}
 	}
 	manager.AddOrReplaceIPSet(IPSetMetadata{SetID: "services", Type: IPSetTypeHashNet}, nil)
@@ -303,8 +317,9 @@ func TestIPSetCleanup(t *testing.T) {
 	fake.referenced["ovn40services"] = false
 	require.NoError(t, manager.Cleanup())
 	require.Empty(t, manager.desired)
-	require.Len(t, fake.sets, 2)
+	require.Len(t, fake.sets, 3)
 	require.Contains(t, fake.sets, "ovn60services")
+	require.Contains(t, fake.sets, "ovn4external")
 	require.Contains(t, fake.sets, "KUBE-CLUSTER-IP")
 	require.NoError(t, manager.Cleanup())
 }

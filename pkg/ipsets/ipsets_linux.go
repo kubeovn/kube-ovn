@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/netip"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/vishvananda/netlink"
@@ -92,7 +93,7 @@ func (s *IPSets) ApplyUpdates() error {
 	// A large set can span multiple dump messages. Combine its entries before
 	// comparing, and include stale main/temporary sets from previous instances.
 	for _, result := range sets {
-		if !strings.HasPrefix(result.SetName, s.prefix) {
+		if !s.owns(result.SetName) {
 			continue
 		}
 		if _, wanted := s.desired[result.SetName]; !wanted {
@@ -134,7 +135,7 @@ func (s *IPSets) replace(name string, desired ipSet, current *netlink.IPSetResul
 	if current.TypeName != desired.metadata.Type || current.Family != s.family {
 		return fmt.Errorf("incompatible existing set: type %s, family %d", current.TypeName, current.Family)
 	}
-	if equalEntries(current.Entries, entries) {
+	if current.MaxElements == desired.metadata.MaxSize && equalEntries(current.Entries, entries) {
 		return nil
 	}
 
@@ -265,6 +266,17 @@ func (s *IPSets) ApplyDeletions() error {
 	return nil
 }
 
+func (s *IPSets) owns(name string) bool {
+	if strings.HasPrefix(name, s.prefix+"0") || name == s.prefix+"t-replace" {
+		return true
+	}
+	if !strings.HasPrefix(name, s.prefix+"t") {
+		return false
+	}
+	_, err := strconv.ParseUint(strings.TrimPrefix(name, s.prefix+"t"), 10, 64)
+	return err == nil
+}
+
 // Cleanup removes all sets owned by this family after iptables references have
 // been removed, including temporary sets left by an interrupted replacement.
 func (s *IPSets) Cleanup() error {
@@ -274,7 +286,7 @@ func (s *IPSets) Cleanup() error {
 	}
 	clear(s.desired)
 	for _, set := range sets {
-		if strings.HasPrefix(set.SetName, s.prefix) {
+		if s.owns(set.SetName) {
 			s.deletions[set.SetName] = struct{}{}
 		}
 	}
