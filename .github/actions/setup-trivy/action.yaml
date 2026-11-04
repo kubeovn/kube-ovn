@@ -5,7 +5,7 @@ inputs:
   version:
     description: Trivy release tag
     required: false
-    default: v0.70.0
+    default: v0.76.1
 
 runs:
   using: composite
