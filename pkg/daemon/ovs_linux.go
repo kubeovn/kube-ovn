@@ -7,7 +7,6 @@ import (
 	"maps"
 	"net"
 	"os"
-	"os/exec"
 	"path"
 	"path/filepath"
 	"regexp"
@@ -1134,25 +1133,13 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 	}
 
 	if setUfoOff {
-		// Probe is best-effort: some kernels/devices reject `ethtool -k` (e.g. restricted netns,
-		// certain veth setups). Treat probe failure or absence of the udp-fragmentation-offload
-		// feature as "nothing to disable" and continue, matching the previous shell behavior.
-		probe, probeErr := exec.Command("ethtool", "-k", link).CombinedOutput() // #nosec G204
-		if probeErr != nil {
-			klog.Warningf("failed to query offload features of device %s, skip disabling ufo: %v, %s", link, probeErr, probe)
-		} else {
-			var hasUFO bool
-			for line := range strings.SplitSeq(string(probe), "\n") {
-				if strings.HasPrefix(strings.TrimSpace(line), "udp-fragmentation-offload") {
-					hasUFO = true
-					break
-				}
-			}
-			if hasUFO {
-				if output, err := exec.Command("ethtool", "-K", link, "ufo", "off").CombinedOutput(); err != nil { // #nosec G204
-					klog.Error(err)
-					return fmt.Errorf("failed to disable udp-fragmentation-offload feature of device %s to off: %w, %s", link, err, output)
-				}
+		// Probe is best-effort: some kernels/devices reject ethtool feature
+		// queries (for example, restricted netns or certain veth setups).
+		if features, err := netlink.NetDevFeaturesGet(nodeLink.Attrs().Index); err != nil {
+			klog.Warningf("failed to query offload features of device %s, skip disabling ufo: %v", link, err)
+		} else if feature, ok := features["tx-udp-fragmentation"]; ok && feature.Active {
+			if err := netlink.NetDevFeaturesSet(nodeLink.Attrs().Index, map[string]bool{"tx-udp-fragmentation": false}); err != nil {
+				return fmt.Errorf("failed to disable udp-fragmentation-offload feature of device %s: %w", link, err)
 			}
 		}
 	}
@@ -1720,14 +1707,25 @@ func setVfMac(deviceID string, vfIndex int, mac string) error {
 }
 
 func TurnOffNicTxChecksum(nicName string) error {
-	start := time.Now()
-	args := []string{"-K", nicName, "tx", "off"}
-	output, err := exec.Command("ethtool", args...).CombinedOutput() // #nosec G204
-	elapsed := float64(time.Since(start) / time.Millisecond)
-	klog.V(4).Infof("command %s %s in %vms", "ethtool", strings.Join(args, " "), elapsed)
+	link, err := netlink.LinkByName(nicName)
 	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to turn off nic tx checksum, output %s, err %s", string(output), err.Error())
+		return fmt.Errorf("find NIC %s: %w", nicName, err)
+	}
+	features, err := netlink.NetDevFeaturesGet(link.Attrs().Index)
+	if err != nil {
+		return fmt.Errorf("query TX checksum features of %s: %w", nicName, err)
+	}
+	changes := make(map[string]bool)
+	for name, feature := range features {
+		if strings.HasPrefix(name, "tx-checksum-") && feature.Hardware && !feature.NoChange {
+			changes[name] = false
+		}
+	}
+	if len(changes) == 0 {
+		return nil
+	}
+	if err := netlink.NetDevFeaturesSet(link.Attrs().Index, changes); err != nil {
+		return fmt.Errorf("disable TX checksum on %s: %w", nicName, err)
 	}
 	return nil
 }
