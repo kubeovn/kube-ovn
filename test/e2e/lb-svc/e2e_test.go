@@ -152,7 +152,11 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 		ginkgo.By("Creating server pod " + serverPodName)
 		labels := map[string]string{"app": serviceName}
 		port := 8000 + rand.Int32N(1000)
-		args := []string{"netexec", "--http-port", strconv.Itoa(int(port))}
+		targetPort := port
+		if !f.VersionPriorTo(1, 16) {
+			targetPort += 10000
+		}
+		args := []string{"netexec", "--http-port", strconv.Itoa(int(targetPort))}
 		serverPod := framework.MakePod(namespaceName, serverPodName, labels, nil, framework.AgnhostImage, nil, args)
 		_ = podClient.CreateSync(serverPod)
 
@@ -161,7 +165,7 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 			Name:       "tcp",
 			Protocol:   corev1.ProtocolTCP,
 			Port:       port,
-			TargetPort: intstr.FromInt32(port),
+			TargetPort: intstr.FromInt32(targetPort),
 		}}
 		annotations := map[string]string{
 			util.AttachmentProvider: provider,
@@ -225,6 +229,26 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 
 		if f.VersionPriorTo(1, 13) {
 			return
+		}
+
+		if !f.VersionPriorTo(1, 16) {
+			ginkgo.By("Updating the service port while keeping the backend port unchanged")
+			oldPort := port
+			port++
+			modifiedService := service.DeepCopy()
+			modifiedService.Spec.Ports[0].Port = port
+			service = serviceClient.Patch(service, modifiedService)
+
+			ginkgo.By("Checking connectivity through the updated service port")
+			curlCmd = fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", util.JoinHostPort(lbIP, port))
+			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+				_, err = e2epodoutput.RunHostCmd(clientPod.Namespace, clientPod.Name, curlCmd)
+				return err == nil, nil
+			}, "updated service port is reachable")
+
+			ginkgo.By("Checking that the old DNAT rule has been removed")
+			rules := e2epodoutput.RunHostCmdOrDie(pod.Namespace, pod.Name, "iptables -t nat -S PREROUTING")
+			framework.ExpectNotContainSubstring(rules, fmt.Sprintf("--dport %d ", oldPort))
 		}
 
 		ginkgo.By("Deleting lb svc pod " + pod.Name)
