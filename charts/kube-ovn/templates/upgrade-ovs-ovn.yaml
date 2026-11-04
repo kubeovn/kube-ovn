@@ -1,4 +1,4 @@
-{{- if include "kubeovn.renderFullOnly" . }}
+{{- if include "kubeovn.renderUpgradeHooks" . }}
 {{- if include "kubeovn.ovn.upgradeNeeded" . -}}
 ---
 apiVersion: v1
@@ -150,6 +150,14 @@ spec:
               valueFrom:
                 fieldRef:
                   fieldPath: metadata.namespace
+            - name: INSTALL_MODE
+              value: {{ .Values.installMode | quote }}
+            {{- if eq .Values.installMode "dataPlaneOnly" }}
+            - name: OVN_NB_ADDR
+              value: "{{ include "kubeovn.externalOvnNbAddress" . }}"
+            - name: OVN_SB_ADDR
+              value: "{{ include "kubeovn.externalOvnSbAddress" . }}"
+            {{- end }}
           command:
             - bash
             - -eo

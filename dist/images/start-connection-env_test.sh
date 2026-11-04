@@ -102,6 +102,40 @@ EOF
   assert_contains "$out" "rollout status ds/ovs-ovn"
 }
 
+test_upgrade_ovs_skips_local_central_in_data_plane_only() {
+  local tmp out
+  tmp="$(mktemp -d)"
+  out="$tmp/args"
+  trap 'rm -rf "$tmp"' RETURN
+
+  cp "$script_dir/upgrade-ovs.sh" "$tmp/"
+  mkdir -p "$tmp/bin"
+  cat > "$tmp/bin/kubectl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$OUT"
+if [[ "$*" == *"jsonpath={.spec.updateStrategy.type}"* ]]; then
+  printf 'RollingUpdate'
+fi
+EOF
+  chmod +x "$tmp/bin/kubectl"
+
+  (
+    cd "$tmp"
+    PATH="$tmp/bin:$PATH" \
+    OUT="$out" \
+    INSTALL_MODE=dataPlaneOnly \
+    bash ./upgrade-ovs.sh
+  )
+
+  if grep -Fq -- "rollout status deploy ovn-central" "$out"; then
+    echo "dataPlaneOnly must not roll out a local ovn-central deployment" >&2
+    cat "$out" >&2
+    exit 1
+  fi
+  assert_contains "$out" "rollout status ds/ovs-ovn"
+}
+
 test_start_controller_uses_explicit_ovn_addresses
 test_start_ic_controller_uses_explicit_ovn_addresses
 test_upgrade_ovs_rolls_out_ovn_components
+test_upgrade_ovs_skips_local_central_in_data_plane_only
