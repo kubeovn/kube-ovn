@@ -207,12 +207,43 @@ func (c *OVNNbClient) CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName,
 			return logErr(err)
 		}
 	}
+	if len(ops) == 0 {
+		created, err := c.createLogicalSwitchPortIfNotExists(lsName, lsp)
+		if err != nil {
+			return err
+		}
+		if !created {
+			return fmt.Errorf("logical switch port %s was created concurrently, retry to reconcile it", lspName)
+		}
+		return nil
+	}
 
 	createLspOps, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
 	return c.transactGenerated("lsp-add", append(ops, createLspOps...), err,
 		wrapErr("generate operations for creating logical switch port %s: %w", lspName),
 		wrapErr("create logical switch port %s: %w", lspName),
 	)
+}
+
+// createLogicalSwitchPortIfNotExists inserts lsp with an atomic Wait+Insert
+// transaction. The Wait is evaluated by the OVSDB server, so a stale client
+// cache or a lost transaction reply cannot cause a duplicate named port.
+func (c *OVNNbClient) createLogicalSwitchPortIfNotExists(lsName string, lsp *ovnnb.LogicalSwitchPort) (bool, error) {
+	createOps, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
+	if err != nil {
+		klog.Error(err)
+		return false, fmt.Errorf("generate operations for creating logical switch port %s: %w", lsp.Name, err)
+	}
+
+	waitOp := ConstructWaitForNameNotExistsOperation(lsp.Name, ovnnb.LogicalSwitchPortTable)
+	ops := append([]ovsdb.Operation{waitOp}, createOps...)
+
+	created, err := c.TransactConditional("lsp-add", ops)
+	if err != nil {
+		klog.Error(err)
+		return false, fmt.Errorf("create logical switch port %s: %w", lsp.Name, err)
+	}
+	return created, nil
 }
 
 // CreateLocalnetLogicalSwitchPort create localnet type logical switch port

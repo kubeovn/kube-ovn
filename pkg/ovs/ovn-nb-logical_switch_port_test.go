@@ -5,6 +5,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
@@ -243,6 +244,67 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 
 		err = failedNbClient.CreateLogicalSwitchPort(lsName, "", ips, mac, podName, podNamespace, true, sgs, vips, true, nil, vpcName)
 		require.Error(t, err)
+	})
+}
+
+func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortDuplicateGuard() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lsName := "test-create-lsp-atomic-ls"
+	name := "test-create-lsp-atomic"
+	require.NoError(t, nbClient.CreateBareLogicalSwitch(lsName))
+
+	t.Run("wait blocks insert when row already exists", func(t *testing.T) {
+		lsp := &ovnnb.LogicalSwitchPort{
+			UUID: ovsclient.NamedUUID(),
+			Name: name,
+		}
+		ops, err := nbClient.CreateLogicalSwitchPortOp(lsp, lsName)
+		require.NoError(t, err)
+		require.NoError(t, nbClient.Transact("lsp-add", ops))
+		require.Eventually(t, func() bool {
+			before, listErr := nbClient.ListLogicalSwitchPorts(false, nil, func(port *ovnnb.LogicalSwitchPort) bool {
+				return port.Name == name
+			})
+			return listErr == nil && len(before) == 1
+		}, time.Second, 10*time.Millisecond)
+
+		lsp2 := buildLogicalSwitchPort(name, lsName, "10.244.0.10", "00:00:00:00:00:10", "pod", "namespace", false, "", "", false, nil, "")
+		created, err := nbClient.createLogicalSwitchPortIfNotExists(lsName, lsp2)
+		require.NoError(t, err)
+		require.False(t, created, "expected Wait to block insert for existing row")
+
+		lsps, err := nbClient.ListLogicalSwitchPorts(false, nil, func(port *ovnnb.LogicalSwitchPort) bool {
+			return port.Name == name
+		})
+		require.NoError(t, err)
+		require.Len(t, lsps, 1)
+	})
+
+	t.Run("concurrent creates produce exactly one logical switch port", func(t *testing.T) {
+		const callers = 10
+		errs := make([]error, callers)
+		var wg sync.WaitGroup
+		for i := range callers {
+			wg.Go(func() {
+				errs[i] = nbClient.CreateLogicalSwitchPort(lsName, fmt.Sprintf("%s-concurrent", name), "10.244.0.11", "00:00:00:00:00:11", "pod", "namespace", false, "", "", false, nil, "")
+			})
+		}
+		wg.Wait()
+
+		for i, err := range errs {
+			if err != nil {
+				require.ErrorContains(t, err, "created concurrently", "goroutine %d", i)
+			}
+		}
+
+		lsps, err := nbClient.ListLogicalSwitchPorts(false, nil, func(port *ovnnb.LogicalSwitchPort) bool {
+			return port.Name == name+"-concurrent"
+		})
+		require.NoError(t, err)
+		require.Len(t, lsps, 1)
 	})
 }
 
