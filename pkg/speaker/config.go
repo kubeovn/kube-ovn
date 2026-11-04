@@ -232,8 +232,8 @@ func ParseFlags() (*Configuration, error) {
 		argClusterAs                   = pflag.Uint32("cluster-as", 0, "The AS number of the local BGP speaker (required)")
 		argRouterID                    = pflag.IP("router-id", nil, "The address for the speaker to use as router ID. When empty, the IPv4 address from POD_IPS is used; if POD_IPS is empty, POD_IP is used; if no IPv4 address is available, 0.0.0.0 is used")
 		argNodeIPs                     = pflag.IPSlice("node-ips", nil, "The comma-separated list of node IP addresses to use instead of the pod IP address for the next hop router IP address.")
-		// Only the first IPv4 and first IPv6 address are honored (one next hop per address family).
-		argNextHops                   = pflag.IPSlice("next-hops", nil, "Comma separated next hop override addresses (one IPv4 and/or one IPv6); only the first address of each family is used. Takes precedence over node-ips and route lookup.")
+		// Only the last IPv4 and last IPv6 address are honored if there are more than one next hop per address family.
+		argNextHops                   = pflag.IPSlice("next-hops", nil, "Comma separated next hop override addresses (one IPv4 and/or one IPv6); only the last address of each family is used. Takes precedence over node-ips and route lookup.")
 		argNeighborAddress            = pflag.IPSlice("neighbor-address", nil, "Comma separated IPv4 router addresses the speaker connects to.")
 		argNeighborIPv6Address        = pflag.IPSlice("neighbor-ipv6-address", nil, "Comma separated IPv6 router addresses the speaker connects to.")
 		argAllowedSourceAddresses     = pflag.IPSlice("allowed-source-addresses", nil, "Comma separated IPv4 source addresses allowed for BGP peering and next-hop advertisement.")
