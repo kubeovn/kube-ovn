@@ -39,6 +39,8 @@ var (
 	pciAddrRegexp         = regexp.MustCompile(`\b([0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}.\d{1}\S*)`)
 	replaceNodeRoute      = netlink.RouteReplace
 	checkNodeGatewayReady = waitNetworkReady
+	netDevFeaturesGet     = netlink.NetDevFeaturesGet
+	netDevFeaturesSet     = netlink.NetDevFeaturesSet
 )
 
 func (csh cniServerHandler) configureDpdkNic(podName, podNamespace, provider, netns, containerID, ifName, _ string, _ int, ip, _, ingress, egress, ingressBurst, egressBurst, shortSharedDir, socketName, socketConsumption string) error {
@@ -1135,10 +1137,10 @@ func configureNic(link, ip string, macAddr net.HardwareAddr, mtu int, detectIPv4
 	if setUfoOff {
 		// Probe is best-effort: some kernels/devices reject ethtool feature
 		// queries (for example, restricted netns or certain veth setups).
-		if features, err := netlink.NetDevFeaturesGet(nodeLink.Attrs().Index); err != nil {
+		if features, err := netDevFeaturesGet(nodeLink.Attrs().Index); err != nil {
 			klog.Warningf("failed to query offload features of device %s, skip disabling ufo: %v", link, err)
-		} else if feature, ok := features["tx-udp-fragmentation"]; ok && feature.Active {
-			if err := netlink.NetDevFeaturesSet(nodeLink.Attrs().Index, map[string]bool{"tx-udp-fragmentation": false}); err != nil {
+		} else if shouldDisableUFO(features) {
+			if err := netDevFeaturesSet(nodeLink.Attrs().Index, map[string]bool{"tx-udp-fragmentation": false}); err != nil {
 				return fmt.Errorf("failed to disable udp-fragmentation-offload feature of device %s: %w", link, err)
 			}
 		}
@@ -1711,7 +1713,7 @@ func TurnOffNicTxChecksum(nicName string) error {
 	if err != nil {
 		return fmt.Errorf("find NIC %s: %w", nicName, err)
 	}
-	features, err := netlink.NetDevFeaturesGet(link.Attrs().Index)
+	features, err := netDevFeaturesGet(link.Attrs().Index)
 	if err != nil {
 		return fmt.Errorf("query TX checksum features of %s: %w", nicName, err)
 	}
@@ -1724,10 +1726,15 @@ func TurnOffNicTxChecksum(nicName string) error {
 	if len(changes) == 0 {
 		return nil
 	}
-	if err := netlink.NetDevFeaturesSet(link.Attrs().Index, changes); err != nil {
+	if err := netDevFeaturesSet(link.Attrs().Index, changes); err != nil {
 		return fmt.Errorf("disable TX checksum on %s: %w", nicName, err)
 	}
 	return nil
+}
+
+func shouldDisableUFO(features map[string]netlink.NetDevFeature) bool {
+	feature, ok := features["tx-udp-fragmentation"]
+	return ok && feature.Active
 }
 
 func getShortSharedDir(uid types.UID, volumeName string) string {

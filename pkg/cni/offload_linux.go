@@ -50,12 +50,16 @@ func disableUFO(nicName string) error {
 		klog.Warningf("failed to query offload features of %s, skip disabling UFO: %v", nicName, err)
 		return nil
 	}
-	feature, ok := features["tx-udp-fragmentation"]
-	if !ok || !feature.Active {
+	if !shouldDisableUFO(features) {
 		return nil
 	}
 	if err := netlink.NetDevFeaturesSet(link.Attrs().Index, map[string]bool{"tx-udp-fragmentation": false}); err != nil {
 		return fmt.Errorf("disable UFO on %s: %w", nicName, err)
 	}
 	return nil
+}
+
+func shouldDisableUFO(features map[string]netlink.NetDevFeature) bool {
+	feature, ok := features["tx-udp-fragmentation"]
+	return ok && feature.Active
 }
