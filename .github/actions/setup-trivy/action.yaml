@@ -1,0 +1,48 @@
+name: Setup Trivy
+description: Install Trivy directly from a verified GitHub release archive
+
+inputs:
+  version:
+    description: Trivy release tag
+    required: false
+    default: v0.70.0
+
+runs:
+  using: composite
+  steps:
+    - name: Install Trivy
+      shell: bash
+      env:
+        TRIVY_VERSION: ${{ inputs.version }}
+      run: |
+        set -euo pipefail
+
+        case "$(uname -s)/$(uname -m)" in
+          Linux/x86_64) arch=64bit ;;
+          Linux/aarch64|Linux/arm64) arch=ARM64 ;;
+          *) echo "Unsupported Trivy platform: $(uname -s)/$(uname -m)" >&2; exit 1 ;;
+        esac
+
+        version="${TRIVY_VERSION#v}"
+        archive="trivy_${version}_Linux-${arch}.tar.gz"
+        releaseURL="https://github.com/aquasecurity/trivy/releases/download/v${version}"
+        downloadDir=$(mktemp -d)
+        trap 'rm -rf "$downloadDir"' EXIT
+
+        # Bypass get.trivy.dev, which the upstream setup action depends on.
+        curl --fail --show-error --silent --location --retry 3 \
+          "$releaseURL/$archive" -o "$downloadDir/$archive"
+        curl --fail --show-error --silent --location --retry 3 \
+          "$releaseURL/trivy_${version}_checksums.txt" -o "$downloadDir/checksums.txt"
+        checksum=$(awk -v archive="$archive" '$2 == archive {print $1}' "$downloadDir/checksums.txt")
+        if [[ ! "$checksum" =~ ^[0-9a-fA-F]{64}$ ]]; then
+          echo "Missing or invalid checksum for $archive" >&2
+          exit 1
+        fi
+        (cd "$downloadDir" && printf '%s  %s\n' "$checksum" "$archive" | sha256sum --check --strict -)
+
+        binaryDir="$RUNNER_TEMP/trivy-bin"
+        mkdir -p "$binaryDir"
+        tar -xzf "$downloadDir/$archive" -C "$binaryDir" trivy contrib
+        "$binaryDir/trivy" --version
+        echo "$binaryDir" >> "$GITHUB_PATH"

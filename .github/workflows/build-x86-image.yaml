@@ -312,9 +312,13 @@ jobs:
           docker load --input image-amd64-dpdk.tar
           docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk
 
+      - name: Install Trivy
+        uses: ./.github/actions/setup-trivy
+
       - name: Scan base image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
+          skip-setup-trivy: true
           scan-type: image
           scanners: vuln
           image-ref: docker.io/kubeovn/kube-ovn-base:${{ env.TAG }}
