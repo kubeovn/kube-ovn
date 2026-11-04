@@ -113,19 +113,6 @@ func (c *Controller) updateDenyAllSgPorts() error {
 
 	addPorts := make([]string, 0, len(lsps))
 	for _, lsp := range lsps {
-		/* skip lsp which security_group does not exist */
-		// sgs format: sg1/sg2/sg3
-		sgs := strings.Split(lsp.ExternalIDs[sgsKey], "/")
-		allNotExist, err := c.securityGroupAllNotExist(sgs)
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		if allNotExist {
-			continue
-		}
-
 		addPorts = append(addPorts, lsp.Name)
 	}
 	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
@@ -362,6 +349,9 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	defer func() { _ = c.sgKeyMutex.UnlockKey(key) }()
 	klog.Infof("sync lsp for security group %s", key)
 
+	// Keep deny-all membership independent of whether the group's OVN resources are ready.
+	c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
+
 	sgPorts, err := c.OVNNbClient.ListLogicalSwitchPorts(false, map[string]string{"associated_sg_" + key: "true"}, nil)
 	if err != nil {
 		klog.Errorf("failed to find logical port, %v", err)
@@ -395,9 +385,6 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			klog.Warningf("no security group %s", key)
-			// The security group is gone, trigger an update of the deny-all security group
-			// to re-evaluate which ports should be included.
-			c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
 			return nil
 		}
 		klog.Errorf("failed to get security group %s: %v", key, err)
@@ -421,7 +408,6 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 		return err
 	}
 
-	c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
 	return nil
 }
 
@@ -472,28 +458,8 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 		return err
 	}
 
+	// Earlier SG events may have been processed before security_groups was persisted.
+	c.addOrUpdateSgQueue.Add(util.DenyAllSecurityGroup)
+
 	return nil
-}
-
-// securityGroupAllNotExist return true if all sgs does not exist
-func (c *Controller) securityGroupAllNotExist(sgs []string) (bool, error) {
-	if len(sgs) == 0 {
-		return true, nil
-	}
-
-	notExistsCount := 0
-	// sgs format: sg1/sg2/sg3
-	for _, sg := range sgs {
-		ok, err := c.OVNNbClient.PortGroupExists(ovs.GetSgPortGroupName(sg))
-		if err != nil {
-			klog.Error(err)
-			return true, err
-		}
-
-		if !ok {
-			notExistsCount++
-		}
-	}
-
-	return notExistsCount == len(sgs), nil
 }
