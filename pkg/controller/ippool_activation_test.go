@@ -52,8 +52,9 @@ func TestIPPoolActivationPersistence(t *testing.T) {
 					return false, nil, nil
 				}
 				patched = true
-				// Persistence runs before the new member is visible to allocation.
-				require.Equal(t, "10.0.0.1", c.ipam.Subnets[subnet.Name].IPPools[pool.Name].V4IPs.String())
+				// Reservations remain unavailable without holding allocation locks during IO.
+				available, _, _, _, _, _, _, _ := c.ipam.IPPoolStatistics(subnet.Name, pool.Name)
+				require.Zero(t, available.Int64())
 				if tt.applied {
 					updated := pool.DeepCopy()
 					require.NoError(t, json.Unmarshal(patch.Status["ips"], &updated.Status.IPs))
@@ -86,7 +87,12 @@ func TestIPPoolActivationPersistence(t *testing.T) {
 			restored := ipam.NewIPAM()
 			require.NoError(t, restored.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, "", nil))
 			require.NoError(t, restored.AddOrUpdateIPPool(subnet.Name, pool.Name, ippoolIPs(got)))
-			require.Equal(t, c.ipam.Subnets[subnet.Name].IPPools[pool.Name].V4IPs.String(), restored.Subnets[subnet.Name].IPPools[pool.Name].V4IPs.String())
+			if tt.fail && !tt.applied {
+				_, _, _, allocErr := c.ipam.GetRandomAddress("pod", "nic", nil, subnet.Name, pool.Name, nil, true)
+				require.ErrorIs(t, allocErr, ipam.ErrNoAvailable)
+			} else {
+				require.Equal(t, c.ipam.Subnets[subnet.Name].IPPools[pool.Name].V4IPs.String(), restored.Subnets[subnet.Name].IPPools[pool.Name].V4IPs.String())
+			}
 			if tt.fail && !tt.applied {
 				writeFails = false
 				fc.mockOvnClient.EXPECT().DeleteAddressSet(pool.Name).Return(nil)

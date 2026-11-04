@@ -510,15 +510,14 @@ func TestSelectIPPoolIPs(t *testing.T) {
 	ctrl := fakeController.fakeController
 	require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps))
 
+	fakeController.mockOvnClient.EXPECT().DeleteAddressSet(ippool.Name).Return(nil).Times(4)
 	pool := ippool.DeepCopy()
 	apply := func() []string {
 		t.Helper()
 		ips, sn, err := ctrl.selectIPPoolIPs(pool)
 		require.NoError(t, err)
-		// selection alone does not expose the membership; activation commits it,
-		// recording it in the status is the caller's job
+		// Activation prepares OVN, records membership, and then exposes it.
 		require.NoError(t, ctrl.activateIPPoolIPs(pool, sn, ips))
-		pool.Status.IPs = ips
 		return ips
 	}
 
@@ -659,9 +658,13 @@ func TestPatchIPPoolStatusKeepsIPs(t *testing.T) {
 	require.Equal(t, ips, got.Status.IPs)
 	require.Equal(t, int64(1), got.Status.V4UsingIPs.Int64())
 
-	// re-recording the same addresses does not issue a patch
-	ippool.Status.IPs = ips
+	// A matching stale snapshot must still correct a newer write in the API.
+	newer := ippool.DeepCopy()
+	require.NoError(t, ctrl.patchIPPoolIPs(newer, []string{"10.3.0.4"}))
 	require.NoError(t, ctrl.patchIPPoolIPs(ippool, ips))
+	got, err = ippools.Get(context.Background(), ippool.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, ips, got.Status.IPs)
 }
 
 func TestEnqueueUpdateIPPool(t *testing.T) {
@@ -674,10 +677,9 @@ func TestEnqueueUpdateIPPool(t *testing.T) {
 		Spec: kubeovnv1.IPPoolSpec{Subnet: "subnet5", IPCount: 2},
 	}
 
-	// a status-only change must not be enqueued, otherwise recording status.ips would
-	// trigger an endless reconcile loop
+	// Statistics-only updates must not trigger membership reconciliation.
 	unchanged := old.DeepCopy()
-	unchanged.Status.IPs = []string{"10.4.0.2", "10.4.0.3"}
+	unchanged.Status.V4UsingIPs = internal.BigInt{Int: *big.NewInt(1)}
 	ctrl.enqueueUpdateIPPool(old, unchanged)
 	require.Equal(t, 0, ctrl.addOrUpdateIPPoolQueue.Len())
 
@@ -688,6 +690,17 @@ func TestEnqueueUpdateIPPool(t *testing.T) {
 	require.Equal(t, 1, ctrl.addOrUpdateIPPoolQueue.Len())
 	key, _ := ctrl.addOrUpdateIPPoolQueue.Get()
 	require.Equal(t, old.Name, key)
+	ctrl.addOrUpdateIPPoolQueue.Done(key)
+
+	// Membership updates reconcile once; a subsequent unchanged selection does not loop.
+	membership := old.DeepCopy()
+	membership.Status.IPs = []string{"10.4.0.2", "10.4.0.3"}
+	ctrl.enqueueUpdateIPPool(old, membership)
+	require.Equal(t, 1, ctrl.addOrUpdateIPPoolQueue.Len())
+	key, _ = ctrl.addOrUpdateIPPoolQueue.Get()
+	ctrl.addOrUpdateIPPoolQueue.Done(key)
+	ctrl.enqueueUpdateIPPool(membership, membership.DeepCopy())
+	require.Zero(t, ctrl.addOrUpdateIPPoolQueue.Len())
 }
 
 func TestHandleAddOrUpdateIPPoolResolveFailure(t *testing.T) {
@@ -785,8 +798,9 @@ func TestHandleAddOrUpdateIPPoolAddressSetFailureKeepsMembershipInactive(t *test
 
 	err = ctrl.handleAddOrUpdateIPPool(ippool.Name)
 	require.ErrorContains(t, err, "ovn is down")
-	require.Nil(t, ctrl.ipam.Subnets[subnet.Name].IPPools[ippool.Name],
-		"the membership must stay invisible to consumers while the address set is not reconciled")
+	_, _, _, allocErr := ctrl.ipam.GetRandomAddress("pod", "nic", nil, subnet.Name, ippool.Name, nil, true)
+	require.ErrorIs(t, allocErr, ipam.ErrNoAvailable,
+		"reserved membership must remain unavailable while the address set is not reconciled")
 
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().IPPools().Get(context.Background(), ippool.Name, metav1.GetOptions{})
 	require.NoError(t, err)
@@ -940,6 +954,7 @@ func TestSelectIPPoolIPsRecoversHeldSelection(t *testing.T) {
 	ctrl := fakeController.fakeController
 	require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps))
 
+	fakeController.mockOvnClient.EXPECT().DeleteAddressSet(ippool.Name).Return(nil)
 	// the subnet holds a single usable address; the pool activated its selection
 	ips, sn, err := ctrl.selectIPPoolIPs(ippool.DeepCopy())
 	require.NoError(t, err)

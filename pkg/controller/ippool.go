@@ -67,10 +67,12 @@ func (c *Controller) enqueueUpdateIPPool(oldObj, newObj any) {
 		c.deleteIPPoolQueue.Add(newIPPool)
 		return
 	}
+	// Delayed membership writes must converge too; statistics/conditions alone do not requeue.
 	if !slices.Equal(oldIPPool.Spec.Namespaces, newIPPool.Spec.Namespaces) ||
 		!slices.Equal(oldIPPool.Spec.IPs, newIPPool.Spec.IPs) ||
 		oldIPPool.Spec.IPCount != newIPPool.Spec.IPCount ||
-		oldIPPool.Spec.EnableAddressSet != newIPPool.Spec.EnableAddressSet {
+		oldIPPool.Spec.EnableAddressSet != newIPPool.Spec.EnableAddressSet ||
+		!slices.Equal(oldIPPool.Status.IPs, newIPPool.Status.IPs) {
 		key := cache.MetaObjectToName(newIPPool).String()
 		klog.V(3).Infof("enqueue update ippool %s", key)
 		c.addOrUpdateIPPoolQueue.Add(key)
@@ -92,6 +94,16 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 	klog.Infof("handle add/update ippool %s", cachedIPPool.Name)
 
 	ippool := cachedIPPool.DeepCopy()
+	if ippool.Spec.IPCount > 0 || len(ippool.Status.IPs) > 0 {
+		// Membership order comes from the durable snapshot, not a delayed watch event.
+		ippool, err = c.config.KubeOvnClient.KubeovnV1().IPPools().Get(context.Background(), key, metav1.GetOptions{})
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			return c.recordIPPoolKeyError(key, "GetIPPoolFailed", err)
+		}
+	}
 	if err = c.handleAddIPPoolFinalizer(ippool); err != nil {
 		klog.Errorf("failed to add finalizer for ippool %s: %v", ippool.Name, err)
 		return c.recordResourceError(ippool, "UpdateFinalizerFailed", err)
@@ -112,17 +124,19 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		}
 		return err
 	}
-	// the address set must match the new membership before it becomes allocatable, so
-	// that no consumer can get a pool address the data plane does not match yet
-	if err = c.reconcileIPPoolAddressSet(ippool, ips); err != nil {
-		klog.Errorf("failed to reconcile address set for ippool %s: %v", ippool.Name, err)
-		if patchErr := c.patchIPPoolStatusCondition(ippool, "ReconcileAddressSetFailed", err.Error()); patchErr != nil {
-			klog.Error(patchErr)
-			return errors.Join(err, c.recordResourceError(ippool, "UpdateStatusFailed", patchErr))
+	// Explicit pools keep their existing reconciliation flow. Count-based pools
+	// prepare the address set while allocations are blocked inside activation.
+	if ippool.Spec.IPCount <= 0 {
+		if err = c.reconcileIPPoolAddressSet(ippool, ips); err != nil {
+			klog.Errorf("failed to reconcile address set for ippool %s: %v", ippool.Name, err)
+			if patchErr := c.patchIPPoolStatusCondition(ippool, "ReconcileAddressSetFailed", err.Error()); patchErr != nil {
+				klog.Error(patchErr)
+				return errors.Join(err, c.recordResourceError(ippool, "UpdateStatusFailed", patchErr))
+			}
+			return err
 		}
-		return err
 	}
-	// Activation revalidates and persists the selection before making it allocatable.
+	// Activation reserves the selection and exposes it only after preparation succeeds.
 	if err = c.activateIPPoolIPs(ippool, subnet, ips); err != nil {
 		klog.Errorf("failed to activate IPs %v for ippool %s in subnet %s: %v", ips, ippool.Name, ippool.Spec.Subnet, err)
 		if patchErr := c.patchIPPoolStatusCondition(ippool, "ActivateIPsFailed", err.Error()); patchErr != nil {
@@ -169,8 +183,8 @@ const maxIPPoolIPCount = 32
 // committing them to IPAM: they become allocatable only when activateIPPoolIPs
 // commits the same selection after the data plane and persistence prerequisites
 // succeeded. Addresses recorded in status.ips are retained while they stay usable and
-// unclaimed by others, addresses the pool already holds in IPAM - e.g. committed by a
-// previous reconcile a stale informer cache does not know about - are retained next,
+// unclaimed by others, addresses the pool already reserves in IPAM - including a
+// failed preparation not yet committed to status - are retained next,
 // and missing ones are taken from the subnet's free addresses. The selection stays
 // stable across reconciles and restarts: growing appends newly picked addresses,
 // shrinking drops the most recently added ones first. For a pool listing spec.ips it
@@ -222,14 +236,17 @@ func ipPoolFamilyCounts(count int32, subnet *kubeovnv1.Subnet) (v4, v6 int) {
 	return v4, v6
 }
 
-// activateIPPoolIPs persists a validated count-based membership while allocation is
-// blocked, then exposes it. AddressSet reconciliation must succeed before this call.
+// activateIPPoolIPs prepares OVN and persistence while count-pool allocations are
+// blocked. Failed preparation retains reservations until the next successful retry.
 func (c *Controller) activateIPPoolIPs(ippool *kubeovnv1.IPPool, subnet *kubeovnv1.Subnet, ips []string) error {
 	if ippool.Spec.IPCount <= 0 {
 		return c.ipam.AddOrUpdateIPPool(ippool.Spec.Subnet, ippool.Name, ips)
 	}
 	v4Count, v6Count := ipPoolFamilyCounts(ippool.Spec.IPCount, subnet)
 	return c.ipam.ActivateIPPoolIPs(subnet.Name, ippool.Name, ips, v4Count, v6Count, func() error {
+		if err := c.reconcileIPPoolAddressSet(ippool, ips); err != nil {
+			return err
+		}
 		return c.patchIPPoolIPs(ippool, ips)
 	})
 }
@@ -246,11 +263,12 @@ func (c *Controller) handleDeleteIPPool(ippool *kubeovnv1.IPPool) (err error) {
 		controllerutil.ContainsFinalizer(ippool, util.KubeOVNControllerFinalizer)
 
 	klog.Infof("handle delete ippool %s", ippool.Name)
-	c.ipam.RemoveIPPool(ippool.Spec.Subnet, ippool.Name)
 	if err = c.OVNNbClient.DeleteAddressSet(util.IPPoolAddressSetName(ippool.Name)); err != nil {
 		klog.Errorf("failed to delete address set for ippool %s: %v", ippool.Name, err)
 		return err
 	}
+	// Do not return reserved candidates to the default pool while OVN still references them.
+	c.ipam.RemoveIPPool(ippool.Spec.Subnet, ippool.Name)
 
 	namespaces, err := c.namespacesLister.List(labels.Everything())
 	if err != nil {
@@ -322,15 +340,13 @@ func (c *Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason
 // only writer of status.ips: patchIPPoolStatus deliberately leaves the field out, so that
 // a statistics update built from a stale informer cache cannot roll the addresses back.
 func (c *Controller) patchIPPoolIPs(ippool *kubeovnv1.IPPool, ips []string) error {
-	if slices.Equal(ippool.Status.IPs, ips) {
-		return nil
-	}
+	// A matching informer snapshot does not prove that the API contains this selection.
 	bytes, err := json.Marshal(map[string]any{"status": map[string]any{"ips": ips}})
 	if err != nil {
 		klog.Errorf("failed to generate json representation for IPs of ippool %s: %v", ippool.Name, err)
 		return err
 	}
-	// Activation holds IPAM locks while persisting; bound allocation stalls on API failure.
+	// Bound persistence and readback so a failed preparation can return to the retry queue.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if _, err = c.config.KubeOvnClient.KubeovnV1().IPPools().Patch(ctx, ippool.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {

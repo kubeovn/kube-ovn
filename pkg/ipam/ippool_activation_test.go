@@ -32,17 +32,23 @@ func TestActivateIPPoolIPsPersistenceFailure(t *testing.T) {
 	require.NoError(t, err)
 	expected := errors.New("write failed")
 	err = s.ActivateIPPoolIPs("pool", selected, 2, 0, func() error {
-		if s.Mutex.TryLock() {
-			s.Mutex.Unlock()
-			t.Fatal("allocation must remain locked until persistence completes")
+		if !s.Mutex.TryLock() {
+			t.Fatal("preparation must not hold allocation locks")
 		}
+		s.Mutex.Unlock()
 		return expected
 	})
 	require.ErrorIs(t, err, expected)
-	require.Equal(t, "10.0.0.1", s.IPPools["pool"].V4IPs.String())
+	require.True(t, s.IPPools["pool"].allocationsBlocked)
+	_, _, _, err = s.GetRandomAddress("pool", "pod", "nic", nil, nil, true)
+	require.ErrorIs(t, err, ErrNoAvailable)
 	free, _, err := s.SelectIPPoolIPs("other", nil, 1, 0)
 	require.NoError(t, err)
-	require.Equal(t, []string{"10.0.0.2"}, free)
+	require.Equal(t, []string{"10.0.0.3"}, free)
+	require.NoError(t, s.ActivateIPPoolIPs("pool", selected, 2, 0, func() error { return nil }))
+	require.False(t, s.IPPools["pool"].allocationsBlocked)
+	_, _, _, err = s.GetRandomAddress("pool", "pod", "nic", nil, nil, true)
+	require.NoError(t, err)
 }
 
 func TestUsableRangeInvalidCIDR(t *testing.T) {

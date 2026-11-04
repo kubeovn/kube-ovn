@@ -174,6 +174,7 @@ func (t *ipamTest) restartCountPool() {
 	ginkgo.By("Creating ippool " + t.ippoolName + " with ipCount 2")
 	ippool := framework.MakeIPPool(t.ippoolName, t.subnetName, nil, nil)
 	ippool.Spec.IPCount = 2
+	ippool.Spec.EnableAddressSet = !t.f.IsDual()
 	ippool = t.ippoolClient.CreateSync(ippool)
 	framework.ExpectHaveLen(ippool.Status.IPs, families*2)
 	recorded := slices.Clone(ippool.Status.IPs)
@@ -187,6 +188,11 @@ func (t *ipamTest) restartCountPool() {
 	framework.ExpectHaveLen(pods.Items, 1)
 	existingIP := pods.Items[0].Annotations[util.IPAddressAnnotation]
 	_ = waitForIPPoolCounts(t.f, t.ippoolClient, t.ippoolName, 1, 1)
+	if ippool.Spec.EnableAddressSet {
+		ginkgo.By("Simulating an AddressSet left inconsistent by an interrupted reconcile")
+		_, _, err := framework.NBExec("ovn-nbctl clear Address_Set " + util.IPPoolAddressSetName(t.ippoolName) + " addresses")
+		framework.ExpectNoError(err)
+	}
 
 	ginkgo.By("Restarting the kube-ovn-controller deployment")
 	deployClient := t.f.DeploymentClientNS("kube-system")
@@ -197,6 +203,9 @@ func (t *ipamTest) restartCountPool() {
 		return p.Status.IsReady(), nil
 	}, "ippool ready", 2*time.Second, 30*time.Second)
 	framework.ExpectEqual(stable.Status.IPs, recorded)
+	if ippool.Spec.EnableAddressSet {
+		framework.WaitForAddressSetIPs(t.ippoolName, recorded)
+	}
 
 	ginkgo.By("Creating pod " + t.podName + " which gets an address recorded for the ippool")
 	pod := framework.MakePod(t.namespaceName, t.podName, nil, annotations, "", nil, nil)
