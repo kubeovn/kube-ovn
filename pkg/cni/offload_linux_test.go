@@ -20,6 +20,23 @@ func TestTXChecksumFeatureSelection(t *testing.T) {
 	require.Equal(t, map[string]bool{"tx-checksum-ipv4": false, "tx-checksum-ip-generic": false}, txChecksumChanges(features))
 }
 
+func TestShouldDisableUFO(t *testing.T) {
+	tests := []struct {
+		name     string
+		features map[string]netlink.NetDevFeature
+		want     bool
+	}{
+		{name: "active", features: map[string]netlink.NetDevFeature{"tx-udp-fragmentation": {Active: true}}, want: true},
+		{name: "inactive", features: map[string]netlink.NetDevFeature{"tx-udp-fragmentation": {Active: false}}},
+		{name: "missing", features: map[string]netlink.NetDevFeature{"tx-checksum-ipv4": {Active: true}}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, shouldDisableUFO(tt.features))
+		})
+	}
+}
+
 func TestOffloadProbeWithoutHostTools(t *testing.T) {
 	t.Setenv("PATH", "/missing-host-tools")
 	// Exercise the real generic-netlink read against an existing device without
