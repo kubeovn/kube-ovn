@@ -30,9 +30,10 @@ type IPSetMetadata struct {
 type ipSet struct {
 	metadata IPSetMetadata
 	members  []string
+	preserve bool
 }
 
-type netlinkIPSets interface {
+type NetlinkIPSets interface {
 	IpsetCreate(string, string, netlink.IpsetCreateOptions) error
 	IpsetList(string) (*netlink.IPSetResult, error)
 	IpsetListAll() ([]netlink.IPSetResult, error)
@@ -50,20 +51,27 @@ type IPSets struct {
 	prefix    string
 	desired   map[string]ipSet
 	deletions map[string]struct{}
-	netlink   netlinkIPSets
+	netlink   NetlinkIPSets
 }
 
 func NewIPSets(family int, prefix string) *IPSets {
+	return NewIPSetsWithNetlink(family, prefix, nil)
+}
+
+func NewIPSetsWithNetlink(family int, prefix string, nl NetlinkIPSets) *IPSets {
 	version := "4"
 	ipFamily := uint8(netlink.FAMILY_V4)
 	if family == netlink.FAMILY_V6 {
 		version = "6"
 		ipFamily = netlink.FAMILY_V6
 	}
+	if nl == nil {
+		nl = &netlink.Handle{}
+	}
 	return &IPSets{
 		family: ipFamily, prefix: prefix + version,
 		desired: make(map[string]ipSet), deletions: make(map[string]struct{}),
-		netlink: &netlink.Handle{},
+		netlink: nl,
 	}
 }
 
@@ -75,6 +83,12 @@ func (s *IPSets) name(id string) string {
 func (s *IPSets) AddOrReplaceIPSet(metadata IPSetMetadata, members []string) {
 	name := s.name(metadata.SetID)
 	s.desired[name] = ipSet{metadata: metadata, members: slices.Clone(members)}
+	delete(s.deletions, name)
+}
+
+func (s *IPSets) PreserveIPSet(metadata IPSetMetadata) {
+	name := s.name(metadata.SetID)
+	s.desired[name] = ipSet{metadata: metadata, preserve: true}
 	delete(s.deletions, name)
 }
 
@@ -116,6 +130,22 @@ func (s *IPSets) ApplyUpdates() error {
 }
 
 func (s *IPSets) replace(name string, desired ipSet, current *netlink.IPSetResult) error {
+	if desired.preserve {
+		if current == nil {
+			options := netlink.IpsetCreateOptions{
+				Family: s.family, MaxElements: desired.metadata.MaxSize, Replace: true,
+			}
+			if err := s.netlink.IpsetCreate(name, desired.metadata.Type, options); err != nil {
+				return fmt.Errorf("create set: %w", err)
+			}
+			return nil
+		}
+		if current.TypeName != desired.metadata.Type || current.Family != s.family {
+			return fmt.Errorf("incompatible existing set: type %s, family %d", current.TypeName, current.Family)
+		}
+		return nil
+	}
+
 	entries, err := s.entries(desired)
 	if err != nil {
 		return err

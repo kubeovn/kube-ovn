@@ -220,6 +220,11 @@ spec:
           {{- end }}
           - --set-geneve-tx-off={{- .Values.features.SET_GENEVE_TX_OFF }}
           - --host-tunnel-src={{- .Values.features.enableHostTunnelSrc | default false }}
+          {{- if hasKey .Values.features "enableTunnelNotrack" }}
+          - --enable-tunnel-notrack={{- .Values.features.enableTunnelNotrack }}
+          {{- else }}
+          - --enable-tunnel-notrack=true
+          {{- end }}
           - --non-primary-cni-mode={{- .Values.cni.nonPrimaryCNI }}
           {{- if .Values.aclSampling.enabled }}
           - --enable-acl-sampling=true

@@ -31,6 +31,28 @@ iptables -t filter -D FORWARD -m set --match-set ovn40services dst -j ACCEPT
 iptables -t filter -D FORWARD -m set --match-set ovn40services src -j ACCEPT
 iptables -t filter -D OUTPUT -p udp -m udp --dport 6081 -j MARK --set-xmark 0x0
 iptables -t filter -D OUTPUT -p udp -m udp --dport 4789 -j MARK --set-xmark 0x0
+delete_iptables_rule() {
+  local cmd="$1"
+  shift
+  local out
+  if ! out=$("${cmd}" -w 5 "$@" 2>&1); then
+    if [[ "${out}" != *"does a matching rule exist"* && "${out}" != *"No chain/target/match by that name"* && "${out}" != *"does not exist"* && "${out}" != *"doesn't exist"* && "${out}" != *"Table does not exist"* ]]; then
+      echo "failed to delete rule via ${cmd} $*: ${out}" >&2
+      return 1
+    fi
+  fi
+  return 0
+}
+
+ret=0
+for port in 6081 4789; do
+  for cmd in iptables iptables-nft iptables-legacy; do
+    if command -v "${cmd}" >/dev/null 2>&1; then
+      delete_iptables_rule "${cmd}" -t raw -D PREROUTING -p udp -m udp --dport "${port}" -m set --match-set ovn40tunnel-remote-ips src -m set --match-set ovn40local-encap-ips dst -j NOTRACK || ret=1
+      delete_iptables_rule "${cmd}" -t raw -D OUTPUT -p udp -m udp --dport "${port}" -m set --match-set ovn40local-encap-ips src -m set --match-set ovn40tunnel-remote-ips dst -j NOTRACK || ret=1
+    fi
+  done
+done
 iptables -t filter -D OUTPUT -p tcp -m mark ! --mark 0x4000/0x4000 -m set --match-set ovn40services dst -m conntrack --ctstate NEW -j REJECT
 iptables -t mangle -D PREROUTING -m comment --comment "kube-ovn prerouting rules" -j OVN-PREROUTING
 iptables -t mangle -D POSTROUTING -m comment --comment "kube-ovn postrouting rules" -j OVN-POSTROUTING
@@ -49,6 +71,8 @@ ipset destroy ovn40subnets
 ipset destroy ovn40subnets-distributed-gw
 ipset destroy ovn40local-pod-ip-nat
 ipset destroy ovn40other-node
+ipset destroy ovn40tunnel-remote-ips
+ipset destroy ovn40local-encap-ips
 ipset destroy ovn40services
 ipset destroy ovn40subnets-nat-policy
 
@@ -73,6 +97,14 @@ ip6tables -t filter -D FORWARD -m set --match-set ovn60services dst -j ACCEPT
 ip6tables -t filter -D FORWARD -m set --match-set ovn60services src -j ACCEPT
 ip6tables -t filter -D OUTPUT -p udp -m udp --dport 6081 -j MARK --set-xmark 0x0
 ip6tables -t filter -D OUTPUT -p udp -m udp --dport 4789 -j MARK --set-xmark 0x0
+for port in 6081 4789; do
+  for cmd in ip6tables ip6tables-nft ip6tables-legacy; do
+    if command -v "${cmd}" >/dev/null 2>&1; then
+      delete_iptables_rule "${cmd}" -t raw -D PREROUTING -p udp -m udp --dport "${port}" -m set --match-set ovn60tunnel-remote-ips src -m set --match-set ovn60local-encap-ips dst -j NOTRACK || ret=1
+      delete_iptables_rule "${cmd}" -t raw -D OUTPUT -p udp -m udp --dport "${port}" -m set --match-set ovn60local-encap-ips src -m set --match-set ovn60tunnel-remote-ips dst -j NOTRACK || ret=1
+    fi
+  done
+done
 ip6tables -t filter -D OUTPUT -p tcp -m mark ! --mark 0x4000/0x4000 -m set --match-set ovn60services dst -m conntrack --ctstate NEW -j REJECT
 ip6tables -t mangle -D PREROUTING -m comment --comment "kube-ovn prerouting rules" -j OVN-PREROUTING
 ip6tables -t mangle -D POSTROUTING -m comment --comment "kube-ovn postrouting rules" -j OVN-POSTROUTING
@@ -91,6 +123,8 @@ ipset destroy ovn60subnets
 ipset destroy ovn60subnets-distributed-gw
 ipset destroy ovn60local-pod-ip-nat
 ipset destroy ovn60other-node
+ipset destroy ovn60tunnel-remote-ips
+ipset destroy ovn60local-encap-ips
 ipset destroy ovn60services
 ipset destroy ovn60subnets-nat-policy
 
@@ -106,3 +140,7 @@ rm -rf /etc/ovs_ipsec_keys/*
 rm -rf /etc/cni/net.d/00-kube-ovn.conflist
 # default
 rm -rf /etc/cni/net.d/01-kube-ovn.conflist
+
+if [ "${ret}" -ne 0 ]; then
+  exit "${ret}"
+fi

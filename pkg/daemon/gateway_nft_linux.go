@@ -247,15 +247,23 @@ func (c *Controller) buildNFTSnapshot() (gatewayNFTSnapshot, error) {
 	if err != nil {
 		return gatewayNFTSnapshot{}, err
 	}
+	tunnelRemoteIPs, tunnelRemoteIPsErr := c.getTunnelPeerIPs()
+	if tunnelRemoteIPsErr != nil {
+		klog.Warningf("failed to get tunnel remote IPs from OVSDB for native nftables: %v; continuing with available endpoints", tunnelRemoteIPsErr)
+	}
 	return buildNFTGatewaySnapshot(nftSnapshotInput{
-		Protocol:       c.protocol,
-		ClusterRouter:  c.config.ClusterRouter,
-		NodeName:       c.config.NodeName,
-		Services:       services,
-		Subnets:        subnets,
-		Nodes:          nodes,
-		TProxyPods:     tproxyPods,
-		LocalAddresses: localAddresses,
+		Protocol:           c.protocol,
+		ClusterRouter:      c.config.ClusterRouter,
+		NodeName:           c.config.NodeName,
+		Services:           services,
+		Subnets:            subnets,
+		Nodes:              nodes,
+		TProxyPods:         tproxyPods,
+		LocalAddresses:     localAddresses,
+		TunnelPort:         c.getTunnelPort(),
+		TunnelRemoteIPs:    tunnelRemoteIPs,
+		TunnelRemoteIPsErr: tunnelRemoteIPsErr,
+		LocalEncapIPs:      c.getLocalEncapIPs(),
 	})
 }
 
@@ -320,10 +328,15 @@ func (b *nftGatewayBackend) renderFull(snapshot gatewayNFTSnapshot) *knftables.T
 func (b *nftGatewayBackend) renderFullFamily(tx *knftables.Transaction, family nftFamilySnapshot) {
 	b.renderNFTBaseSchema(tx, family)
 	b.renderNFTSets(tx, family)
+	if family.TunnelOnly {
+		b.renderNFTTunnelRules(tx, family)
+		return
+	}
 	b.renderNFTNATRules(tx, family)
 	b.renderNFTPolicyRules(tx, family)
 	b.renderNFTTProxyRules(tx, family)
 	b.renderNFTFilterAndMangleRules(tx, family, true)
+	b.renderNFTTunnelRules(tx, family)
 }
 
 func (*nftGatewayBackend) renderNFTBaseSchema(tx *knftables.Transaction, snapshot nftFamilySnapshot) {
@@ -332,15 +345,27 @@ func (*nftGatewayBackend) renderNFTBaseSchema(tx *knftables.Transaction, snapsho
 		table = nftGatewayTable
 	}
 	tx.Add(&knftables.Table{Family: family, Name: table})
-	renderNFTChains(tx, family, table)
+	renderNFTChains(tx, snapshot)
 }
 
-func renderNFTChains(tx *knftables.Transaction, family knftables.Family, table string) {
-	definitions := nftChainDefinitions(family, table)
+func renderNFTChains(tx *knftables.Transaction, snapshot nftFamilySnapshot) {
+	definitions := nftSnapshotChainDefinitions(snapshot)
 	for _, name := range sortedMapKeys(definitions) {
 		chain := definitions[name]
 		tx.Add(&chain)
 	}
+}
+
+func nftSnapshotChainDefinitions(snapshot nftFamilySnapshot) map[string]knftables.Chain {
+	definitions := nftChainDefinitions(snapshot.Family, nftSnapshotTable(snapshot))
+	if snapshot.TunnelOnly {
+		for name := range definitions {
+			if name != "schema-v1" && name != "raw-prerouting" && name != "raw-output" {
+				delete(definitions, name)
+			}
+		}
+	}
+	return definitions
 }
 
 func nftChainDefinitions(family knftables.Family, table string) map[string]knftables.Chain {
@@ -390,6 +415,18 @@ func nftChainDefinitions(family knftables.Family, table string) map[string]knfta
 			Type:     new(knftables.NATType),
 			Hook:     new(knftables.PostroutingHook),
 			Priority: new(knftables.SNATPriority + "-10"),
+		},
+		{
+			Name:     "raw-prerouting",
+			Type:     new(knftables.FilterType),
+			Hook:     new(knftables.PreroutingHook),
+			Priority: new(knftables.RawPriority),
+		},
+		{
+			Name:     "raw-output",
+			Type:     new(knftables.FilterType),
+			Hook:     new(knftables.OutputHook),
+			Priority: new(knftables.RawPriority),
 		},
 		{
 			Name:     "nat-postrouting",
@@ -571,6 +608,7 @@ func (*nftGatewayBackend) renderNFTFilterAndMangleRules(tx *knftables.Transactio
 	addNFTRule(tx, family, table, "filter-forward", ipToken+" saddr @subnets accept", "filter-forward-source")
 	addNFTRule(tx, family, table, "filter-forward", ipToken+" daddr @subnets accept", "filter-forward-destination")
 	addNFTRule(tx, family, table, "filter-output", "udp dport { 6081, 4789 } meta mark set 0", "filter-output-tunnel-unmark")
+
 	addNFTRule(tx, family, table, "mangle-postrouting", knftables.Concat(
 		ipToken+" saddr @subnets",
 		"tcp flags & rst == rst",
@@ -608,6 +646,26 @@ func nftSubnetCounterNames(counter nftSubnetCounter) (string, string) {
 	return "subnet-" + id + "-egress", "subnet-" + id + "-ingress"
 }
 
+func (*nftGatewayBackend) renderNFTTunnelRules(tx *knftables.Transaction, snapshot nftFamilySnapshot) {
+	if snapshot.TunnelPort == 0 {
+		return
+	}
+	family, table := snapshot.Family, nftSnapshotTable(snapshot)
+	ipToken := nftIPToken(family)
+	addNFTRule(tx, family, table, "raw-prerouting", knftables.Concat(
+		"udp dport", strconv.Itoa(snapshot.TunnelPort),
+		ipToken+" saddr @tunnel-remote-ips",
+		ipToken+" daddr @local-encap-ips",
+		"notrack",
+	), fmt.Sprintf("raw-prerouting-tunnel-notrack-%d", snapshot.TunnelPort))
+	addNFTRule(tx, family, table, "raw-output", knftables.Concat(
+		"udp dport", strconv.Itoa(snapshot.TunnelPort),
+		ipToken+" saddr @local-encap-ips",
+		ipToken+" daddr @tunnel-remote-ips",
+		"notrack",
+	), fmt.Sprintf("raw-output-tunnel-notrack-%d", snapshot.TunnelPort))
+}
+
 func (b *nftGatewayBackend) renderDiff(oldSnapshot, newSnapshot gatewayNFTSnapshot) *knftables.Transaction {
 	tx := b.writer.NewTransaction()
 	oldFamilies := make(map[knftables.Family]nftFamilySnapshot, len(oldSnapshot.Families))
@@ -622,6 +680,11 @@ func (b *nftGatewayBackend) renderDiff(oldSnapshot, newSnapshot gatewayNFTSnapsh
 			continue
 		}
 
+		if oldFamily.TunnelOnly != newFamily.TunnelOnly {
+			tx.Destroy(&knftables.Table{Family: oldFamily.Family, Name: nftSnapshotTable(oldFamily)})
+			b.renderFullFamily(tx, newFamily)
+			continue
+		}
 		oldDefinitions := nftSetDefinitions(oldFamily)
 		newDefinitions := nftSetDefinitions(newFamily)
 		for _, name := range sortedMapKeys(newDefinitions) {
@@ -639,6 +702,14 @@ func (b *nftGatewayBackend) renderDiff(oldSnapshot, newSnapshot gatewayNFTSnapsh
 			!reflect.DeepEqual(oldFamily.TProxyTargets, newFamily.TProxyTargets)
 		filterChanged := !reflect.DeepEqual(oldFamily.SubnetCounters, newFamily.SubnetCounters) ||
 			!reflect.DeepEqual(oldFamily.CentralizedSNATs, newFamily.CentralizedSNATs)
+
+		if oldFamily.TunnelPort != newFamily.TunnelPort {
+			flushNFTChains(tx, newFamily, "raw-prerouting", "raw-output")
+			b.renderNFTTunnelRules(tx, newFamily)
+		}
+		if newFamily.TunnelOnly {
+			continue
+		}
 
 		if natChanged {
 			flushNFTChains(tx, newFamily, "nat-host-service", "nodeport-local", "nodeport-local-action", "nat-postrouting")
@@ -665,6 +736,11 @@ func (b *nftGatewayBackend) renderDiff(oldSnapshot, newSnapshot gatewayNFTSnapsh
 			tx.Delete(&definition)
 		}
 	}
+	for _, oldFamily := range oldSnapshot.Families {
+		if !slices.ContainsFunc(newSnapshot.Families, func(f nftFamilySnapshot) bool { return f.Family == oldFamily.Family }) {
+			tx.Destroy(&knftables.Table{Family: oldFamily.Family, Name: nftSnapshotTable(oldFamily)})
+		}
+	}
 	return tx
 }
 
@@ -689,9 +765,14 @@ func nftSetDefinitions(snapshot nftFamilySnapshot) map[string]knftables.Set {
 		"subnets":                {Family: family, Table: table, Name: "subnets", Type: addressType, Flags: interval},
 		"nat-subnets":            {Family: family, Table: table, Name: "nat-subnets", Type: addressType, Flags: interval},
 		"distributed-gw-subnets": {Family: family, Table: table, Name: "distributed-gw-subnets", Type: addressType, Flags: interval},
+		"local-encap-ips":        {Family: family, Table: table, Name: "local-encap-ips", Type: addressType},
 		"other-node-ips":         {Family: family, Table: table, Name: "other-node-ips", Type: addressType},
+		"tunnel-remote-ips":      {Family: family, Table: table, Name: "tunnel-remote-ips", Type: addressType},
 		"node-ips":               {Family: family, Table: table, Name: "node-ips", Type: addressType},
 		"local-nodeports":        {Family: family, Table: table, Name: "local-nodeports", Type: "inet_proto . inet_service"},
+	}
+	if snapshot.TunnelOnly {
+		return map[string]knftables.Set{"local-encap-ips": definitions["local-encap-ips"], "tunnel-remote-ips": definitions["tunnel-remote-ips"]}
 	}
 	for _, policy := range snapshot.NATPolicies {
 		id := nftNATPolicyID(policy)
@@ -711,6 +792,9 @@ func renderNFTSetElements(tx *knftables.Transaction, snapshot nftFamilySnapshot)
 	family, table := snapshot.Family, nftSnapshotTable(snapshot)
 	elementsBySet := nftSetElements(snapshot)
 	for _, name := range sortedMapKeys(elementsBySet) {
+		if snapshot.PreserveTunnelRemoteIPs && name == "tunnel-remote-ips" {
+			continue
+		}
 		elements := elementsBySet[name]
 		for _, key := range elements {
 			addNFTSetElement(tx, family, table, name, key...)
@@ -726,6 +810,8 @@ func nftSetElements(snapshot nftFamilySnapshot) map[string][][]string {
 		"nat-subnets":            {},
 		"distributed-gw-subnets": {},
 		"other-node-ips":         {},
+		"tunnel-remote-ips":      {},
+		"local-encap-ips":        {},
 		"node-ips":               {},
 		"local-nodeports":        {},
 	}
@@ -744,8 +830,14 @@ func nftSetElements(snapshot nftFamilySnapshot) map[string][][]string {
 	for _, item := range snapshot.DistributedGWSubnets {
 		elements["distributed-gw-subnets"] = append(elements["distributed-gw-subnets"], []string{item})
 	}
+	for _, item := range snapshot.LocalEncapIPs {
+		elements["local-encap-ips"] = append(elements["local-encap-ips"], []string{item})
+	}
 	for _, item := range snapshot.OtherNodeIPs {
 		elements["other-node-ips"] = append(elements["other-node-ips"], []string{item})
+	}
+	for _, item := range snapshot.TunnelRemoteIPs {
+		elements["tunnel-remote-ips"] = append(elements["tunnel-remote-ips"], []string{item})
 	}
 	for _, item := range snapshot.NodeIPs {
 		elements["node-ips"] = append(elements["node-ips"], []string{item})
@@ -764,6 +856,9 @@ func nftSetElements(snapshot nftFamilySnapshot) map[string][][]string {
 			elements[name] = append(elements[name], []string{item})
 		}
 	}
+	if snapshot.TunnelOnly {
+		return map[string][][]string{"local-encap-ips": elements["local-encap-ips"], "tunnel-remote-ips": elements["tunnel-remote-ips"]}
+	}
 	return elements
 }
 
@@ -771,6 +866,9 @@ func renderNFTElementDiff(tx *knftables.Transaction, oldSnapshot, newSnapshot nf
 	oldElements := nftSetElements(oldSnapshot)
 	newElements := nftSetElements(newSnapshot)
 	for _, setName := range sortedMapKeys(newElements) {
+		if newSnapshot.PreserveTunnelRemoteIPs && setName == "tunnel-remote-ips" {
+			continue
+		}
 		renderNFTElementMapDiff(tx, newSnapshot, setName, oldElements[setName], newElements[setName])
 	}
 }
@@ -830,6 +928,8 @@ func cloneGatewayNFTSnapshot(snapshot gatewayNFTSnapshot) gatewayNFTSnapshot {
 		clone.Families[i].NATSubnets = slices.Clone(family.NATSubnets)
 		clone.Families[i].DistributedGWSubnets = slices.Clone(family.DistributedGWSubnets)
 		clone.Families[i].OtherNodeIPs = slices.Clone(family.OtherNodeIPs)
+		clone.Families[i].TunnelRemoteIPs = slices.Clone(family.TunnelRemoteIPs)
+		clone.Families[i].LocalEncapIPs = slices.Clone(family.LocalEncapIPs)
 		clone.Families[i].NodeIPs = slices.Clone(family.NodeIPs)
 		clone.Families[i].LocalNodePorts = slices.Clone(family.LocalNodePorts)
 		clone.Families[i].NATPolicies = make([]nftNATPolicy, len(family.NATPolicies))
@@ -931,7 +1031,7 @@ func expectedNFTDefinitions(snapshot nftFamilySnapshot) (nftTableDefinitions, er
 		Chains: make(map[string]nftChainDefinition),
 		Sets:   make(map[string]nftSetDefinition),
 	}
-	for name, chain := range nftChainDefinitions(snapshot.Family, nftSnapshotTable(snapshot)) {
+	for name, chain := range nftSnapshotChainDefinitions(snapshot) {
 		definition := nftChainDefinition{}
 		if chain.Type != nil {
 			definition.Type = string(*chain.Type)
@@ -973,8 +1073,18 @@ func expectedNFTDefinitions(snapshot nftFamilySnapshot) (nftTableDefinitions, er
 func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatewayNFTSnapshot) (*knftables.Transaction, bool, error) {
 	tx := b.writer.NewTransaction()
 	detectedDrift := false
+	for family, reader := range b.readers {
+		if reader == nil || slices.ContainsFunc(desired.Families, func(f nftFamilySnapshot) bool { return f.Family == family }) {
+			continue
+		}
+		if _, err := reader.ListAll(ctx); err == nil {
+			tx.Destroy(&knftables.Table{Family: family, Name: nftGatewayTable})
+			detectedDrift = true
+		} else if !knftables.IsNotFound(err) {
+			return nil, false, fmt.Errorf("audit inactive %s table: %w", family, err)
+		}
+	}
 	for _, family := range desired.Families {
-		familyDrift := false
 		reader := b.readers[family.Family]
 		if reader == nil {
 			b.renderFullFamily(tx, family)
@@ -992,87 +1102,142 @@ func (b *nftGatewayBackend) renderAuditRepair(ctx context.Context, desired gatew
 			return nil, false, fmt.Errorf("audit %s nftables table: %w", family.Family, err)
 		}
 
-		definitions := nftSetDefinitions(family)
-		expectedChains := append([]string{"schema-v1"}, nftRuleChainNames()...)
-		expectedSets := sortedMapKeys(definitions)
-		expectedCounters := nftExpectedCounterNames(family)
-		table := nftSnapshotTable(family)
-		if b.checkDefinitions != nil {
-			match, err := b.checkDefinitions(ctx, family)
-			if err != nil {
-				return nil, false, fmt.Errorf("audit %s nftables definitions: %w", family.Family, err)
-			}
-			if !match {
-				familyDrift = true
-				detectedDrift = true
-			}
+		familyDrift, tunnelDrift, err := b.auditFamilyDrift(ctx, reader, family, objects)
+		if err != nil {
+			return nil, false, err
 		}
-		if !sameStringSet(objects["chain"], expectedChains) ||
-			!sameStringSet(objects["set"], expectedSets) ||
-			len(objects["map"]) != 0 ||
-			len(objects["flowtable"]) != 0 ||
-			!sameStringSet(objects["counter"], expectedCounters) {
-			familyDrift = true
+		if familyDrift {
 			detectedDrift = true
 		}
-		expectedElements := nftSetElements(family)
-		for _, name := range expectedSets {
-			if !slices.Contains(objects["set"], name) {
-				continue
-			}
-			actual, err := reader.ListElements(ctx, "set", name)
-			if err != nil {
-				return nil, false, fmt.Errorf("audit %s nftables set %s: %w", family.Family, name, err)
-			}
-			if !reflect.DeepEqual(nftElementMap(nftElementsToKeys(actual)), nftElementMap(expectedElements[name])) {
-				familyDrift = true
-				detectedDrift = true
-			}
-		}
+
 		// A caller without a definition checker has not provided a way to distinguish
 		// healthy rule contents from rule-content drift, so retain the full refresh.
 		if !familyDrift && b.checkDefinitions != nil {
+			if tunnelDrift {
+				detectedDrift = true
+				flushNFTChains(tx, family, "raw-prerouting", "raw-output")
+				b.renderNFTTunnelRules(tx, family)
+			}
 			continue
 		}
 
-		for _, name := range objects["chain"] {
-			tx.Flush(&knftables.Chain{Family: family.Family, Table: table, Name: name})
-		}
-		for _, name := range objects["chain"] {
-			tx.Delete(&knftables.Chain{Family: family.Family, Table: table, Name: name})
-		}
-		for _, name := range objects["set"] {
-			tx.Delete(&knftables.Set{Family: family.Family, Table: table, Name: name})
-		}
-		for _, name := range objects["map"] {
-			tx.Delete(&knftables.Map{Family: family.Family, Table: table, Name: name})
-		}
-		for _, name := range objects["flowtable"] {
-			tx.Delete(&knftables.Flowtable{Family: family.Family, Table: table, Name: name})
-		}
+		table := nftSnapshotTable(family)
+		expectedCounters := nftExpectedCounterNames(family)
+		b.repairNFTFamily(tx, family, objects, expectedCounters, table)
+	}
+	return tx, detectedDrift, nil
+}
 
-		renderNFTChains(tx, family.Family, table)
-		b.renderNFTSets(tx, family)
-		for _, counter := range family.SubnetCounters {
-			egress, ingress := nftSubnetCounterNames(counter)
-			if !slices.Contains(objects["counter"], egress) {
-				tx.Add(&knftables.Counter{Family: family.Family, Table: table, Name: egress, Comment: new(counter.Name + " egress")})
-			}
-			if !slices.Contains(objects["counter"], ingress) {
-				tx.Add(&knftables.Counter{Family: family.Family, Table: table, Name: ingress, Comment: new(counter.Name + " ingress")})
-			}
+func (b *nftGatewayBackend) auditFamilyDrift(ctx context.Context, reader knftables.Interface, family nftFamilySnapshot, objects map[string][]string) (bool, bool, error) {
+	definitions := nftSetDefinitions(family)
+	expectedChains := sortedMapKeys(nftSnapshotChainDefinitions(family))
+	expectedSets := sortedMapKeys(definitions)
+	expectedCounters := nftExpectedCounterNames(family)
+
+	familyDrift := false
+	if b.checkDefinitions != nil {
+		match, err := b.checkDefinitions(ctx, family)
+		if err != nil {
+			return false, false, fmt.Errorf("audit %s nftables definitions: %w", family.Family, err)
 		}
+		if !match {
+			familyDrift = true
+		}
+	}
+	if !sameStringSet(objects["chain"], expectedChains) ||
+		!sameStringSet(objects["set"], expectedSets) ||
+		len(objects["map"]) != 0 ||
+		len(objects["flowtable"]) != 0 ||
+		!sameStringSet(objects["counter"], expectedCounters) {
+		familyDrift = true
+	}
+	expectedElements := nftSetElements(family)
+	for _, name := range expectedSets {
+		if family.PreserveTunnelRemoteIPs && name == "tunnel-remote-ips" {
+			continue
+		}
+		if !slices.Contains(objects["set"], name) {
+			continue
+		}
+		actual, err := reader.ListElements(ctx, "set", name)
+		if err != nil {
+			return false, false, fmt.Errorf("audit %s nftables set %s: %w", family.Family, name, err)
+		}
+		if !reflect.DeepEqual(nftElementMap(nftElementsToKeys(actual)), nftElementMap(expectedElements[name])) {
+			familyDrift = true
+		}
+	}
+
+	tunnelDrift := false
+	expectedRules := 0
+	if family.TunnelPort != 0 {
+		expectedRules = 1
+	}
+	for _, chain := range []string{"raw-prerouting", "raw-output"} {
+		if !slices.Contains(objects["chain"], chain) {
+			if expectedRules != 0 {
+				tunnelDrift = true
+			}
+			continue
+		}
+		rules, err := reader.ListRules(ctx, chain)
+		if err != nil {
+			return false, false, fmt.Errorf("audit %s nftables %s: %w", family.Family, chain, err)
+		}
+		expectedComment := fmt.Sprintf("%s-tunnel-notrack-%d", chain, family.TunnelPort)
+		if len(rules) != expectedRules {
+			tunnelDrift = true
+		} else if expectedRules == 1 && (rules[0].Comment == nil || *rules[0].Comment != expectedComment) {
+			tunnelDrift = true
+		}
+	}
+
+	return familyDrift, tunnelDrift, nil
+}
+
+func (b *nftGatewayBackend) repairNFTFamily(tx *knftables.Transaction, family nftFamilySnapshot, objects map[string][]string, expectedCounters []string, table string) {
+	for _, name := range objects["chain"] {
+		tx.Flush(&knftables.Chain{Family: family.Family, Table: table, Name: name})
+	}
+	for _, name := range objects["chain"] {
+		tx.Delete(&knftables.Chain{Family: family.Family, Table: table, Name: name})
+	}
+	for _, name := range objects["set"] {
+		if family.PreserveTunnelRemoteIPs && name == "tunnel-remote-ips" {
+			continue
+		}
+		tx.Delete(&knftables.Set{Family: family.Family, Table: table, Name: name})
+	}
+	for _, name := range objects["map"] {
+		tx.Delete(&knftables.Map{Family: family.Family, Table: table, Name: name})
+	}
+	for _, name := range objects["flowtable"] {
+		tx.Delete(&knftables.Flowtable{Family: family.Family, Table: table, Name: name})
+	}
+
+	renderNFTChains(tx, family)
+	b.renderNFTSets(tx, family)
+	for _, counter := range family.SubnetCounters {
+		egress, ingress := nftSubnetCounterNames(counter)
+		if !slices.Contains(objects["counter"], egress) {
+			tx.Add(&knftables.Counter{Family: family.Family, Table: table, Name: egress, Comment: new(counter.Name + " egress")})
+		}
+		if !slices.Contains(objects["counter"], ingress) {
+			tx.Add(&knftables.Counter{Family: family.Family, Table: table, Name: ingress, Comment: new(counter.Name + " ingress")})
+		}
+	}
+	if !family.TunnelOnly {
 		b.renderNFTNATRules(tx, family)
 		b.renderNFTPolicyRules(tx, family)
 		b.renderNFTTProxyRules(tx, family)
 		b.renderNFTFilterAndMangleRules(tx, family, false)
-		for _, name := range objects["counter"] {
-			if !slices.Contains(expectedCounters, name) {
-				tx.Delete(&knftables.Counter{Family: family.Family, Table: table, Name: name})
-			}
+	}
+	b.renderNFTTunnelRules(tx, family)
+	for _, name := range objects["counter"] {
+		if !slices.Contains(expectedCounters, name) {
+			tx.Delete(&knftables.Counter{Family: family.Family, Table: table, Name: name})
 		}
 	}
-	return tx, detectedDrift, nil
 }
 
 func sameStringSet(actual, expected []string) bool {
@@ -1085,22 +1250,6 @@ func sameStringSet(actual, expected []string) bool {
 		}
 	}
 	return true
-}
-
-func nftRuleChainNames() []string {
-	return []string{
-		"nodeport-local",
-		"nodeport-local-action",
-		"nat-policy",
-		"tproxy-prerouting",
-		"tproxy-output",
-		"filter-input",
-		"filter-forward",
-		"filter-output",
-		"mangle-postrouting",
-		"nat-host-service",
-		"nat-postrouting",
-	}
 }
 
 func nftExpectedCounterNames(snapshot nftFamilySnapshot) []string {
