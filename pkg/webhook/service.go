@@ -115,20 +115,6 @@ func (v *ValidatingHook) validateNftableLbService(ctx context.Context, svc *v1.S
 	return v.validateNftableLbServiceEipPort(ctx, svc)
 }
 
-// nftableLbSvcEipIndex indexes Services by the EIP they publish as their ingress IP, so the
-// duplicate check below reads only the Services of one EIP instead of every Service in the
-// cluster. The conflict is cluster-wide (an EIP is a cluster-scoped object two namespaces can
-// reference), which is why the lookup cannot be narrowed to the Service's own namespace.
-const nftableLbSvcEipIndex = "nftableLbSvcEip"
-
-func nftableLbSvcEipIndexValue(obj client.Object) []string {
-	svc, ok := obj.(*v1.Service)
-	if !ok || !nftableLbServiceEipServing(svc) {
-		return nil
-	}
-	return []string{svc.Annotations[util.EipAnnotation]}
-}
-
 // validateNftableLbServiceEipPort rejects a Service that would program the same share-DNAT
 // identity (EIP, external port, protocol) as a Service that is already live. The gateway maps one
 // identity to one backend set, so a second Service declaring it would silently fight over it.
@@ -139,7 +125,10 @@ func nftableLbSvcEipIndexValue(obj client.Object) []string {
 func (v *ValidatingHook) validateNftableLbServiceEipPort(ctx context.Context, svc *v1.Service) error {
 	eipName := svc.Annotations[util.EipAnnotation]
 	services := &v1.ServiceList{}
-	if err := v.cache.List(ctx, services, client.MatchingFields{nftableLbSvcEipIndex: eipName}); err != nil {
+	// The API reader is intentionally used here: an informer cache can lag behind the API write
+	// that admitted the first Service and allow a sequential duplicate through. The API server does
+	// not support the custom EIP index as a field selector, so filter the cluster-wide list below.
+	if err := v.apiReader.List(ctx, services); err != nil {
 		return fmt.Errorf("failed to list services for eip %q: %w", eipName, err)
 	}
 	for i := range services.Items {
