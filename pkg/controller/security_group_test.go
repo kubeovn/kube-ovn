@@ -48,38 +48,29 @@ func Test_getPortSg(t *testing.T) {
 	})
 }
 
-func Test_securityGroupALLNotExist(t *testing.T) {
-	t.Parallel()
-
+func Test_updateDenyAllSgPortsIncludesPortsWithMissingSecurityGroups(t *testing.T) {
 	fakeController := newFakeController(t)
 	ctrl := fakeController.fakeController
 	mockOvnClient := fakeController.mockOvnClient
 
-	sgName := "sg"
-	pgName := ovs.GetSgPortGroupName(sgName)
+	ports := []ovnnb.LogicalSwitchPort{
+		{
+			Name: "early",
+			ExternalIDs: map[string]string{
+				sgsKey: "later",
+			},
+		},
+		{
+			Name: "existing",
+			ExternalIDs: map[string]string{
+				sgsKey: "ready",
+			},
+		},
+	}
+	mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, map[string]string{sgsKey: ""}).Return(ports, nil)
+	mockOvnClient.EXPECT().PortGroupSetPorts(ovs.GetSgPortGroupName(util.DenyAllSecurityGroup), []string{"early", "existing"}).Return(nil)
 
-	t.Run("should return false when some port group exists", func(t *testing.T) {
-		mockOvnClient.EXPECT().PortGroupExists(gomock.Eq(pgName)).Return(true, nil)
-		mockOvnClient.EXPECT().PortGroupExists(gomock.Not(pgName)).Return(false, nil).Times(3)
-
-		exist, err := ctrl.securityGroupAllNotExist([]string{sgName, "sg1", "sg2", "sg3"})
-		require.NoError(t, err)
-		require.False(t, exist)
-	})
-
-	t.Run("should return true when all port group don't exist", func(t *testing.T) {
-		mockOvnClient.EXPECT().PortGroupExists(gomock.Any()).Return(false, nil).Times(3)
-
-		exist, err := ctrl.securityGroupAllNotExist([]string{"sg1", "sg2", "sg3"})
-		require.NoError(t, err)
-		require.True(t, exist)
-	})
-
-	t.Run("should return true when sgs is empty", func(t *testing.T) {
-		exist, err := ctrl.securityGroupAllNotExist([]string{})
-		require.NoError(t, err)
-		require.True(t, exist)
-	})
+	require.NoError(t, ctrl.updateDenyAllSgPorts())
 }
 
 func TestHandleAddOrUpdateSgForceRecordsRuleHashes(t *testing.T) {

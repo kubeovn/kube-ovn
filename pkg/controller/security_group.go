@@ -113,19 +113,6 @@ func (c *Controller) updateDenyAllSgPorts() error {
 
 	addPorts := make([]string, 0, len(lsps))
 	for _, lsp := range lsps {
-		/* skip lsp which security_group does not exist */
-		// sgs format: sg1/sg2/sg3
-		sgs := strings.Split(lsp.ExternalIDs[sgsKey], "/")
-		allNotExist, err := c.securityGroupAllNotExist(sgs)
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-
-		if allNotExist {
-			continue
-		}
-
 		addPorts = append(addPorts, lsp.Name)
 	}
 	pgName := ovs.GetSgPortGroupName(util.DenyAllSecurityGroup)
@@ -473,27 +460,4 @@ func (c *Controller) reconcilePortSg(portName, securityGroups string) error {
 	}
 
 	return nil
-}
-
-// securityGroupAllNotExist return true if all sgs does not exist
-func (c *Controller) securityGroupAllNotExist(sgs []string) (bool, error) {
-	if len(sgs) == 0 {
-		return true, nil
-	}
-
-	notExistsCount := 0
-	// sgs format: sg1/sg2/sg3
-	for _, sg := range sgs {
-		ok, err := c.OVNNbClient.PortGroupExists(ovs.GetSgPortGroupName(sg))
-		if err != nil {
-			klog.Error(err)
-			return true, err
-		}
-
-		if !ok {
-			notExistsCount++
-		}
-	}
-
-	return notExistsCount == len(sgs), nil
 }
