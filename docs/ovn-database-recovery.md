@@ -1,8 +1,12 @@
 # OVN database startup validation
 
-The `ovn-central` and interconnection database startup scripts preserve existing
-database files when their identity, storage format, or clustered log cannot be
-validated. They report the validation error and exit with a nonzero status.
+During central startup in Raft mode and interconnection database startup,
+preflight checks preserve existing database files when their identity, storage
+format, or clustered log cannot be validated. They report the validation error
+and exit with a nonzero status.
+
+Central single-instance standalone startup retains its existing mode selection
+and startup path, without the database-identity preflight described here.
 
 | Database state | Startup behavior |
 | --- | --- |
