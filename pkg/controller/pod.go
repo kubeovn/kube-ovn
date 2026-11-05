@@ -924,16 +924,16 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 			enableDHCP := podNet.Subnet.Spec.EnableDHCP || hasPerPortDHCP
 
 			var oldSgList []string
-			if vmKey != "" {
-				existingLsp, err := c.getLogicalSwitchPort(portName, true)
-				if err != nil {
-					klog.Errorf("failed to get logical switch port %s: %v", portName, err)
-					recordFailure("getLogicalSwitchPort", err)
-					return nil, err
-				}
-				if existingLsp != nil {
-					oldSgList, _ = c.getPortSg(existingLsp)
-				}
+			// StatefulSet pods also reuse LSPs. Read their old groups before the
+			// port update replaces the SG external IDs, even when all groups are removed.
+			existingLsp, err := c.getLogicalSwitchPort(portName, true)
+			if err != nil {
+				klog.Errorf("failed to get logical switch port %s: %v", portName, err)
+				recordFailure("getLogicalSwitchPort", err)
+				return nil, err
+			}
+			if existingLsp != nil {
+				oldSgList, _ = c.getPortSg(existingLsp)
 			}
 
 			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
