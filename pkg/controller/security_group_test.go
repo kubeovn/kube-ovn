@@ -99,6 +99,31 @@ func TestSyncSgLogicalPortQueuesDenyAllWhenPortGroupIsNotReady(t *testing.T) {
 	require.NoError(t, ctrl.handleAddOrUpdateSg(key, false))
 }
 
+func TestSyncSgLogicalPortIncludesVipWithoutPortSecurity(t *testing.T) {
+	fc := newFakeController(t)
+	ctrl := fc.fakeController
+	ctrl.sgKeyMutex = keymutex.NewHashed(0)
+
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(&kubeovnv1.SecurityGroup{
+		Name:   "target",
+		Status: kubeovnv1.SecurityGroupStatus{PortGroup: "target-pg"},
+	}))
+	ctrl.sgsLister = kubeovnlister.NewSecurityGroupLister(indexer)
+
+	ports := []ovnnb.LogicalSwitchPort{{
+		Name:        "attacker-port",
+		Addresses:   []string{"00:00:00:00:00:01 10.16.0.10"},
+		ExternalIDs: map[string]string{"vips": "10.16.0.99,fd00::99"},
+	}}
+	fc.mockOvnClient.EXPECT().ListLogicalSwitchPorts(false, map[string]string{"associated_sg_target": "true"}, nil).Return(ports, nil)
+	fc.mockOvnClient.EXPECT().PortGroupSetPorts("target-pg", []string{"attacker-port"}).Return(nil)
+	fc.mockOvnClient.EXPECT().AddressSetUpdateAddress(ovs.GetSgV4AssociatedName("target"), "10.16.0.10", "10.16.0.99").Return(nil)
+	fc.mockOvnClient.EXPECT().AddressSetUpdateAddress(ovs.GetSgV6AssociatedName("target"), "fd00::99").Return(nil)
+
+	require.NoError(t, ctrl.syncSgLogicalPort("target"))
+}
+
 func TestReconcilePortSgRefreshesDenyAllAfterMetadataIsWritten(t *testing.T) {
 	for _, tc := range []struct {
 		name, oldGroup, newGroup string
