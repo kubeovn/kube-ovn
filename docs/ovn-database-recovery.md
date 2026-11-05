@@ -14,7 +14,7 @@ and startup path, without the database-identity preflight described here.
 | Valid standalone database | Preserve the existing standalone startup path. |
 | Missing database | Preserve the existing initialization and header recovery paths. |
 | Pending cluster join | Resume the join. Central databases retain their existing stale pending-join cleanup. |
-| Unknown identity, unexpected database name, unknown storage format, or invalid clustered log | Preserve the original database and header, refuse automatic repair or rebuilding, and require explicit recovery. |
+| Unknown identity, unexpected database name, unknown storage format, or invalid clustered log | Preserve the original database and header. For an invalid clustered log, create a clean member with the original server ID from a reachable live cluster; if the disk or peers are unavailable, keep startup blocked for retry. |
 
 `ovsdb-tool fix-cluster` can rewrite a locally valid log prefix while discarding
 later records. A successful repair followed by a successful `check-cluster`
@@ -24,12 +24,22 @@ safe recovery source. Automatically repairing multiple members can allow them
 to form a majority with a shortened history, conflicting with another member
 that still retains the original committed entries.
 
-For this reason, startup does not run `fix-cluster` or replace an invalid
-existing database with a new `join-cluster` file. Repeated failed starts do not
-create additional full database backups. A member with an invalid database
-remains unavailable until explicitly recovered; a healthy majority can
-continue serving. If a healthy majority is unavailable, preserving the
-remaining history takes precedence over automatically rebuilding it.
+For this reason, startup runs `fix-cluster` only on a disposable copy to
+validate the damaged file, then requires a Raft quorum of reachable peers with
+one consistent cluster ID before creating a clean `join-cluster` file with the
+original server ID. The original database is moved to a timestamped backup
+only after the new file is created successfully. Starting the clean member
+lets the healthy majority repopulate it through normal Raft log or snapshot
+synchronization. If the disk is still full, a quorum is unavailable, or the
+replacement cannot be installed, startup exits nonzero and the member remains
+unavailable for a later retry.
+
+The liveness and readiness checks also run `ovsdb-tool check-cluster` for
+clustered databases. A semantic persistence gap therefore removes the member
+from service and lets kubelet restart it; a successful process or Pod status
+alone does not hide the gap. The recovery path must still be exercised with
+only one damaged member at a time. Automatically rebuilding multiple members
+without a verified healthy majority remains unsafe.
 
 Before explicit recovery:
 
@@ -41,8 +51,11 @@ Before explicit recovery:
    identify an authoritative copy.
 3. Determine a recovery source and the application state that must be retained
    before replacing a member. If histories conflict, reconcile them explicitly
-   rather than automatically accepting whichever members started first.
+   rather than automatically accepting whichever members started first. The
+   automatic path is limited to one invalid member with a reachable, consistent
+   majority.
 
-This startup protection does not repair existing divergent histories or fix
-the underlying runtime I/O failure. It prevents automatic startup recovery
-from silently discarding more history. See [issue #7870](https://github.com/kubeovn/kube-ovn/issues/7870).
+This startup protection does not repair already divergent histories or fix the
+underlying runtime I/O failure. It limits automatic recovery to a fresh member
+that can synchronize from a reachable, consistent majority. See [issue
+#7870](https://github.com/kubeovn/kube-ovn/issues/7870).

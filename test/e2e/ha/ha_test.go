@@ -703,7 +703,10 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 			}
 			for cmd, runSpec := range testcases {
 				if runSpec {
-					automaticRecoveryExpected := f.VersionPriorTo(1, 17) || strings.Contains(cmd, `rm -f`)
+					// Recoverable log corruption is rebuilt as a clean member and
+					// synchronized from the live majority. A file with no readable
+					// identity cannot be rebuilt automatically and remains blocked.
+					automaticRecoveryExpected := !strings.Contains(cmd, `: >`)
 					corruptAndRecover(f, deploy, dbFile, dbFileHost, cmd, automaticRecoveryExpected, kindNodes, &lastFailedCheck)
 				}
 			}
