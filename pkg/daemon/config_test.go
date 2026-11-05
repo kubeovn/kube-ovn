@@ -37,8 +37,8 @@ func TestParseFlagsGeneveTxOff(t *testing.T) {
 		args []string
 		want bool
 	}{
-		{name: "enabled by default", want: true},
-		{name: "disabled explicitly", args: []string{"--set-geneve-tx-off=false"}, want: false},
+		{name: "disabled by default", want: false},
+		{name: "enabled explicitly", args: []string{"--set-geneve-tx-off=true"}, want: true},
 	}
 
 	for _, tt := range tests {
