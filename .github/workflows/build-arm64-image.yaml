@@ -138,6 +138,9 @@ jobs:
           make verify-crd
           make release-arm
 
+      - name: Verify non-root Service LoadBalancer capabilities
+        run: bash hack/test-lb-svc-image.sh "kubeovn/vpc-nat-gateway:$(cat VERSION)"
+
       - name: Push
         if: github.ref_name == github.event.repository.default_branch || startsWith(github.ref_name, 'release-')
         env:

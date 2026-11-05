@@ -15,6 +15,10 @@ import (
 )
 
 func TestCreateLbSvcPodSecurity(t *testing.T) {
+	previousImage := vpcNatImage
+	vpcNatImage = "kubeovn/vpc-nat-gateway:non-root"
+	t.Cleanup(func() { vpcNatImage = previousImage })
+
 	for _, legacy := range []bool{false, true} {
 		name := "create"
 		if legacy {
@@ -48,6 +52,7 @@ func TestCreateLbSvcPodSecurity(t *testing.T) {
 					SeccompProfile: &corev1.SeccompProfile{Type: corev1.SeccompProfileTypeRuntimeDefault},
 				}
 				dp.Spec.Template.Spec.AutomountServiceAccountToken = nil
+				dp.Spec.Template.Spec.Containers[0].Image = "kubeovn/vpc-nat-gateway:legacy"
 				_, err := deployments.Create(t.Context(), dp, metav1.CreateOptions{})
 				require.NoError(t, err)
 			}
@@ -61,6 +66,10 @@ func TestCreateLbSvcPodSecurity(t *testing.T) {
 			require.NotNil(t, sc)
 			require.Equal(t, new(false), sc.Privileged)
 			require.Equal(t, new(false), sc.AllowPrivilegeEscalation)
+			require.Equal(t, new(true), sc.RunAsNonRoot)
+			require.Equal(t, new(int64(65532)), sc.RunAsUser)
+			require.Equal(t, new(int64(65532)), sc.RunAsGroup)
+			require.Equal(t, vpcNatImage, podSpec.Containers[0].Image)
 			require.NotNil(t, sc.Capabilities)
 			require.ElementsMatch(t, []corev1.Capability{"ALL"}, sc.Capabilities.Drop)
 			require.ElementsMatch(t, []corev1.Capability{"NET_ADMIN", "NET_RAW"}, sc.Capabilities.Add)

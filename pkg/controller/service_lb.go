@@ -79,6 +79,9 @@ func lbSvcSecurityContext(existing *corev1.SecurityContext) *corev1.SecurityCont
 	}
 	sc.Privileged = new(false)
 	sc.AllowPrivilegeEscalation = new(false)
+	sc.RunAsNonRoot = new(true)
+	sc.RunAsUser = new(int64(65532))
+	sc.RunAsGroup = new(int64(65532))
 	// Routes, NAT rules and ARP announcements only need network capabilities
 	// in the Pod's own network namespace, not access to the host.
 	sc.Capabilities = &corev1.Capabilities{
@@ -178,6 +181,11 @@ func (c *Controller) updateLbSvcDeployment(svc *corev1.Service, dp *v1.Deploymen
 	podSpec := &dp.Spec.Template.Spec
 	for i := range podSpec.Containers {
 		if container := &podSpec.Containers[i]; container.Name == "lb-svc" {
+			// Non-root execution requires the file capabilities in the configured image.
+			if container.Image != vpcNatImage {
+				container.Image = vpcNatImage
+				changed = true
+			}
 			securityContext := lbSvcSecurityContext(container.SecurityContext)
 			if !equality.Semantic.DeepEqual(container.SecurityContext, securityContext) {
 				container.SecurityContext = securityContext
@@ -306,7 +314,12 @@ func (c *Controller) deleteLbSvc(svc *corev1.Service) error {
 }
 
 func (c *Controller) execNatRules(pod *corev1.Pod, operation string, rules []string) error {
-	args := append([]string{"bash", "/kube-ovn/lb-svc.sh", operation}, rules...)
+	// Retain only the allowed network capabilities across the non-root shell and
+	// its children, including iproute2's inheritable-capability check.
+	args := append([]string{
+		"capsh", "--inh=cap_net_admin,cap_net_raw", "--addamb=cap_net_admin,cap_net_raw",
+		"--shell=/bin/bash", "--", "/kube-ovn/lb-svc.sh", operation,
+	}, rules...)
 	klog.V(3).Info(strings.Join(args, " "))
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "lb-svc", args...)
 	if err != nil {
