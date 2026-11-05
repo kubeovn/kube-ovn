@@ -477,8 +477,43 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	headerBackupFileHost := headerFileHost + ".kube-ovn-ha-backup"
 	stdout, stderr, err := node.Exec("cp", dbFileHost, dbBackupFileHost)
 	framework.ExpectNoError(err, fmt.Sprintf("failed to back up db file %q: stdout = %q, stderr = %q", dbFileHost, stdout, stderr))
-	stdout, stderr, err = node.Exec("cp", headerFileHost, headerBackupFileHost)
+	recoveryPending := true
+	headerBackedUp := false
+	restoreOriginal := func() {
+		ginkgo.GinkgoHelper()
+		if !recoveryPending {
+			return
+		}
+
+		// Stop all central pods so no process can open the files during restoration.
+		ginkgo.By("Stopping ovn-central before restoring the original database")
+		setCentralReplicas(deployClient, deploy.Name, 0)
+		framework.WaitUntil(time.Second, 60*time.Second, func(ctx context.Context) (bool, error) {
+			pods, err := deployClient.GetAllPodsContext(ctx, deploy)
+			if err != nil {
+				return false, err
+			}
+			return len(pods.Items) == 0, nil
+		}, "all ovn-central pods to stop before restoring database files")
+
+		ginkgo.By("Restoring the original database and raft header")
+		stdout, stderr, err := node.Exec("cp", dbBackupFileHost, dbFileHost)
+		framework.ExpectNoError(err, fmt.Sprintf("failed to restore db file %q: stdout = %q, stderr = %q", dbFileHost, stdout, stderr))
+		if headerBackedUp {
+			stdout, stderr, err = node.Exec("cp", headerBackupFileHost, headerFileHost)
+			framework.ExpectNoError(err, fmt.Sprintf("failed to restore raft header %q: stdout = %q, stderr = %q", headerFileHost, stdout, stderr))
+		}
+		stdout, stderr, err = node.Exec("rm", "-f", dbBackupFileHost, headerBackupFileHost)
+		framework.ExpectNoError(err, fmt.Sprintf("failed to remove recovery backups: stdout = %q, stderr = %q", stdout, stderr))
+		recoveryPending = false
+		setCentralReplicas(deployClient, deploy.Name, replicas)
+		deployClient.RolloutStatus(deploy.Name)
+	}
+	// DeferCleanup runs after JustAfterEach has captured failure diagnostics.
+	ginkgo.DeferCleanup(restoreOriginal)
+	stdout, stderr, err = node.Exec("bash", "-exc", fmt.Sprintf(`if test -f %q; then cp %q %q; echo backed-up; fi`, headerFileHost, headerFileHost, headerBackupFileHost))
 	framework.ExpectNoError(err, fmt.Sprintf("failed to back up raft header %q: stdout = %q, stderr = %q", headerFileHost, stdout, stderr))
+	headerBackedUp = strings.TrimSpace(string(stdout)) == "backed-up"
 	stdout, stderr, err = node.Exec("bash", "-exc", corruptCmd)
 	framework.ExpectNoError(err, fmt.Sprintf("failed to corrupt db file %q: stdout = %q, stderr = %q", dbFileHost, stdout, stderr))
 
@@ -518,16 +553,8 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	}
 
 	if !automaticRecoveryExpected {
-		ginkgo.By("Restoring the original database and raft header")
-		stdout, stderr, err = node.Exec("cp", dbBackupFileHost, dbFileHost)
-		framework.ExpectNoError(err, fmt.Sprintf("failed to restore db file %q: stdout = %q, stderr = %q", dbFileHost, stdout, stderr))
-		stdout, stderr, err = node.Exec("cp", headerBackupFileHost, headerFileHost)
-		framework.ExpectNoError(err, fmt.Sprintf("failed to restore raft header %q: stdout = %q, stderr = %q", headerFileHost, stdout, stderr))
+		restoreOriginal()
 	}
-
-	ginkgo.By("Removing temporary recovery backups")
-	stdout, stderr, err = node.Exec("rm", "-f", dbBackupFileHost, headerBackupFileHost)
-	framework.ExpectNoError(err, fmt.Sprintf("failed to remove recovery backups: stdout = %q, stderr = %q", stdout, stderr))
 
 	ginkgo.By("Waiting for deployment ovn-central to be ready after restoring the database")
 	deployClient.RolloutStatus(deploy.Name)
@@ -552,6 +579,12 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 		framework.ExpectNotEqual(newBirth, birth, "birth time of db file %q on node %s should change after automatic recovery", dbFileHost, nodeName)
 	} else {
 		framework.ExpectEqual(newBirth, birth, "restoring the original database should restore its birth time")
+	}
+	if recoveryPending {
+		ginkgo.By("Removing temporary recovery backups after successful automatic recovery")
+		stdout, stderr, err = node.Exec("rm", "-f", dbBackupFileHost, headerBackupFileHost)
+		framework.ExpectNoError(err, fmt.Sprintf("failed to remove recovery backups: stdout = %q, stderr = %q", stdout, stderr))
+		recoveryPending = false
 	}
 }
 
@@ -625,7 +658,7 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 
 	registerKubectlKoHA(f, kindNodes)
 
-	framework.DisruptiveIt("ovn db should preserve invalid db files instead of recovering automatically", func() {
+	framework.DisruptiveIt("ovn db should handle corruption according to the supported recovery policy", func() {
 		f.SkipVersionPriorTo(1, 11, "This feature was introduced in v1.11")
 
 		ginkgo.By("Getting deployment ovn-central")
@@ -670,7 +703,7 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 			}
 			for cmd, runSpec := range testcases {
 				if runSpec {
-					automaticRecoveryExpected := strings.Contains(cmd, `rm -f`)
+					automaticRecoveryExpected := f.VersionPriorTo(1, 17) || strings.Contains(cmd, `rm -f`)
 					corruptAndRecover(f, deploy, dbFile, dbFileHost, cmd, automaticRecoveryExpected, kindNodes, &lastFailedCheck)
 				}
 			}
