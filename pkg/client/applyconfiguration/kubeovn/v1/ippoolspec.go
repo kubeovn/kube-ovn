@@ -25,8 +25,15 @@ type IPPoolSpecApplyConfiguration struct {
 	Subnet *string `json:"subnet,omitempty"`
 	// Namespaces that can use this IP pool
 	Namespaces []string `json:"namespaces,omitempty"`
-	// IP addresses or ranges in the pool (IPv4/IPv6 addresses or CIDR ranges)
+	// IP addresses or ranges in the pool (IPv4/IPv6 addresses or CIDR ranges).
+	// Mutually exclusive with ipCount.
 	IPs []string `json:"ips,omitempty"`
+	// Number of addresses to pick automatically from the subnet's free addresses,
+	// per IP family (a dual-stack subnet yields ipCount IPv4 plus ipCount IPv6 addresses).
+	// The picked addresses are recorded in status.ips and stay stable; increasing the
+	// value appends addresses, decreasing it releases the most recently added ones first.
+	// Mutually exclusive with ips.
+	IPCount *int32 `json:"ipCount,omitempty"`
 	// EnableAddressSet to work with policy-based routing and ACL
 	EnableAddressSet *bool `json:"enableAddressSet,omitempty"`
 }
@@ -62,6 +69,14 @@ func (b *IPPoolSpecApplyConfiguration) WithIPs(values ...string) *IPPoolSpecAppl
 	for i := range values {
 		b.IPs = append(b.IPs, values[i])
 	}
+	return b
+}
+
+// WithIPCount sets the IPCount field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the IPCount field is set to the value of the last call.
+func (b *IPPoolSpecApplyConfiguration) WithIPCount(value int32) *IPPoolSpecApplyConfiguration {
+	b.IPCount = &value
 	return b
 }
 

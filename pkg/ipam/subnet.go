@@ -321,8 +321,8 @@ func (s *Subnet) getV4RandomAddress(ippoolName, podName, nicName string, mac *st
 	}
 
 	pool := s.IPPools[ippoolName]
-	if pool == nil {
-		klog.Errorf("no ip pool %s in subnet %s", ippoolName, s.Name)
+	if pool == nil || pool.allocationsBlocked {
+		klog.Errorf("ip pool %s in subnet %s is unavailable", ippoolName, s.Name)
 		return nil, nil, "", ErrNoAvailable
 	}
 
@@ -386,8 +386,8 @@ func (s *Subnet) getV6RandomAddress(ippoolName, podName, nicName string, mac *st
 	}
 
 	pool := s.IPPools[ippoolName]
-	if pool == nil {
-		klog.Errorf("no ip pool %s in subnet %s", ippoolName, s.Name)
+	if pool == nil || pool.allocationsBlocked {
+		klog.Errorf("ip pool %s in subnet %s is unavailable", ippoolName, s.Name)
 		return nil, nil, "", ErrNoAvailable
 	}
 
@@ -444,6 +444,9 @@ func (s *Subnet) GetStaticAddress(podName, nicName string, ip IP, mac *string, f
 	family, err := s.staticAddressFamilyForIP(ip, checkConflict)
 	if err != nil {
 		return nil, "", err
+	}
+	if family.allocationsBlocked && (family.nicToIP[nicName] == nil || !family.nicToIP[nicName].Equal(ip)) {
+		return nil, "", ErrNoAvailable
 	}
 	releaseCurrentStaticAddress(family, podName, nicName, ip)
 	defer s.pushPodNic(podName, nicName)
@@ -509,22 +512,24 @@ func (s *Subnet) staticAddressFamilyForIP(ip IP, checkConflict bool) (staticAddr
 }
 
 type staticAddressFamily struct {
-	nicToIP         map[string]IP
-	ipToPod         map[string]string
-	subnetFree      *IPRangeList
-	subnetAvailable *IPRangeList
-	subnetUsing     *IPRangeList
-	poolFree        *IPRangeList
-	poolAvailable   *IPRangeList
-	poolReserved    *IPRangeList
-	poolReleased    *IPRangeList
-	poolUsing       *IPRangeList
-	release         func(string, string)
+	allocationsBlocked bool
+	nicToIP            map[string]IP
+	ipToPod            map[string]string
+	subnetFree         *IPRangeList
+	subnetAvailable    *IPRangeList
+	subnetUsing        *IPRangeList
+	poolFree           *IPRangeList
+	poolAvailable      *IPRangeList
+	poolReserved       *IPRangeList
+	poolReleased       *IPRangeList
+	poolUsing          *IPRangeList
+	release            func(string, string)
 }
 
 func (s *Subnet) v4StaticAddressFamily(pool *IPPool) staticAddressFamily {
 	return staticAddressFamily{
-		nicToIP: s.V4NicToIP, ipToPod: s.V4IPToPod,
+		allocationsBlocked: pool.allocationsBlocked,
+		nicToIP:            s.V4NicToIP, ipToPod: s.V4IPToPod,
 		subnetFree: s.V4Free, subnetAvailable: s.V4Available, subnetUsing: s.V4Using,
 		poolFree: pool.V4Free, poolAvailable: pool.V4Available, poolReserved: pool.V4Reserved,
 		poolReleased: pool.V4Released, poolUsing: pool.V4Using, release: s.releaseV4Addr,
@@ -533,7 +538,8 @@ func (s *Subnet) v4StaticAddressFamily(pool *IPPool) staticAddressFamily {
 
 func (s *Subnet) v6StaticAddressFamily(pool *IPPool) staticAddressFamily {
 	return staticAddressFamily{
-		nicToIP: s.V6NicToIP, ipToPod: s.V6IPToPod,
+		allocationsBlocked: pool.allocationsBlocked,
+		nicToIP:            s.V6NicToIP, ipToPod: s.V6IPToPod,
 		subnetFree: s.V6Free, subnetAvailable: s.V6Available, subnetUsing: s.V6Using,
 		poolFree: pool.V6Free, poolAvailable: pool.V6Available, poolReserved: pool.V6Reserved,
 		poolReleased: pool.V6Released, poolUsing: pool.V6Using, release: s.releaseV6Addr,
@@ -765,10 +771,214 @@ func (s *Subnet) isIPAssignedToOtherPod(ip, podName string) (string, bool) {
 	return "", false
 }
 
+// SelectIPPoolIPs picks the addresses of a named pool by per-family counts, without
+// committing them - ActivateIPPoolIPs applies a selection once the caller is ready to
+// expose it. The selection is deterministic for unchanged IPAM state and prefers, in
+// order:
+//   - entries of keep - the addresses recorded for the pool so far - are retained in
+//     their recorded order while still usable, so the selection stays stable across
+//     reconciles and restarts;
+//   - addresses the pool already reserves, including a failed preparation, are
+//     retained next;
+//   - the rest is taken from the subnet's default pool in ascending address order.
+//
+// Retained entries that no longer belong to the subnet's usable range - e.g. became
+// the network or broadcast address after a CIDR change, or got reserved by an expanded
+// excludeIps - or that are owned by another pool in the meantime are dropped and
+// replaced by new picks.
+func (s *Subnet) SelectIPPoolIPs(name string, keep []string, v4Count, v6Count int) (v4, v6 []string, err error) {
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
+
+	return s.selectIPPoolIPsLocked(name, keep, v4Count, v6Count)
+}
+
+// ActivateIPPoolIPs revalidates and reserves the selection before preparing the data
+// plane and persistence. Failed preparation keeps both old and selected members
+// reserved, but blocks new allocations until a retry commits a consistent membership.
+// Preparation runs without allocation locks; reservations protect ownership and
+// the selection is revalidated before activation if the subnet changed meanwhile.
+func (s *Subnet) ActivateIPPoolIPs(name string, selected []string, v4Count, v6Count int, prepareAndPersist func() error) error {
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
+
+	if s.IPPools[""] == nil {
+		return fmt.Errorf("subnet %s has no default pool yet, cannot activate ippool %s", s.Name, name)
+	}
+	if err := s.validateIPPoolSelectionLocked(name, selected, v4Count, v6Count); err != nil {
+		return err
+	}
+	if prepareAndPersist != nil {
+		reserved := slices.Clone(selected)
+		if held := s.IPPools[name]; held != nil {
+			for _, ranges := range []*IPRangeList{held.V4IPs, held.V6IPs} {
+				for i := 0; i < ranges.Len(); i++ {
+					r := ranges.At(i)
+					reserved = append(reserved, fmt.Sprintf("%s..%s", r.Start(), r.End()))
+				}
+			}
+		}
+		if err := s.setIPPoolLocked(name, reserved); err != nil {
+			return err
+		}
+		s.IPPools[name].allocationsBlocked = true
+		err := func() error {
+			s.Mutex.Unlock()
+			defer s.Mutex.Lock()
+			return prepareAndPersist()
+		}()
+		if err != nil {
+			return err
+		}
+		if err := s.validateIPPoolSelectionLocked(name, selected, v4Count, v6Count); err != nil {
+			return err
+		}
+	}
+	return s.setIPPoolLocked(name, selected)
+}
+
+func (s *Subnet) validateIPPoolSelectionLocked(name string, selected []string, v4Count, v6Count int) error {
+	v4, v6, err := s.selectIPPoolIPsLocked(name, selected, v4Count, v6Count)
+	if err != nil {
+		return err
+	}
+	selV4, selV6 := util.SplitIpsByProtocol(selected)
+	if !slices.Equal(v4, selV4) || !slices.Equal(v6, selV6) {
+		return fmt.Errorf("%w: ippool %s in subnet %s, selection %v is stale, select again",
+			ErrSelectionChanged, name, s.Name, selected)
+	}
+	return nil
+}
+
+// selectIPPoolIPsLocked implements SelectIPPoolIPs; the caller must hold the subnet
+// lock.
+func (s *Subnet) selectIPPoolIPsLocked(name string, keep []string, v4Count, v6Count int) (v4, v6 []string, err error) {
+	var heldV4, heldV6 *IPRangeList
+	if held := s.IPPools[name]; held != nil {
+		heldV4, heldV6 = held.V4IPs, held.V6IPs
+	}
+	var defaultV4Available, defaultV6Available *IPRangeList
+	if defaultPool := s.IPPools[""]; defaultPool != nil {
+		defaultV4Available = defaultPool.V4Available
+		defaultV6Available = defaultPool.V6Available
+	}
+
+	keepV4, keepV6 := util.SplitIpsByProtocol(keep)
+	// the usable range subtracts the subnet's reserved addresses: an address moved into
+	// excludeIps is not allocatable even for the pool holding it, so retaining it would
+	// pin an unusable member to the pool instead of replacing it
+	v4Range, err := usableRange(s.V4CIDR)
+	if err != nil {
+		return nil, nil, err
+	}
+	v6Range, err := usableRange(s.V6CIDR)
+	if err != nil {
+		return nil, nil, err
+	}
+	v4 = s.pickIPPoolIPs(name, slices.Clone(keepV4), v4Count, v4Range.Separate(s.V4Reserved), heldV4, defaultV4Available)
+	v6 = s.pickIPPoolIPs(name, slices.Clone(keepV6), v6Count, v6Range.Separate(s.V6Reserved), heldV6, defaultV6Available)
+	if len(v4) < v4Count || len(v6) < v6Count {
+		return nil, nil, fmt.Errorf("subnet %s does not have enough free addresses for ippool %s: got %d/%d IPv4 and %d/%d IPv6 addresses",
+			s.Name, name, len(v4), v4Count, len(v6), v6Count)
+	}
+	return v4, v6, nil
+}
+
+// pickIPPoolIPs retains up to count candidates that are still usable - entries of the
+// recorded keep list in their recorded order first, addresses the pool already holds
+// next - and tops the result up from the default pool's available addresses. A
+// candidate is unusable when it falls outside usable - the subnet's address range
+// without its reserved addresses - or is owned by someone else now; it is dropped and
+// replaced by a new pick instead of conflicting.
+func (s *Subnet) pickIPPoolIPs(name string, candidates []string, count int, usable, held, available *IPRangeList) []string {
+	contains := func(list *IPRangeList, ip IP) bool {
+		return list != nil && list.Contains(ip)
+	}
+	picked := make([]string, 0, count)
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range append(candidates, takeIPs(held.Intersect(usable), count)...) {
+		if len(picked) == count {
+			break
+		}
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		ip, err := NewIP(candidate)
+		if err != nil {
+			klog.Warningf("ippool %s: skipping invalid recorded address %s: %v", name, candidate, err)
+			continue
+		}
+		if !contains(usable, ip) || (!contains(held, ip) && !contains(available, ip)) {
+			klog.Infof("ippool %s: dropping unusable recorded address %s in subnet %s", name, candidate, s.Name)
+			continue
+		}
+		picked = append(picked, candidate)
+	}
+	// top up from the default pool; retained candidates came from the same list, so
+	// over-fetch and skip them instead of picking one address twice
+	for _, candidate := range takeIPs(available, count+len(seen)) {
+		if len(picked) == count {
+			break
+		}
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		picked = append(picked, candidate)
+	}
+	return picked
+}
+
+// usableRange returns the subnet's usable address range, i.e. without the network and
+// broadcast addresses, using the same boundary rules as the subnet allocator.
+func usableRange(cidr *net.IPNet) (*IPRangeList, error) {
+	if cidr == nil {
+		return NewEmptyIPRangeList(), nil
+	}
+	firstIP, err := util.FirstIP(cidr.String())
+	if err != nil {
+		return nil, fmt.Errorf("get first usable IP for %s: %w", cidr, err)
+	}
+	lastIP, err := util.LastIP(cidr.String())
+	if err != nil {
+		return nil, fmt.Errorf("get last usable IP for %s: %w", cidr, err)
+	}
+	r, err := NewIPRangeListFrom(fmt.Sprintf("%s..%s", firstIP, lastIP))
+	if err != nil {
+		return nil, fmt.Errorf("build usable IP range for %s: %w", cidr, err)
+	}
+	return r, nil
+}
+
+func takeIPs(list *IPRangeList, count int) []string {
+	if list == nil || count <= 0 {
+		return nil
+	}
+	ips := make([]string, 0, count)
+	for i := 0; i < list.Len() && len(ips) < count; i++ {
+		r := list.At(i)
+		for ip := r.Start(); len(ips) < count; ip = ip.Add(1) {
+			ips = append(ips, ip.String())
+			if ip.Equal(r.End()) {
+				break
+			}
+		}
+	}
+	return ips
+}
+
 func (s *Subnet) AddOrUpdateIPPool(name string, ips []string) error {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
+	return s.setIPPoolLocked(name, ips)
+}
+
+// setIPPoolLocked replaces the addresses of a named pool, moving previously held
+// addresses that are not part of the new set back to the default pool. The caller
+// must hold the subnet lock.
+func (s *Subnet) setIPPoolLocked(name string, ips []string) error {
 	pool := &IPPool{
 		V4IPs:       NewEmptyIPRangeList(),
 		V6IPs:       NewEmptyIPRangeList(),
@@ -900,12 +1110,14 @@ func (s *Subnet) IPPoolStatistics(ippool string) (
 		return v4Available, v4Using, v6Available, v6Using, v4AvailableRange, v4UsingRange, v6AvailableRange, v6UsingRange
 	}
 
-	v4Available = p.V4Available.Count()
-	v6Available = p.V6Available.Count()
+	if !p.allocationsBlocked {
+		v4Available = p.V4Available.Count()
+		v6Available = p.V6Available.Count()
+		v4AvailableRange = p.V4Available.String()
+		v6AvailableRange = p.V6Available.String()
+	}
 	v4Using = p.V4Using.Count()
 	v6Using = p.V6Using.Count()
-	v4AvailableRange = p.V4Available.String()
-	v6AvailableRange = p.V6Available.String()
 	v4UsingRange = p.V4Using.String()
 	v6UsingRange = p.V6Using.String()
 

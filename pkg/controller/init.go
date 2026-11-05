@@ -450,7 +450,14 @@ func (c *Controller) InitIPAM() error {
 		return err
 	}
 	for _, ippool := range ippools {
-		if err = c.ipam.AddOrUpdateIPPool(ippool.Spec.Subnet, ippool.Name, ippool.Spec.IPs); err != nil {
+		// A failed prepare may have changed OVN without persisting membership. Restore
+		// the data plane from the durable selection before making count pools allocatable.
+		if ippool.Spec.IPCount > 0 {
+			if err = c.reconcileIPPoolAddressSet(ippool, ippoolIPs(ippool)); err != nil {
+				return fmt.Errorf("restore address set for ippool %s: %w", ippool.Name, err)
+			}
+		}
+		if err = c.ipam.AddOrUpdateIPPool(ippool.Spec.Subnet, ippool.Name, ippoolIPs(ippool)); err != nil {
 			klog.Errorf("failed to init ippool %s: %v", ippool.Name, err)
 		}
 	}
