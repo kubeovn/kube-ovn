@@ -80,6 +80,7 @@ type Configuration struct {
 	TCPConnCheckPort          int32
 	UDPConnCheckPort          int32
 	EnableTProxy              bool
+	SetGeneveTxOff            bool
 	OVSVsctlConcurrency       int32
 	SetVxlanTxOff             bool
 	LogPerm                   string
@@ -135,6 +136,7 @@ func ParseFlags() *Configuration {
 		argTCPConnectivityCheckPort  = pflag.Int32("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
 		argUDPConnectivityCheckPort  = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 		argEnableTProxy              = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
+		argSetGeneveTxOff            = pflag.Bool("set-geneve-tx-off", true, "Whether to set genev_sys_6081 tx off")
 		argOVSVsctlConcurrency       = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
 		argEnableOVNIPSec            = pflag.Bool("enable-ovn-ipsec", false, "Whether to enable ovn ipsec")
 		argCertManagerIPSecCert      = pflag.Bool("cert-manager-ipsec-cert", false, "Whether to use cert-manager for signing IPSec certificates")
@@ -208,6 +210,7 @@ func ParseFlags() *Configuration {
 		TCPConnCheckPort:          *argTCPConnectivityCheckPort,
 		UDPConnCheckPort:          *argUDPConnectivityCheckPort,
 		EnableTProxy:              *argEnableTProxy,
+		SetGeneveTxOff:            *argSetGeneveTxOff,
 		OVSVsctlConcurrency:       *argOVSVsctlConcurrency,
 		SetVxlanTxOff:             *argSetVxlanTxOff,
 		LogPerm:                   *argLogPerm,
