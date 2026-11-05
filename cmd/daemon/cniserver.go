@@ -69,7 +69,7 @@ func main() {
 		util.LogFatalAndExit(err, "failed to initialize node gateway")
 	}
 
-	if err := initForOS(); err != nil {
+	if err := initForOS(config.SetGeneveTxOff); err != nil {
 		util.LogFatalAndExit(err, "failed to do the OS initialization")
 	}
 
