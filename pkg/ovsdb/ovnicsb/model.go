@@ -55,8 +55,6 @@ type PortBinding struct {
 	Gateway          string            `ovsdb:"gateway"`
 	Encap            *string           `ovsdb:"encap"`
 	Address          string            `ovsdb:"address"`
-	Type             *string           `ovsdb:"type"`
-	NbIcUUID         *string           `ovsdb:"nb_ic_uuid"`
 	ExternalIDs      map[string]string `ovsdb:"external_ids"`
 }
 

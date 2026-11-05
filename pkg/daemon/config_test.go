@@ -2,13 +2,34 @@ package daemon
 
 import (
 	"net"
+	"os"
 	"testing"
 
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestParseFlagsAcceptsLegacyOVSVsctlConcurrency(t *testing.T) {
+	for _, value := range []string{"0", "17", "100"} {
+		t.Run(value, func(t *testing.T) {
+			oldArgs, oldFlags, oldLogLevel := os.Args, pflag.CommandLine, logrus.GetLevel()
+			t.Cleanup(func() {
+				os.Args, pflag.CommandLine = oldArgs, oldFlags
+				logrus.SetLevel(oldLogLevel)
+			})
+			// PanicOnError makes the daemon's fatal flag parsing testable in process.
+			pflag.CommandLine = pflag.NewFlagSet("daemon", pflag.PanicOnError)
+			os.Args = []string{"daemon", "--ovs-vsctl-concurrency=" + value, "--mtu=1400"}
+			var config *Configuration
+			require.NotPanics(t, func() { config = ParseFlags() }, "existing deployments may keep the removed CLI concurrency option")
+			require.Equal(t, 1400, config.MTU, "arguments after the legacy option must still be parsed")
+		})
+	}
+}
 
 func TestParseNodeNetworks(t *testing.T) {
 	tests := []struct {

@@ -159,6 +159,13 @@ func ParseFlags() *Configuration {
 		argACLSamplingLocalGroupID = pflag.Uint32("acl-sampling-local-group-id", aclsampling.DefaultLocalGroupID, "Local psample group ID used to deliver ACL samples")
 	)
 
+	// Older charts still pass this option when upgrading only the daemon image.
+	// Native OVSDB operations no longer use the ovs-vsctl concurrency limiter.
+	pflag.Int32("ovs-vsctl-concurrency", 100, "Deprecated compatibility option; ignored")
+	if err := pflag.CommandLine.MarkDeprecated("ovs-vsctl-concurrency", "native OVSDB operations do not use this limit"); err != nil {
+		util.LogFatalAndExit(err, "failed to deprecate legacy flag")
+	}
+
 	// mute info log for ipset lib
 	logrus.SetLevel(logrus.WarnLevel)
 

@@ -103,3 +103,33 @@ func requireICPolicyPresent(t *testing.T, client *ovs.OVNNbClient, priority int,
 	require.Len(t, policies, 1)
 	return policies[0]
 }
+
+func TestICRouteSyncPreservesNamedRouteTablePolicies(t *testing.T) {
+	for _, origin := range []string{util.OvnICNone, util.OvnICConnected, util.OvnICStatic} {
+		t.Run("origin="+origin, func(t *testing.T) {
+			client := newICRouteTestClient(t)
+			router := util.DefaultVpc
+			require.NoError(t, client.CreateLogicalRouter(router))
+			c := &Controller{config: &Configuration{ClusterRouter: router}, OVNNbTables: client}
+			// OVN IC preserves the advertised route_table when learning a route.
+			route := &ovnnb.LogicalRouterStaticRoute{UUID: ovsclient.NamedUUID(), RouteTable: "tenant-a", IPPrefix: "10.30.0.0/16", Nexthop: "100.64.0.10", Options: map[string]string{util.OvnICKey: origin}}
+			require.NoError(t, client.CreateLogicalRouterStaticRoutes(router, route))
+			match := "ip4.dst == 10.30.0.0/16"
+			// Keep a policy created before the migration, then recreate it if absent.
+			require.NoError(t, client.AddLogicalRouterPolicy(router, util.OvnICPolicyPriority, match, ovnnb.LogicalRouterPolicyActionAllow, nil, nil, map[string]string{util.OvnICKey: origin}))
+			c.syncOneRouteToPolicy(util.OvnICKey, origin)
+			requireICPolicyPresent(t, client, util.OvnICPolicyPriority, match)
+			require.NoError(t, client.DeleteLogicalRouterPolicy(router, util.OvnICPolicyPriority, match))
+			for range 2 {
+				c.syncOneRouteToPolicy(util.OvnICKey, origin)
+				policy := requireICPolicyPresent(t, client, util.OvnICPolicyPriority, match)
+				require.Equal(t, origin, policy.ExternalIDs[util.OvnICKey])
+			}
+			require.NoError(t, client.DeleteLogicalRouterStaticRouteByExternalIDs(router, nil))
+			c.syncOneRouteToPolicy(util.OvnICKey, origin)
+			policies, err := client.ListLogicalRouterPolicies(router, util.OvnICPolicyPriority, nil, false)
+			require.NoError(t, err)
+			require.Empty(t, policies, "a removed route must still remove its policy")
+		})
+	}
+}

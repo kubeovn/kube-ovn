@@ -81,11 +81,31 @@ func TestEnsureICNbClientWithUpstreamSchema(t *testing.T) {
 	require.Equal(t, "10.0.0.0/24", subnet)
 }
 
+func TestEnsureICSbClientWithOVN2403Schema(t *testing.T) {
+	// https://github.com/ovn-org/ovn/blob/v24.03.0/ovn-ic-sb.ovsschema
+	sbModel, err := ovnicsb.FullDatabaseModel()
+	require.NoError(t, err)
+	host, port := newICTestEndpoint(t, sbModel, "ovn-ic-sb-v24.03.0.ovsschema")
+	c := &Controller{config: &Configuration{OvnTimeout: 1, OvsDbConnectTimeout: 1, OvsDbConnectMaxRetry: 1}}
+	t.Cleanup(c.closeICClients)
+	require.NoError(t, c.ensureICSbClient(host, port))
+	az := &ovnicsb.AvailabilityZone{Name: "legacy-az"}
+	require.NoError(t, c.ICSbTables.Table(az).Create(t.Context(), "seed-availability-zone", az))
+	require.NoError(t, c.ICSbTables.Table(az).Get(t.Context(), az))
+	portBinding := &ovnicsb.PortBinding{LogicalPort: "legacy-port", AvailabilityZone: az.UUID, TransitSwitch: "ts", TunnelKey: 1}
+	require.NoError(t, c.ICSbTables.Table(portBinding).Create(t.Context(), "seed-port-binding", portBinding))
+	require.NoError(t, c.removeOldICChassisInSbDB(az.Name))
+	var ports []ovnicsb.PortBinding
+	require.NoError(t, c.ICSbTables.Table(&ovnicsb.PortBinding{}).List(t.Context(), &ports))
+	require.Empty(t, ports)
+}
+
 func newICTestEndpoint(t *testing.T, dbModel model.ClientDBModel, schemaFile string) (string, string) {
 	t.Helper()
 	serverModel, err := serverdb.FullDatabaseModel()
 	require.NoError(t, err)
-	// Schemas copied from ovn-org/ovn v26.03.0 without modifications.
+	// Schemas are unmodified upstream fixtures; the version is included in
+	// legacy fixture names, while unversioned fixtures use OVN v26.03.0.
 	data, err := os.ReadFile("testdata/" + schemaFile)
 	require.NoError(t, err)
 	var schema ovsdb.DatabaseSchema

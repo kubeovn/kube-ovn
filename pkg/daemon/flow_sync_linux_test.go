@@ -2,15 +2,41 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
+	openvswitch "github.com/digitalocean/go-openvswitch/ovs"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestSyncFlowsOnlyTouchesOwnedBridges(t *testing.T) {
+	t.Parallel()
+
+	var queried []string
+	client := openvswitch.New(openvswitch.Exec(func(command string, args ...string) ([]byte, error) {
+		require.Equal(t, "ovs-ofctl", command)
+		require.Equal(t, "dump-flows", args[0])
+		queried = append(queried, args[1])
+		// Stop at the dump boundary so the test never executes host OVS tools.
+		return nil, errors.New("injected dump failure")
+	}))
+	controller := &Controller{
+		ovsClient: client,
+		vswitchTables: &bridgePortProvider{bridges: []vswitch.Bridge{
+			{Name: "br-provider", ExternalIDs: map[string]string{"vendor": util.CniTypeName}},
+			{Name: "br-int"},
+			{Name: "br-third-party", ExternalIDs: map[string]string{"vendor": "other"}},
+		}},
+	}
+	controller.syncFlows()
+	require.Equal(t, []string{"br-provider"}, queried)
+}
 
 func TestUnderlayServiceFlowTracksPatchOfport(t *testing.T) {
 	interfaces := flowInterfaceProvider{

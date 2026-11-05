@@ -45,6 +45,10 @@ func (h bridgePortHandle) Filter(_ context.Context, predicate, result any) error
 	return nil
 }
 
+func (h bridgePortHandle) List(ctx context.Context, result any) error {
+	return h.Filter(ctx, func(*vswitch.Bridge) bool { return true }, result)
+}
+
 func TestListVswitchBridgePortsExcludesLocalPort(t *testing.T) {
 	t.Parallel()
 
@@ -78,4 +82,24 @@ func TestListVswitchBridgePortsExcludesLocalPort(t *testing.T) {
 		require.NoError(t, err)
 		require.Empty(t, ports)
 	}
+}
+
+func TestVswitchPortToBridgeRequiresAnOwner(t *testing.T) {
+	t.Parallel()
+
+	controller := &Controller{vswitchTables: &bridgePortProvider{
+		bridges: []vswitch.Bridge{{Name: "br-provider", Ports: []string{"attached"}}},
+		ports: []vswitch.Port{
+			{UUID: "attached", Name: "eth0"},
+			{UUID: "unattached", Name: "eth1"},
+		},
+	}}
+	for _, name := range []string{"eth1", "eth2"} {
+		bridge, err := controller.vswitchPortToBridge(name)
+		require.ErrorIs(t, err, table.ErrNotFound)
+		require.Empty(t, bridge)
+	}
+	bridge, err := controller.vswitchPortToBridge("eth0")
+	require.NoError(t, err)
+	require.Equal(t, "br-provider", bridge)
 }

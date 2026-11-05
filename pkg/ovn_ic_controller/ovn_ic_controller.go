@@ -542,7 +542,7 @@ func (c *Controller) syncOneRouteToPolicy(key, value string) {
 	}
 	lrRouteList, err := c.listICRoutes(lr, func(route *ovnnb.LogicalRouterStaticRoute) bool {
 		origin, exists := route.Options[key]
-		return route.RouteTable == util.MainRouteTable && exists && origin == value
+		return exists && origin == value
 	})
 	if err != nil {
 		klog.Errorf("failed to list lr ovn-ic route %v", err)

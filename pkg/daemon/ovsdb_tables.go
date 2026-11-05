@@ -177,7 +177,7 @@ func (c *Controller) vswitchPortToBridge(portName string) (string, error) {
 		return "", err
 	}
 	if len(ports) == 0 {
-		return "", nil
+		return "", fmt.Errorf("OVS port %q: %w", portName, table.ErrNotFound)
 	}
 	portID := ports[0].UUID
 	bridges, err := c.listVswitchBridges(false, func(bridge *vswitch.Bridge) bool {
@@ -187,7 +187,7 @@ func (c *Controller) vswitchPortToBridge(portName string) (string, error) {
 		return "", err
 	}
 	if len(bridges) == 0 {
-		return "", nil
+		return "", fmt.Errorf("bridge for OVS port %q: %w", portName, table.ErrNotFound)
 	}
 	return bridges[0].Name, nil
 }

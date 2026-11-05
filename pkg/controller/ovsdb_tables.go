@@ -520,8 +520,11 @@ func ensureParentExternalIDs(externalIDs map[string]string, key, parentName stri
 	return ids, true
 }
 
-func (c *Controller) listParentACLs(uuids []string, direction string, externalIDs map[string]string) ([]ovnnb.ACL, error) {
+func (c *Controller) listParentACLs(uuids []string, parentName, direction string, externalIDs map[string]string) ([]ovnnb.ACL, error) {
 	return c.listAttached(uuids, &ovnnb.ACL{}, func(row *ovnnb.ACL) bool {
+		if row.ExternalIDs["parent"] != parentName {
+			return false
+		}
 		if direction != "" && row.Direction != direction {
 			return false
 		}
@@ -557,7 +560,7 @@ func (c *Controller) deleteLogicalSwitchACLOps(ls *ovnnb.LogicalSwitch, directio
 	if ls == nil {
 		return nil, errors.New("logical switch is nil")
 	}
-	rows, err := c.listParentACLs(ls.ACLs, direction, externalIDs)
+	rows, err := c.listParentACLs(ls.ACLs, ls.Name, direction, externalIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -569,7 +572,7 @@ func (c *Controller) deletePortGroupACLOps(pgName, direction string, externalIDs
 	if err != nil {
 		return nil, err
 	}
-	rows, err := c.listParentACLs(pg.ACLs, direction, externalIDs)
+	rows, err := c.listParentACLs(pg.ACLs, pgName, direction, externalIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -978,7 +981,9 @@ func (c *Controller) deleteDHCPOptionsForPort(portName string) error {
 	}
 	return c.deleteFiltered(&ovnnb.DHCPOptions{}, "dhcp-port-options-del",
 		func() error { return c.OVNNbClient.DeleteDHCPOptionsForPort(portName) },
-		func(row *ovnnb.DHCPOptions) bool { return row.ExternalIDs[ovs.PortKey] == portName })
+		func(row *ovnnb.DHCPOptions) bool {
+			return row.ExternalIDs["vendor"] == util.CniTypeName && row.ExternalIDs[ovs.PortKey] == portName
+		})
 }
 
 func (c *Controller) deleteDHCPOptions(lsName, protocol string) error {
@@ -2989,6 +2994,8 @@ func (c *Controller) updateDnatAndSnat(lrName, externalIP, logicalIP, lspName, e
 	options := map[string]string(nil)
 	if distributed {
 		options = map[string]string{"stateless": "true"}
+	} else {
+		externalMac, lspName = "", ""
 	}
 	return c.addNat(lrName, ovnnb.NATTypeDNATAndSNAT, externalIP, logicalIP, externalMac, lspName, options)
 }

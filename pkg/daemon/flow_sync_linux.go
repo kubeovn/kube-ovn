@@ -1,7 +1,6 @@
 package daemon
 
 import (
-	"context"
 	"errors"
 	"time"
 
@@ -10,7 +9,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
-	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -45,14 +43,13 @@ func (c *Controller) syncFlows() {
 		klog.Error("failed to list bridges: vswitch table provider is nil")
 		return
 	}
-	var bridgeRows []vswitch.Bridge
-	if err := c.vswitchTables.Table(&vswitch.Bridge{}).List(context.Background(), &bridgeRows); err != nil {
+	bridges, err := ovs.Bridges(c.vswitchTables)
+	if err != nil {
 		klog.Errorf("failed to list bridges: %v", err)
 		return
 	}
 
-	for _, bridge := range bridgeRows {
-		bridgeName := bridge.Name
+	for _, bridgeName := range bridges {
 		existing, err := ovs.DumpFlows(c.ovsClient, bridgeName)
 		if err != nil {
 			klog.Errorf("failed to dump flows for bridge %s: %v", bridgeName, err)
