@@ -223,8 +223,9 @@ function get_live_cluster_id {
 }
 
 function quit {
-    /usr/share/ovn/scripts/ovn-ctl stop_northd
-    exit 0
+    local status=$?
+    /usr/share/ovn/scripts/ovn-ctl stop_northd || echo "failed to stop northd during cleanup" >&2
+    exit "$status"
 }
 
 function is_clustered {
@@ -338,15 +339,11 @@ function rejoin_db_from_raft_header() {
 function recover_clustered_database {
     local db_file="$1"
     local hdr_file="$2"
-    local db_name="$3"
-    local db_type="$4"
-    local local_addr="$5"
-    shift 5
-    local remote_addr=("$@")
 
     local message
-    message=$(ovsdb-tool check-cluster "$db_file" 2>&1) || true
-    if grep -q 'has not joined the cluster' <<< "$message"; then
+    local status=0
+    message=$(ovsdb-tool check-cluster "$db_file" 2>&1) || status=$?
+    if grep -Fxq "$db_file has not joined the cluster, omitting" <<< "$message"; then
         local birth_time
         birth_time=$(stat --format=%W "$db_file")
         local now
@@ -356,40 +353,14 @@ function recover_clustered_database {
             archive_recovery_file "$db_file" "$db_file" failed-join "database file" || return 1
             archive_recovery_file "$hdr_file" "$hdr_file" invalid "stale raft header file" || return 1
         fi
-        return 0
-    fi
-    if ovsdb-tool check-cluster "$db_file"; then
-        return 0
-    fi
-
-    local db_backup="$db_file.backup-$(date +%s)-$(random_str)"
-    echo "backup $db_file to $db_backup"
-    cp "$db_file" "$db_backup" || return 1
-    echo "detected database corruption for file $db_file, try to fix it."
-    if ovsdb-tool fix-cluster "$db_file" && ovsdb-tool check-cluster "$db_file"; then
-        return 0
-    fi
-
-    local server_id=""
-    server_id=$(ovsdb-tool db-sid "$db_file" || true)
-    if ! is_valid_uuid "$server_id"; then
-        echo "failed to get server ID from db file $db_file"
+    elif [[ $status -ne 0 ]]; then
+        echo "$message" >&2
+        # A locally valid repaired prefix can discard committed history and
+        # form an unsafe majority. A reachable peer is not proof of safety.
+        echo "ERROR! refusing to automatically repair or rebuild $db_file; preserve the database and reconcile cluster history before explicit recovery" >&2
         return 1
     fi
-    local live_cid=""
-    live_cid=$(get_live_cluster_id "$db_type") || {
-        echo "failed to get live cluster ID for $db_name"
-        return 1
-    }
-
-    local db_new="$db_file.init-$(date +%s)-$(random_str)"
-    echo "rebuilding $db_name database with cluster ID $live_cid and server ID $server_id"
-    if ! ovsdb-tool --cid "$live_cid" --sid "$server_id" join-cluster "$db_new" "$db_name" "$local_addr" "${remote_addr[@]}"; then
-        archive_recovery_file "$db_new" "$db_file" failed-rejoin "database file left by failed join" || return 1
-        return 1
-    fi
-    mv "$db_new" "$db_file" || return 1
-    archive_recovery_file "$hdr_file" "$hdr_file" invalid "stale raft header file" || return 1
+    return 0
 }
 
 function create_local_config {
@@ -422,8 +393,7 @@ function create_local_config {
     done
 }
 
-# create a new db file and join it to the cluster
-# if the nb/sb db file is corrupted
+# Validate existing databases before starting NB/SB or recovering a missing file.
 function ovn_db_pre_start() {
     local db=""
     local db_eval=""
@@ -460,10 +430,13 @@ function ovn_db_pre_start() {
     local hdr_file="/etc/ovn/ovn${1}_db.hdr"
     if [[ -e "$db_file" ]]; then
         local actual_db_name=""
-        actual_db_name=$(ovsdb-tool db-name "$db_file" || true)
+        if ! actual_db_name=$(ovsdb-tool db-name "$db_file"); then
+            echo "ERROR! cannot read database identity from $db_file; preserve it for explicit recovery" >&2
+            return 1
+        fi
         if [[ "$actual_db_name" != "$db" ]]; then
-            echo "ovn db file $db_file is corrupted, archive it."
-            archive_recovery_file "$db_file" "$db_file" backup "database file" || return 1
+            echo "ERROR! expected $db in $db_file, found $actual_db_name; refusing to replace the database" >&2
+            return 1
         fi
     fi
 
@@ -478,8 +451,13 @@ function ovn_db_pre_start() {
         fi
     fi
 
-    if [[ -e "$db_file" ]] && ovsdb-tool db-is-clustered "$db_file"; then
-        recover_clustered_database "$db_file" "$hdr_file" "$db" "$1" "$local_addr" "${remote_addr[@]}" || return 1
+    if [[ -e "$db_file" ]]; then
+        if ovsdb-tool db-is-clustered "$db_file"; then
+            recover_clustered_database "$db_file" "$hdr_file" || return 1
+        elif ! ovsdb-tool db-is-standalone "$db_file"; then
+            echo "ERROR! cannot determine the storage model of $db_file; preserve it for explicit recovery" >&2
+            return 1
+        fi
     fi
     create_local_config "$1" "$db_eval"
 }
