@@ -145,7 +145,7 @@ func ParseFlags() *Configuration {
 		argUDPConnectivityCheckPort      = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 		argEnableRecompute               = pflag.Bool("enable-recompute", false, "Enable periodic ovn-controller recompute")
 		argEnableTProxy                  = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
-		argSetGeneveTxOff                = pflag.Bool("set-geneve-tx-off", false, "Whether to set genev_sys_6081 tx off")
+		argSetGeneveTxOff                = pflag.Bool("set-geneve-tx-off", true, "Whether to set genev_sys_6081 tx off")
 		argSetVxlanTxOff                 = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
 		argLogPerm                       = pflag.String("log-perm", "640", "The permission for the log file")
 		argGatewayNetfilterMode          = pflag.String("gateway-netfilter-mode", "auto", "gateway netfilter backend: auto, iptables, or nftables")

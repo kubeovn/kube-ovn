@@ -31,14 +31,14 @@ func TestParseFlagsAcceptsLegacyOVSVsctlConcurrency(t *testing.T) {
 	}
 }
 
-func TestParseFlagsGeneveTxOff(t *testing.T) {
+func TestParseFlagsGeneveTxOffDefaultsEnabled(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
 		want bool
 	}{
-		{name: "disabled by default", want: false},
-		{name: "enabled explicitly", args: []string{"--set-geneve-tx-off=true"}, want: true},
+		{name: "enabled by default", want: true},
+		{name: "disabled explicitly", args: []string{"--set-geneve-tx-off=false"}, want: false},
 	}
 
 	for _, tt := range tests {
