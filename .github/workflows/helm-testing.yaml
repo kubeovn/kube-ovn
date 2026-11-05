@@ -79,7 +79,7 @@ jobs:
             "$nonroot_test_dir/daemon.test" -test.run='^TestNonRootVlanLifecycle$' -test.v
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
