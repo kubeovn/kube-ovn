@@ -400,7 +400,7 @@ func getDbSids(f *framework.Framework, deploy *appsv1.Deployment) map[string]set
 	return dbSids
 }
 
-func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile, dbFileHost, corruptCmd string, kindNodes map[string]*kind.Node, lastFailedCheck **failedCheckCluster) {
+func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile, dbFileHost, corruptCmd string, automaticRecoveryExpected bool, kindNodes map[string]*kind.Node, lastFailedCheck **failedCheckCluster) {
 	ginkgo.GinkgoHelper()
 
 	replicas := *deploy.Spec.Replicas
@@ -471,18 +471,65 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	ginkgo.By("Corrupting db file " + dbFileHost + " on node " + nodeName)
 	framework.ExpectHaveKey(kindNodes, nodeName, "getting kind node by name")
 	node := kindNodes[nodeName]
-	stdout, stderr, err := node.Exec("bash", "-exc", corruptCmd)
+	dbKind := strings.TrimPrefix(strings.TrimSuffix(filepath.Base(dbFile), "_db.db"), "ovn")
+	headerFileHost := raftHeaderFileHostPath(dbKind)
+	dbBackupFileHost := dbFileHost + ".kube-ovn-ha-backup"
+	headerBackupFileHost := headerFileHost + ".kube-ovn-ha-backup"
+	stdout, stderr, err := node.Exec("cp", dbFileHost, dbBackupFileHost)
+	framework.ExpectNoError(err, fmt.Sprintf("failed to back up db file %q: stdout = %q, stderr = %q", dbFileHost, stdout, stderr))
+	stdout, stderr, err = node.Exec("cp", headerFileHost, headerBackupFileHost)
+	framework.ExpectNoError(err, fmt.Sprintf("failed to back up raft header %q: stdout = %q, stderr = %q", headerFileHost, stdout, stderr))
+	stdout, stderr, err = node.Exec("bash", "-exc", corruptCmd)
 	framework.ExpectNoError(err, fmt.Sprintf("failed to corrupt db file %q: stdout = %q, stderr = %q", dbFileHost, stdout, stderr))
 
 	ginkgo.By("Getting file size of db file " + dbFileHost + " on node " + nodeName + " after corruption")
-	_, newSize := getFileInfo(node, dbFileHost)
-	framework.Logf("file size of db file %s on node %s after corruption: %s", dbFileHost, nodeName, newSize)
-	framework.ExpectNotEqual(newSize, size, "file size of db file %q on node %s should change after corruption", dbFileHost, nodeName)
+	corruptedBirth, corruptedSize := getFileInfo(node, dbFileHost)
+	framework.Logf("file info of db file %s on node %s after corruption: birth time = %s, size = %s", dbFileHost, nodeName, corruptedBirth, corruptedSize)
+	framework.ExpectNotEqual(corruptedSize, size, "file size of db file %q on node %s should change after corruption", dbFileHost, nodeName)
 
 	ginkgo.By("Scaling up deployment ovn-central to " + strconv.Itoa(int(replicas)))
 	setCentralReplicas(deployClient, deploy.Name, replicas)
 
-	ginkgo.By("Waiting for deployment ovn-central to be ready")
+	if automaticRecoveryExpected {
+		ginkgo.By("Waiting for deployment ovn-central to be ready")
+		deployClient.RolloutStatus(deploy.Name)
+	} else {
+		ginkgo.By("Waiting for the corrupted ovn-central member to restart without rewriting its database")
+		framework.WaitUntil(time.Second, 60*time.Second, func(_ context.Context) (bool, error) {
+			pods, err := getCentralPods(deployClient, deploy)
+			if err != nil || len(pods.Items) != int(replicas) {
+				return false, err
+			}
+			for _, pod := range pods.Items {
+				if pod.Spec.NodeName != nodeName {
+					continue
+				}
+				for _, status := range pod.Status.ContainerStatuses {
+					if status.Name == "ovn-central" && status.RestartCount > 0 {
+						return true, nil
+					}
+				}
+			}
+			return false, nil
+		}, "corrupted ovn-central member to restart")
+		gotBirth, gotSize := getFileInfo(node, dbFileHost)
+		framework.ExpectEqual(gotBirth, corruptedBirth, "corrupted database birth time must remain unchanged")
+		framework.ExpectEqual(gotSize, corruptedSize, "corrupted database size must remain unchanged")
+	}
+
+	if !automaticRecoveryExpected {
+		ginkgo.By("Restoring the original database and raft header")
+		stdout, stderr, err = node.Exec("cp", dbBackupFileHost, dbFileHost)
+		framework.ExpectNoError(err, fmt.Sprintf("failed to restore db file %q: stdout = %q, stderr = %q", dbFileHost, stdout, stderr))
+		stdout, stderr, err = node.Exec("cp", headerBackupFileHost, headerFileHost)
+		framework.ExpectNoError(err, fmt.Sprintf("failed to restore raft header %q: stdout = %q, stderr = %q", headerFileHost, stdout, stderr))
+	}
+
+	ginkgo.By("Removing temporary recovery backups")
+	stdout, stderr, err = node.Exec("rm", "-f", dbBackupFileHost, headerBackupFileHost)
+	framework.ExpectNoError(err, fmt.Sprintf("failed to remove recovery backups: stdout = %q, stderr = %q", stdout, stderr))
+
+	ginkgo.By("Waiting for deployment ovn-central to be ready after restoring the database")
 	deployClient.RolloutStatus(deploy.Name)
 
 	ginkgo.By("Getting ovn-central pods after scale up")
@@ -490,7 +537,7 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	framework.ExpectNoError(err)
 	framework.ExpectHaveLen(pods.Items, int(replicas))
 
-	ginkgo.By("Checking db files on all ovn-central pods are healthy after corruption recovery")
+	ginkgo.By("Checking db files on all ovn-central pods are healthy after database recovery")
 	newNodes.Clear()
 	for pod := range slices.Values(pods.Items) {
 		newNodes.Insert(pod.Spec.NodeName)
@@ -498,10 +545,14 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	waitForDbRecovery(f, pods.Items)
 	framework.ExpectEqual(newNodes, nodes, "the set of nodes hosting ovn-central pods should be the same as before")
 
-	ginkgo.By("Getting birth time of db file " + dbFileHost + " on node " + nodeName + " after corruption recovery")
+	ginkgo.By("Getting birth time of db file " + dbFileHost + " after database recovery")
 	newBirth, _ := getFileInfo(node, dbFileHost)
-	framework.Logf("birth time of db file %s on node %s after corruption recovery: %s", dbFileHost, nodeName, newBirth)
-	framework.ExpectNotEqual(newBirth, birth, "birth time of db file %q on node %s should change after corruption recovery", dbFileHost, nodeName)
+	framework.Logf("birth time of db file %s on node %s after database recovery: %s", dbFileHost, nodeName, newBirth)
+	if automaticRecoveryExpected {
+		framework.ExpectNotEqual(newBirth, birth, "birth time of db file %q on node %s should change after automatic recovery", dbFileHost, nodeName)
+	} else {
+		framework.ExpectEqual(newBirth, birth, "restoring the original database should restore its birth time")
+	}
 }
 
 var _ = framework.SerialDescribe("[group:ha]", func() {
@@ -574,7 +625,7 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 
 	registerKubectlKoHA(f, kindNodes)
 
-	framework.DisruptiveIt("ovn db should recover automatically from db file corruption", func() {
+	framework.DisruptiveIt("ovn db should preserve invalid db files instead of recovering automatically", func() {
 		f.SkipVersionPriorTo(1, 11, "This feature was introduced in v1.11")
 
 		ginkgo.By("Getting deployment ovn-central")
@@ -619,7 +670,8 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 			}
 			for cmd, runSpec := range testcases {
 				if runSpec {
-					corruptAndRecover(f, deploy, dbFile, dbFileHost, cmd, kindNodes, &lastFailedCheck)
+					automaticRecoveryExpected := strings.Contains(cmd, `rm -f`)
+					corruptAndRecover(f, deploy, dbFile, dbFileHost, cmd, automaticRecoveryExpected, kindNodes, &lastFailedCheck)
 				}
 			}
 		}
@@ -678,7 +730,7 @@ grep -q '"cluster_id": "%[2]s"' %[1]q
 rm -f %[3]q
 `, hdrFileHost, zeroClusterID, dbFileHost)
 
-		corruptAndRecover(f, deploy, dbFile, dbFileHost, poisonCmd, kindNodes, &lastFailedCheck)
+		corruptAndRecover(f, deploy, dbFile, dbFileHost, poisonCmd, true, kindNodes, &lastFailedCheck)
 
 		ginkgo.By("Checking every ovn-central pod sees a converged three-member OVN DB cluster")
 		clusterDbSids := getDbSidsFromClusterStatus(f, deploy)
