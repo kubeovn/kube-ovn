@@ -20,11 +20,18 @@ import (
 )
 
 var (
-	icEnabled = "unknown"
-	lastIcCm  map[string]string
-	lastTSs   []string
-	curTSs    []string
+	icEnabled       = "unknown"
+	lastIcCm        map[string]string
+	lastTSs         []string
+	curTSs          []string
+	pendingTSs      []string
+	pendingTSChecks int
 )
+
+func resetTransitSwitchObservation() {
+	pendingTSs = nil
+	pendingTSChecks = 0
+}
 
 func (c *Controller) disableOVNIC(config map[string]string) error {
 	azName := config["az-name"]
@@ -131,7 +138,8 @@ func (c *Controller) DeleteICResources(azName string) error {
 
 func (c *Controller) getICState(cmData, lastcmData map[string]string) int {
 	state := classifyICConfig(icEnabled, lastcmData, cmData)
-	if state != icNoAction {
+	if state != icNoAction && state != icFirstEstablish {
+		resetTransitSwitchObservation()
 		return state
 	}
 
@@ -145,7 +153,20 @@ func (c *Controller) getICState(cmData, lastcmData map[string]string) int {
 		klog.Errorf("failed to get Transit_Switch, %v", err)
 		return icNoAction
 	}
+	if len(curTSs) == 0 {
+		resetTransitSwitchObservation()
+		return icNoAction
+	}
+	var stable bool
+	pendingTSs, pendingTSChecks, stable = observeTransitSwitches(lastTSs, curTSs, pendingTSs, pendingTSChecks)
+	if !stable {
+		return icNoAction
+	}
+	if state == icFirstEstablish {
+		return icFirstEstablish
+	}
 	if slices.Equal(lastTSs, curTSs) {
+		resetTransitSwitchObservation()
 		return icNoAction
 	}
 	return icConfigChange
@@ -201,6 +222,7 @@ func (c *Controller) disableInterConnection(config map[string]string) {
 	}
 	icEnabled = "false"
 	lastIcCm = nil
+	resetTransitSwitchObservation()
 	c.closeICClients()
 	klog.Info("finish removing ovn-ic")
 }
@@ -235,6 +257,7 @@ func (c *Controller) reconcileInterConnection(config map[string]string) {
 		icEnabled = "true"
 		lastIcCm = cloneICConfig(config)
 		lastTSs = curTSs
+		resetTransitSwitchObservation()
 		klog.Info("finish establishing ovn-ic")
 		return
 	case icGatewayChange:
@@ -262,6 +285,7 @@ func (c *Controller) reconcileInterConnection(config map[string]string) {
 		icEnabled = "true"
 		lastIcCm = cloneICConfig(config)
 		lastTSs = curTSs
+		resetTransitSwitchObservation()
 		klog.Info("finish reestablishing ovn-ic")
 		return
 	}
