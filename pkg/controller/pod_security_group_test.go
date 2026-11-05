@@ -1,11 +1,13 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
 	"testing"
 
+	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 	corev1 "k8s.io/api/core/v1"
@@ -17,6 +19,7 @@ import (
 	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -40,15 +43,17 @@ func TestReconcileAllocateSubnetsSecurityGroupLookupFailure(t *testing.T) {
 	assertPodEvent(t, ctrl, "Warning PodNetworkAllocationFailed", "stage=getLogicalSwitchPort", injectedErr.Error())
 }
 
+type podSecurityGroupCase struct {
+	name       string
+	oldGroups  string
+	newGroups  string
+	wantGroups []string
+}
+
 func TestReconcileAllocateSubnetsSecurityGroups(t *testing.T) {
 	for _, backend := range []string{"tables", "legacy"} {
 		for _, provider := range []string{util.OvnProvider, "net1.default.ovn"} {
-			for _, tc := range []struct {
-				name       string
-				oldGroups  string
-				newGroups  string
-				wantGroups []string
-			}{
+			for _, tc := range []podSecurityGroupCase{
 				{name: "replace", oldGroups: "old", newGroups: "new", wantGroups: []string{"new"}},
 				{name: "remove all", oldGroups: "old"},
 				{name: "overlap", oldGroups: "old,shared", newGroups: "new,shared", wantGroups: []string{"new", "shared"}},
@@ -56,102 +61,208 @@ func TestReconcileAllocateSubnetsSecurityGroups(t *testing.T) {
 				{name: "new port", newGroups: "new", wantGroups: []string{"new"}},
 			} {
 				t.Run(backend+"/"+provider+"/"+tc.name, func(t *testing.T) {
-					pod, subnet := podEventFixture()
-					pod.Name = "test-sts-0"
-					pod.OwnerReferences = []metav1.OwnerReference{{
-						APIVersion: "apps/v1", Kind: util.KindStatefulSet, Name: "test-sts", UID: "sts-uid", Controller: new(true),
-					}}
-					const ip = "10.0.0.10,fd00::10"
-					const mac = "00:00:00:00:00:10"
-					pod.Annotations = map[string]string{
-						fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): subnet.Name,
-						fmt.Sprintf(util.IPAddressAnnotationTemplate, provider):     ip,
-						fmt.Sprintf(util.MacAddressAnnotationTemplate, provider):    mac,
-						fmt.Sprintf(util.SecurityGroupAnnotationTemplate, provider): tc.newGroups,
-					}
-					subnet.Spec.CIDRBlock = "10.0.0.0/24,fd00::/64"
-					subnet.Spec.Gateway = "10.0.0.1,fd00::1"
-					subnet.Spec.Protocol = kubeovnv1.ProtocolDual
-					subnet.Spec.Provider = provider
-					fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
-					require.NoError(t, err)
-					ctrl := fc.fakeController
-					ctrl.sgKeyMutex = keymutex.NewHashed(0)
-					ctrl.syncSgPortsQueue = newTypedRateLimitingQueue[string]("test-sync-sg", nil)
-					t.Cleanup(ctrl.syncSgPortsQueue.ShutDown)
-					require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
-
-					client := newInMemoryOVNNbClient(t)
-					ctrl.OVNNbClient = client
-					if backend == "tables" {
-						ctrl.OVNNbTables = client
-					}
-					require.NoError(t, client.CreateBareLogicalSwitch(subnet.Name))
-					indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-					ctrl.sgsLister = kubeovnlisters.NewSecurityGroupLister(indexer)
-					groups := []string{"old", "new", "shared"}
-					for _, name := range groups {
-						pgName := ovs.GetSgPortGroupName(name)
-						require.NoError(t, indexer.Add(&kubeovnv1.SecurityGroup{Name: name, Status: kubeovnv1.SecurityGroupStatus{PortGroup: pgName}}))
-						require.NoError(t, client.CreatePortGroup(pgName, nil))
-						require.NoError(t, client.CreateAddressSet(ovs.GetSgV4AssociatedName(name), nil))
-						require.NoError(t, client.CreateAddressSet(ovs.GetSgV6AssociatedName(name), nil))
-					}
-
-					portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, provider)
-					var retainedPort *ovnnb.LogicalSwitchPort
-					if tc.oldGroups != "" {
-						// StatefulSet replacement pods inherit the existing LSP and its SG address sets.
-						require.NoError(t, client.CreateLogicalSwitchPort(subnet.Name, portName, ip, mac, pod.Name, pod.Namespace, false, tc.oldGroups, "", false, &ovs.DHCPOptionsUUIDs{}, subnet.Spec.Vpc))
-						retainedPort, err = client.GetLogicalSwitchPort(portName, false)
-						require.NoError(t, err)
-						for _, name := range groups {
-							require.NoError(t, ctrl.syncSgLogicalPort(name))
-						}
-						oldAddresses, err := client.GetAddressSet(ovs.GetSgV4AssociatedName("old"), false)
-						require.NoError(t, err)
-						if tc.oldGroups != "shared" {
-							require.Contains(t, oldAddresses.Addresses, "10.0.0.10")
-						}
-					}
-
-					updatedPod, err := ctrl.reconcileAllocateSubnets(pod, []*kubeovnNet{{
-						Type: providerTypeOriginal, ProviderName: provider, Subnet: subnet, IsDefault: provider == util.OvnProvider,
-					}})
-					require.NoError(t, err)
-					require.Equal(t, ip, updatedPod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)])
-					for ctrl.syncSgPortsQueue.Len() != 0 {
-						name, shutdown := ctrl.syncSgPortsQueue.Get()
-						require.False(t, shutdown)
-						err := ctrl.syncSgLogicalPort(name)
-						ctrl.syncSgPortsQueue.Done(name)
-						require.NoError(t, err)
-					}
-
-					port, err := client.GetLogicalSwitchPort(portName, false)
-					require.NoError(t, err)
-					if retainedPort != nil {
-						require.Equal(t, retainedPort.UUID, port.UUID)
-					}
-					for _, name := range groups {
-						v4, err := client.GetAddressSet(ovs.GetSgV4AssociatedName(name), false)
-						require.NoError(t, err)
-						v6, err := client.GetAddressSet(ovs.GetSgV6AssociatedName(name), false)
-						require.NoError(t, err)
-						pg, err := client.GetPortGroup(ovs.GetSgPortGroupName(name), false)
-						require.NoError(t, err)
-						if slices.Contains(tc.wantGroups, name) {
-							require.Equal(t, []string{"10.0.0.10"}, v4.Addresses, "security group %s", name)
-							require.Equal(t, []string{"fd00::10"}, v6.Addresses, "security group %s", name)
-							require.Equal(t, []string{port.UUID}, pg.Ports, "security group %s", name)
-						} else {
-							require.Empty(t, v4.Addresses, "security group %s must lose the pod's IPv4 address", name)
-							require.Empty(t, v6.Addresses, "security group %s must lose the pod's IPv6 address", name)
-							require.Empty(t, pg.Ports, "security group %s must lose the pod's port", name)
-						}
-					}
+					fixture := newPodSecurityGroupFixture(t, backend, provider, tc)
+					fixture.reconcile(t)
+					fixture.syncGroups(t)
+					fixture.assertGroups(t, tc.wantGroups)
 				})
 			}
 		}
 	}
+}
+
+func TestReconcileAllocateSubnetsSecurityGroupsLayer2Retry(t *testing.T) {
+	for _, backend := range []string{"tables", "legacy"} {
+		for _, tc := range []podSecurityGroupCase{
+			{name: "replace", oldGroups: "old", newGroups: "new", wantGroups: []string{"new"}},
+			{name: "remove all", oldGroups: "old"},
+		} {
+			t.Run(backend+"/"+tc.name, func(t *testing.T) {
+				fixture := newPodSecurityGroupFixture(t, backend, util.OvnProvider, tc)
+				fixture.pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, util.OvnProvider)] = "true"
+				injectedErr := errors.New("enable layer2 forward failed once")
+				if backend == "tables" {
+					fixture.ctrl.OVNNbTables = &layer2FailureProvider{Provider: fixture.client, err: injectedErr}
+				} else {
+					fixture.ctrl.OVNNbClient = &layer2FailureClient{NbClient: fixture.client, err: injectedErr}
+				}
+
+				updatedPod, err := fixture.ctrl.reconcileAllocateSubnets(fixture.pod, []*kubeovnNet{fixture.network})
+				require.Nil(t, updatedPod)
+				require.ErrorIs(t, err, injectedErr)
+				port, err := fixture.client.GetLogicalSwitchPort(fixture.portName, false)
+				require.NoError(t, err)
+				groups, _ := fixture.ctrl.getPortSg(port)
+				require.ElementsMatch(t, tc.wantGroups, groups, "the failed attempt already replaced the old SG external IDs")
+				fixture.syncGroups(t)
+				fixture.reconcile(t)
+				fixture.syncGroups(t)
+				fixture.assertGroups(t, tc.wantGroups)
+				port, err = fixture.client.GetLogicalSwitchPort(fixture.portName, false)
+				require.NoError(t, err)
+				require.Contains(t, port.Addresses, "unknown", "retry must complete the L2 update")
+			})
+		}
+	}
+}
+
+type podSecurityGroupFixture struct {
+	ctrl         *Controller
+	client       *ovs.OVNNbClient
+	pod          *corev1.Pod
+	network      *kubeovnNet
+	portName     string
+	retainedUUID string
+}
+
+func newPodSecurityGroupFixture(t *testing.T, backend, provider string, tc podSecurityGroupCase) *podSecurityGroupFixture {
+	t.Helper()
+	pod, subnet := podEventFixture()
+	pod.Name = "test-sts-0"
+	pod.OwnerReferences = []metav1.OwnerReference{{
+		APIVersion: "apps/v1", Kind: util.KindStatefulSet, Name: "test-sts", UID: "sts-uid", Controller: new(true),
+	}}
+	pod.Annotations = map[string]string{
+		fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): subnet.Name,
+		fmt.Sprintf(util.IPAddressAnnotationTemplate, provider):     "10.0.0.10,fd00::10",
+		fmt.Sprintf(util.MacAddressAnnotationTemplate, provider):    "00:00:00:00:00:10",
+		fmt.Sprintf(util.SecurityGroupAnnotationTemplate, provider): tc.newGroups,
+	}
+	subnet.Spec.CIDRBlock = "10.0.0.0/24,fd00::/64"
+	subnet.Spec.Gateway = "10.0.0.1,fd00::1"
+	subnet.Spec.Protocol = kubeovnv1.ProtocolDual
+	subnet.Spec.Provider = provider
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	ctrl.sgKeyMutex = keymutex.NewHashed(0)
+	ctrl.syncSgPortsQueue = newTypedRateLimitingQueue[string]("test-sync-sg", nil)
+	t.Cleanup(ctrl.syncSgPortsQueue.ShutDown)
+	require.NoError(t, ctrl.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
+	client := newInMemoryOVNNbClient(t)
+	ctrl.OVNNbClient = client
+	if backend == "tables" {
+		ctrl.OVNNbTables = client
+	}
+	require.NoError(t, client.CreateBareLogicalSwitch(subnet.Name))
+	fixture := &podSecurityGroupFixture{
+		ctrl: ctrl, client: client, pod: pod,
+		network:  &kubeovnNet{Type: providerTypeOriginal, ProviderName: provider, Subnet: subnet, IsDefault: provider == util.OvnProvider},
+		portName: ovs.PodNameToPortName(pod.Name, pod.Namespace, provider),
+	}
+	fixture.createGroups(t)
+	if tc.oldGroups != "" {
+		// StatefulSet replacement pods inherit the existing LSP and its SG address sets.
+		require.NoError(t, client.CreateLogicalSwitchPort(subnet.Name, fixture.portName, "10.0.0.10,fd00::10", "00:00:00:00:00:10", pod.Name, pod.Namespace, false, tc.oldGroups, "", false, &ovs.DHCPOptionsUUIDs{}, subnet.Spec.Vpc))
+		port, err := client.GetLogicalSwitchPort(fixture.portName, false)
+		require.NoError(t, err)
+		fixture.retainedUUID = port.UUID
+		for _, name := range []string{"old", "new", "shared"} {
+			require.NoError(t, ctrl.syncSgLogicalPort(name))
+		}
+		oldAddresses, err := client.GetAddressSet(ovs.GetSgV4AssociatedName("old"), false)
+		require.NoError(t, err)
+		if tc.oldGroups != "shared" {
+			require.Contains(t, oldAddresses.Addresses, "10.0.0.10")
+		}
+	}
+	return fixture
+}
+
+func (f *podSecurityGroupFixture) createGroups(t *testing.T) {
+	t.Helper()
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	f.ctrl.sgsLister = kubeovnlisters.NewSecurityGroupLister(indexer)
+	for _, name := range []string{"old", "new", "shared"} {
+		pgName := ovs.GetSgPortGroupName(name)
+		require.NoError(t, indexer.Add(&kubeovnv1.SecurityGroup{Name: name, Status: kubeovnv1.SecurityGroupStatus{PortGroup: pgName}}))
+		require.NoError(t, f.client.CreatePortGroup(pgName, nil))
+		require.NoError(t, f.client.CreateAddressSet(ovs.GetSgV4AssociatedName(name), nil))
+		require.NoError(t, f.client.CreateAddressSet(ovs.GetSgV6AssociatedName(name), nil))
+	}
+}
+
+func (f *podSecurityGroupFixture) reconcile(t *testing.T) {
+	t.Helper()
+	updatedPod, err := f.ctrl.reconcileAllocateSubnets(f.pod, []*kubeovnNet{f.network})
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.10,fd00::10", updatedPod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, f.network.ProviderName)])
+}
+
+func (f *podSecurityGroupFixture) syncGroups(t *testing.T) {
+	t.Helper()
+	for f.ctrl.syncSgPortsQueue.Len() != 0 {
+		name, shutdown := f.ctrl.syncSgPortsQueue.Get()
+		require.False(t, shutdown)
+		err := f.ctrl.syncSgLogicalPort(name)
+		f.ctrl.syncSgPortsQueue.Done(name)
+		require.NoError(t, err)
+	}
+}
+
+func (f *podSecurityGroupFixture) assertGroups(t *testing.T, wantGroups []string) {
+	t.Helper()
+	port, err := f.client.GetLogicalSwitchPort(f.portName, false)
+	require.NoError(t, err)
+	if f.retainedUUID != "" {
+		require.Equal(t, f.retainedUUID, port.UUID)
+	}
+	for _, name := range []string{"old", "new", "shared"} {
+		v4, err := f.client.GetAddressSet(ovs.GetSgV4AssociatedName(name), false)
+		require.NoError(t, err)
+		v6, err := f.client.GetAddressSet(ovs.GetSgV6AssociatedName(name), false)
+		require.NoError(t, err)
+		pg, err := f.client.GetPortGroup(ovs.GetSgPortGroupName(name), false)
+		require.NoError(t, err)
+		if slices.Contains(wantGroups, name) {
+			require.Equal(t, []string{"10.0.0.10"}, v4.Addresses, "security group %s", name)
+			require.Equal(t, []string{"fd00::10"}, v6.Addresses, "security group %s", name)
+			require.Equal(t, []string{port.UUID}, pg.Ports, "security group %s", name)
+		} else {
+			require.Empty(t, v4.Addresses, "security group %s must lose the pod's IPv4 address", name)
+			require.Empty(t, v6.Addresses, "security group %s must lose the pod's IPv6 address", name)
+			require.Empty(t, pg.Ports, "security group %s must lose the pod's port", name)
+		}
+	}
+}
+
+type layer2FailureClient struct {
+	ovs.NbClient
+	err error
+}
+
+func (c *layer2FailureClient) EnablePortLayer2forward(name string) error {
+	if c.err != nil {
+		err := c.err
+		c.err = nil
+		return err
+	}
+	return c.NbClient.EnablePortLayer2forward(name)
+}
+
+type layer2FailureProvider struct {
+	table.Provider
+	err error
+}
+
+func (p *layer2FailureProvider) Table(prototype model.Model) table.Handle {
+	handle := p.Provider.Table(prototype)
+	if _, ok := prototype.(*ovnnb.LogicalSwitchPort); ok {
+		return &layer2FailureTable{Handle: handle, provider: p}
+	}
+	return handle
+}
+
+type layer2FailureTable struct {
+	table.Handle
+	provider *layer2FailureProvider
+}
+
+func (h *layer2FailureTable) Update(ctx context.Context, method string, selector, update model.Model, fields ...any) error {
+	if port, ok := update.(*ovnnb.LogicalSwitchPort); ok && slices.Contains(port.Addresses, "unknown") && h.provider.err != nil {
+		err := h.provider.err
+		h.provider.err = nil
+		return err
+	}
+	return h.Handle.Update(ctx, method, selector, update, fields...)
 }

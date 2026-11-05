@@ -944,14 +944,6 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 				return nil, err
 			}
 
-			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
-				if err := c.enableLogicalSwitchPortLayer2Forward(portName); err != nil {
-					c.recorder.Eventf(pod, v1.EventTypeWarning, "SetOVNPortL2ForwardFailed", "stage=setLogicalSwitchPortLayer2Forward error=%v", err)
-					klog.Errorf("%v", err)
-					return nil, err
-				}
-			}
-
 			if securityGroupAnnotation != "" || oldSgList != nil {
 				securityGroups := strings.ReplaceAll(securityGroupAnnotation, " ", "")
 				newSgList := strings.Split(securityGroups, ",")
@@ -960,6 +952,14 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 					if sgName != "" {
 						c.syncSgPortsQueue.Add(sgName)
 					}
+				}
+			}
+
+			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
+				if err := c.enableLogicalSwitchPortLayer2Forward(portName); err != nil {
+					c.recorder.Eventf(pod, v1.EventTypeWarning, "SetOVNPortL2ForwardFailed", "stage=setLogicalSwitchPortLayer2Forward error=%v", err)
+					klog.Errorf("%v", err)
+					return nil, err
 				}
 			}
 
