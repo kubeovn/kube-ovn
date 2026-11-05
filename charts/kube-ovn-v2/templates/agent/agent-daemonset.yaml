@@ -218,6 +218,7 @@ spec:
           {{- if or .Values.networking.tlsMinVersion .Values.networking.tlsMaxVersion .Values.networking.tlsCipherSuites }}
           {{- include "kubeovn.componentTLSArgs" . | nindent 10 }}
           {{- end }}
+          - --set-geneve-tx-off={{- .Values.features.SET_GENEVE_TX_OFF }}
           - --host-tunnel-src={{- .Values.features.enableHostTunnelSrc | default false }}
           - --non-primary-cni-mode={{- .Values.cni.nonPrimaryCNI }}
           {{- if .Values.aclSampling.enabled }}
