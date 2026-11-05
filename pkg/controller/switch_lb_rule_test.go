@@ -278,19 +278,12 @@ func Test_setUserDefinedNetwork(t *testing.T) {
 // and the fake API client.  It also creates a VIP CR so we can verify deletion.
 func setupHandleDelSLRTest(t *testing.T, vpcName, subnetName, slrName, namespace, tcpLBName string) *fakeController {
 	t.Helper()
-	fc := newFakeController(t)
-	ctrl := fc.fakeController
-
 	vpc := &kubeovnv1.Vpc{
 		Name: vpcName,
 		Status: kubeovnv1.VpcStatus{
 			TCPLoadBalancer: tcpLBName,
 		},
 	}
-	_, err := ctrl.config.KubeOvnClient.KubeovnV1().Vpcs().Create(context.Background(), vpc, metav1.CreateOptions{})
-	require.NoError(t, err)
-	require.NoError(t, fc.fakeInformers.vpcInformer.Informer().GetStore().Add(vpc))
-
 	svcName := generateSvcName(slrName)
 	svc := &corev1.Service{
 		Name:      svcName,
@@ -302,16 +295,15 @@ func setupHandleDelSLRTest(t *testing.T, vpcName, subnetName, slrName, namespace
 		},
 	}
 	setServiceScopedLBOwner(svc, switchLBRuleLBOwnerKind, slrName, "slr-owner-uid")
-	_, err = ctrl.config.KubeClient.CoreV1().Services(namespace).Create(context.Background(), svc, metav1.CreateOptions{})
+	// Load fixtures before starting informers. Mixing API creates with manual
+	// store writes lets a queued Added event overwrite later cache mutations.
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs:     []*kubeovnv1.Vpc{vpc},
+		Services: []*corev1.Service{svc},
+		Vips:     []*kubeovnv1.Vip{{Name: subnetName}},
+	})
 	require.NoError(t, err)
-	require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Add(svc))
 	fc.mockOvnClient.EXPECT().DeleteLoadBalancers(gomock.Any()).Return(nil)
-
-	vip := &kubeovnv1.Vip{
-		Name: subnetName,
-	}
-	_, err = ctrl.config.KubeOvnClient.KubeovnV1().Vips().Create(context.Background(), vip, metav1.CreateOptions{})
-	require.NoError(t, err)
 
 	return fc
 }
@@ -402,10 +394,20 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		svc, err := fc.fakeController.servicesLister.Services(namespace).Get(generateSvcName(slrName))
 		require.NoError(t, err)
 		tampered := svc.DeepCopy()
-		ref := metav1.GetControllerOf(tampered)
+		ref := metav1.GetControllerOfNoCopy(tampered)
 		require.NotNil(t, ref)
 		ref.UID = "other-rule-uid"
-		require.NoError(t, fc.fakeInformers.serviceInformer.Informer().GetStore().Update(tampered))
+		require.EqualValues(t, "other-rule-uid", metav1.GetControllerOf(tampered).UID)
+		_, err = fc.fakeController.config.KubeClient.CoreV1().Services(namespace).Update(t.Context(), tampered, metav1.UpdateOptions{})
+		require.NoError(t, err)
+		require.Eventually(t, func() bool {
+			cached, err := fc.fakeController.servicesLister.Services(namespace).Get(tampered.Name)
+			if err != nil {
+				return false
+			}
+			owner := metav1.GetControllerOf(cached)
+			return owner != nil && owner.UID == ref.UID
+		}, fakeInformerTimeout, time.Millisecond, "handler must observe the forged owner")
 
 		fc.mockOvnClient.EXPECT().ListLoadBalancerHealthChecks(gomock.Any()).Return(
 			[]ovnnb.LoadBalancerHealthCheck{{
@@ -499,7 +501,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		require.Eventually(t, func() bool {
 			_, err := fc.fakeController.servicesLister.Services(namespace).Get(svcName)
 			return k8serrors.IsNotFound(err)
-		}, time.Second, 10*time.Millisecond)
+		}, fakeInformerTimeout, 10*time.Millisecond)
 
 		// With no LBHC matching info.Vips and the service gone, the handler must
 		// still clean up the VIP via the subnet recorded on info.Subnet.
@@ -528,7 +530,7 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		require.Eventually(t, func() bool {
 			_, err := fc.fakeController.servicesLister.Services(namespace).Get(svcName)
 			return k8serrors.IsNotFound(err)
-		}, time.Second, 10*time.Millisecond)
+		}, fakeInformerTimeout, 10*time.Millisecond)
 
 		// Matching LBHC is referenced by a DIFFERENT VPC's LB; without info.VPC the
 		// handler would fall back to unscoped deletion and remove a health check

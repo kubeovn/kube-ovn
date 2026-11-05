@@ -57,31 +57,11 @@ func TestDeletingSubnetWithInvalidVlan(t *testing.T) {
 					require.True(t, updated.Status.V4UsingIPs.EqualInt64(1))
 					// Releasing the last IP must allow deletion even if the VLAN
 					// never recovers.
-					ipDeleted := make(chan struct{}, 1)
-					_, err = fc.fakeInformers.ipInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-						DeleteFunc: func(obj any) {
-							ip, ok := obj.(*kubeovnv1.IP)
-							if ok && ip.Name == "pod.ns" {
-								select {
-								case ipDeleted <- struct{}{}:
-								default:
-								}
-							}
-						},
-					})
-					require.NoError(t, err)
 					require.NoError(t, c.config.KubeOvnClient.KubeovnV1().IPs().Delete(t.Context(), "pod.ns", metav1.DeleteOptions{}))
 					require.Eventually(t, func() bool {
-						select {
-						case <-ipDeleted:
-							return true
-						default:
-							return false
-						}
-					}, 5*time.Second, time.Millisecond)
-					ips, err := c.ipIndexer.ByIndex(IndexIPBySubnet, subnet.Name)
-					require.NoError(t, err)
-					require.Empty(t, ips)
+						ips, err := c.ipIndexer.ByIndex(IndexIPBySubnet, subnet.Name)
+						return err == nil && len(ips) == 0
+					}, fakeInformerTimeout, time.Millisecond)
 					require.NoError(t, c.handleAddOrUpdateSubnet(subnet.Name))
 					updated, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Get(t.Context(), subnet.Name, metav1.GetOptions{})
 					require.NoError(t, err)
@@ -175,7 +155,7 @@ func TestDeletingSubnetMulticastQuerier(t *testing.T) {
 			if !tc.enabled {
 				// Consume the real deletion event: cleanup must wake the subnet
 				// after the IP leaves the informer cache, without a manual retry.
-				require.Eventually(t, func() bool { return c.addOrUpdateSubnetQueue.Len() == 1 }, time.Second, time.Millisecond)
+				require.Eventually(t, func() bool { return c.addOrUpdateSubnetQueue.Len() == 1 }, fakeInformerTimeout, time.Millisecond)
 				key, shutdown := c.addOrUpdateSubnetQueue.Get()
 				require.False(t, shutdown)
 				require.Equal(t, subnet.Name, key)
