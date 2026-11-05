@@ -371,58 +371,70 @@ test ! -e "$TEST_CONFIG_FILE"
 `)
 }
 
-func TestOvnDBPreStartRecoversWrongDatabaseWithLiveCluster(t *testing.T) {
+func TestOvnDBPreStartPreservesWrongDatabaseWithLiveCluster(t *testing.T) {
 	dbDir := t.TempDir()
 	dbFile := filepath.Join(dbDir, "ovnnb_db.db")
 	hdrFile := filepath.Join(dbDir, "ovnnb_db.hdr")
 	if err := os.WriteFile(dbFile, []byte("wrong-database"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(hdrFile, []byte(raftHeaderJSON(zeroClusterID, validServerID)), 0o600); err != nil {
+	header := raftHeaderJSON(zeroClusterID, validServerID)
+	if err := os.WriteFile(hdrFile, []byte(header), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("TEST_EXPECTED_PRE_START_STATUS", "1")
 
 	runOvnDBPreStartHarness(t, dbDir, validClusterID, `
         db-name) echo Wrong_Database ;;
-        --cid) printf 'recovered-wrong-database' > "$6" ;;
+        fix-cluster|db-sid|--cid|join-cluster|rejoin-cluster)
+            printf '%s\n' "$*" >> "$TEST_DB_FILE.unexpected-command"
+            return 99 ;;
 `, `
-grep -q 'recovered-wrong-database' "$TEST_DB_FILE"
-test ! -e "$TEST_HDR_FILE"
 test ! -e "$TEST_CONFIG_FILE"
-compgen -G "$TEST_DB_FILE.backup-*" >/dev/null
-compgen -G "$TEST_HDR_FILE.invalid-*" >/dev/null
 `)
+	data, err := os.ReadFile(dbFile)
+	require.NoError(t, err)
+	require.Equal(t, "wrong-database", string(data))
+	data, err = os.ReadFile(hdrFile)
+	require.NoError(t, err)
+	require.Equal(t, header, string(data))
+	entries, err := os.ReadDir(dbDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 2, "startup must not create backups, replacements, or invoke recovery commands")
 }
 
-func TestOvnDBPreStartRebuildsCorruptClusterWithLiveIDs(t *testing.T) {
+func TestOvnDBPreStartPreservesCorruptClusterWithLiveIDs(t *testing.T) {
 	dbDir := t.TempDir()
 	dbFile := filepath.Join(dbDir, "ovnnb_db.db")
 	hdrFile := filepath.Join(dbDir, "ovnnb_db.hdr")
 	if err := os.WriteFile(dbFile, []byte("corrupt-cluster"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(hdrFile, []byte(raftHeaderJSON(otherClusterID, validServerID)), 0o600); err != nil {
+	header := raftHeaderJSON(otherClusterID, validServerID)
+	if err := os.WriteFile(hdrFile, []byte(header), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("TEST_EXPECTED_PRE_START_STATUS", "1")
 
 	runOvnDBPreStartHarness(t, dbDir, validClusterID, `
         db-name) echo OVN_Northbound ;;
         db-is-clustered) return 0 ;;
         check-cluster) return 1 ;;
-        fix-cluster) return 1 ;;
-        db-sid) echo "`+validServerID+`" ;;
-        --cid)
-            test "$2" = "$TEST_LIVE_CID"
-            test "$4" = "`+validServerID+`"
-            printf 'rebuilt-corrupt-cluster' > "$6"
-            ;;
+        fix-cluster|db-sid|--cid|join-cluster|rejoin-cluster)
+            printf '%s\n' "$*" >> "$TEST_DB_FILE.unexpected-command"
+            return 99 ;;
 `, `
-grep -q 'rebuilt-corrupt-cluster' "$TEST_DB_FILE"
-test ! -e "$TEST_HDR_FILE"
-test -e "$TEST_CONFIG_FILE"
-compgen -G "$TEST_DB_FILE.backup-*" >/dev/null
-compgen -G "$TEST_HDR_FILE.invalid-*" >/dev/null
-	`)
+test ! -e "$TEST_CONFIG_FILE"
+`)
+	data, err := os.ReadFile(dbFile)
+	require.NoError(t, err)
+	require.Equal(t, "corrupt-cluster", string(data))
+	data, err = os.ReadFile(hdrFile)
+	require.NoError(t, err)
+	require.Equal(t, header, string(data))
+	entries, err := os.ReadDir(dbDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 2, "startup must not create backups, replacements, or invoke recovery commands")
 }
 
 func TestGetLiveClusterIDReadsPeerCIDWithoutLeader(t *testing.T) {
