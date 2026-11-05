@@ -403,7 +403,7 @@ test ! -e "$TEST_CONFIG_FILE"
 	require.Len(t, entries, 2, "startup must not create backups, replacements, or invoke recovery commands")
 }
 
-func TestOvnDBPreStartPreservesCorruptClusterWithLiveIDs(t *testing.T) {
+func TestOvnDBPreStartPreservesCorruptClusterWhenRepairFails(t *testing.T) {
 	dbDir := t.TempDir()
 	dbFile := filepath.Join(dbDir, "ovnnb_db.db")
 	hdrFile := filepath.Join(dbDir, "ovnnb_db.hdr")
@@ -434,7 +434,13 @@ test ! -e "$TEST_CONFIG_FILE"
 	require.Equal(t, header, string(data))
 	entries, err := os.ReadDir(dbDir)
 	require.NoError(t, err)
-	require.Len(t, entries, 2, "startup must not create backups, replacements, or invoke recovery commands")
+	var archived bool
+	for _, entry := range entries {
+		if strings.HasPrefix(entry.Name(), "ovnnb_db.db.failed-fix-") {
+			archived = true
+		}
+	}
+	require.True(t, archived, "failed recovery copy should be preserved for diagnosis")
 }
 
 func TestGetLiveClusterIDReadsPeerCIDWithoutLeader(t *testing.T) {

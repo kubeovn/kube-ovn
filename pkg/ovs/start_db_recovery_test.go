@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestStartDBPreservesInvalidDatabases(t *testing.T) {
+func TestStartDBRebuildsInvalidDatabasesFromLiveCluster(t *testing.T) {
 	for _, db := range []struct {
 		script string
 		kind   string
@@ -40,17 +40,32 @@ func TestStartDBPreservesInvalidDatabases(t *testing.T) {
 					cmd := exec.CommandContext(t.Context(), requireBash(t), "-c", "set -eo pipefail\n"+command) // #nosec G204
 					cmd.Env = startDBRecoveryEnv(dir, trace, db.name, mode)
 					output, err := cmd.CombinedOutput()
-					wantSuccess := mode == "valid" || mode == "standalone" || mode == "missing"
+					wantSuccess := mode == "valid" || mode == "standalone" || mode == "missing" || mode == "entry-gap" || mode == "committed-truncation"
 					if (err == nil) != wantSuccess {
 						t.Errorf("startup success = %v, want %v; output:\n%s", err == nil, wantSuccess, output)
 					}
 					got, err := os.ReadFile(path)
-					if mode == "missing" {
+					switch mode {
+					case "missing":
 						if !os.IsNotExist(err) {
 							t.Fatalf("missing database was unexpectedly replaced: %v", err)
 						}
-					} else if err != nil || string(got) != original {
-						t.Fatalf("original database was changed or moved: %v; content: %q", err, got)
+					case "entry-gap", "committed-truncation":
+						if err != nil || string(got) != "rebuilt\n" {
+							t.Fatalf("rebuilt database was not installed: %v; content: %q", err, got)
+						}
+						matches, globErr := filepath.Glob(path + ".backup-*")
+						if globErr != nil || len(matches) != 1 {
+							t.Fatalf("original database was not preserved: %v, %v", matches, globErr)
+						}
+						backup, readErr := os.ReadFile(matches[0])
+						if readErr != nil || string(backup) != original {
+							t.Fatalf("original database backup is incorrect: %v; content: %q", readErr, backup)
+						}
+					default:
+						if err != nil || string(got) != original {
+							t.Fatalf("original database was changed or moved: %v; content: %q", err, got)
+						}
 					}
 					if mode != "missing" {
 						got, err := os.ReadFile(header)
@@ -64,15 +79,17 @@ func TestStartDBPreservesInvalidDatabases(t *testing.T) {
 					t.Fatal(err)
 				}
 				checkRecoveryValidationTrace(t, mode, string(calls))
-				for _, forbidden := range []string{"fix-cluster", "join-cluster", "rejoin-cluster"} {
-					if strings.Contains(string(calls), forbidden) {
-						t.Errorf("unexpected destructive command %q:\n%s", forbidden, calls)
+				if mode == "entry-gap" || mode == "committed-truncation" {
+					for _, required := range []string{"fix-cluster", "join-cluster"} {
+						if !strings.Contains(string(calls), required) {
+							t.Errorf("expected recovery command %q was not called:\n%s", required, calls)
+						}
 					}
 				}
-				if mode != "valid" && mode != "standalone" && mode != "missing" && strings.Contains(string(calls), "started") {
+				if mode != "valid" && mode != "standalone" && mode != "missing" && mode != "entry-gap" && mode != "committed-truncation" && strings.Contains(string(calls), "started") {
 					t.Errorf("startup continued after failed validation:\n%s", calls)
 				}
-				for _, pattern := range []string{path + ".*", filepath.Join(dir, "*.hdr.*")} {
+				for _, pattern := range []string{path + ".repaired-*", path + ".rejoin-*", filepath.Join(dir, "*.hdr.*")} {
 					matches, err := filepath.Glob(pattern)
 					if err != nil || len(matches) != 0 {
 						t.Errorf("unexpected recovery artifacts: %v, %v", matches, err)
@@ -225,7 +242,8 @@ function /usr/share/ovn/scripts/ovn-ctl { echo "ovn-ctl $*" >> "$TRACE_FILE"; }
 `
 
 // The stub models a locally successful repair that discards committed history,
-// and the rebuild fallback after a failed repair. Neither is safe to automate.
+// followed by rebuilding the member with the same server ID so it can catch up
+// from a reachable majority. A failed repair keeps startup blocked.
 const recoveryToolStub = `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$TRACE_FILE"
@@ -248,7 +266,7 @@ case "$1" in
             echo 'all logs are empty' >&2
             exit 1
         fi
-        [[ "$(cat "$2")" != 'repaired short history' ]] || exit 0
+        [[ "$(cat "$2")" != 'repaired short history' && "$(cat "$2")" != rebuilt ]] || exit 0
         if [[ "$TEST_MODE" == committed-truncation ]]; then
             echo 'attempts to truncate log from 13241 to 7015 entries, but commit index is already 13240' >&2
         else
