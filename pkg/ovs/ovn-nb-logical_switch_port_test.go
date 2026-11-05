@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
@@ -16,6 +15,7 @@ import (
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -253,7 +253,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 // missingLogicalSwitchPortClient hides only the target port from cache reads.
 // Transactions and all other reads still use the real OVSDB client.
 type missingLogicalSwitchPortClient struct {
-	client.Client
+	*table.Client
 	name    string
 	ready   chan<- struct{}
 	release <-chan struct{}
@@ -269,9 +269,13 @@ func (c *missingLogicalSwitchPortClient) Get(ctx context.Context, m model.Model)
 				return ctx.Err()
 			}
 		}
-		return client.ErrNotFound
+		return table.ErrNotFound
 	}
 	return c.Client.Get(ctx, m)
+}
+
+func (c *missingLogicalSwitchPortClient) Transact(ctx context.Context, ops ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	return c.TransactResults(ctx, ops...)
 }
 
 func requireSingleLogicalSwitchPort(t *testing.T, nbClient *OVNNbClient, lsName, name string) *ovnnb.LogicalSwitchPort {
@@ -300,8 +304,7 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortDuplicateGuard() {
 		require.NoError(t, nbClient.CreateLogicalSwitchPort(lsName, name, "10.244.0.10", "00:00:00:00:00:10", "old-pod", "namespace", false, "", "", false, nil, ""))
 		before := requireSingleLogicalSwitchPort(t, nbClient, lsName, name)
 		staleClient := &OVNNbClient{
-			Client:  &missingLogicalSwitchPortClient{Client: nbClient.Client, name: name},
-			Timeout: nbClient.Timeout,
+			Database: table.NewDatabase(&missingLogicalSwitchPortClient{Client: nbClient.Client, name: name}, nbClient.Timeout, table.RetryPolicy{}),
 		}
 
 		err := staleClient.CreateLogicalSwitchPort(lsName, name, "10.244.0.20", "00:00:00:00:00:20", "new-pod", "namespace", true, "new-sg", "", false, nil, "")
@@ -337,8 +340,7 @@ func testCreateLogicalSwitchPortConcurrentCacheMisses(t *testing.T, nbClient *OV
 		wg.Wait()
 	})
 	staleClient := &OVNNbClient{
-		Client:  &missingLogicalSwitchPortClient{Client: nbClient.Client, name: name, ready: ready, release: release},
-		Timeout: nbClient.Timeout,
+		Database: table.NewDatabase(&missingLogicalSwitchPortClient{Client: nbClient.Client, name: name, ready: ready, release: release}, nbClient.Timeout, table.RetryPolicy{}),
 	}
 
 	errs := make([]error, callers)
