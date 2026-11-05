@@ -6,15 +6,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 type ipsecGlobalTransaction struct {
-	client.Client
+	table.Backend
 	results []ovsdb.OperationResult
 	err     error
 }
@@ -40,7 +40,7 @@ func TestIPsecGlobalReadRejectsMissingOrMalformedEvidence(t *testing.T) {
 		{name: "operation-failure", results: []ovsdb.OperationResult{{Error: "not supported", Details: "missing column"}}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			c := &OVNSbClient{Client: &ipsecGlobalTransaction{results: test.results, err: test.err}, Timeout: time.Second}
+			c := &OVNSbClient{Database: table.NewDatabase(&ipsecGlobalTransaction{results: test.results, err: test.err}, time.Second, table.RetryPolicy{})}
 			state, err := c.GetIPsecGlobal(t.Context())
 			require.Error(t, err)
 			require.Nil(t, state, "invalid evidence cannot authorize plaintext cleanup")
@@ -72,5 +72,7 @@ func TestIPsecGlobalReadsLiveUnmonitoredSouthbound(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, actual.Enabled, "the readback must observe committed state without a global-table monitor")
 	require.Equal(t, state.UUID, actual.UUID)
-	require.Empty(t, c.Cache().Table(ovnsb.SBGlobalTable).Rows(), "adding a second monitor must not be necessary")
+	var cached []ovnsb.SBGlobal
+	require.NoError(t, c.List(t.Context(), &cached))
+	require.Empty(t, cached, "adding a second monitor must not be necessary")
 }

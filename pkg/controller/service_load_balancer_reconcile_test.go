@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 	metallbv1beta1 "go.universe.tf/metallb/api/v1beta1"
@@ -21,11 +20,12 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type serviceLBTransactionClient struct {
-	client.Client
+	*table.Client
 	transactions [][]ovsdb.Operation
 	fail         bool
 }
@@ -39,7 +39,7 @@ func (c *serviceLBTransactionClient) Transact(ctx context.Context, ops ...ovsdb.
 			Rows:  []ovsdb.Row{{"name": "missing-lb-to-reject-transaction"}},
 		})
 	}
-	return c.Client.Transact(ctx, ops...)
+	return c.TransactResults(ctx, ops...)
 }
 
 func serviceLBReconcileFixture(t *testing.T, serviceType corev1.ServiceType, template bool) (*Controller, *ovs.OVNNbClient, *corev1.Service, []*discoveryv1.EndpointSlice) {
@@ -116,7 +116,7 @@ func TestServiceLoadBalancersReconcileAtomically(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ctrl, nbClient, svc, endpoints := serviceLBReconcileFixture(t, tc.serviceType, tc.template)
 			recorder := &serviceLBTransactionClient{Client: nbClient.Client}
-			nbClient.Client = recorder
+			nbClient.Database = table.NewDatabase(recorder, nbClient.Timeout, table.RetryPolicy{})
 			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 			require.Len(t, recorder.transactions, 1, "all protocols, address families, VIPs and attachments must be committed together")
 			lbs, err := nbClient.ListLoadBalancers(serviceScopedLBOwner(svc).ownsLoadBalancer)
@@ -165,7 +165,7 @@ func TestServiceLoadBalancerReconciliationPreservesAffinityFields(t *testing.T) 
 				svc.Spec.SessionAffinityConfig = &corev1.SessionAffinityConfig{ClientIP: &corev1.ClientIPConfig{TimeoutSeconds: new(tc.timeout)}}
 			}
 			recorder := &serviceLBTransactionClient{Client: nbClient.Client}
-			nbClient.Client = recorder
+			nbClient.Database = table.NewDatabase(recorder, nbClient.Timeout, table.RetryPolicy{})
 			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 			require.Len(t, recorder.transactions, 1)
 			lbs, err := nbClient.ListLoadBalancers(serviceScopedLBOwner(svc).ownsLoadBalancer)
@@ -255,7 +255,7 @@ func TestServiceLoadBalancerProtocolChangeRollsBack(t *testing.T) {
 	newEndpoints[0].Endpoints[0].Addresses = []string{"10.0.0.3"}
 	newEndpoints[0].Ports[2] = discoveryv1.EndpointPort{Name: new("sctp"), Protocol: new(corev1.ProtocolSCTP), Port: new(int32(9000))}
 	recorder := &serviceLBTransactionClient{Client: nbClient.Client, fail: true}
-	nbClient.Client = recorder
+	nbClient.Database = table.NewDatabase(recorder, nbClient.Timeout, table.RetryPolicy{})
 	require.Error(t, ctrl.reconcileServiceEndpointSlices(updated, newEndpoints))
 	require.Len(t, recorder.transactions, 1)
 	after, err := nbClient.ListLoadBalancers(nil)
@@ -294,7 +294,7 @@ func TestServiceLoadBalancerTemplateTransitionIsAtomic(t *testing.T) {
 			updated.Spec.TrafficDistribution = nil
 			updated.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeCluster
 			recorder := &serviceLBTransactionClient{Client: nbClient.Client, fail: true}
-			nbClient.Client = recorder
+			nbClient.Database = table.NewDatabase(recorder, nbClient.Timeout, table.RetryPolicy{})
 			require.Error(t, ctrl.reconcileServiceEndpointSlices(updated, endpoints))
 			require.Len(t, recorder.transactions, 1)
 			after, err := nbClient.ListLoadBalancers(nil)
@@ -323,7 +323,7 @@ func TestServiceLoadBalancerEmptyEndpointsIsAtomic(t *testing.T) {
 	ctrl, nbClient, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeClusterIP, false)
 	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 	recorder := &serviceLBTransactionClient{Client: nbClient.Client}
-	nbClient.Client = recorder
+	nbClient.Database = table.NewDatabase(recorder, nbClient.Timeout, table.RetryPolicy{})
 	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, nil))
 	require.Len(t, recorder.transactions, 1)
 	lbs, err := nbClient.ListLoadBalancers(nil)
@@ -354,7 +354,7 @@ func TestRuleServiceLoadBalancersAreAtomic(t *testing.T) {
 			}
 			svc.Annotations[annotation] = "10.96.0.10"
 			recorder := &serviceLBTransactionClient{Client: nbClient.Client}
-			nbClient.Client = recorder
+			nbClient.Database = table.NewDatabase(recorder, nbClient.Timeout, table.RetryPolicy{})
 			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 			require.Len(t, recorder.transactions, 1)
 			lbs, err := nbClient.ListLoadBalancers(serviceScopedLBOwner(svc).ownsLoadBalancer)

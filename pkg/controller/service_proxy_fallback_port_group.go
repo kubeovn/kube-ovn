@@ -28,16 +28,16 @@ func serviceProxyFallbackPortGroupName(subnetName, nodeName string) string {
 // on another node. A node-wide address set cannot identify that Pod's node.
 func (c *Controller) syncServiceProxyFallbackPortGroup(subnet *kubeovnv1.Subnet, nodeName string) error {
 	pgName := serviceProxyFallbackPortGroupName(subnet.Name, nodeName)
-	if err := c.OVNNbClient.CreatePortGroup(pgName, map[string]string{
+	if err := c.createPortGroup(pgName, map[string]string{
 		serviceProxyFallbackPortGroupKey: "true", "subnet": subnet.Name, "node": nodeName,
 	}); err != nil {
 		return fmt.Errorf("create service proxy fallback port group %s: %w", pgName, err)
 	}
-	pg, err := c.OVNNbClient.GetPortGroup(pgName, false)
+	pg, err := c.getPortGroup(pgName, false)
 	if err != nil {
 		return err
 	}
-	nodePG, err := c.OVNNbClient.GetPortGroup(strings.ReplaceAll(util.NodeLspName(nodeName), "-", "."), true)
+	nodePG, err := c.getPortGroup(strings.ReplaceAll(util.NodeLspName(nodeName), "-", "."), true)
 	if err != nil {
 		return err
 	}
@@ -45,7 +45,7 @@ func (c *Controller) syncServiceProxyFallbackPortGroup(subnet *kubeovnv1.Subnet,
 	if nodePG != nil {
 		portsOnNode.Add(nodePG.Ports...)
 	}
-	ports, err := c.OVNNbClient.ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name},
+	ports, err := c.listLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name},
 		func(port *ovnnb.LogicalSwitchPort) bool { return portsOnNode.Has(port.UUID) })
 	if err != nil {
 		return err
@@ -59,7 +59,7 @@ func (c *Controller) syncServiceProxyFallbackPortGroup(subnet *kubeovnv1.Subnet,
 	if portIDs.IsEqual(strset.New(pg.Ports...)) {
 		return nil
 	}
-	if err := c.OVNNbClient.PortGroupSetPorts(pgName, portNames); err != nil {
+	if err := c.setPortGroupPorts(pgName, portNames); err != nil {
 		return fmt.Errorf("update service proxy fallback port group %s: %w", pgName, err)
 	}
 	return nil
@@ -70,11 +70,11 @@ func (c *Controller) syncServiceProxyFallbackPodPort(subnet *kubeovnv1.Subnet, n
 	if !c.needsServiceProxyFallbackReroute(subnet) {
 		return nil
 	}
-	port, err := c.OVNNbClient.GetLogicalSwitchPort(portName, false)
+	port, err := c.getLogicalSwitchPort(portName, false)
 	if err != nil {
 		return err
 	}
-	groups, err := c.OVNNbClient.ListPortGroups(buildPolicyRouteExternalIDs(subnet.Name,
+	groups, err := c.listPortGroups(buildPolicyRouteExternalIDs(subnet.Name,
 		map[string]string{serviceProxyFallbackPortGroupKey: "true"}))
 	if err != nil {
 		return err
@@ -90,14 +90,14 @@ func (c *Controller) syncServiceProxyFallbackPodPort(subnet *kubeovnv1.Subnet, n
 }
 
 func (c *Controller) deleteStaleServiceProxyFallbackPortGroups(subnet *kubeovnv1.Subnet, desired map[string]struct{}) error {
-	groups, err := c.OVNNbClient.ListPortGroups(buildPolicyRouteExternalIDs(subnet.Name,
+	groups, err := c.listPortGroups(buildPolicyRouteExternalIDs(subnet.Name,
 		map[string]string{serviceProxyFallbackPortGroupKey: "true"}))
 	if err != nil {
 		return err
 	}
 	for _, pg := range groups {
 		if _, ok := desired[pg.Name]; !ok {
-			if err := c.OVNNbClient.DeletePortGroup(pg.Name); err != nil {
+			if err := c.deletePortGroups(pg.Name); err != nil {
 				return err
 			}
 		}
@@ -108,7 +108,7 @@ func (c *Controller) deleteStaleServiceProxyFallbackPortGroups(subnet *kubeovnv1
 // Run after refreshing node groups, including after a controller restart. The
 // owner tag keeps these groups separate from network-policy and security groups.
 func (c *Controller) syncServiceProxyFallbackPortGroups() error {
-	groups, err := c.OVNNbClient.ListPortGroups(map[string]string{
+	groups, err := c.listPortGroups(map[string]string{
 		"vendor": util.CniTypeName, serviceProxyFallbackPortGroupKey: "true",
 	})
 	if err != nil {
@@ -140,14 +140,14 @@ func (c *Controller) deleteServiceProxyFallbackPortGroup(pg *ovnnb.PortGroup) er
 	externalIDs := buildPolicyRouteExternalIDs(pg.ExternalIDs["subnet"], map[string]string{
 		"isServiceProxyFallbackReroutePolicy": "true", "node": pg.ExternalIDs["node"],
 	})
-	policies, err := c.OVNNbClient.ListLogicalRouterPolicies(c.config.ClusterRouter, -1, externalIDs, true)
+	policies, err := c.listLogicalRouterPolicies(c.config.ClusterRouter, -1, externalIDs, true)
 	if err != nil {
 		return err
 	}
 	for _, policy := range policies {
-		if err := c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
+		if err := c.deleteLogicalRouterPolicyByUUID(c.config.ClusterRouter, policy.UUID); err != nil {
 			return err
 		}
 	}
-	return c.OVNNbClient.DeletePortGroup(pg.Name)
+	return c.deletePortGroups(pg.Name)
 }

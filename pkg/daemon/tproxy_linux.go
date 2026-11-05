@@ -159,7 +159,7 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 			podName = vmName
 		}
 		iface := ovs.PodNameToPortName(podName, pod.Namespace, provider)
-		nsName, err := ovs.GetInterfacePodNs(iface)
+		nsName, err := c.getInterfacePodNs(iface)
 		_, tcpPorts := getProbePorts(pod)
 		if err != nil {
 			klog.Errorf("failed to get netns for pod %s/%s: %v", pod.Namespace, pod.Name, err)
@@ -193,6 +193,13 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 			}
 		}
 	}
+}
+
+func (c *Controller) getInterfacePodNs(ifaceID string) (string, error) {
+	if c.vswitchTables == nil {
+		return "", errors.New("vswitch table provider is not configured")
+	}
+	return getVswitchInterfacePodNs(c.vswitchTables, ifaceID)
 }
 
 func (c *Controller) runTProxyConfigWorker() {

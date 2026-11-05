@@ -140,14 +140,14 @@ func (c *Controller) enqueueUpdateNp(oldObj, newObj any) {
 }
 
 func (c *Controller) createAsForNetpol(ns, name, direction, asName string, addresses []string) error {
-	if err := c.OVNNbClient.CreateAddressSet(asName, map[string]string{
+	if err := c.createAddressSet(asName, map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", ns, name, direction),
 	}); err != nil {
 		klog.Errorf("failed to create ovn address set %s for np %s/%s: %v", asName, ns, name, err)
 		return err
 	}
 
-	if err := c.OVNNbClient.AddressSetUpdateAddress(asName, addresses...); err != nil {
+	if err := c.updateAddressSetAddresses(asName, addresses...); err != nil {
 		klog.Errorf("failed to set addresses %q to address set %s: %v", strings.Join(addresses, ","), asName, err)
 		return err
 	}
@@ -156,6 +156,7 @@ func (c *Controller) createAsForNetpol(ns, name, direction, asName string, addre
 }
 
 type networkPolicyReconcileContext struct {
+	aclBuilder                networkPolicyACLBuilder
 	key                       string
 	npName                    string
 	pgName                    string
@@ -233,7 +234,7 @@ func (c *Controller) reconcileNetworkPolicy(key string, np *netv1.NetworkPolicy)
 
 	enforcementLax := c.isNetworkPolicyEnforcementLax(np)
 	if !enforcementLax && ctx.protocolSet.Has(kubeovnv1.ProtocolIPv6) {
-		if err = c.OVNNbClient.CreateGatewayACL("", ctx.pgName); err != nil {
+		if err = c.createGatewayACL("", ctx.pgName); err != nil {
 			return fmt.Errorf("create gateway acl: %w", err)
 		}
 	}
@@ -251,7 +252,7 @@ func (c *Controller) prepareNetworkPolicyContext(key string, np *netv1.NetworkPo
 		egressAllowAsNamePrefix:   strings.ReplaceAll(fmt.Sprintf("%s.%s.egress.allow", npName, np.Namespace), "-", "."),
 		egressExceptAsNamePrefix:  strings.ReplaceAll(fmt.Sprintf("%s.%s.egress.except", npName, np.Namespace), "-", "."),
 	}
-	if err := c.OVNNbClient.CreatePortGroup(ctx.pgName, map[string]string{networkPolicyKey: key}); err != nil {
+	if err := c.createPortGroup(ctx.pgName, map[string]string{networkPolicyKey: key}); err != nil {
 		return nil, err
 	}
 	ports, subnetNames, err := c.fetchSelectedPorts(np.Namespace, &np.Spec.PodSelector, providers)
@@ -270,12 +271,17 @@ func (c *Controller) prepareNetworkPolicyContext(key string, np *netv1.NetworkPo
 			ctx.protocolSet.Add(subnet.Spec.Protocol)
 		}
 	}
-	if err := c.OVNNbClient.PortGroupSetPorts(ctx.pgName, ports); err != nil {
+	if err := c.setPortGroupPorts(ctx.pgName, ports); err != nil {
 		return nil, err
 	}
 	if err := c.prepareNetworkPolicyNamedPortGroups(ctx, np); err != nil {
 		return nil, err
 	}
+	aclBuilder, err := c.networkPolicyACLBuilder()
+	if err != nil {
+		return nil, err
+	}
+	ctx.aclBuilder = aclBuilder
 	ctx.namedPortMap = c.namedPort.GetNamedPortByNs(np.Namespace)
 	return ctx, nil
 }
@@ -291,17 +297,17 @@ func (c *Controller) prepareNetworkPolicyNamedPortGroups(ctx *networkPolicyRecon
 		desired[variant.pgName] = struct{}{}
 		ref := networkPolicyNamedPortVariantKey(variant.name, variant.protocol)
 		ctx.namedVariantsByRef[ref] = append(ctx.namedVariantsByRef[ref], variant)
-		if err := c.OVNNbClient.CreatePortGroup(variant.pgName, map[string]string{networkPolicyKey: ctx.key, networkPolicyNamedPortKey: "true"}); err != nil {
+		if err := c.createPortGroup(variant.pgName, map[string]string{networkPolicyKey: ctx.key, networkPolicyNamedPortKey: "true"}); err != nil {
 			return err
 		}
-		if err := c.OVNNbClient.PortGroupSetPorts(variant.pgName, variant.ports); err != nil {
+		if err := c.setPortGroupPorts(variant.pgName, variant.ports); err != nil {
 			return err
 		}
-		if err := c.OVNNbClient.DeleteAcls(variant.pgName, portGroupKey, ovnnb.ACLDirectionToLport, nil); err != nil {
+		if err := c.deletePortGroupACLs(variant.pgName, ovnnb.ACLDirectionToLport, nil); err != nil {
 			return err
 		}
 	}
-	namedPortGroups, err := c.OVNNbClient.ListPortGroups(map[string]string{networkPolicyKey: ctx.key, networkPolicyNamedPortKey: "true"})
+	namedPortGroups, err := c.listPortGroups(map[string]string{networkPolicyKey: ctx.key, networkPolicyNamedPortKey: "true"})
 	if err != nil {
 		return err
 	}
@@ -309,15 +315,15 @@ func (c *Controller) prepareNetworkPolicyNamedPortGroups(ctx *networkPolicyRecon
 		if _, ok := desired[group.Name]; ok {
 			continue
 		}
-		if err := c.OVNNbClient.DeleteAcls(group.Name, portGroupKey, ovnnb.ACLDirectionToLport, nil); err != nil {
+		if err := c.deletePortGroupACLs(group.Name, ovnnb.ACLDirectionToLport, nil); err != nil {
 			return err
 		}
 		for _, meterName := range networkPolicyMeterNames(group.Name) {
-			if err := c.OVNNbClient.DeleteMeter(meterName); err != nil {
+			if err := c.deleteMeter(meterName); err != nil {
 				return err
 			}
 		}
-		if err := c.OVNNbClient.DeletePortGroup(group.Name); err != nil {
+		if err := c.deletePortGroups(group.Name); err != nil {
 			return err
 		}
 	}
@@ -325,28 +331,28 @@ func (c *Controller) prepareNetworkPolicyNamedPortGroups(ctx *networkPolicyRecon
 }
 
 func (c *Controller) reconcileNetworkPolicyIngress(ctx *networkPolicyReconcileContext, np *netv1.NetworkPolicy, logEnable bool, logActions []string, logRate int) (bool, error) {
-	ops, err := c.OVNNbClient.DeleteAclsOps(ctx.pgName, portGroupKey, ovnnb.ACLDirectionToLport, nil)
+	ops, err := c.deletePortGroupACLOps(ctx.pgName, ovnnb.ACLDirectionToLport, nil)
 	if err != nil {
 		return false, err
 	}
 	if !hasIngressRule(np) {
-		if err := c.OVNNbClient.DeleteAcls(ctx.pgName, portGroupKey, ovnnb.ACLDirectionToLport, nil); err != nil {
+		if err := c.deletePortGroupACLs(ctx.pgName, ovnnb.ACLDirectionToLport, nil); err != nil {
 			return false, err
 		}
-		if err := c.OVNNbClient.DeleteAddressSets(map[string]string{networkPolicyKey: fmt.Sprintf("%s/%s/ingress", np.Namespace, ctx.npName)}); err != nil {
+		if err := c.deleteAddressSetsByExternalIDs(map[string]string{networkPolicyKey: fmt.Sprintf("%s/%s/ingress", np.Namespace, ctx.npName)}); err != nil {
 			return false, err
 		}
 		return false, nil
 	}
 	enforcementLax := c.isNetworkPolicyEnforcementLax(np)
 	if ctx.protocolSet.Size() > 0 {
-		blockOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(ctx.key, ctx.pgName, ovnnb.ACLDirectionToLport, logEnable, enforcementLax, logRate)
+		blockOps, err := ctx.aclBuilder.UpdateDefaultBlockACLOps(ctx.key, ctx.pgName, ovnnb.ACLDirectionToLport, logEnable, enforcementLax, logRate)
 		if err != nil {
 			return false, err
 		}
 		ops = append(ops, blockOps...)
 		if enforcementLax {
-			exceptionOps, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(ctx.key, ctx.pgName, np.Namespace, ovnnb.ACLDirectionToLport)
+			exceptionOps, err := ctx.aclBuilder.UpdateDefaultBlockExceptionsACLOps(ctx.key, ctx.pgName, np.Namespace, ovnnb.ACLDirectionToLport)
 			if err != nil {
 				return false, err
 			}
@@ -360,7 +366,7 @@ func (c *Controller) reconcileNetworkPolicyIngress(ctx *networkPolicyReconcileCo
 		}
 		ops = append(ops, protocolOps...)
 	}
-	if err := c.OVNNbClient.Transact("add-ingress-acls", ops); err != nil {
+	if err := c.transactNB("add-ingress-acls", ops...); err != nil {
 		return false, err
 	}
 	return true, c.cleanupNetworkPolicyIngressAddressSets(ctx, np)
@@ -384,7 +390,7 @@ func (c *Controller) networkPolicyIngressProtocol(ctx *networkPolicyReconcileCon
 			return nil, err
 		}
 		acl := fmt.Sprintf("np/%s.%s/ingress/%s/all", ctx.npName, np.Namespace, protocol)
-		return c.OVNNbClient.UpdateIngressACLOps(ctx.pgName, allow, except, protocol, acl, nil, logEnable, logActions, logRate, ctx.namedPortMap)
+		return ctx.aclBuilder.UpdateIngressACLOps(ctx.pgName, allow, except, protocol, acl, nil, logEnable, logActions, logRate, ctx.namedPortMap)
 	}
 	return ops, nil
 }
@@ -405,7 +411,7 @@ func (c *Controller) networkPolicyIngressRule(ctx *networkPolicyReconcileContext
 	numeric, named := networkPolicyPortVariants(rule.Ports)
 	ops := make([]ovsdb.Operation, 0)
 	if len(selectorAllows) != 0 && (len(rule.Ports) == 0 || len(numeric) != 0) {
-		aclOps, err := c.OVNNbClient.UpdateIngressACLOps(ctx.pgName, allow, except, protocol, acl, numeric, logEnable, logActions, logRate, nil)
+		aclOps, err := ctx.aclBuilder.UpdateIngressACLOps(ctx.pgName, allow, except, protocol, acl, numeric, logEnable, logActions, logRate, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -424,7 +430,7 @@ func (c *Controller) networkPolicyIngressRule(ctx *networkPolicyReconcileContext
 			portMap := map[string]*util.NamedPortInfo{namedPort.Port.StrVal: {PortID: variant.port, Protocol: string(variant.protocol)}}
 			variantACL := fmt.Sprintf("%s/named/%s/%d", acl, variant.name, variant.port)
 			if len(selectorAllows) != 0 {
-				aclOps, err := c.OVNNbClient.UpdateIngressACLOps(variant.pgName, allow, except, protocol, variantACL, variantRule.Ports, logEnable, logActions, logRate, portMap)
+				aclOps, err := ctx.aclBuilder.UpdateIngressACLOps(variant.pgName, allow, except, protocol, variantACL, variantRule.Ports, logEnable, logActions, logRate, portMap)
 				if err != nil {
 					return nil, err
 				}
@@ -432,7 +438,7 @@ func (c *Controller) networkPolicyIngressRule(ctx *networkPolicyReconcileContext
 			}
 			if len(ipBlocks) != 0 {
 				ipACL := fmt.Sprintf("%s/named/%s/%d", fmt.Sprintf("np/%s.%s/ingress/%s/%d/ipBlock", ctx.npName, np.Namespace, protocol, idx), variant.name, variant.port)
-				aclOps, err := c.OVNNbClient.UpdateIngressIPBlockACLOps(variant.pgName, protocol, ipACL, ipBlocks, variantRule.Ports, logEnable, logActions, logRate, portMap)
+				aclOps, err := ctx.aclBuilder.UpdateIngressIPBlockACLOps(variant.pgName, protocol, ipACL, ipBlocks, variantRule.Ports, logEnable, logActions, logRate, portMap)
 				if err != nil {
 					return nil, err
 				}
@@ -442,7 +448,7 @@ func (c *Controller) networkPolicyIngressRule(ctx *networkPolicyReconcileContext
 	}
 	if len(ipBlocks) != 0 && (len(rule.Ports) == 0 || len(numeric) != 0) {
 		ipACL := fmt.Sprintf("np/%s.%s/ingress/%s/%d/ipBlock", ctx.npName, np.Namespace, protocol, idx)
-		aclOps, err := c.OVNNbClient.UpdateIngressIPBlockACLOps(ctx.pgName, protocol, ipACL, ipBlocks, numeric, logEnable, logActions, logRate, nil)
+		aclOps, err := ctx.aclBuilder.UpdateIngressIPBlockACLOps(ctx.pgName, protocol, ipACL, ipBlocks, numeric, logEnable, logActions, logRate, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -475,7 +481,7 @@ func (c *Controller) networkPolicyIngressPeers(namespace, protocol string, peers
 }
 
 func (c *Controller) cleanupNetworkPolicyIngressAddressSets(ctx *networkPolicyReconcileContext, np *netv1.NetworkPolicy) error {
-	sets, err := c.OVNNbClient.ListAddressSets(map[string]string{networkPolicyKey: fmt.Sprintf("%s/%s/ingress", np.Namespace, ctx.npName)})
+	sets, err := c.listAddressSets(map[string]string{networkPolicyKey: fmt.Sprintf("%s/%s/ingress", np.Namespace, ctx.npName)})
 	if err != nil {
 		return err
 	}
@@ -486,7 +492,7 @@ func (c *Controller) cleanupNetworkPolicyIngressAddressSets(ctx *networkPolicyRe
 		}
 		idx, _ := strconv.Atoi(values[len(values)-1])
 		if idx >= len(np.Spec.Ingress) {
-			if err := c.OVNNbClient.DeleteAddressSet(addressSet.Name); err != nil {
+			if err := c.deleteAddressSets(addressSet.Name); err != nil {
 				return err
 			}
 		}
@@ -495,15 +501,15 @@ func (c *Controller) cleanupNetworkPolicyIngressAddressSets(ctx *networkPolicyRe
 }
 
 func (c *Controller) reconcileNetworkPolicyEgress(ctx *networkPolicyReconcileContext, np *netv1.NetworkPolicy, logEnable bool, logActions []string, logRate int) (bool, error) {
-	ops, err := c.OVNNbClient.DeleteAclsOps(ctx.pgName, portGroupKey, ovnnb.ACLDirectionFromLport, nil)
+	ops, err := c.deletePortGroupACLOps(ctx.pgName, ovnnb.ACLDirectionFromLport, nil)
 	if err != nil {
 		return false, err
 	}
 	if !hasEgressRule(np) {
-		if err := c.OVNNbClient.DeleteAcls(ctx.pgName, portGroupKey, ovnnb.ACLDirectionFromLport, nil); err != nil {
+		if err := c.deletePortGroupACLs(ctx.pgName, ovnnb.ACLDirectionFromLport, nil); err != nil {
 			return false, err
 		}
-		if err := c.OVNNbClient.DeleteAddressSets(map[string]string{networkPolicyKey: fmt.Sprintf("%s/%s/egress", np.Namespace, ctx.npName)}); err != nil {
+		if err := c.deleteAddressSetsByExternalIDs(map[string]string{networkPolicyKey: fmt.Sprintf("%s/%s/egress", np.Namespace, ctx.npName)}); err != nil {
 			return false, err
 		}
 		return false, nil
@@ -511,13 +517,13 @@ func (c *Controller) reconcileNetworkPolicyEgress(ctx *networkPolicyReconcileCon
 	ctx.desiredEgressAddrSets = make(map[string]struct{}, len(np.Spec.Egress)*2)
 	enforcementLax := c.isNetworkPolicyEnforcementLax(np)
 	if ctx.protocolSet.Size() > 0 {
-		blockOps, err := c.OVNNbClient.UpdateDefaultBlockACLOps(ctx.key, ctx.pgName, ovnnb.ACLDirectionFromLport, logEnable, enforcementLax, logRate)
+		blockOps, err := ctx.aclBuilder.UpdateDefaultBlockACLOps(ctx.key, ctx.pgName, ovnnb.ACLDirectionFromLport, logEnable, enforcementLax, logRate)
 		if err != nil {
 			return false, err
 		}
 		ops = append(ops, blockOps...)
 		if enforcementLax {
-			exceptionOps, err := c.OVNNbClient.UpdateDefaultBlockExceptionsACLOps(ctx.key, ctx.pgName, np.Namespace, ovnnb.ACLDirectionFromLport)
+			exceptionOps, err := ctx.aclBuilder.UpdateDefaultBlockExceptionsACLOps(ctx.key, ctx.pgName, np.Namespace, ovnnb.ACLDirectionFromLport)
 			if err != nil {
 				return false, err
 			}
@@ -531,7 +537,7 @@ func (c *Controller) reconcileNetworkPolicyEgress(ctx *networkPolicyReconcileCon
 		}
 		ops = append(ops, protocolOps...)
 	}
-	if err := c.OVNNbClient.Transact("add-egress-acls", ops); err != nil {
+	if err := c.transactNB("add-egress-acls", ops...); err != nil {
 		return false, err
 	}
 	return true, c.cleanupNetworkPolicyEgressAddressSets(ctx, np)
@@ -557,7 +563,7 @@ func (c *Controller) networkPolicyEgressProtocol(ctx *networkPolicyReconcileCont
 		ctx.desiredEgressAddrSets[allow] = struct{}{}
 		ctx.desiredEgressAddrSets[except] = struct{}{}
 		acl := fmt.Sprintf("np/%s.%s/egress/%s/all", ctx.npName, np.Namespace, protocol)
-		return c.OVNNbClient.UpdateEgressACLOps(ctx.pgName, allow, except, protocol, acl, nil, logEnable, logActions, logRate, nil)
+		return ctx.aclBuilder.UpdateEgressACLOps(ctx.pgName, allow, except, protocol, acl, nil, logEnable, logActions, logRate, nil)
 	}
 	return ops, nil
 }
@@ -580,7 +586,7 @@ func (c *Controller) networkPolicyEgressRule(ctx *networkPolicyReconcileContext,
 	numeric, named := networkPolicyPortVariants(rule.Ports)
 	ops := make([]ovsdb.Operation, 0)
 	if len(selectorAllows) != 0 && (len(rule.Ports) == 0 || len(numeric) != 0) {
-		aclOps, err := c.OVNNbClient.UpdateEgressACLOps(ctx.pgName, allow, except, protocol, acl, numeric, logEnable, logActions, logRate, nil)
+		aclOps, err := ctx.aclBuilder.UpdateEgressACLOps(ctx.pgName, allow, except, protocol, acl, numeric, logEnable, logActions, logRate, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -608,7 +614,7 @@ func (c *Controller) networkPolicyEgressRule(ctx *networkPolicyReconcileContext,
 			ctx.desiredEgressAddrSets[variantAllow] = struct{}{}
 			portMap := map[string]*util.NamedPortInfo{namedPort.Port.StrVal: {PortID: variant.port, Protocol: string(variant.protocol)}}
 			variantACL := fmt.Sprintf("%s/named/%s/%d", acl, namedPort.Port.StrVal, variant.port)
-			aclOps, err := c.OVNNbClient.UpdateEgressACLOps(ctx.pgName, variantAllow, except, protocol, variantACL, []netv1.NetworkPolicyPort{namedPort}, logEnable, logActions, logRate, portMap)
+			aclOps, err := ctx.aclBuilder.UpdateEgressACLOps(ctx.pgName, variantAllow, except, protocol, variantACL, []netv1.NetworkPolicyPort{namedPort}, logEnable, logActions, logRate, portMap)
 			if err != nil {
 				return nil, err
 			}
@@ -617,7 +623,7 @@ func (c *Controller) networkPolicyEgressRule(ctx *networkPolicyReconcileContext,
 	}
 	if len(ipBlocks) != 0 && (len(rule.Ports) == 0 || len(numeric) != 0) {
 		ipACL := fmt.Sprintf("np/%s.%s/egress/%s/%d/ipBlock", ctx.npName, np.Namespace, protocol, idx)
-		aclOps, err := c.OVNNbClient.UpdateEgressIPBlockACLOps(ctx.pgName, protocol, ipACL, ipBlocks, numeric, logEnable, logActions, logRate, nil)
+		aclOps, err := ctx.aclBuilder.UpdateEgressIPBlockACLOps(ctx.pgName, protocol, ipACL, ipBlocks, numeric, logEnable, logActions, logRate, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -650,7 +656,7 @@ func (c *Controller) networkPolicyEgressPeers(namespace, protocol string, peers 
 }
 
 func (c *Controller) cleanupNetworkPolicyEgressAddressSets(ctx *networkPolicyReconcileContext, np *netv1.NetworkPolicy) error {
-	sets, err := c.OVNNbClient.ListAddressSets(map[string]string{networkPolicyKey: fmt.Sprintf("%s/%s/egress", np.Namespace, ctx.npName)})
+	sets, err := c.listAddressSets(map[string]string{networkPolicyKey: fmt.Sprintf("%s/%s/egress", np.Namespace, ctx.npName)})
 	if err != nil {
 		return err
 	}
@@ -658,7 +664,7 @@ func (c *Controller) cleanupNetworkPolicyEgressAddressSets(ctx *networkPolicyRec
 		if _, ok := ctx.desiredEgressAddrSets[addressSet.Name]; ok {
 			continue
 		}
-		if err := c.OVNNbClient.DeleteAddressSet(addressSet.Name); err != nil {
+		if err := c.deleteAddressSets(addressSet.Name); err != nil {
 			return err
 		}
 	}
@@ -691,7 +697,7 @@ func (c *Controller) prepareNetworkPolicyACLSampling(key, pgName string, np *net
 		c.npSamplingStates.Delete(key)
 	}
 
-	request, err := c.OVNNbClient.PrepareNetworkPolicyACLSampling(pgName, np.Namespace, np.Name, string(np.UID))
+	request, err := c.prepareNetworkPolicyACLSamplingBackend(pgName, np.Namespace, np.Name, string(np.UID))
 	if err != nil {
 		// Sampling is best-effort and must never block NetworkPolicy enforcement.
 		recordACLSamplingFailure(aclSamplingOperationPrepare)
@@ -712,7 +718,7 @@ func (c *Controller) queueNetworkPolicyACLSampling(key string, state *networkPol
 }
 
 func (c *Controller) setNetworkPolicyACLLog(pgName, key string, logEnable, isIngress bool) bool {
-	if err := c.OVNNbClient.SetNetPolACLLog(pgName, logEnable, isIngress); err != nil {
+	if err := c.setNetPolACLLog(pgName, logEnable, isIngress); err != nil {
 		// Logging is best-effort for enforcement, but sampling waits for the
 		// complete enforcement path to succeed.
 		klog.Errorf("failed to set network policy %s ACL log: %v", key, err)
@@ -760,7 +766,7 @@ func (c *Controller) handleNetworkPolicyACLSampling(key string) error {
 	if !ok || !state.ready {
 		return nil
 	}
-	if err := c.OVNNbClient.ApplyNetworkPolicyACLSampling(c.config.ACLSampling, state.request); err != nil {
+	if err := c.applyNetworkPolicyACLSamplingBackend(c.config.ACLSampling, state.request); err != nil {
 		recordACLSamplingFailure(aclSamplingOperationAttach)
 		return err
 	}
@@ -803,7 +809,7 @@ func (c *Controller) handleDeleteNp(request networkPolicyDeleteRequest) error {
 	pgName := lockKey
 	var firstErr error
 	for _, meterName := range networkPolicyMeterNames(pgName) {
-		if err := c.OVNNbClient.DeleteMeter(meterName); err != nil {
+		if err := c.deleteMeter(meterName); err != nil {
 			klog.Errorf("delete meter %s for np %s: %v", meterName, key, err)
 			if firstErr == nil {
 				firstErr = err
@@ -811,14 +817,14 @@ func (c *Controller) handleDeleteNp(request networkPolicyDeleteRequest) error {
 		}
 	}
 
-	if err := c.OVNNbClient.DeletePortGroup(pgName); err != nil {
+	if err := c.deletePortGroups(pgName); err != nil {
 		klog.Errorf("delete np %s port group: %v", key, err)
 		if firstErr == nil {
 			firstErr = err
 		}
 	}
 
-	namedPortGroups, err := c.OVNNbClient.ListPortGroups(map[string]string{
+	namedPortGroups, err := c.listPortGroups(map[string]string{
 		networkPolicyKey:          key,
 		networkPolicyNamedPortKey: "true",
 	})
@@ -829,21 +835,21 @@ func (c *Controller) handleDeleteNp(request networkPolicyDeleteRequest) error {
 		}
 	} else {
 		for _, namedPortGroup := range namedPortGroups {
-			if err = c.OVNNbClient.DeleteAcls(namedPortGroup.Name, portGroupKey, ovnnb.ACLDirectionToLport, nil); err != nil {
+			if err = c.deletePortGroupACLs(namedPortGroup.Name, ovnnb.ACLDirectionToLport, nil); err != nil {
 				klog.Errorf("delete named port group %s ACLs: %v", namedPortGroup.Name, err)
 				if firstErr == nil {
 					firstErr = err
 				}
 			}
 			for _, meterName := range networkPolicyMeterNames(namedPortGroup.Name) {
-				if err = c.OVNNbClient.DeleteMeter(meterName); err != nil {
+				if err = c.deleteMeter(meterName); err != nil {
 					klog.Errorf("delete named port group %s meter: %v", namedPortGroup.Name, err)
 					if firstErr == nil {
 						firstErr = err
 					}
 				}
 			}
-			if err = c.OVNNbClient.DeletePortGroup(namedPortGroup.Name); err != nil {
+			if err = c.deletePortGroups(namedPortGroup.Name); err != nil {
 				klog.Errorf("delete named port group %s: %v", namedPortGroup.Name, err)
 				if firstErr == nil {
 					firstErr = err
@@ -852,7 +858,7 @@ func (c *Controller) handleDeleteNp(request networkPolicyDeleteRequest) error {
 		}
 	}
 
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", namespace, npName, "ingress"),
 	}); err != nil {
 		klog.Errorf("delete np %s ingress address set: %v", key, err)
@@ -861,7 +867,7 @@ func (c *Controller) handleDeleteNp(request networkPolicyDeleteRequest) error {
 		}
 	}
 
-	if err := c.OVNNbClient.DeleteAddressSets(map[string]string{
+	if err := c.deleteAddressSetsByExternalIDs(map[string]string{
 		networkPolicyKey: fmt.Sprintf("%s/%s/%s", namespace, npName, "egress"),
 	}); err != nil {
 		klog.Errorf("delete np %s egress address set: %v", key, err)
