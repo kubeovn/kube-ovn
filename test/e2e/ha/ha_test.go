@@ -659,7 +659,7 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 	registerKubectlKoHA(f, kindNodes)
 
 	framework.DisruptiveIt("ovn db should handle corruption according to the supported recovery policy", func() {
-		f.SkipVersionPriorTo(1, 16, "Safe OVN database corruption recovery was introduced in v1.16")
+		f.SkipVersionPriorTo(1, 11, "This feature was introduced in v1.11")
 
 		ginkgo.By("Getting deployment ovn-central")
 		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
@@ -706,7 +706,9 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 					// Recoverable log corruption is rebuilt as a clean member and
 					// synchronized from the live majority. A file with no readable
 					// identity cannot be rebuilt automatically and remains blocked.
-					automaticRecoveryExpected := !strings.Contains(cmd, `: >`)
+					// The safe recovery policy is available from v1.16. Keep the
+					// baseline recovery expectation for older supported versions.
+					automaticRecoveryExpected := f.VersionPriorTo(1, 16) || !strings.Contains(cmd, `: >`)
 					corruptAndRecover(f, deploy, dbFile, dbFileHost, cmd, automaticRecoveryExpected, kindNodes, &lastFailedCheck)
 				}
 			}
