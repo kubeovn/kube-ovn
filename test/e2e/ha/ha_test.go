@@ -659,7 +659,7 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 	registerKubectlKoHA(f, kindNodes)
 
 	framework.DisruptiveIt("ovn db should handle corruption according to the supported recovery policy", func() {
-		f.SkipVersionPriorTo(1, 11, "This feature was introduced in v1.11")
+		f.SkipVersionPriorTo(1, 16, "Safe OVN database corruption recovery was introduced in v1.16")
 
 		ginkgo.By("Getting deployment ovn-central")
 		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
