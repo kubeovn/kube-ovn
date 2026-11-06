@@ -18,6 +18,7 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	metallbv1beta1 "go.universe.tf/metallb/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
@@ -270,11 +271,17 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		}
 
 		cleanup("Deleting the IPAddressPool for metallb", func() error {
-			return f.MetallbClientSet.DeleteIPAddressPool(metallbIPPoolName)
+			if err := f.MetallbClientSet.DeleteIPAddressPool(metallbIPPoolName); !k8serrors.IsNotFound(err) {
+				return err
+			}
+			return nil
 		})
 
 		cleanup("Deleting the l2 advertisement for metallb", func() error {
-			return f.MetallbClientSet.DeleteL2Advertisement(metallbIPPoolName)
+			if err := f.MetallbClientSet.DeleteL2Advertisement(metallbIPPoolName); !k8serrors.IsNotFound(err) {
+				return err
+			}
+			return nil
 		})
 
 		cleanup("Deleting deployment "+deployName, func() error {
