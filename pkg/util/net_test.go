@@ -477,6 +477,19 @@ func TestCheckProtocol(t *testing.T) {
 			address: "1.2.3",
 			want:    "",
 		},
+		{
+			// Hostnames must resolve before the protocol can be
+			// determined, e.g. an OVN database endpoint referenced by
+			// a Service or load balancer DNS name.
+			name:    "hostname",
+			address: "localhost",
+			want:    kubeovnv1.ProtocolIPv4,
+		},
+		{
+			name:    "unresolvableHostname",
+			address: "invalid.invalid",
+			want:    "",
+		},
 	}
 	for _, c := range tests {
 		t.Run(c.name, func(t *testing.T) {
