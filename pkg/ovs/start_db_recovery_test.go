@@ -31,9 +31,10 @@ func TestStartDBRebuildsInvalidDatabasesFromRaftHeader(t *testing.T) {
 				if mode != "missing" {
 					writeRecoveryTestFile(t, path, original, 0o600)
 					headerContent := fmt.Sprintf(`{"server_id":"60217a20-b040-482e-b898-5f030c4b9f68","name":"%s","cluster_id":"59a70e9f-0492-4f1f-a5f0-8e5d7c5a6b38"}`, db.name)
-					if mode == "invalid-header" {
+					switch mode {
+					case "invalid-header":
 						headerContent = "invalid raft header"
-					} else if mode == "header-mismatch" {
+					case "header-mismatch":
 						headerContent = strings.ReplaceAll(headerContent, "59a70e9f-0492-4f1f-a5f0-8e5d7c5a6b38", "3e2a6f11-0b6f-4bb0-9b39-6f6ea4ce6e85")
 					}
 					writeRecoveryTestFile(t, header, headerContent, 0o600)
@@ -77,9 +78,10 @@ func TestStartDBRebuildsInvalidDatabasesFromRaftHeader(t *testing.T) {
 					if mode != "missing" {
 						got, err := os.ReadFile(header)
 						expectedHeader := fmt.Sprintf(`{"server_id":"60217a20-b040-482e-b898-5f030c4b9f68","name":"%s","cluster_id":"59a70e9f-0492-4f1f-a5f0-8e5d7c5a6b38"}`, db.name)
-						if mode == "invalid-header" {
+						switch mode {
+						case "invalid-header":
 							expectedHeader = "invalid raft header"
-						} else if mode == "header-mismatch" {
+						case "header-mismatch":
 							expectedHeader = strings.ReplaceAll(expectedHeader, "59a70e9f-0492-4f1f-a5f0-8e5d7c5a6b38", "3e2a6f11-0b6f-4bb0-9b39-6f6ea4ce6e85")
 						}
 						if err != nil || string(got) != expectedHeader {
