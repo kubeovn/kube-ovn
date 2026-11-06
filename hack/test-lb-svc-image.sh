@@ -79,3 +79,6 @@ docker run -d --name "$container" --network "$network" \
 docker exec -i "$container" capsh \
     --inh=cap_net_admin,cap_net_raw --addamb=cap_net_admin,cap_net_raw \
     --shell=/bin/bash -- -s -- --inside < "$0"
+
+# Match the E2E rule probe without an intermediate non-root shell.
+docker exec "$container" iptables -t nat -S PREROUTING

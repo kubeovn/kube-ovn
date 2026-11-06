@@ -247,7 +247,9 @@ var _ = framework.SerialDescribe("[group:lb-svc]", func() {
 			}, "updated service port is reachable")
 
 			ginkgo.By("Checking that the old DNAT rule has been removed")
-			rules := e2epodoutput.RunHostCmdOrDie(pod.Namespace, pod.Name, "iptables -t nat -S PREROUTING")
+			// Execute the capability-bearing binary directly: a non-root shell drops its capabilities.
+			rules, stderr, err := framework.ExecCommandInContainer(f, pod.Namespace, pod.Name, "lb-svc", "iptables", "-t", "nat", "-S", "PREROUTING")
+			framework.ExpectNoError(err, "failed to list DNAT rules: %s", stderr)
 			framework.ExpectNotContainSubstring(rules, fmt.Sprintf("--dport %d ", oldPort))
 		}
 

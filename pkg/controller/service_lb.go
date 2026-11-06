@@ -173,6 +173,9 @@ func (c *Controller) updateLbSvcDeployment(svc *corev1.Service, dp *v1.Deploymen
 	if svc.Spec.LoadBalancerIP != "" {
 		podAnnotations[attachIPAnnotation] = svc.Spec.LoadBalancerIP
 	}
+	if v, ok := svc.Annotations[util.LogicalSwitchAnnotation]; ok {
+		podAnnotations[util.LogicalSwitchAnnotation] = v
+	}
 	changed := !maps.Equal(podAnnotations, dp.Spec.Template.Annotations)
 	dp.Spec.Template.Annotations = podAnnotations
 
@@ -456,7 +459,7 @@ func (c *Controller) checkAndReInitLbSvcPod(pod *corev1.Pod) error {
 	return nil
 }
 
-func (c *Controller) checkLbSvcDeployAnnotationChanged(svc *corev1.Service) (bool, error) {
+func (c *Controller) checkLbSvcDeploymentChanged(svc *corev1.Service) (bool, error) {
 	deployName := genLbSvcDpName(svc.Name)
 	deploy, err := c.config.KubeClient.AppsV1().Deployments(svc.Namespace).Get(context.Background(), deployName, metav1.GetOptions{})
 	if err != nil {
