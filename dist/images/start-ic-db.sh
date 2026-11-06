@@ -159,7 +159,7 @@ function ovn_db_pre_start() {
         ;;
     esac
 
-    local db_file="/etc/ovn/ovn${1}_db.db"
+    local db_file="/etc/ovn/ovn_${1}_db.db"
     [[ ! -e "$db_file" ]] && return 0
     local actual_db_name
     if ! actual_db_name=$(ovsdb-tool db-name "$db_file"); then
