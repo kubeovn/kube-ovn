@@ -31,6 +31,32 @@ func TestParseFlagsAcceptsLegacyOVSVsctlConcurrency(t *testing.T) {
 	}
 }
 
+func TestParseFlagsGeneveTxOff(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "disabled by default", want: false},
+		{name: "enabled explicitly", args: []string{"--set-geneve-tx-off=true"}, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oldArgs, oldFlags, oldLogLevel := os.Args, pflag.CommandLine, logrus.GetLevel()
+			t.Cleanup(func() {
+				os.Args, pflag.CommandLine = oldArgs, oldFlags
+				logrus.SetLevel(oldLogLevel)
+			})
+			pflag.CommandLine = pflag.NewFlagSet("daemon", pflag.PanicOnError)
+			os.Args = append([]string{"daemon"}, tt.args...)
+
+			config := ParseFlags()
+			require.Equal(t, tt.want, config.SetGeneveTxOff)
+		})
+	}
+}
+
 func TestParseNodeNetworks(t *testing.T) {
 	tests := []struct {
 		name        string

@@ -73,6 +73,7 @@ IPSEC_CERT_DURATION=${IPSEC_CERT_DURATION:-63072000} # 2 years in seconds
 CERT_MANAGER_ISSUER_NAME=${CERT_MANAGER_ISSUER_NAME:-kube-ovn}
 ENABLE_ANP=${ENABLE_ANP:-false}
 ENABLE_DNS_NAME_RESOLVER=${ENABLE_DNS_NAME_RESOLVER:-false}
+SET_GENEVE_TX_OFF=${SET_GENEVE_TX_OFF:-false}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 HOST_TUNNEL_SRC=${HOST_TUNNEL_SRC:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
@@ -9552,6 +9553,7 @@ ${IPSEC_CLEANUP_INIT}
           - --enable-tproxy=$ENABLE_TPROXY
           - --enable-recompute=$ENABLE_RECOMPUTE
           - --secure-serving=${SECURE_SERVING}
+          - --set-geneve-tx-off=$SET_GENEVE_TX_OFF
           - --set-vxlan-tx-off=$SET_VXLAN_TX_OFF
           - --host-tunnel-src=$HOST_TUNNEL_SRC
           - --enable-acl-sampling=$ENABLE_ACL_SAMPLING
