@@ -810,16 +810,16 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 			enableDHCP := podNet.Subnet.Spec.EnableDHCP || hasPerPortDHCP
 
 			var oldSgList []string
-			if vmKey != "" {
-				existingLsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
-				if err != nil {
-					klog.Errorf("failed to get logical switch port %s: %v", portName, err)
-					recordFailure("getLogicalSwitchPort", err)
-					return nil, err
-				}
-				if existingLsp != nil {
-					oldSgList, _ = c.getPortSg(existingLsp)
-				}
+			// StatefulSet pods also reuse LSPs. Read their old groups before the
+			// port update replaces the SG external IDs, even when all groups are removed.
+			existingLsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
+			if err != nil {
+				klog.Errorf("failed to get logical switch port %s: %v", portName, err)
+				recordFailure("getLogicalSwitchPort", err)
+				return nil, err
+			}
+			if existingLsp != nil {
+				oldSgList, _ = c.getPortSg(existingLsp)
 			}
 
 			securityGroupAnnotation := pod.Annotations[fmt.Sprintf(util.SecurityGroupAnnotationTemplate, podNet.ProviderName)]
@@ -830,14 +830,6 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 				return nil, err
 			}
 
-			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
-				if err := c.OVNNbClient.EnablePortLayer2forward(portName); err != nil {
-					c.recorder.Eventf(pod, v1.EventTypeWarning, "SetOVNPortL2ForwardFailed", "stage=setLogicalSwitchPortLayer2Forward error=%v", err)
-					klog.Errorf("%v", err)
-					return nil, err
-				}
-			}
-
 			if securityGroupAnnotation != "" || oldSgList != nil {
 				securityGroups := strings.ReplaceAll(securityGroupAnnotation, " ", "")
 				newSgList := strings.Split(securityGroups, ",")
@@ -846,6 +838,14 @@ func (c *Controller) reconcileAllocateSubnets(pod *v1.Pod, needAllocatePodNets [
 					if sgName != "" {
 						c.syncSgPortsQueue.Add(sgName)
 					}
+				}
+			}
+
+			if pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] == "true" {
+				if err := c.OVNNbClient.EnablePortLayer2forward(portName); err != nil {
+					c.recorder.Eventf(pod, v1.EventTypeWarning, "SetOVNPortL2ForwardFailed", "stage=setLogicalSwitchPortLayer2Forward error=%v", err)
+					klog.Errorf("%v", err)
+					return nil, err
 				}
 			}
 
