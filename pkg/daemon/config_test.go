@@ -2,13 +2,42 @@ package daemon
 
 import (
 	"net"
+	"os"
 	"testing"
 
+	"github.com/sirupsen/logrus"
+	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestParseFlagsGeneveTxOffDefaultsEnabled(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "enabled by default", want: true},
+		{name: "disabled explicitly", args: []string{"--set-geneve-tx-off=false"}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			oldArgs, oldFlags, oldLogLevel := os.Args, pflag.CommandLine, logrus.GetLevel()
+			t.Cleanup(func() {
+				os.Args, pflag.CommandLine = oldArgs, oldFlags
+				logrus.SetLevel(oldLogLevel)
+			})
+			pflag.CommandLine = pflag.NewFlagSet("daemon", pflag.PanicOnError)
+			os.Args = append([]string{"daemon"}, tt.args...)
+
+			config := ParseFlags()
+			require.Equal(t, tt.want, config.SetGeneveTxOff)
+		})
+	}
+}
 
 func TestParseNodeNetworks(t *testing.T) {
 	tests := []struct {
