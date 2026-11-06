@@ -204,6 +204,10 @@ func (suite *OvnClientTestSuite) Test_CreateLogicalSwitchPort() {
 	suite.testCreateLogicalSwitchPort()
 }
 
+func (suite *OvnClientTestSuite) Test_CreateLogicalSwitchPortDuplicateGuard() {
+	suite.testCreateLogicalSwitchPortDuplicateGuard()
+}
+
 func (suite *OvnClientTestSuite) Test_CreateLocalnetLogicalSwitchPort() {
 	suite.testCreateLocalnetLogicalSwitchPort()
 }

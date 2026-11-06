@@ -1,17 +1,21 @@
 package ovs
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/model"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -244,6 +248,131 @@ func (suite *OvnClientTestSuite) testCreateLogicalSwitchPort() {
 		err = failedNbClient.CreateLogicalSwitchPort(lsName, "", ips, mac, podName, podNamespace, true, sgs, vips, true, nil, vpcName)
 		require.Error(t, err)
 	})
+}
+
+// missingLogicalSwitchPortClient hides only the target port from cache reads.
+// Transactions and all other reads still use the real OVSDB client.
+type missingLogicalSwitchPortClient struct {
+	*table.Client
+	name    string
+	ready   chan<- struct{}
+	release <-chan struct{}
+}
+
+func (c *missingLogicalSwitchPortClient) Get(ctx context.Context, m model.Model) error {
+	if lsp, ok := m.(*ovnnb.LogicalSwitchPort); ok && lsp.Name == c.name {
+		if c.ready != nil {
+			c.ready <- struct{}{}
+			select {
+			case <-c.release:
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		return table.ErrNotFound
+	}
+	return c.Client.Get(ctx, m)
+}
+
+func (c *missingLogicalSwitchPortClient) Transact(ctx context.Context, ops ...ovsdb.Operation) ([]ovsdb.OperationResult, error) {
+	return c.TransactResults(ctx, ops...)
+}
+
+func requireSingleLogicalSwitchPort(t *testing.T, nbClient *OVNNbClient, lsName, name string) *ovnnb.LogicalSwitchPort {
+	t.Helper()
+	lsps, err := nbClient.ListLogicalSwitchPorts(false, nil, func(port *ovnnb.LogicalSwitchPort) bool {
+		return port.Name == name
+	})
+	require.NoError(t, err)
+	require.Len(t, lsps, 1)
+	ls, err := nbClient.GetLogicalSwitch(lsName, false)
+	require.NoError(t, err)
+	require.Contains(t, ls.Ports, lsps[0].UUID)
+	return &lsps[0]
+}
+
+func (suite *OvnClientTestSuite) testCreateLogicalSwitchPortDuplicateGuard() {
+	t := suite.T()
+	t.Parallel()
+
+	nbClient := suite.ovnNBClient
+	lsName := "test-create-lsp-atomic-ls"
+	require.NoError(t, nbClient.CreateBareLogicalSwitch(lsName))
+
+	t.Run("stale cache returns retry and then reconciles the existing row", func(t *testing.T) {
+		name := "test-create-lsp-atomic"
+		require.NoError(t, nbClient.CreateLogicalSwitchPort(lsName, name, "10.244.0.10", "00:00:00:00:00:10", "old-pod", "namespace", false, "", "", false, nil, ""))
+		before := requireSingleLogicalSwitchPort(t, nbClient, lsName, name)
+		staleClient := &OVNNbClient{
+			Database: table.NewDatabase(&missingLogicalSwitchPortClient{Client: nbClient.Client, name: name}, nbClient.Timeout, table.RetryPolicy{}),
+		}
+
+		err := staleClient.CreateLogicalSwitchPort(lsName, name, "10.244.0.20", "00:00:00:00:00:20", "new-pod", "namespace", true, "new-sg", "", false, nil, "")
+		require.ErrorContains(t, err, "created concurrently")
+		require.Equal(t, before, requireSingleLogicalSwitchPort(t, nbClient, lsName, name), "the failed transaction must preserve the existing row")
+
+		// Once the cache has caught up, the same request must update the old row.
+		require.NoError(t, nbClient.CreateLogicalSwitchPort(lsName, name, "10.244.0.20", "00:00:00:00:00:20", "new-pod", "namespace", true, "new-sg", "", false, nil, ""))
+		after := requireSingleLogicalSwitchPort(t, nbClient, lsName, name)
+		require.Equal(t, before.UUID, after.UUID)
+		require.Equal(t, []string{"00:00:00:00:00:20 10.244.0.20"}, after.Addresses)
+		require.Equal(t, after.Addresses, after.PortSecurity)
+		require.Equal(t, "namespace/new-pod", after.ExternalIDs["pod"])
+		require.Equal(t, "new-sg", after.ExternalIDs[sgsKey])
+		require.Equal(t, "true", after.ExternalIDs[associatedSgKeyPrefix+"new-sg"])
+	})
+
+	t.Run("concurrent cache misses produce exactly one logical switch port", func(t *testing.T) {
+		testCreateLogicalSwitchPortConcurrentCacheMisses(t, nbClient, lsName)
+	})
+}
+
+func testCreateLogicalSwitchPortConcurrentCacheMisses(t *testing.T, nbClient *OVNNbClient, lsName string) {
+	t.Helper()
+	const callers = 10
+	name := "test-create-lsp-atomic-concurrent"
+	ready := make(chan struct{}, callers)
+	release := make(chan struct{})
+	releaseReads := sync.OnceFunc(func() { close(release) })
+	var wg sync.WaitGroup
+	t.Cleanup(func() {
+		releaseReads()
+		wg.Wait()
+	})
+	staleClient := &OVNNbClient{
+		Database: table.NewDatabase(&missingLogicalSwitchPortClient{Client: nbClient.Client, name: name, ready: ready, release: release}, nbClient.Timeout, table.RetryPolicy{}),
+	}
+
+	errs := make([]error, callers)
+	for i := range callers {
+		wg.Go(func() {
+			errs[i] = staleClient.CreateLogicalSwitchPort(lsName, name, "10.244.0.11", "00:00:00:00:00:11", "pod", "namespace", false, "", "", false, nil, "")
+		})
+	}
+	// Every caller must observe a cache miss before any can insert the port.
+	require.Eventually(t, func() bool { return len(ready) == callers }, time.Second, time.Millisecond)
+	releaseReads()
+	wg.Wait()
+
+	var successes int
+	for i, err := range errs {
+		if err == nil {
+			successes++
+		} else {
+			require.ErrorContains(t, err, "created concurrently", "goroutine %d", i)
+		}
+	}
+	require.Equal(t, 1, successes)
+	before := requireSingleLogicalSwitchPort(t, nbClient, lsName, name)
+
+	// All callers can reconcile successfully after their cache reads recover.
+	for range callers {
+		require.NoError(t, nbClient.CreateLogicalSwitchPort(lsName, name, "10.244.0.21", "00:00:00:00:00:21", "pod", "namespace", true, "", "", false, nil, ""))
+	}
+	after := requireSingleLogicalSwitchPort(t, nbClient, lsName, name)
+	require.Equal(t, before.UUID, after.UUID)
+	require.Equal(t, []string{"00:00:00:00:00:21 10.244.0.21"}, after.Addresses)
+	require.Equal(t, after.Addresses, after.PortSecurity)
 }
 
 func (suite *OvnClientTestSuite) testCreateLocalnetLogicalSwitchPort() {
