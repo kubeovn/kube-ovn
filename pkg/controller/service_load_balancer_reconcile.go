@@ -25,6 +25,8 @@ type serviceLoadBalancerReconciliation struct {
 	desired map[string]*ovs.LoadBalancerDesiredState
 }
 
+const serviceLBTemplateRevisionOption = "kube-ovn-template-revision"
+
 func newServiceLoadBalancerReconciliation(svc *v1.Service) *serviceLoadBalancerReconciliation {
 	owner := serviceScopedLBOwner(svc)
 	return &serviceLoadBalancerReconciliation{
@@ -77,6 +79,7 @@ func (c *Controller) serviceScopedLBConfig(svc *v1.Service, protocol v1.Protocol
 	} else {
 		config.DeleteOptions = append(config.DeleteOptions, "address-family")
 		config.DeleteOptions = append(config.DeleteOptions, "ct_flush")
+		config.DeleteOptions = append(config.DeleteOptions, serviceLBTemplateRevisionOption)
 	}
 	return config, nil
 }
@@ -169,11 +172,21 @@ func (c *Controller) planServiceEndpointVIP(ctx *endpointSliceReconcileContext, 
 }
 
 func (plan *serviceLoadBalancerReconciliation) addTemplateState(prefix string, migrations []ovs.TemplateVIPMigration, desiredVIPs, variablesByChassis map[string]map[string]string) error {
+	revision, err := util.Sha256HashObject(variablesByChassis)
+	if err != nil {
+		return fmt.Errorf("hash template variables: %w", err)
+	}
 	for name, vips := range desiredVIPs {
 		lb := plan.desired[name]
 		if lb == nil {
 			return fmt.Errorf("template load balancer %s is not planned", name)
 		}
+		// OVN tracks template variables through a dependency graph. Updating the
+		// load balancer row along with the variables makes the old resolved
+		// backend visible to ovn-controller even when the SB template-variable
+		// update is delivered before its dependency notification. This lets
+		// ct_flush remove conntrack tuples for the deleted backend.
+		lb.Config.Options[serviceLBTemplateRevisionOption] = revision[:16]
 		maps.Copy(lb.VIPs, vips)
 	}
 	for _, migration := range migrations {

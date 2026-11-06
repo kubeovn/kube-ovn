@@ -122,6 +122,7 @@ func TestServiceLoadBalancersReconcileAtomically(t *testing.T) {
 			lbs, err := nbClient.ListLoadBalancers(serviceScopedLBOwner(svc).ownsLoadBalancer)
 			require.NoError(t, err)
 			require.GreaterOrEqual(t, len(lbs), 2)
+			templateRevisions := make(map[string]string)
 			for _, lb := range lbs {
 				if tc.serviceType == corev1.ServiceTypeLoadBalancer && lb.Name == serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, "ipv6") ||
 					tc.serviceType == corev1.ServiceTypeLoadBalancer && lb.Name == serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolUDP, serviceLBExternalTraffic, "ipv6") {
@@ -134,12 +135,46 @@ func TestServiceLoadBalancersReconcileAtomically(t *testing.T) {
 					lb.ExternalIDs[serviceLBScopeExternalID] == "logical-switch/external")
 				if isTemplate {
 					require.Equal(t, "true", lb.Options["ct_flush"], lb.Name)
+					templateRevisions[lb.Name] = lb.Options[serviceLBTemplateRevisionOption]
+					require.NotEmpty(t, templateRevisions[lb.Name], lb.Name)
 				} else {
 					require.NotContains(t, lb.Options, "ct_flush", lb.Name)
+					require.NotContains(t, lb.Options, serviceLBTemplateRevisionOption, lb.Name)
 				}
 			}
+			if tc.template {
+				updatedEndpoints := make([]*discoveryv1.EndpointSlice, 0, len(endpoints))
+				for _, endpointSlice := range endpoints {
+					updatedEndpoints = append(updatedEndpoints, endpointSlice.DeepCopy())
+				}
+				updatedEndpoints[0].Endpoints[0].Addresses[0] = "10.0.0.3"
+				require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, updatedEndpoints))
+				require.Len(t, recorder.transactions, 2, "a template backend change must update the load balancer revision")
+				loadBalancerUpdate := slices.IndexFunc(recorder.transactions[1], func(op ovsdb.Operation) bool {
+					return op.Op == ovsdb.OperationUpdate && op.Table == ovnnb.LoadBalancerTable
+				})
+				templateVariableUpdate := slices.IndexFunc(recorder.transactions[1], func(op ovsdb.Operation) bool {
+					return op.Op == ovsdb.OperationUpdate && op.Table == ovnnb.ChassisTemplateVarTable
+				})
+				require.GreaterOrEqual(t, loadBalancerUpdate, 0, "template backend changes must update the load balancer row")
+				require.GreaterOrEqual(t, templateVariableUpdate, 0, "template backend changes must update chassis variables")
+				require.Less(t, loadBalancerUpdate, templateVariableUpdate, "load balancer update must precede template variable update")
+				updated, err := nbClient.ListLoadBalancers(serviceScopedLBOwner(svc).ownsLoadBalancer)
+				require.NoError(t, err)
+				for _, lb := range updated {
+					if revision := templateRevisions[lb.Name]; revision != "" {
+						require.NotEqual(t, revision, lb.Options[serviceLBTemplateRevisionOption], lb.Name)
+					}
+				}
+				endpoints = updatedEndpoints
+			}
 			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
-			require.Len(t, recorder.transactions, 1, "an unchanged Service must not produce another NB transaction")
+			require.Len(t, recorder.transactions, func() int {
+				if tc.template {
+					return 2
+				}
+				return 1
+			}(), "an unchanged Service must not produce another NB transaction")
 		})
 	}
 }
