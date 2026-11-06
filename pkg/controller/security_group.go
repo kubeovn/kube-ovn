@@ -564,6 +564,20 @@ func (c *Controller) syncSgLogicalPort(key string) error {
 				}
 			}
 		}
+		// Port security disabled leaves VIPs in external IDs only; they still belong in the SG address set.
+		if len(lsp.PortSecurity) == 0 {
+			for vip := range strings.SplitSeq(lsp.ExternalIDs["vips"], ",") {
+				vip = strings.TrimSpace(vip)
+				if vip == "" {
+					continue
+				}
+				if strings.Contains(vip, ":") {
+					v6s = append(v6s, vip)
+				} else {
+					v4s = append(v4s, vip)
+				}
+			}
+		}
 	}
 
 	sg, err := c.sgsLister.Get(key)
