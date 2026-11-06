@@ -8616,7 +8616,6 @@ spec:
           - --node-local-dns-ip=$NODE_LOCAL_DNS_IP
           - --skip-conntrack-dst-cidrs=$SKIP_CONNTRACK_DST_CIDRS
           - --enable-ovn-ipsec=$ENABLE_OVN_IPSEC
-          - --set-geneve-tx-off=$SET_GENEVE_TX_OFF
           - --cert-manager-ipsec-cert=$CERT_MANAGER_IPSEC_CERT
           - --secure-serving=${SECURE_SERVING}
           - --enable-anp=$ENABLE_ANP
@@ -8829,6 +8828,7 @@ spec:
           - --cert-manager-ipsec-cert=$CERT_MANAGER_IPSEC_CERT
           - --ovn-ipsec-cert-duration=$IPSEC_CERT_DURATION
           - --cert-manager-issuer-name=$CERT_MANAGER_ISSUER_NAME
+          - --set-geneve-tx-off=$SET_GENEVE_TX_OFF
           - --set-vxlan-tx-off=$SET_VXLAN_TX_OFF
           - --host-tunnel-src=$HOST_TUNNEL_SRC
           - --enable-acl-sampling=$ENABLE_ACL_SAMPLING
