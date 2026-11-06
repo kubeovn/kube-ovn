@@ -12,6 +12,7 @@ import (
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	v1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -70,6 +71,26 @@ func (c *Controller) getAttachNetworkForService(svc *corev1.Service) (*nadv1.Net
 	return nad, err
 }
 
+func lbSvcSecurityContext(existing *corev1.SecurityContext) *corev1.SecurityContext {
+	// Preserve restrictions such as seccomp profiles added by admission policies.
+	sc := existing.DeepCopy()
+	if sc == nil {
+		sc = &corev1.SecurityContext{}
+	}
+	sc.Privileged = new(false)
+	sc.AllowPrivilegeEscalation = new(false)
+	sc.RunAsNonRoot = new(true)
+	sc.RunAsUser = new(int64(65532))
+	sc.RunAsGroup = new(int64(65532))
+	// Routes, NAT rules and ARP announcements only need network capabilities
+	// in the Pod's own network namespace, not access to the host.
+	sc.Capabilities = &corev1.Capabilities{
+		Add:  []corev1.Capability{"NET_ADMIN", "NET_RAW"},
+		Drop: []corev1.Capability{"ALL"},
+	}
+	return sc
+}
+
 func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkAttachmentDefinition) (dp *v1.Deployment) {
 	name := genLbSvcDpName(svc.Name)
 	appLabel := util.NormalizeLabelValue(name)
@@ -123,14 +144,12 @@ func (c *Controller) genLbSvcDeployment(svc *corev1.Service, nad *nadv1.NetworkA
 							Image:           vpcNatImage,
 							Command:         []string{"sleep", "infinity"},
 							ImagePullPolicy: corev1.PullIfNotPresent,
-							SecurityContext: &corev1.SecurityContext{
-								Privileged:               new(true),
-								AllowPrivilegeEscalation: new(true),
-							},
-							Resources: resources,
+							SecurityContext: lbSvcSecurityContext(nil),
+							Resources:       resources,
 						},
 					},
 					NodeSelector:                  nodeSelector,
+					AutomountServiceAccountToken:  new(false),
 					TerminationGracePeriodSeconds: new(int64(0)),
 				},
 			},
@@ -154,11 +173,37 @@ func (c *Controller) updateLbSvcDeployment(svc *corev1.Service, dp *v1.Deploymen
 	if svc.Spec.LoadBalancerIP != "" {
 		podAnnotations[attachIPAnnotation] = svc.Spec.LoadBalancerIP
 	}
-	if maps.Equal(podAnnotations, dp.Spec.Template.Annotations) {
-		return nil
+	if v, ok := svc.Annotations[util.LogicalSwitchAnnotation]; ok {
+		podAnnotations[util.LogicalSwitchAnnotation] = v
+	}
+	changed := !maps.Equal(podAnnotations, dp.Spec.Template.Annotations)
+	dp.Spec.Template.Annotations = podAnnotations
+
+	// Reconcile the security settings even when the network annotations have not
+	// changed, so upgrading the controller also replaces existing privileged Pods.
+	podSpec := &dp.Spec.Template.Spec
+	for i := range podSpec.Containers {
+		if container := &podSpec.Containers[i]; container.Name == "lb-svc" {
+			// Non-root execution requires the file capabilities in the configured image.
+			if container.Image != vpcNatImage {
+				container.Image = vpcNatImage
+				changed = true
+			}
+			securityContext := lbSvcSecurityContext(container.SecurityContext)
+			if !equality.Semantic.DeepEqual(container.SecurityContext, securityContext) {
+				container.SecurityContext = securityContext
+				changed = true
+			}
+		}
+	}
+	if podSpec.AutomountServiceAccountToken == nil || *podSpec.AutomountServiceAccountToken {
+		podSpec.AutomountServiceAccountToken = new(false)
+		changed = true
 	}
 
-	dp.Spec.Template.Annotations = podAnnotations
+	if !changed {
+		return nil
+	}
 	return dp
 }
 
@@ -272,7 +317,12 @@ func (c *Controller) deleteLbSvc(svc *corev1.Service) error {
 }
 
 func (c *Controller) execNatRules(pod *corev1.Pod, operation string, rules []string) error {
-	args := append([]string{"bash", "/kube-ovn/lb-svc.sh", operation}, rules...)
+	// Retain only the allowed network capabilities across the non-root shell and
+	// its children, including iproute2's inheritable-capability check.
+	args := append([]string{
+		"capsh", "--inh=cap_net_admin,cap_net_raw", "--addamb=cap_net_admin,cap_net_raw",
+		"--shell=/bin/bash", "--", "/kube-ovn/lb-svc.sh", operation,
+	}, rules...)
 	klog.V(3).Info(strings.Join(args, " "))
 	stdOutput, errOutput, err := util.ExecuteCommandInContainer(c.config.KubeClient, c.config.KubeRestConfig, pod.Namespace, pod.Name, "lb-svc", args...)
 	if err != nil {
@@ -409,7 +459,7 @@ func (c *Controller) checkAndReInitLbSvcPod(pod *corev1.Pod) error {
 	return nil
 }
 
-func (c *Controller) checkLbSvcDeployAnnotationChanged(svc *corev1.Service) (bool, error) {
+func (c *Controller) checkLbSvcDeploymentChanged(svc *corev1.Service) (bool, error) {
 	deployName := genLbSvcDpName(svc.Name)
 	deploy, err := c.config.KubeClient.AppsV1().Deployments(svc.Namespace).Get(context.Background(), deployName, metav1.GetOptions{})
 	if err != nil {

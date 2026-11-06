@@ -451,6 +451,9 @@ jobs:
           make image-vpc-nat-gateway
           make tar-vpc-nat-gateway
 
+      - name: Verify non-root Service LoadBalancer capabilities
+        run: bash hack/test-lb-svc-image.sh "kubeovn/vpc-nat-gateway:$(cat VERSION)"
+
       - name: Upload image to artifact
         uses: actions/upload-artifact@v7
         with:
