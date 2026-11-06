@@ -15,16 +15,17 @@ func TestStartDBRebuildsInvalidDatabasesFromLiveCluster(t *testing.T) {
 		script string
 		kind   string
 		name   string
+		file   string
 	}{
-		{"start-db.sh", "nb", "OVN_Northbound"},
-		{"start-db.sh", "sb", "OVN_Southbound"},
-		{"start-ic-db.sh", "ic_nb", "OVN_IC_Northbound"},
-		{"start-ic-db.sh", "ic_sb", "OVN_IC_Southbound"},
+		{"start-db.sh", "nb", "OVN_Northbound", "ovnnb_db.db"},
+		{"start-db.sh", "sb", "OVN_Southbound", "ovnsb_db.db"},
+		{"start-ic-db.sh", "ic_nb", "OVN_IC_Northbound", "ovn_ic_nb_db.db"},
+		{"start-ic-db.sh", "ic_sb", "OVN_IC_Southbound", "ovn_ic_sb_db.db"},
 	} {
 		for _, mode := range []string{"valid", "standalone", "missing", "entry-gap", "committed-truncation", "failed-fix", "bad-name", "wrong-name", "unknown-format"} {
 			t.Run(db.kind+"/"+mode, func(t *testing.T) {
 				dir := t.TempDir()
-				path := filepath.Join(dir, "ovn"+db.kind+"_db.db")
+				path := filepath.Join(dir, db.file)
 				original := "original committed history\n"
 				header := strings.TrimSuffix(path, ".db") + ".hdr"
 				if mode != "missing" {
@@ -105,16 +106,17 @@ func TestStartDBResumesPendingJoins(t *testing.T) {
 		script string
 		kind   string
 		name   string
+		file   string
 	}{
-		{"start-db.sh", "nb", "OVN_Northbound"},
-		{"start-db.sh", "sb", "OVN_Southbound"},
-		{"start-ic-db.sh", "ic_nb", "OVN_IC_Northbound"},
-		{"start-ic-db.sh", "ic_sb", "OVN_IC_Southbound"},
+		{"start-db.sh", "nb", "OVN_Northbound", "ovnnb_db.db"},
+		{"start-db.sh", "sb", "OVN_Southbound", "ovnsb_db.db"},
+		{"start-ic-db.sh", "ic_nb", "OVN_IC_Northbound", "ovn_ic_nb_db.db"},
+		{"start-ic-db.sh", "ic_sb", "OVN_IC_Southbound", "ovn_ic_sb_db.db"},
 	} {
 		for _, age := range []int{30, 180} {
 			t.Run(fmt.Sprintf("%s/age-%d", db.kind, age), func(t *testing.T) {
 				dir := t.TempDir()
-				path := filepath.Join(dir, "ovn"+db.kind+"_db.db")
+				path := filepath.Join(dir, db.file)
 				header := strings.TrimSuffix(path, ".db") + ".hdr"
 				writeRecoveryTestFile(t, path, "pending join", 0o600)
 				writeRecoveryTestFile(t, header, "pending header", 0o600)

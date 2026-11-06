@@ -3,7 +3,7 @@ set -euo pipefail
 shopt -s expand_aliases
 
 for db in ic_nb ic_sb; do
-    db_file="/etc/ovn/ovn${db}_db.db"
+    db_file="/etc/ovn/ovn_${db}_db.db"
     if ! ovsdb-tool check-cluster "$db_file"; then
         echo "${db} persistent Raft log validation failed"
         exit 1
