@@ -47,6 +47,8 @@ type Controller struct {
 	providerNetworksSynced          cache.InformerSynced
 	addOrUpdateProviderNetworkQueue workqueue.TypedRateLimitingInterface[string]
 	deleteProviderNetworkQueue      workqueue.TypedRateLimitingInterface[*kubeovnv1.ProviderNetwork]
+	// Serialize both queues so bridge setup cannot race with teardown or shared mapping updates.
+	providerNetworkMutex sync.Mutex
 
 	vlansLister kubeovnlister.VlanLister
 	vlansSynced cache.InformerSynced
@@ -381,6 +383,9 @@ func (c *Controller) processNextDeleteProviderNetworkWorkItem() bool {
 }
 
 func (c *Controller) handleAddOrUpdateProviderNetwork(key string) error {
+	c.providerNetworkMutex.Lock()
+	defer c.providerNetworkMutex.Unlock()
+
 	klog.V(3).Infof("handle update provider network %s", key)
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
@@ -594,6 +599,20 @@ func (c *Controller) cleanProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v
 }
 
 func (c *Controller) handleDeleteProviderNetwork(pn *kubeovnv1.ProviderNetwork) error {
+	c.providerNetworkMutex.Lock()
+	defer c.providerNetworkMutex.Unlock()
+
+	current, err := c.providerNetworksLister.Get(pn.Name)
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.Error(err)
+		return err
+	}
+	if err == nil && current.UID != pn.UID {
+		// A queued delete for an older object must not tear down its replacement.
+		klog.V(3).Infof("provider network %s has been recreated, skip stale delete", pn.Name)
+		return nil
+	}
+
 	if err := c.ovsCleanProviderNetwork(pn.Name, providerNetworkNic(pn, c.config.NodeName), pn.Spec.VlanInterfaces); err != nil {
 		klog.Error(err)
 		return err
