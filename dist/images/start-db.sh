@@ -348,6 +348,71 @@ function rejoin_db_from_raft_header() {
     return 0
 }
 
+function rebuild_clustered_database_from_raft_header {
+    local db_file="$1"
+    local hdr_file="$2"
+    local db_name="$3"
+    local db_type="$4"
+    local local_addr="$5"
+    shift 5
+    local remote_addr=("$@")
+
+    if [[ ! -s "$hdr_file" || ${#remote_addr[@]} -eq 0 ]]; then
+        echo "cannot rebuild $db_name from missing raft header or peer addresses" >&2
+        return 1
+    fi
+
+    local header_cid=""
+    local server_id=""
+    header_cid=$(sed -nE 's/.*"cluster_id"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$hdr_file" | head -n 1)
+    server_id=$(sed -nE 's/.*"server_id"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$hdr_file" | head -n 1)
+    header_cid="${header_cid,,}"
+    server_id="${server_id,,}"
+    if ! is_valid_uuid "$header_cid" || ! is_valid_uuid "$server_id"; then
+        echo "raft header $hdr_file has an invalid cluster or server ID" >&2
+        return 1
+    fi
+
+    local live_cid=""
+    live_cid=$(get_live_cluster_id "$db_type" true) || {
+        echo "no consistent live $db_type quorum is reachable; keeping $db_file unchanged" >&2
+        return 1
+    }
+    if [[ "$header_cid" != "$live_cid" ]]; then
+        echo "raft header cluster ID $header_cid does not match live cluster ID $live_cid" >&2
+        return 1
+    fi
+
+    local db_new
+    db_new="$db_file.rejoin-$(date +%s)-$(random_str)"
+    echo "rebuilding $db_name from raft header $hdr_file with server ID $server_id"
+    if ! ovsdb-tool rejoin-cluster "$db_new" "$hdr_file" "$local_addr" "${remote_addr[@]}"; then
+        echo "failed to create a clean $db_name member from raft header" >&2
+        rm -f "$db_new"
+        return 1
+    fi
+    if [[ ! -s "$db_new" ]]; then
+        echo "ovsdb-tool rejoin-cluster created no database file for $db_name" >&2
+        rm -f "$db_new"
+        return 1
+    fi
+
+    local db_backup
+    db_backup="$db_file.backup-$(date +%s)-$(random_str)"
+    if ! mv "$db_file" "$db_backup"; then
+        echo "failed to preserve original database $db_file; refusing to replace it" >&2
+        rm -f "$db_new"
+        return 1
+    fi
+    if ! mv "$db_new" "$db_file"; then
+        mv "$db_backup" "$db_file" || true
+        echo "failed to install rebuilt database $db_file; keeping the member unavailable" >&2
+        rm -f "$db_new"
+        return 1
+    fi
+    echo "rebuilt $db_name with server ID $server_id; waiting for Raft synchronization"
+}
+
 function recover_clustered_database {
     local db_file="$1"
     local hdr_file="$2"
@@ -372,64 +437,7 @@ function recover_clustered_database {
         fi
     elif [[ $status -ne 0 ]]; then
         echo "$message" >&2
-        echo "detected invalid clustered database $db_file; rebuild a clean member from the live cluster"
-
-        # Work on a copy. fix-cluster can produce a locally valid shorter
-        # prefix while discarding committed history; never replace the only
-        # copy until a fresh member file has been created successfully.
-        local repaired_db="$db_file.repaired-$(date +%s)-$(random_str)"
-        cp "$db_file" "$repaired_db" || {
-            echo "failed to copy $db_file before recovery; keeping the member unavailable" >&2
-            return 1
-        }
-        if ! ovsdb-tool fix-cluster "$repaired_db" || ! ovsdb-tool check-cluster "$repaired_db"; then
-            echo "failed to validate repaired database $repaired_db; keeping the original member file" >&2
-            archive_recovery_file "$repaired_db" "$db_file" failed-fix "recovery copy" || return 1
-            return 1
-        fi
-
-        local server_id=""
-        server_id=$(ovsdb-tool db-sid "$repaired_db" || true)
-        if ! is_valid_uuid "$server_id"; then
-            echo "failed to read server ID from repaired database $repaired_db" >&2
-            archive_recovery_file "$repaired_db" "$db_file" invalid "recovery copy" || return 1
-            return 1
-        fi
-
-        local live_cid=""
-        live_cid=$(get_live_cluster_id "$db_type" true) || {
-            echo "no consistent live $db_type cluster is reachable; keeping the member unavailable" >&2
-            archive_recovery_file "$repaired_db" "$db_file" pending-rejoin "recovery copy" || return 1
-            return 1
-        }
-
-        # A clean file with the original server ID forces Raft to catch up
-        # from the reachable majority. If the disk is still full, this write
-        # fails and startup remains blocked for a later retry.
-        local db_new="$db_file.rejoin-$(date +%s)-$(random_str)"
-        if ! ovsdb-tool --cid "$live_cid" --sid "$server_id" join-cluster "$db_new" "$db_name" "$local_addr" "${remote_addr[@]}"; then
-            echo "failed to create a clean $db_name member; keeping the member unavailable" >&2
-            archive_recovery_file "$repaired_db" "$db_file" pending-rejoin "recovery copy" || return 1
-            archive_recovery_file "$db_new" "$db_file" failed-rejoin "new database file" || return 1
-            return 1
-        fi
-
-        local db_backup="$db_file.backup-$(date +%s)-$(random_str)"
-        if ! mv "$db_file" "$db_backup"; then
-            echo "failed to preserve original database $db_file; refusing to replace it" >&2
-            archive_recovery_file "$repaired_db" "$db_file" pending-rejoin "recovery copy" || return 1
-            archive_recovery_file "$db_new" "$db_file" failed-rejoin "new database file" || return 1
-            return 1
-        fi
-        if ! mv "$db_new" "$db_file"; then
-            mv "$db_backup" "$db_file" || true
-            echo "failed to install rebuilt database $db_file; keeping the member unavailable" >&2
-            archive_recovery_file "$repaired_db" "$db_file" pending-rejoin "recovery copy" || return 1
-            archive_recovery_file "$db_new" "$db_file" failed-rejoin "new database file" || return 1
-            return 1
-        fi
-        rm -f "$repaired_db"
-        echo "rebuilt $db_name with server ID $server_id; waiting for Raft synchronization"
+        rebuild_clustered_database_from_raft_header "$db_file" "$hdr_file" "$db_name" "$db_type" "$local_addr" "${remote_addr[@]}" || return 1
     fi
     return 0
 }

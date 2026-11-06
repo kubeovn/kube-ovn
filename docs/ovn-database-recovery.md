@@ -14,7 +14,7 @@ and startup path, without the database-identity preflight described here.
 | Valid standalone database | Preserve the existing standalone startup path. |
 | Missing database | Preserve the existing initialization and header recovery paths. |
 | Pending cluster join | Resume the join. Central databases retain their existing stale pending-join cleanup. |
-| Unknown identity, unexpected database name, unknown storage format, or invalid clustered log | Preserve the original database and header. For an invalid clustered log, create a clean member with the original server ID from a reachable live cluster; if the disk or peers are unavailable, keep startup blocked for retry. |
+| Unknown identity, unexpected database name, unknown storage format, or invalid clustered log | Preserve the original database and header. For an invalid clustered log, create a clean member from a valid matching Raft header and a reachable quorum; if the header or quorum is unavailable, keep startup blocked for retry. |
 
 `ovsdb-tool fix-cluster` can rewrite a locally valid log prefix while discarding
 later records. A successful repair followed by a successful `check-cluster`
@@ -24,15 +24,15 @@ safe recovery source. Automatically repairing multiple members can allow them
 to form a majority with a shortened history, conflicting with another member
 that still retains the original committed entries.
 
-For this reason, startup runs `fix-cluster` only on a disposable copy to
-validate the damaged file, then requires a Raft quorum of reachable peers with
-one consistent cluster ID before creating a clean `join-cluster` file with the
-original server ID. The original database is moved to a timestamped backup
-only after the new file is created successfully. Starting the clean member
-lets the healthy majority repopulate it through normal Raft log or snapshot
-synchronization. If the disk is still full, a quorum is unavailable, or the
-replacement cannot be installed, startup exits nonzero and the member remains
-unavailable for a later retry.
+For this reason, startup does not run `fix-cluster` on an invalid member. It
+requires a valid Raft header whose cluster ID matches a reachable quorum, then
+creates a clean `rejoin-cluster` file with the header's server ID and peer
+addresses. The original database is moved to a timestamped backup only after
+the new file is created successfully. Starting the clean member lets the
+healthy majority repopulate it through normal Raft log or snapshot
+synchronization. If the disk is still full, the header is invalid, a quorum is
+unavailable, or the replacement cannot be installed, startup exits nonzero and
+the member remains unavailable for a later retry.
 
 The liveness and readiness checks also run `ovsdb-tool check-cluster` for
 clustered databases. A semantic persistence gap therefore removes the member
@@ -57,5 +57,6 @@ Before explicit recovery:
 
 This startup protection does not repair already divergent histories or fix the
 underlying runtime I/O failure. It limits automatic recovery to a fresh member
-that can synchronize from a reachable, consistent majority. See [issue
+that can synchronize from a reachable, consistent majority using the preserved
+Raft identity. See [issue
 #7870](https://github.com/kubeovn/kube-ovn/issues/7870).
