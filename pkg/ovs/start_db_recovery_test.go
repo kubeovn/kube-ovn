@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func TestStartDBRebuildsInvalidDatabasesFromLiveCluster(t *testing.T) {
+func TestStartDBRebuildsInvalidDatabasesFromRaftHeader(t *testing.T) {
 	for _, db := range []struct {
 		script string
 		kind   string
@@ -22,7 +22,7 @@ func TestStartDBRebuildsInvalidDatabasesFromLiveCluster(t *testing.T) {
 		{"start-ic-db.sh", "ic_nb", "OVN_IC_Northbound", "ovn_ic_nb_db.db"},
 		{"start-ic-db.sh", "ic_sb", "OVN_IC_Southbound", "ovn_ic_sb_db.db"},
 	} {
-		for _, mode := range []string{"valid", "standalone", "missing", "entry-gap", "committed-truncation", "failed-fix", "bad-name", "wrong-name", "unknown-format"} {
+		for _, mode := range []string{"valid", "standalone", "missing", "entry-gap", "committed-truncation", "invalid-header", "header-mismatch", "no-quorum", "bad-name", "wrong-name", "unknown-format"} {
 			t.Run(db.kind+"/"+mode, func(t *testing.T) {
 				dir := t.TempDir()
 				path := filepath.Join(dir, db.file)
@@ -30,7 +30,13 @@ func TestStartDBRebuildsInvalidDatabasesFromLiveCluster(t *testing.T) {
 				header := strings.TrimSuffix(path, ".db") + ".hdr"
 				if mode != "missing" {
 					writeRecoveryTestFile(t, path, original, 0o600)
-					writeRecoveryTestFile(t, header, "original raft header", 0o600)
+					headerContent := fmt.Sprintf(`{"server_id":"60217a20-b040-482e-b898-5f030c4b9f68","name":"%s","cluster_id":"59a70e9f-0492-4f1f-a5f0-8e5d7c5a6b38"}`, db.name)
+					if mode == "invalid-header" {
+						headerContent = "invalid raft header"
+					} else if mode == "header-mismatch" {
+						headerContent = strings.ReplaceAll(headerContent, "59a70e9f-0492-4f1f-a5f0-8e5d7c5a6b38", "3e2a6f11-0b6f-4bb0-9b39-6f6ea4ce6e85")
+					}
+					writeRecoveryTestFile(t, header, headerContent, 0o600)
 				}
 				trace := filepath.Join(dir, "commands")
 				writeRecoveryTestFile(t, trace, "", 0o600)
@@ -70,7 +76,13 @@ func TestStartDBRebuildsInvalidDatabasesFromLiveCluster(t *testing.T) {
 					}
 					if mode != "missing" {
 						got, err := os.ReadFile(header)
-						if err != nil || string(got) != "original raft header" {
+						expectedHeader := fmt.Sprintf(`{"server_id":"60217a20-b040-482e-b898-5f030c4b9f68","name":"%s","cluster_id":"59a70e9f-0492-4f1f-a5f0-8e5d7c5a6b38"}`, db.name)
+						if mode == "invalid-header" {
+							expectedHeader = "invalid raft header"
+						} else if mode == "header-mismatch" {
+							expectedHeader = strings.ReplaceAll(expectedHeader, "59a70e9f-0492-4f1f-a5f0-8e5d7c5a6b38", "3e2a6f11-0b6f-4bb0-9b39-6f6ea4ce6e85")
+						}
+						if err != nil || string(got) != expectedHeader {
 							t.Fatalf("original header was changed or moved: %v; content: %q", err, got)
 						}
 					}
@@ -81,7 +93,7 @@ func TestStartDBRebuildsInvalidDatabasesFromLiveCluster(t *testing.T) {
 				}
 				checkRecoveryValidationTrace(t, mode, string(calls))
 				if mode == "entry-gap" || mode == "committed-truncation" {
-					for _, required := range []string{"fix-cluster", "join-cluster"} {
+					for _, required := range []string{"rejoin-cluster"} {
 						if !strings.Contains(string(calls), required) {
 							t.Errorf("expected recovery command %q was not called:\n%s", required, calls)
 						}
@@ -208,7 +220,7 @@ func checkRecoveryValidationTrace(t *testing.T, mode, calls string) {
 	t.Helper()
 	var expected string
 	switch mode {
-	case "valid", "entry-gap", "committed-truncation", "failed-fix":
+	case "valid", "entry-gap", "committed-truncation", "invalid-header", "header-mismatch", "no-quorum":
 		expected = "check-cluster"
 	case "bad-name", "wrong-name":
 		expected = "db-name"
@@ -238,14 +250,12 @@ NB_CLUSTER_PORT=6643
 SB_CLUSTER_PORT=6644
 UUID_RE='[0-9a-fA-F-]{36}'
 function random_str { echo test; }
-function get_live_cluster_id { echo 59a70e9f-0492-4f1f-a5f0-8e5d7c5a6b38; }
+function get_live_cluster_id { [[ "$TEST_MODE" != no-quorum ]] || return 1; echo 59a70e9f-0492-4f1f-a5f0-8e5d7c5a6b38; }
 function create_local_config { echo local-config >> "$TRACE_FILE"; }
 function /usr/share/ovn/scripts/ovn-ctl { echo "ovn-ctl $*" >> "$TRACE_FILE"; }
 `
 
-// The stub models a locally successful repair that discards committed history,
-// followed by rebuilding the member with the same server ID so it can catch up
-// from a reachable majority. A failed repair keeps startup blocked.
+// The stub models a damaged local log rebuilt from a validated Raft header.
 const recoveryToolStub = `#!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' "$*" >> "$TRACE_FILE"
@@ -276,17 +286,9 @@ case "$1" in
         fi
         exit 1
         ;;
-    fix-cluster)
-        [[ "$TEST_MODE" != failed-fix ]] || exit 1
-        printf 'repaired short history' > "$2"
-        ;;
-    db-sid) echo 60217a20-b040-482e-b898-5f030c4b9f68 ;;
-    --cid|--sid)
-        while (($#)); do
-            if [[ "$1" == join-cluster ]]; then shift; echo rebuilt > "$1"; exit 0; fi
-            shift
-        done
-        exit 1
+    rejoin-cluster)
+        [[ "$TEST_MODE" != invalid-header && "$TEST_MODE" != header-mismatch && "$TEST_MODE" != no-quorum ]] || exit 1
+        printf 'rebuilt\n' > "$2"
         ;;
     *) echo "unexpected ovsdb-tool command: $*" >&2; exit 1 ;;
 esac
