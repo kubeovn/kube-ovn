@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/keymutex"
 
@@ -40,8 +41,8 @@ func TestVlanConflictRecovery(t *testing.T) {
 				require.NoError(t, vlans.Delete(t.Context(), duplicate.Name, metav1.DeleteOptions{}))
 				require.Eventually(t, func() bool {
 					_, err := c.vlansLister.Get(duplicate.Name)
-					return err != nil
-				}, time.Second, time.Millisecond)
+					return k8serrors.IsNotFound(err)
+				}, fakeInformerTimeout, time.Millisecond)
 				require.NoError(t, c.handleDelVlan(duplicate))
 			} else {
 				updated := duplicate.DeepCopy()
@@ -58,7 +59,7 @@ func TestVlanConflictRecovery(t *testing.T) {
 				require.Eventually(t, func() bool {
 					vlan, err := c.vlansLister.Get(duplicate.Name)
 					return err == nil && vlan.Spec == updated.Spec
-				}, time.Second, time.Millisecond)
+				}, fakeInformerTimeout, time.Millisecond)
 				c.enqueueUpdateVlan(duplicate, updated)
 				require.NoError(t, c.handleUpdateVlan(duplicate.Name))
 				updated, err = vlans.Get(t.Context(), duplicate.Name, metav1.GetOptions{})

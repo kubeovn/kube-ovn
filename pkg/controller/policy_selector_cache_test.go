@@ -227,7 +227,7 @@ func TestPolicySelectorCacheInvalidatesOnNetworkAttachmentInformerEvents(t *test
 		require.Eventually(t, func() bool {
 			_, _, ok := controller.getPolicyAddressCache(name, generation)
 			return !ok
-		}, time.Second, 10*time.Millisecond)
+		}, fakeInformerTimeout, 10*time.Millisecond)
 	}
 
 	assertInvalidated("add", func() error {

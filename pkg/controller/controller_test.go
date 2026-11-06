@@ -341,6 +341,10 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		}
 	}
 
+	kubeWatchesSynced := trackFakeInformerWatches(&kubeClient.Fake)
+	nadWatchesSynced := trackFakeInformerWatches(&nadClient.Fake)
+	kubeovnWatchesSynced := trackFakeInformerWatches(&kubeovnClient.Fake)
+
 	// Create informer factories
 	kubeInformerFactory := informers.NewSharedInformerFactoryWithOptions(
 		kubeClient, 0,
@@ -522,6 +526,11 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	kubeInformerFactory.WaitForCacheSync(stopCh)
 	nadInformerFactory.WaitForCacheSync(stopCh)
 	kubeovnInformerFactory.WaitForCacheSync(stopCh)
+	// Initial cache sync can finish before the fake tracker registers WATCH.
+	// Wait for all three clients so subsequent mutations cannot lose events.
+	require.Eventually(t, func() bool {
+		return kubeWatchesSynced() && nadWatchesSynced() && kubeovnWatchesSynced()
+	}, fakeInformerTimeout, time.Millisecond, "fake informer watches did not start")
 
 	// gcChassis no-ops until initNodeChassis has run once; tests exercise
 	// gcChassis directly without going through controller startup, so
