@@ -24,6 +24,7 @@ import (
 	"github.com/onsi/gomega"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework/docker"
@@ -972,70 +973,72 @@ var _ = framework.Describe("[group:subnet]", func() {
 		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
 		deploy = deployClient.CreateSync(deploy)
 
-		checkFunc := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) bool {
+		checkDeploymentSubnetStatus := func() bool {
 			ginkgo.GinkgoHelper()
 
-			if startIP == "" {
-				return true
-			}
-
-			usingIPEnd := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIP), big.NewInt(count-1)))
-			availableIPStart := util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(usingIPEnd), big.NewInt(1)))
-
-			framework.Logf(`subnet status usingIPRange %q expect "%s-%s"`, usingIPRange, startIP, usingIPEnd)
-			if usingIPRange != fmt.Sprintf("%s-%s", startIP, usingIPEnd) {
+			pods, err := deployClient.GetPods(deploy)
+			if err != nil {
+				framework.Logf("failed to get pods for deployment %s: %v", deploy.Name, err)
 				return false
 			}
-			framework.Logf(`subnet status availableIPRange %q expect "%s-%s"`, availableIPRange, availableIPStart, lastIP)
-			return availableIPRange == fmt.Sprintf("%s-%s", availableIPStart, lastIP)
+			if len(pods.Items) != int(replicas) {
+				framework.Logf("deployment %s has %d pods, expect %d", deploy.Name, len(pods.Items), replicas)
+				return false
+			}
+
+			v4Using, v6Using := ipam.NewEmptyIPRangeList(), ipam.NewEmptyIPRangeList()
+			for _, pod := range pods.Items {
+				for _, podIP := range pod.Status.PodIPs {
+					ip, err := ipam.NewIP(podIP.IP)
+					if err != nil {
+						framework.Logf("failed to parse Pod IP %q: %v", podIP.IP, err)
+						return false
+					}
+					using := v4Using
+					if strings.ContainsRune(podIP.IP, ':') {
+						using = v6Using
+					}
+					if !using.Add(ip) {
+						framework.Logf("duplicate Pod IP %q in deployment %s", podIP.IP, deploy.Name)
+						return false
+					}
+				}
+			}
+
+			checkRange := func(actualUsing, actualAvailable string, using *ipam.IPRangeList, startIP, lastIP string) bool {
+				if startIP == "" {
+					return actualUsing == "" && actualAvailable == ""
+				}
+
+				all, err := ipam.NewIPRangeListFrom(fmt.Sprintf("%s..%s", startIP, lastIP))
+				if err != nil {
+					framework.Logf("failed to build subnet IP range %s..%s: %v", startIP, lastIP, err)
+					return false
+				}
+				available := all.Separate(using)
+				framework.Logf("subnet status usingIPRange %q expect %q", actualUsing, using)
+				framework.Logf("subnet status availableIPRange %q expect %q", actualAvailable, available)
+				return actualUsing == using.String() && actualAvailable == available.String()
+			}
+
+			return checkRange(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, v4Using, startIPv4, lastIPv4) &&
+				checkRange(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, v6Using, startIPv6, lastIPv6)
 		}
 
 		ginkgo.By("Checking subnet status")
 		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
-			if !checkFunc(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas) {
-				return false, nil
-			}
-			return checkFunc(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas), nil
+			return checkDeploymentSubnetStatus(), nil
 		}, "")
 
 		ginkgo.By("Restarting deployment " + deployName)
-		_ = deployClient.RestartSync(deploy)
+		deploy = deployClient.RestartSync(deploy)
 
-		checkFunc2 := func(usingIPRange, availableIPRange, startIP, lastIP string, count int64) bool {
-			ginkgo.GinkgoHelper()
-
-			if startIP == "" {
-				return true
-			}
-
-			expectAvailIPRangeStr := fmt.Sprintf("%s-%s,%s-%s",
-				startIP,
-				util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIP), big.NewInt(count-1))),
-				util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIP), big.NewInt(2*count))),
-				lastIP,
-			)
-			expectUsingIPRangeStr := fmt.Sprintf("%s-%s",
-				util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIP), big.NewInt(count))),
-				util.BigInt2Ip(big.NewInt(0).Add(util.IP2BigInt(startIP), big.NewInt(2*count-1))),
-			)
-
-			framework.Logf("subnet status usingIPRange %q expect %q", usingIPRange, expectUsingIPRangeStr)
-			if usingIPRange != expectUsingIPRangeStr {
-				return false
-			}
-			framework.Logf("subnet status availableIPRange %q expect %q", availableIPRange, expectAvailIPRangeStr)
-			return availableIPRange == expectAvailIPRangeStr
-		}
-
-		ginkgo.By("Checking subnet status")
+		ginkgo.By("Checking subnet status after restart")
 		subnet = subnetClient.Get(subnetName)
 		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
 			subnet = subnetClient.Get(subnetName)
-			if !checkFunc2(subnet.Status.V4UsingIPRange, subnet.Status.V4AvailableIPRange, startIPv4, lastIPv4, replicas) {
-				return false, nil
-			}
-			return checkFunc2(subnet.Status.V6UsingIPRange, subnet.Status.V6AvailableIPRange, startIPv6, lastIPv6, replicas), nil
+			return checkDeploymentSubnetStatus(), nil
 		}, "")
 	})
 
