@@ -90,6 +90,11 @@ case "$name" in
                 [[ -e "$TEST_DB_DIR/$db" ]] || echo standalone > "$TEST_DB_DIR/$db"
             done
         fi
+        for db in nb sb; do
+            if [[ " $* " == *" start_${db}_ovsdb "* && ! -e "$TEST_DB_DIR/ovn${db}_db.db" ]]; then
+                echo clustered > "$TEST_DB_DIR/ovn${db}_db.db"
+            fi
+        done
         if [[ "$*" == stop_northd && "${STOP_BEFORE_RECOVERY:-}" == true ]]; then
             exit 75
         fi ;;
@@ -145,11 +150,15 @@ esac
 
     def test_multiple_instances_keep_raft(self):
         for ssl in (False, True):
-            result, commands, _ = self.run_start("192.0.2.1,192.0.2.2,192.0.2.3", ssl)
-            self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertIn("--db-nb-cluster-local-addr", commands)
-            self.assertIn("--db-sb-cluster-local-addr", commands)
-            self.assertNotIn("restart_northd", commands)
+            with self.subTest(ssl=ssl):
+                result, commands, after = self.run_start("192.0.2.1,192.0.2.2,192.0.2.3", ssl)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(after, {"ovnnb_db.db": "clustered\n", "ovnsb_db.db": "clustered\n"})
+                self.assertIn("--db-nb-cluster-local-addr", commands)
+                self.assertIn("--db-sb-cluster-local-addr", commands)
+                self.assertNotIn("restart_northd", commands)
+                self.assertIn("kube-ovn-leader-checker --probeInterval=5 --enableCompact=false "
+                              "--remoteAddresses=192.0.2.1,192.0.2.2,192.0.2.3\n", commands)
 
     def test_multiple_replicas_accept_standalone_files(self):
         databases = {"ovnnb_db.db": "standalone\n", "ovnsb_db.db": "standalone\n"}
