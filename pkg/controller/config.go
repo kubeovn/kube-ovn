@@ -32,6 +32,12 @@ const (
 	defaultLeaderRetryPeriod   = 6 * time.Second
 )
 
+const (
+	ControllerRuntimeModeDisabled = "disabled"
+	ControllerRuntimeModeManager  = "manager"
+	ControllerRuntimeModeVlan     = "vlan"
+)
+
 // LeaderElectionConfiguration contains the timing configuration for controller leader election.
 type LeaderElectionConfiguration struct {
 	LeaseDuration time.Duration
@@ -123,7 +129,9 @@ type Configuration struct {
 	PodNamespace                 string
 	ControllerServiceAccountName string
 	PodNicType                   string
-	LeaderElection               LeaderElectionConfiguration
+	// ControllerRuntimeMode selects the experimental controller-runtime shell.
+	ControllerRuntimeMode string
+	LeaderElection        LeaderElectionConfiguration
 
 	WorkerNum       int
 	PprofPort       int32
@@ -242,11 +250,12 @@ func ParseFlags() (*Configuration, error) {
 		argClusterUDPSessionLoadBalancer  = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
 		argClusterSctpSessionLoadBalancer = pflag.String("cluster-sctp-session-loadbalancer", "cluster-sctp-session-loadbalancer", "The name for cluster sctp session loadbalancer")
 
-		argWorkerNum       = pflag.Int("worker-num", 3, "The parallelism of each worker")
-		argEnablePprof     = pflag.Bool("enable-pprof", false, "Enable pprof")
-		argPprofPort       = pflag.Int32("pprof-port", 10660, "The port to get profiling data")
-		argSecureServing   = pflag.Bool("secure-serving", false, "Enable secure serving")
-		argNodePgProbeTime = pflag.Int("nodepg-probe-time", 1, "The probe interval for node port-group, the unit is minute")
+		argWorkerNum             = pflag.Int("worker-num", 3, "The parallelism of each worker")
+		argControllerRuntimeMode = pflag.String("controller-runtime-mode", ControllerRuntimeModeDisabled, "Controller-runtime migration mode: disabled, manager, or vlan")
+		argEnablePprof           = pflag.Bool("enable-pprof", false, "Enable pprof")
+		argPprofPort             = pflag.Int32("pprof-port", 10660, "The port to get profiling data")
+		argSecureServing         = pflag.Bool("secure-serving", false, "Enable secure serving")
+		argNodePgProbeTime       = pflag.Int("nodepg-probe-time", 1, "The probe interval for node port-group, the unit is minute")
 
 		argNetworkType                 = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type")
 		argDefaultProviderName         = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
@@ -374,6 +383,7 @@ func ParseFlags() (*Configuration, error) {
 		PodNamespace:                   os.Getenv(util.EnvPodNamespace),
 		ControllerServiceAccountName:   controllerServiceAccountName(),
 		PodNicType:                     *argPodNicType,
+		ControllerRuntimeMode:          *argControllerRuntimeMode,
 		LeaderElection:                 leaderElectionConfig,
 		EnableOvnLB:                    *argEnableOvnLB,
 		EnableNP:                       *argEnableNP,
@@ -421,6 +431,9 @@ func ParseFlags() (*Configuration, error) {
 		EnableNonPrimaryCNI:         *argNonPrimaryCNI,
 		NetworkPolicyEnforcement:    *argNPEnforcement,
 		SkipConntrackDstCidrs:       *argSkipConntrackDstCidrs,
+	}
+	if err := validateControllerRuntimeMode(config.ControllerRuntimeMode); err != nil {
+		return nil, err
 	}
 	if err := config.LeaderElection.validate(); err != nil {
 		return nil, err
@@ -487,6 +500,15 @@ func ParseFlags() (*Configuration, error) {
 
 	klog.Infof("config is %+v", config)
 	return config, nil
+}
+
+func validateControllerRuntimeMode(mode string) error {
+	switch mode {
+	case ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan:
+		return nil
+	default:
+		return fmt.Errorf("--controller-runtime-mode must be %q, %q, or %q, got %q", ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, mode)
+	}
 }
 
 // validateServiceFeatureGates rejects direct conflicts between the Service data plane

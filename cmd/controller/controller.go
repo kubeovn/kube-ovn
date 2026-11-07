@@ -23,6 +23,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/apis/kubeovn"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/controller"
+	controllerruntime "github.com/kubeovn/kube-ovn/pkg/controller/runtime"
 	"github.com/kubeovn/kube-ovn/pkg/metrics"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
@@ -92,6 +93,13 @@ func CmdMain() {
 		RetryPeriod:   config.LeaderElection.RetryPeriod,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
+				if config.ControllerRuntimeMode == controller.ControllerRuntimeModeManager ||
+					config.ControllerRuntimeMode == controller.ControllerRuntimeModeVlan {
+					if err := controllerruntime.Run(ctx, config); err != nil {
+						util.LogFatalAndExit(err, "controller-runtime manager failed")
+					}
+					return
+				}
 				controller.Run(ctx, config)
 			},
 			OnStoppedLeading: func() {

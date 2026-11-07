@@ -287,6 +287,8 @@ ovs-ovn:
     memory: "1000Mi"
     ephemeral-storage: 1Gi
 kube-ovn-controller:
+  # Controller-runtime migration mode. Keep disabled until a resource cohort is ready.
+  controllerRuntimeMode: disabled
   leaderElection:
     # Duration non-leader candidates wait after observing a renewal before attempting to acquire leadership. Empty uses the controller default of 30s.
     leaseDuration: ""

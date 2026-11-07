@@ -107,6 +107,15 @@ func TestLeaderElectionConfigurationValidation(t *testing.T) {
 	}
 }
 
+func TestValidateControllerRuntimeMode(t *testing.T) {
+	for _, mode := range []string{ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan} {
+		t.Run(mode, func(t *testing.T) {
+			require.NoError(t, validateControllerRuntimeMode(mode))
+		})
+	}
+	require.EqualError(t, validateControllerRuntimeMode("unknown"), `--controller-runtime-mode must be "disabled", "manager", or "vlan", got "unknown"`)
+}
+
 func TestConfigurationValidateServiceFeatureGates(t *testing.T) {
 	t.Parallel()
 

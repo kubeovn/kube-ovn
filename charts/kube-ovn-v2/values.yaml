@@ -963,6 +963,9 @@ monitor:
 # @section -- Kube-OVN controller configuration
 # @default -- "{}"
 controller:
+  # -- Controller-runtime migration mode. Keep disabled until a resource cohort is ready.
+  # @section -- Kube-OVN controller configuration
+  controllerRuntimeMode: disabled
   # -- Leader election timing configuration.
   # @section -- Kube-OVN controller configuration
   leaderElection:

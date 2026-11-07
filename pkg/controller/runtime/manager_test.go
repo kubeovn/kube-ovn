@@ -1,0 +1,42 @@
+package controllerruntime
+
+import (
+	"testing"
+
+	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/rest"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/controller"
+)
+
+func TestNewSchemeRegistersMigrationTypes(t *testing.T) {
+	scheme, err := NewScheme()
+	require.NoError(t, err)
+
+	for _, kind := range []string{"Vlan", "Subnet", "IPPool", "IP"} {
+		gvk := kubeovnv1.SchemeGroupVersion.WithKind(kind)
+		_, err := scheme.New(gvk)
+		require.NoErrorf(t, err, "scheme should register %s", gvk)
+	}
+
+	_, err = scheme.New(schema.GroupVersionKind{Group: "apps", Version: "v1", Kind: "Deployment"})
+	require.NoError(t, err)
+}
+
+func TestNewManagerRejectsMissingConfiguration(t *testing.T) {
+	_, err := NewManager(nil)
+	require.EqualError(t, err, "controller-runtime manager configuration is nil")
+
+	_, err = NewManager(&controller.Configuration{})
+	require.EqualError(t, err, "controller-runtime manager Kubernetes REST config is nil")
+}
+
+func TestNewManagerBuildsWithoutStartingBusinessControllers(t *testing.T) {
+	mgr, err := NewManager(&controller.Configuration{
+		KubeRestConfig: &rest.Config{Host: "https://127.0.0.1"},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, mgr)
+}

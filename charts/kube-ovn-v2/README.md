@@ -1431,6 +1431,15 @@ false
 			<td>Labels to be added to all top-level kube-ovn-controller objects (resources under templates/controller)</td>
 		</tr>
 		<tr>
+			<td>controller.controllerRuntimeMode</td>
+			<td>string</td>
+			<td><pre lang="json">
+"disabled"
+</pre>
+</td>
+			<td>Controller-runtime migration mode. Keep disabled until a resource cohort is ready.</td>
+		</tr>
+		<tr>
 			<td>controller.leaderElection</td>
 			<td>object</td>
 			<td><pre lang="json">
