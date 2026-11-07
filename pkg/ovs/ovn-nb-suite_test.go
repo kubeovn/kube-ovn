@@ -260,6 +260,10 @@ func (suite *OvnClientTestSuite) Test_SetLogicalSwitchPortVlanTag() {
 	suite.testSetLogicalSwitchPortVlanTag()
 }
 
+func (suite *OvnClientTestSuite) Test_LocalnetVlanTagRequest() {
+	suite.testLocalnetVlanTagRequest()
+}
+
 func (suite *OvnClientTestSuite) Test_UpdateLogicalSwitchPort() {
 	suite.testUpdateLogicalSwitchPort()
 }

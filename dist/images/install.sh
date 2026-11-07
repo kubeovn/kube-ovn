@@ -4,6 +4,16 @@ set -euo pipefail
 REGISTRY="docker.io/kubeovn"
 VERSION="v1.18.0"
 
+# Keep the legacy implementation by default; enable the pilot explicitly.
+CONTROLLER_RUNTIME_MODE=${CONTROLLER_RUNTIME_MODE:-disabled}
+case "$CONTROLLER_RUNTIME_MODE" in
+  disabled|manager|vlan) ;;
+  *)
+    echo "CONTROLLER_RUNTIME_MODE must be disabled, manager, or vlan" >&2
+    exit 1
+    ;;
+esac
+
 DEL_NON_HOST_NET_POD=${DEL_NON_HOST_NET_POD:-true}
 IPV6=${IPV6:-false}
 DUAL_STACK=${DUAL_STACK:-false}
@@ -9281,6 +9291,7 @@ spec:
           imagePullPolicy: $IMAGE_PULL_POLICY
           args:
           - /kube-ovn/start-controller.sh
+          - --controller-runtime-mode=$CONTROLLER_RUNTIME_MODE
           - --leader-elect-lease-duration=$LEADER_ELECT_LEASE_DURATION
           - --leader-elect-renew-deadline=$LEADER_ELECT_RENEW_DEADLINE
           - --leader-elect-retry-period=$LEADER_ELECT_RETRY_PERIOD

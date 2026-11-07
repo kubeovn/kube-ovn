@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -18,7 +19,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	crrecorder "sigs.k8s.io/controller-runtime/pkg/recorder"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/controller"
@@ -27,6 +27,7 @@ import (
 )
 
 type vlanOVN interface {
+	LogicalSwitchPortExists(name string) (bool, error)
 	SetLogicalSwitchPortVlanTag(lspName string, vlanID int) error
 }
 
@@ -36,7 +37,7 @@ type VlanReconciler struct {
 	client.Client
 	OVN                 vlanOVN
 	DefaultProviderName string
-	Recorder            crrecorder.EventRecorder
+	Recorder            record.EventRecorder
 }
 
 func (r *VlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -104,9 +105,9 @@ func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	original := vlan.DeepCopy()
 	vlan.Status.Conflict = conflict
 	vlan.Status.Subnets = subnetNamesForVlan(vlan.Name, subnets.Items)
-	removeVlanReadyCondition(vlan)
 
 	if conflict {
+		removeVlanReadyCondition(vlan)
 		if err := r.patchVlanStatus(ctx, vlan, original); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -115,20 +116,20 @@ func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 
-	for _, subnet := range subnets.Items {
-		if subnet.Spec.Vlan != vlan.Name {
-			continue
+	if err := r.updateLocalnetTags(vlan, subnets.Items); err != nil {
+		removeVlanReadyCondition(vlan)
+		if statusErr := r.patchVlanStatus(ctx, vlan, original); statusErr != nil {
+			return ctrl.Result{}, fmt.Errorf("%w; clear ready status: %w", err, statusErr)
 		}
-		if err := r.OVN.SetLogicalSwitchPortVlanTag(ovs.GetLocalnetName(subnet.Name), vlan.Spec.ID); err != nil {
-			if statusErr := r.patchVlanStatus(ctx, vlan, original); statusErr != nil {
-				return ctrl.Result{}, fmt.Errorf("set localnet tag for subnet %s and vlan %s: %w; clear ready status: %w", subnet.Name, vlan.Name, err, statusErr)
-			}
-			return ctrl.Result{}, fmt.Errorf("set localnet tag for subnet %s and vlan %s: %w", subnet.Name, vlan.Name, err)
-		}
+		return ctrl.Result{}, err
 	}
 	setVlanReadyCondition(vlan)
 	if err := r.patchVlanStatus(ctx, vlan, original); err != nil {
 		return ctrl.Result{}, err
+	}
+
+	if !equality.Semantic.DeepEqual(original.Status, vlan.Status) {
+		r.recordEvent(vlan, corev1.EventTypeNormal, "ReconcileSuccess", fmt.Sprintf("Vlan %s reconciled successfully", vlan.Name))
 	}
 
 	if !slices.Contains(providerNetwork.Status.Vlans, vlan.Name) {
@@ -138,8 +139,30 @@ func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{RequeueAfter: controllerRuntimeStatusRetry}, nil
 	}
 
-	r.recordEvent(vlan, corev1.EventTypeNormal, "ReconcileSuccess", fmt.Sprintf("Vlan %s reconciled successfully", vlan.Name))
 	return ctrl.Result{}, nil
+}
+
+// Subnet reconciliation creates each localnet port with the current VLAN tag.
+// A new VLAN must become ready before its Subnets can create those ports, so
+// only update ports that already exist here; propagate actual OVN failures.
+func (r *VlanReconciler) updateLocalnetTags(vlan *kubeovnv1.Vlan, subnets []kubeovnv1.Subnet) error {
+	for _, subnet := range subnets {
+		if subnet.Spec.Vlan != vlan.Name {
+			continue
+		}
+		port := ovs.GetLocalnetName(subnet.Name)
+		exists, err := r.OVN.LogicalSwitchPortExists(port)
+		if err != nil {
+			return fmt.Errorf("check localnet port for subnet %s and vlan %s: %w", subnet.Name, vlan.Name, err)
+		}
+		if !exists {
+			continue
+		}
+		if err := r.OVN.SetLogicalSwitchPortVlanTag(port, vlan.Spec.ID); err != nil {
+			return fmt.Errorf("set localnet tag for subnet %s and vlan %s: %w", subnet.Name, vlan.Name, err)
+		}
+	}
+	return nil
 }
 
 func migrateVlanSpec(vlan *kubeovnv1.Vlan) bool {
@@ -222,7 +245,7 @@ func (r *VlanReconciler) relatedVlanRequests(ctx context.Context, objects ...cli
 
 func (r *VlanReconciler) recordEvent(vlan *kubeovnv1.Vlan, eventType, reason, message string) {
 	if r.Recorder != nil {
-		r.Recorder.Eventf(vlan, nil, eventType, reason, "Reconcile", message)
+		r.Recorder.Event(vlan, eventType, reason, message)
 	}
 }
 
@@ -370,6 +393,16 @@ func (r *ProviderNetworkReconciler) requestsForAllProviderNetworks(ctx context.C
 	return requests
 }
 
+func newVlanReconciler(mgr ctrl.Manager, ovn vlanOVN, defaultProviderName string) *VlanReconciler {
+	return &VlanReconciler{
+		Client:              mgr.GetClient(),
+		OVN:                 ovn,
+		DefaultProviderName: defaultProviderName,
+		// Keep the pilot on the core Events API authorized by existing installations.
+		Recorder: mgr.GetEventRecorderFor("kube-ovn-vlan"), //nolint:staticcheck // The migration must not require additional events.k8s.io permissions.
+	}
+}
+
 func setupVlanReconcilers(mgr ctrl.Manager, config *controller.Configuration) error {
 	nbClient, err := ovs.NewOvnNbClient(
 		config.OvnNbAddr,
@@ -382,12 +415,7 @@ func setupVlanReconcilers(mgr ctrl.Manager, config *controller.Configuration) er
 		return fmt.Errorf("create OVN NB client for vlan reconcilers: %w", err)
 	}
 
-	vlanReconciler := &VlanReconciler{
-		Client:              mgr.GetClient(),
-		OVN:                 nbClient,
-		DefaultProviderName: config.DefaultProviderName,
-		Recorder:            mgr.GetEventRecorder("kube-ovn-vlan"),
-	}
+	vlanReconciler := newVlanReconciler(mgr, nbClient, config.DefaultProviderName)
 	if err := vlanReconciler.SetupWithManager(mgr); err != nil {
 		nbClient.Close()
 		return fmt.Errorf("setup vlan reconciler: %w", err)
