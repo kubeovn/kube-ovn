@@ -1057,11 +1057,14 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add ips event handler")
 	}
 
-	if _, err = vlanInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddVlan,
-		DeleteFunc: controller.enqueueDelVlan,
+	vlanEventHandler := cache.ResourceEventHandlerFuncs{
 		UpdateFunc: controller.enqueueUpdateVlan,
-	}); err != nil {
+		DeleteFunc: controller.enqueueDelVlan,
+	}
+	if !controllerRuntimeVlanEnabled(config) {
+		vlanEventHandler.AddFunc = controller.enqueueAddVlan
+	}
+	if _, err = vlanInformer.Informer().AddEventHandler(vlanEventHandler); err != nil {
 		util.LogFatalAndExit(err, "failed to add vlan event handler")
 	}
 
@@ -1572,7 +1575,9 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("add/update subnet", c.addOrUpdateSubnetQueue, c.handleAddOrUpdateSubnet), time.Second, ctx.Done())
 	}
 	go wait.Until(runWorker("add/update ippool", c.addOrUpdateIPPoolQueue, c.handleAddOrUpdateIPPool), time.Second, ctx.Done())
-	go wait.Until(runWorker("add vlan", c.addVlanQueue, c.handleAddVlan), time.Second, ctx.Done())
+	if !controllerRuntimeVlanEnabled(c.config) {
+		go wait.Until(runWorker("add vlan", c.addVlanQueue, c.handleAddVlan), time.Second, ctx.Done())
+	}
 	go wait.Until(runWorker("add namespace", c.addNamespaceQueue, c.handleAddNamespace), time.Second, ctx.Done())
 	err := wait.PollUntilContextCancel(ctx, 3*time.Second, true, func(_ context.Context) (done bool, err error) {
 		subnets := []string{c.config.DefaultLogicalSwitch, c.config.NodeSwitch}
@@ -1678,7 +1683,9 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}
 
 		go wait.Until(runWorker("delete vlan", c.delVlanQueue, c.handleDelVlan), time.Second, ctx.Done())
-		go wait.Until(runWorker("update vlan", c.updateVlanQueue, c.handleUpdateVlan), time.Second, ctx.Done())
+		if !controllerRuntimeVlanEnabled(c.config) {
+			go wait.Until(runWorker("update vlan", c.updateVlanQueue, c.handleUpdateVlan), time.Second, ctx.Done())
+		}
 	}
 
 	if c.config.EnableEipSnat {
@@ -1715,7 +1722,9 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}, 5*time.Second, ctx.Done())
 	}
 
-	go wait.Until(c.resyncProviderNetworkStatus, 30*time.Second, ctx.Done())
+	if !controllerRuntimeVlanEnabled(c.config) {
+		go wait.Until(c.resyncProviderNetworkStatus, 30*time.Second, ctx.Done())
+	}
 	go wait.Until(c.exportSubnetMetrics, 30*time.Second, ctx.Done())
 	go wait.Until(c.checkSubnetGateway, 5*time.Second, ctx.Done())
 	go wait.Until(c.syncDistributedSubnetRoutes, 5*time.Second, ctx.Done())
