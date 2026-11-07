@@ -40,16 +40,9 @@ type VlanReconciler struct {
 }
 
 func (r *VlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	deletedVlanPredicate := predicate.Funcs{
-		DeleteFunc: func(e event.DeleteEvent) bool {
-			_, ok := e.Object.(*kubeovnv1.Vlan)
-			return ok
-		},
-	}
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("kube-ovn-vlan").
 		For(&kubeovnv1.Vlan{}).
-		Watches(&kubeovnv1.Vlan{}, handler.EnqueueRequestsFromMapFunc(r.requestsForDeletedVlan), builder.WithPredicates(deletedVlanPredicate)).
 		Watches(&kubeovnv1.Subnet{}, handler.EnqueueRequestsFromMapFunc(r.requestsForSubnet)).
 		Watches(&kubeovnv1.ProviderNetwork{}, handler.EnqueueRequestsFromMapFunc(r.requestsForProviderNetwork)).
 		Complete(r)
@@ -138,30 +131,6 @@ func (r *VlanReconciler) requestsForSubnet(_ context.Context, obj client.Object)
 		return nil
 	}
 	return []ctrl.Request{{Name: subnet.Spec.Vlan}}
-}
-
-// requestsForDeletedVlan requeues subnets that still reference a deleted VLAN.
-// The legacy delete handler did this before removing VLAN-owned OVN state; the
-// mapper keeps the same dependency visible to the migrated subnet reconciler.
-func (r *VlanReconciler) requestsForDeletedVlan(ctx context.Context, obj client.Object) []ctrl.Request {
-	vlan, ok := obj.(*kubeovnv1.Vlan)
-	if !ok {
-		return nil
-	}
-
-	var subnets kubeovnv1.SubnetList
-	if err := r.List(ctx, &subnets); err != nil {
-		klog.Errorf("list subnets for deleted vlan %s: %v", vlan.Name, err)
-		return nil
-	}
-
-	requests := make([]ctrl.Request, 0)
-	for _, subnet := range subnets.Items {
-		if subnet.Spec.Vlan == vlan.Name {
-			requests = append(requests, ctrl.Request{Name: subnet.Name})
-		}
-	}
-	return requests
 }
 
 func (r *VlanReconciler) requestsForProviderNetwork(ctx context.Context, obj client.Object) []ctrl.Request {

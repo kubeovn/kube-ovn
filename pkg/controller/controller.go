@@ -1057,14 +1057,15 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add ips event handler")
 	}
 
+	vlanEventHandler := cache.ResourceEventHandlerFuncs{
+		DeleteFunc: controller.enqueueDelVlan,
+	}
 	if !controllerRuntimeVlanEnabled(config) {
-		if _, err = vlanInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    controller.enqueueAddVlan,
-			DeleteFunc: controller.enqueueDelVlan,
-			UpdateFunc: controller.enqueueUpdateVlan,
-		}); err != nil {
-			util.LogFatalAndExit(err, "failed to add vlan event handler")
-		}
+		vlanEventHandler.AddFunc = controller.enqueueAddVlan
+		vlanEventHandler.UpdateFunc = controller.enqueueUpdateVlan
+	}
+	if _, err = vlanInformer.Informer().AddEventHandler(vlanEventHandler); err != nil {
+		util.LogFatalAndExit(err, "failed to add vlan event handler")
 	}
 
 	if _, err = sgInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -1681,8 +1682,8 @@ func (c *Controller) startWorkers(ctx context.Context) {
 			}
 		}
 
+		go wait.Until(runWorker("delete vlan", c.delVlanQueue, c.handleDelVlan), time.Second, ctx.Done())
 		if !controllerRuntimeVlanEnabled(c.config) {
-			go wait.Until(runWorker("delete vlan", c.delVlanQueue, c.handleDelVlan), time.Second, ctx.Done())
 			go wait.Until(runWorker("update vlan", c.updateVlanQueue, c.handleUpdateVlan), time.Second, ctx.Done())
 		}
 	}

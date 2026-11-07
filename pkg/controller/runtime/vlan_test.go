@@ -95,18 +95,6 @@ func TestVlanReconcilerDoesNotTagConflictingVlan(t *testing.T) {
 	require.True(t, updated.Status.Conflict)
 }
 
-func TestVlanReconcilerRequestsSubnetsForDeletedVlan(t *testing.T) {
-	vlan := &kubeovnv1.Vlan{Name: "vlan-a"}
-	reconciler := &VlanReconciler{Client: newRuntimeClient(t,
-		vlan,
-		&kubeovnv1.Subnet{Name: "subnet-a", Spec: kubeovnv1.SubnetSpec{Vlan: vlan.Name}},
-		&kubeovnv1.Subnet{Name: "subnet-b", Spec: kubeovnv1.SubnetSpec{Vlan: "vlan-b"}},
-	)}
-
-	requests := reconciler.requestsForDeletedVlan(t.Context(), vlan)
-	require.Equal(t, []ctrl.Request{{Name: "subnet-a"}}, requests)
-}
-
 func TestProviderNetworkReconcilerMapsVlanProviderChanges(t *testing.T) {
 	reconciler := &ProviderNetworkReconciler{}
 	oldVlan := &kubeovnv1.Vlan{Name: "vlan-a", Spec: kubeovnv1.VlanSpec{Provider: "provider-old"}}
