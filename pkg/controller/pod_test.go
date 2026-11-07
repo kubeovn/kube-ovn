@@ -2411,6 +2411,7 @@ func TestReconcileRouteSubnetsEIPUsesPerFamilyPolicyMatch(t *testing.T) {
 			}
 			fc.mockOvnClient.EXPECT().UpdateDnatAndSnat(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			fc.mockOvnClient.EXPECT().EnsureSnat(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+			fc.mockOvnClient.EXPECT().ListNats(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 			fc.mockOvnClient.EXPECT().DeleteNats(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			if tc.wantLegacyDel != "" {
 				fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicy(util.DefaultVpc, util.NorthGatewayRoutePolicyPriority, tc.wantLegacyDel).Return(nil)

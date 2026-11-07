@@ -1123,6 +1123,22 @@ func (c *Controller) reconcilePodPolicyRoutes(pod *v1.Pod, subnet *kubeovnv1.Sub
 	return needsSubnetRoute, nil
 }
 
+// deleteStalePodNATs keeps only the current external address for this Pod IP.
+func (c *Controller) deleteStalePodNATs(natType, externalIP, logicalIP string) error {
+	nats, err := c.listNATs(c.config.ClusterRouter, natType, logicalIP, nil)
+	if err != nil {
+		return err
+	}
+	for _, nat := range nats {
+		if nat.ExternalIP != externalIP {
+			if err := c.deleteNat(c.config.ClusterRouter, natType, nat.ExternalIP, logicalIP); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
 // do the same thing as update pod
 func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kubeovnNet) error {
 	// the lb-svc pod has dependencies on Running state, check it when pod state get updated
@@ -1284,6 +1300,10 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 							return err
 						}
 					} else {
+						if err := c.deleteStalePodNATs(ovnnb.NATTypeDNATAndSNAT, eip, ipStr); err != nil {
+							klog.Errorf("failed to delete stale nat rules: %v", err)
+							return err
+						}
 						if err := c.updateDnatAndSnat(c.config.ClusterRouter, eip, ipStr, fmt.Sprintf("%s.%s", podName, pod.Namespace), pod.Annotations[util.MacAddressAnnotation], c.ExternalGatewayType); err != nil {
 							klog.Errorf("failed to add nat rules, %v", err)
 							return err
@@ -1295,6 +1315,10 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 							return err
 						}
 					} else {
+						if err := c.deleteStalePodNATs(ovnnb.NATTypeSNAT, eip, ipStr); err != nil {
+							klog.Errorf("failed to delete stale nat rules: %v", err)
+							return err
+						}
 						if err := c.ensureSnat(c.config.ClusterRouter, eip, ipStr); err != nil {
 							klog.Errorf("failed to add nat rules, %v", err)
 							return err

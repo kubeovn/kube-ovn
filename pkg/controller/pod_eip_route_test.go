@@ -66,6 +66,58 @@ func TestPodNATAnnotationUpdateReconcilesRoutedPod(t *testing.T) {
 	}
 }
 
+func TestPodNATAnnotationReplacementRemovesOldNAT(t *testing.T) {
+	for _, annotation := range []string{util.EipAnnotation, util.SnatAnnotation} {
+		t.Run(annotation, func(t *testing.T) {
+			fc, client, pod, subnet := newPodEIPRouteFixture(t, kubeovnv1.GWDistributedType, false)
+			natType := ovnnb.NATTypeDNATAndSNAT
+			if annotation == util.SnatAnnotation {
+				delete(pod.Annotations, util.EipAnnotation)
+				pod.Annotations[annotation] = "203.0.113.2"
+				natType = ovnnb.NATTypeSNAT
+			}
+			controller := fc.fakeController
+			nets := []*kubeovnNet{{ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}}
+			require.NoError(t, controller.reconcileRouteSubnets(pod, nets))
+			// Another Pod must keep its NAT rule during replacement.
+			require.NoError(t, client.AddNat(util.DefaultVpc, natType, "203.0.113.4", "10.0.0.3", "", "", nil))
+			oldPod := pod.DeepCopy()
+			oldPod.ResourceVersion = "1"
+			pod = oldPod.DeepCopy()
+			pod.ResourceVersion = "2"
+			pod.Annotations[annotation] = "203.0.113.3"
+			_, err := fc.kubeClient.CoreV1().Pods(pod.Namespace).Update(t.Context(), pod, metav1.UpdateOptions{})
+			require.NoError(t, err)
+			require.Eventually(t, func() bool {
+				cached, err := controller.podsLister.Pods(pod.Namespace).Get(pod.Name)
+				return err == nil && cached.ResourceVersion == pod.ResourceVersion
+			}, time.Second, time.Millisecond)
+			provider := &podNATFailureProvider{Provider: client, err: errors.New("stale NAT deletion failed")}
+			controller.OVNNbTables = provider
+			controller.enqueueUpdatePod(oldPod, pod)
+			require.True(t, processNextWorkItem("update pod route", controller.updatePodRouteQueue, controller.handleUpdatePodRoute, getWorkItemKey))
+			key := pod.Namespace + "/" + pod.Name
+			require.Equal(t, 1, controller.updatePodRouteQueue.NumRequeues(key))
+			provider.err = nil
+			require.Eventually(t, func() bool { return controller.updatePodRouteQueue.Len() == 1 }, time.Second, time.Millisecond)
+			require.True(t, processNextWorkItem("update pod route", controller.updatePodRouteQueue, controller.handleUpdatePodRoute, getWorkItemKey))
+			nats, err := client.ListNats(util.DefaultVpc, natType, "10.0.0.2", nil)
+			require.NoError(t, err)
+			require.Len(t, nats, 1)
+			require.Equal(t, "203.0.113.3", nats[0].ExternalIP)
+			uuid := nats[0].UUID
+			require.NoError(t, controller.handleUpdatePodRoute(pod.Namespace+"/"+pod.Name))
+			nats, err = client.ListNats(util.DefaultVpc, natType, "10.0.0.2", nil)
+			require.NoError(t, err)
+			require.Len(t, nats, 1)
+			require.Equal(t, uuid, nats[0].UUID, "unchanged NAT must not be recreated")
+			nats, err = client.ListNats(util.DefaultVpc, natType, "10.0.0.3", nil)
+			require.NoError(t, err)
+			require.Len(t, nats, 1)
+		})
+	}
+}
+
 func TestReconcileRouteSubnetsPreservesRequiredEIPPolicy(t *testing.T) {
 	for _, annotation := range []string{util.SnatAnnotation, util.NorthGatewayAnnotation} {
 		t.Run(annotation, func(t *testing.T) {
@@ -220,7 +272,7 @@ type podNATFailureHandle struct {
 }
 
 func (h *podNATFailureHandle) Transact(ctx context.Context, name string, ops ...ovsdb.Operation) error {
-	if name == "nats-del" && h.provider.err != nil {
+	if (name == "nats-del" || name == "lr-nat-del") && h.provider.err != nil {
 		return h.provider.err
 	}
 	return h.Handle.Transact(ctx, name, ops...)
