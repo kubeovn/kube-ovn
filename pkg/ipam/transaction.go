@@ -2,6 +2,7 @@ package ipam
 
 import (
 	"errors"
+	"maps"
 	"net"
 	"slices"
 )
@@ -142,9 +143,7 @@ func (tx *Transaction) cloneSubnets(name string) error {
 }
 
 func (tx *Transaction) commit() {
-	for name, subnet := range tx.subnets {
-		tx.ipam.Subnets[name] = subnet
-	}
+	maps.Copy(tx.ipam.Subnets, tx.subnets)
 	tx.closed = true
 }
 
@@ -221,8 +220,6 @@ func cloneIPMap(values map[string]IP) map[string]IP {
 
 func cloneStringMap(values map[string]string) map[string]string {
 	clone := make(map[string]string, len(values))
-	for key, value := range values {
-		clone[key] = value
-	}
+	maps.Copy(clone, values)
 	return clone
 }
