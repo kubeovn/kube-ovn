@@ -522,7 +522,13 @@ func (c *Controller) enqueueUpdatePod(oldObj, newObj any) {
 		return
 	}
 	klog.Infof("enqueue update pod %s", key)
-	c.addOrUpdatePodQueue.Add(key)
+	if c.config.EnableEipSnat && (oldPod.Annotations[util.EipAnnotation] != newPod.Annotations[util.EipAnnotation] ||
+		oldPod.Annotations[util.SnatAnnotation] != newPod.Annotations[util.SnatAnnotation]) {
+		// Keep routing changes pending across retries even when the Pod is already routed.
+		c.updatePodRouteQueue.Add(key)
+	} else {
+		c.addOrUpdatePodQueue.Add(key)
+	}
 
 	// security policy changed
 	for _, podNet := range podNets {
@@ -606,7 +612,15 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 	return podNets, nil
 }
 
-func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
+func (c *Controller) handleAddOrUpdatePod(key string) error {
+	return c.handlePod(key, false)
+}
+
+func (c *Controller) handleUpdatePodRoute(key string) error {
+	return c.handlePod(key, true)
+}
+
+func (c *Controller) handlePod(key string, forceRoute bool) (err error) {
 	now := time.Now()
 	klog.Infof("handle add/update pod %s", key)
 
@@ -679,7 +693,7 @@ func (c *Controller) handleAddOrUpdatePod(key string) (err error) {
 	}
 
 	// check if route subnet is need.
-	needRoutePodNets := needRouteSubnets(pod, podNets)
+	needRoutePodNets := needRouteSubnets(pod, podNets, forceRoute)
 	if err = c.reconcileRouteSubnets(pod, needRoutePodNets); err != nil {
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodNetworkUpdateFailed", "stage=reconcileRouteSubnets error=%v", err)
 		return err
@@ -1265,15 +1279,16 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 						}
 					}
 				} else if c.config.EnableEipSnat {
-					if err = c.deleteStaticRouteFromVpc(
-						c.config.ClusterRouter,
-						subnet.Spec.RouteTable,
-						podIP,
-						"",
-						kubeovnv1.PolicyDst,
-					); err != nil {
-						klog.Error(err)
-						return err
+					for ip := range strings.SplitSeq(podIP, ",") {
+						ipSuffix := "ip4"
+						if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
+							ipSuffix = "ip6"
+						}
+						if err := c.deletePolicyRouteFromVpc(subnet.Spec.Vpc, util.NorthGatewayRoutePolicyPriority,
+							fmt.Sprintf("%s.src == %s", ipSuffix, ip)); err != nil {
+							klog.Errorf("failed to delete policy route: %v", err)
+							return err
+						}
 					}
 				}
 			}
@@ -2165,7 +2180,7 @@ func (c *Controller) podNeedSync(pod *v1.Pod) (bool, error) {
 	return false, nil
 }
 
-func needRouteSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
+func needRouteSubnets(pod *v1.Pod, nets []*kubeovnNet, force bool) []*kubeovnNet {
 	if !isPodAlive(pod) {
 		return nil
 	}
@@ -2181,7 +2196,7 @@ func needRouteSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
 		}
 
 		if pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, n.ProviderName)] == "true" && pod.Spec.NodeName != "" {
-			if pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, n.ProviderName)] != "true" {
+			if force || pod.Annotations[fmt.Sprintf(util.RoutedAnnotationTemplate, n.ProviderName)] != "true" {
 				result = append(result, n)
 			}
 		}
