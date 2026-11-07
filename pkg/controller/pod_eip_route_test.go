@@ -31,7 +31,7 @@ func TestPodNATAnnotationUpdateReconcilesRoutedPod(t *testing.T) {
 			newPod := oldPod.DeepCopy()
 			newPod.ResourceVersion = "2"
 			delete(newPod.Annotations, annotation)
-			_, err := fc.kubeClient.CoreV1().Pods(pod.Namespace).Update(t.Context(), newPod, metav1.UpdateOptions{})
+			_, err := fc.fakeController.config.KubeClient.CoreV1().Pods(pod.Namespace).Update(t.Context(), newPod, metav1.UpdateOptions{})
 			require.NoError(t, err)
 			require.Eventually(t, func() bool {
 				cached, err := controller.podsLister.Pods(pod.Namespace).Get(pod.Name)
@@ -82,7 +82,7 @@ func TestPodNATAnnotationReplacementRemovesOldNAT(t *testing.T) {
 			pod = oldPod.DeepCopy()
 			pod.ResourceVersion = "2"
 			pod.Annotations[annotation] = "203.0.113.3"
-			_, err := fc.kubeClient.CoreV1().Pods(pod.Namespace).Update(t.Context(), pod, metav1.UpdateOptions{})
+			_, err := fc.fakeController.config.KubeClient.CoreV1().Pods(pod.Namespace).Update(t.Context(), pod, metav1.UpdateOptions{})
 			require.NoError(t, err)
 			require.Eventually(t, func() bool {
 				cached, err := controller.podsLister.Pods(pod.Namespace).Get(pod.Name)
@@ -294,7 +294,7 @@ func TestPodNATCleanupFailureRetriesRouteWorker(t *testing.T) {
 			pod = oldPod.DeepCopy()
 			pod.ResourceVersion = "2"
 			delete(pod.Annotations, annotation)
-			_, err := fc.kubeClient.CoreV1().Pods(pod.Namespace).Update(t.Context(), pod, metav1.UpdateOptions{})
+			_, err := fc.fakeController.config.KubeClient.CoreV1().Pods(pod.Namespace).Update(t.Context(), pod, metav1.UpdateOptions{})
 			require.NoError(t, err)
 			require.Eventually(t, func() bool {
 				cached, err := controller.podsLister.Pods(pod.Namespace).Get(pod.Name)
@@ -375,7 +375,6 @@ func newPodEIPRouteFixture(t *testing.T, gateway string, dualStack bool) (*fakeC
 	})
 	require.NoError(t, err)
 	fc.fakeController.config.EnableEipSnat = true
-	fc.fakeController.config.EnableOvnLB = true
 	fc.fakeController.config.ExternalGatewayConfigNS = metav1.NamespaceSystem
 	fc.fakeController.addOrUpdatePodQueue = newTypedRateLimitingQueue[string]("AddOrUpdatePod", nil)
 	fc.fakeController.updatePodRouteQueue = newTypedRateLimitingQueue[string]("UpdatePodRoute", nil)
