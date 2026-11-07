@@ -95,6 +95,10 @@ func CmdMain() {
 			OnStartedLeading: func(ctx context.Context) {
 				if config.ControllerRuntimeMode == controller.ControllerRuntimeModeManager ||
 					config.ControllerRuntimeMode == controller.ControllerRuntimeModeVlan {
+					// The legacy controller still owns every resource that has not
+					// migrated. The runtime manager is layered on top of it while the
+					// outer leader lease remains the single ownership boundary.
+					go controller.Run(ctx, config)
 					if err := controllerruntime.Run(ctx, config); err != nil {
 						util.LogFatalAndExit(err, "controller-runtime manager failed")
 					}

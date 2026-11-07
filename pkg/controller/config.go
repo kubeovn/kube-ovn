@@ -511,6 +511,10 @@ func validateControllerRuntimeMode(mode string) error {
 	}
 }
 
+func controllerRuntimeVlanEnabled(config *Configuration) bool {
+	return config != nil && config.ControllerRuntimeMode == ControllerRuntimeModeVlan
+}
+
 // validateServiceFeatureGates rejects direct conflicts between the Service data plane
 // implementations:
 //

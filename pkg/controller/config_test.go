@@ -116,6 +116,13 @@ func TestValidateControllerRuntimeMode(t *testing.T) {
 	require.EqualError(t, validateControllerRuntimeMode("unknown"), `--controller-runtime-mode must be "disabled", "manager", or "vlan", got "unknown"`)
 }
 
+func TestControllerRuntimeVlanEnabled(t *testing.T) {
+	require.False(t, controllerRuntimeVlanEnabled(nil))
+	require.False(t, controllerRuntimeVlanEnabled(&Configuration{ControllerRuntimeMode: ControllerRuntimeModeDisabled}))
+	require.False(t, controllerRuntimeVlanEnabled(&Configuration{ControllerRuntimeMode: ControllerRuntimeModeManager}))
+	require.True(t, controllerRuntimeVlanEnabled(&Configuration{ControllerRuntimeMode: ControllerRuntimeModeVlan}))
+}
+
 func TestConfigurationValidateServiceFeatureGates(t *testing.T) {
 	t.Parallel()
 
