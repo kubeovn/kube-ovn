@@ -11,7 +11,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/tools/events"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -333,7 +333,7 @@ func TestVlanReconcilerSettledStatusDoesNotWriteOrEmitEvents(t *testing.T) {
 	vlan := &kubeovnv1.Vlan{Name: "vlan-a", Spec: kubeovnv1.VlanSpec{ID: 100, Provider: "provider-a"}}
 	pn := &kubeovnv1.ProviderNetwork{Name: vlan.Spec.Provider, Status: kubeovnv1.ProviderNetworkStatus{Vlans: []string{vlan.Name}}}
 	api := &statusCountingClient{Client: newRuntimeClient(t, vlan, pn)}
-	recorder := events.NewFakeRecorder(10)
+	recorder := record.NewFakeRecorder(10)
 	r := &VlanReconciler{Client: api, OVN: &recordingVlanOVN{}, Recorder: recorder}
 	_, err := r.Reconcile(t.Context(), ctrl.Request{Name: vlan.Name})
 	require.NoError(t, err)

@@ -21,6 +21,8 @@ finish() {
     k get nodes,pods -A -o wide || true
     k get provider-networks,vlans,subnets -o yaml || true
     k get events -A --sort-by=.metadata.creationTimestamp || true
+    k -n kube-system exec deployment/ovn-central -c ovn-central -- \
+      ovn-nbctl --timeout=10 --format=json --columns=name,type,tag,tag_request list logical_switch_port || true
     k -n kube-system logs -l app=kube-ovn-controller --all-containers --tail=200 --prefix || true
   fi
   # These names belong exclusively to this test. Remove the Subnet first so
@@ -69,11 +71,26 @@ providerRemoved() {
   k get provider-network provider -o json | jq -e --arg vlan "$smokeVlan" '(.status.vlans // []) | index($vlan) == null' >/dev/null
 }
 
+vlanEventRecorded() {
+  k get --raw /api/v1/namespaces/default/events | jq -e --arg vlan "$smokeVlan" '
+    any(.items[]; .involvedObject.kind == "Vlan" and .involvedObject.name == $vlan and
+      .source.component == "kube-ovn-vlan" and .reason == "ReconcileSuccess" and .type == "Normal")
+  ' >/dev/null
+}
+
 localnetTag() {
   local tag
-  tag=$(k -n kube-system exec deployment/ovn-central -c ovn-central -- \
-    ovn-nbctl --timeout=10 get logical_switch_port "localnet.$smokeSubnet" tag)
-  [[ $tag == "$1" || $tag == "[$1]" ]]
+  if tag=$(k -n kube-system exec deployment/ovn-central -c ovn-central -- \
+    ovn-nbctl --timeout=10 get logical_switch_port "localnet.$smokeSubnet" tag); then
+    if [[ $tag == "$1" || $tag == "[$1]" ]]; then
+      return 0
+    fi
+    printf 'Localnet VLAN tag mismatch: expected=%q actual=%q\n' "$1" "$tag" >&2
+  else
+    local result=$?
+    printf 'Localnet VLAN tag read failed: exit=%s stdout=%q\n' "$result" "$tag" >&2
+  fi
+  return 1
 }
 
 statusVersions() {
@@ -156,6 +173,7 @@ EOF_RESOURCES
 waitFor 'concurrent VLAN/Subnet bootstrap' vlanReady "$smokeVlan"
 waitFor 'VLAN registered in ProviderNetwork' providerContains "$smokeVlan"
 waitFor 'dependent legacy Subnet readiness' subnetReady "$smokeSubnet"
+waitFor 'VLAN success event through the core Events API' vlanEventRecorded
 waitFor 'initial localnet VLAN tag' localnetTag "$smokeVlanId"
 
 k patch vlan "$smokeVlan" --type=merge -p "{\"spec\":{\"id\":$nextVlanId}}"

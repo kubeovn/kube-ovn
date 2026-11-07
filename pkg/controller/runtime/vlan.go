@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -18,7 +19,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
-	crrecorder "sigs.k8s.io/controller-runtime/pkg/recorder"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/controller"
@@ -37,7 +37,7 @@ type VlanReconciler struct {
 	client.Client
 	OVN                 vlanOVN
 	DefaultProviderName string
-	Recorder            crrecorder.EventRecorder
+	Recorder            record.EventRecorder
 }
 
 func (r *VlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -245,7 +245,7 @@ func (r *VlanReconciler) relatedVlanRequests(ctx context.Context, objects ...cli
 
 func (r *VlanReconciler) recordEvent(vlan *kubeovnv1.Vlan, eventType, reason, message string) {
 	if r.Recorder != nil {
-		r.Recorder.Eventf(vlan, nil, eventType, reason, "Reconcile", message)
+		r.Recorder.Event(vlan, eventType, reason, message)
 	}
 }
 
@@ -393,6 +393,16 @@ func (r *ProviderNetworkReconciler) requestsForAllProviderNetworks(ctx context.C
 	return requests
 }
 
+func newVlanReconciler(mgr ctrl.Manager, ovn vlanOVN, defaultProviderName string) *VlanReconciler {
+	return &VlanReconciler{
+		Client:              mgr.GetClient(),
+		OVN:                 ovn,
+		DefaultProviderName: defaultProviderName,
+		// Keep the pilot on the core Events API authorized by existing installations.
+		Recorder: mgr.GetEventRecorderFor("kube-ovn-vlan"), //nolint:staticcheck // The migration must not require additional events.k8s.io permissions.
+	}
+}
+
 func setupVlanReconcilers(mgr ctrl.Manager, config *controller.Configuration) error {
 	nbClient, err := ovs.NewOvnNbClient(
 		config.OvnNbAddr,
@@ -405,12 +415,7 @@ func setupVlanReconcilers(mgr ctrl.Manager, config *controller.Configuration) er
 		return fmt.Errorf("create OVN NB client for vlan reconcilers: %w", err)
 	}
 
-	vlanReconciler := &VlanReconciler{
-		Client:              mgr.GetClient(),
-		OVN:                 nbClient,
-		DefaultProviderName: config.DefaultProviderName,
-		Recorder:            mgr.GetEventRecorder("kube-ovn-vlan"),
-	}
+	vlanReconciler := newVlanReconciler(mgr, nbClient, config.DefaultProviderName)
 	if err := vlanReconciler.SetupWithManager(mgr); err != nil {
 		nbClient.Close()
 		return fmt.Errorf("setup vlan reconciler: %w", err)
