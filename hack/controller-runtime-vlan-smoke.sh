@@ -165,9 +165,12 @@ waitSettled
 
 k -n kube-system rollout restart deployment/kube-ovn-controller
 k -n kube-system rollout status deployment/kube-ovn-controller --timeout=180s
-waitFor 'VLAN readiness after controller restart' vlanReady "$smokeVlan"
+# Require fresh reconciliation after restart instead of accepting persisted status.
+k patch vlan "$smokeVlan" --type=merge -p "{\"spec\":{\"id\":$smokeVlanId}}"
+waitFor 'new VLAN generation readiness after controller restart' vlanReady "$smokeVlan"
 waitFor 'ProviderNetwork readiness after controller restart' providerReady
-waitFor 'localnet tag after controller restart' localnetTag "$nextVlanId"
+waitFor 'restored localnet VLAN tag after controller restart' localnetTag "$smokeVlanId"
+waitFor 'VLAN membership after controller restart' providerContains "$smokeVlan"
 waitSettled
 
 k delete subnet "$smokeSubnet" --wait=true --timeout=60s
