@@ -37,6 +37,7 @@ import (
 // Configuration is the daemon conf
 type Configuration struct {
 	InstallCNIConfig bool
+	EnableTunnelNotrack           bool
 	CniConfDir       string
 	CniConfFile      string
 	CniConfName      string
@@ -156,6 +157,7 @@ func ParseFlags() *Configuration {
 		argTLSMaxVersion           = pflag.String("tls-max-version", "", "The maximum TLS version to use for secure serving. Supported values: TLS10, TLS11, TLS12, TLS13. If not set, the default is used based on the Go version.")
 		argTLSCipherSuites         = pflag.StringSlice("tls-cipher-suites", nil, "Comma-separated list of TLS cipher suite names to use for secure serving (e.g., 'TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384'). Names must match Go's crypto/tls package. See Go documentation for available suites. If not set, defaults are used. Users are responsible for selecting secure cipher suites.")
 		argNonPrimaryCNI           = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, skip setting NetworkUnavailable node condition")
+		argEnableTunnelNotrack     = pflag.Bool("enable-tunnel-notrack", true, "Enable NOTRACK for overlay tunnel traffic to avoid connection tracking overhead. Note: Must be set to false in intermediate NAT scenarios (e.g. VPC NAT Gateway) where overlay tunnel traffic requires conntrack.")
 		argEnableACLSampling       = pflag.Bool("enable-acl-sampling", false, "Enable experimental local ACL sample delivery")
 		argACLSamplingSetID        = pflag.Uint32("acl-sampling-set-id", aclsampling.DefaultSetID, "Observation domain ID used by ACL sample collectors")
 		argACLSamplingLocalGroupID = pflag.Uint32("acl-sampling-local-group-id", aclsampling.DefaultLocalGroupID, "Local psample group ID used to deliver ACL samples")
@@ -235,6 +237,7 @@ func ParseFlags() *Configuration {
 		TLSMaxVersion:             *argTLSMaxVersion,
 		TLSCipherSuites:           *argTLSCipherSuites,
 		EnableNonPrimaryCNI:       *argNonPrimaryCNI,
+		EnableTunnelNotrack:       *argEnableTunnelNotrack,
 		ACLSampling: aclsampling.NodeConfig{
 			Enabled:      *argEnableACLSampling,
 			SetID:        *argACLSamplingSetID,
