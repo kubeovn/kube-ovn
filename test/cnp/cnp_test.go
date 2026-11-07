@@ -17,7 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/config"
 
-	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	netpolv1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 	"sigs.k8s.io/network-policy-api/conformance/tests"
 	netpolv1config "sigs.k8s.io/network-policy-api/conformance/utils/config"
 	"sigs.k8s.io/network-policy-api/conformance/utils/suite"
@@ -79,7 +79,7 @@ func TestClusterNetworkPolicyConformance(t *testing.T) {
 	if err != nil {
 		t.Fatalf("error when creating Kubernetes ClientSet: %v", err)
 	}
-	err = netpolv1alpha2.Install(client.Scheme())
+	err = netpolv1beta1.Install(client.Scheme())
 	if err != nil {
 		t.Fatalf("Error initializing API scheme: %v", err)
 	}

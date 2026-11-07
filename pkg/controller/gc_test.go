@@ -30,9 +30,9 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	v1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 	anplisters "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
-	cnplisters "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha2"
+	cnplisters "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1beta1"
 
 	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -600,10 +600,10 @@ func TestGcDisabledDNSNameResolversDeletesPoliciesWithDomains(t *testing.T) {
 			To: []v1alpha1.AdminNetworkPolicyEgressPeer{{DomainNames: []v1alpha1.DomainName{"example.test."}}},
 		}}},
 	}
-	cnp := &v1alpha2.ClusterNetworkPolicy{
+	cnp := &v1beta1.ClusterNetworkPolicy{
 		Name: "uses-dns",
-		Spec: v1alpha2.ClusterNetworkPolicySpec{Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{{
-			To: []v1alpha2.ClusterNetworkPolicyEgressPeer{{DomainNames: []v1alpha2.DomainName{"example.test."}}},
+		Spec: v1beta1.ClusterNetworkPolicySpec{Egress: []v1beta1.ClusterNetworkPolicyEgressRule{{
+			To: []v1beta1.ClusterNetworkPolicyEgressPeer{{DomainNames: []v1beta1.DomainName{"example.test."}}},
 		}}},
 	}
 	anpIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
@@ -611,7 +611,7 @@ func TestGcDisabledDNSNameResolversDeletesPoliciesWithDomains(t *testing.T) {
 	require.NoError(t, anpIndexer.Add(anp))
 	require.NoError(t, cnpIndexer.Add(cnp))
 	require.NoError(t, anpIndexer.Add(&v1alpha1.AdminNetworkPolicy{Name: "without-dns"}))
-	require.NoError(t, cnpIndexer.Add(&v1alpha2.ClusterNetworkPolicy{Name: "without-dns"}))
+	require.NoError(t, cnpIndexer.Add(&v1beta1.ClusterNetworkPolicy{Name: "without-dns"}))
 	ctrl.anpsLister = anplisters.NewAdminNetworkPolicyLister(anpIndexer)
 	ctrl.cnpsLister = cnplisters.NewClusterNetworkPolicyLister(cnpIndexer)
 
@@ -678,7 +678,7 @@ func TestGcDisabledDNSNameResolversPreservesPoliciesWithoutDomains(t *testing.T)
 	ctrl := fakeController.fakeController
 
 	anp := &v1alpha1.AdminNetworkPolicy{Name: "live-anp"}
-	cnp := &v1alpha2.ClusterNetworkPolicy{Name: "live-cnp"}
+	cnp := &v1beta1.ClusterNetworkPolicy{Name: "live-cnp"}
 	anpIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	cnpIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	require.NoError(t, anpIndexer.Add(anp))

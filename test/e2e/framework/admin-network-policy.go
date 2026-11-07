@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	netpolv1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 
 	"github.com/onsi/ginkgo/v2"
 	corev1 "k8s.io/api/core/v1"
@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	netpolv1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	anpclient "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned/typed/apis/v1alpha1"
-	cnpclient "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned/typed/apis/v1alpha2"
+	cnpclient "sigs.k8s.io/network-policy-api/pkg/client/clientset/versioned/typed/apis/v1beta1"
 )
 
 // MakeAdminNetworkPolicy creates a basic AdminNetworkPolicy with common defaults
@@ -34,13 +34,13 @@ func MakeAdminNetworkPolicy(name string, priority int32, namespaceSelector *meta
 }
 
 // MakeClusterNetworkPolicy creates a basic ClusterNetworkPolicy with common defaults
-func MakeClusterNetworkPolicy(name string, priority int32, namespaceSelector *metav1.LabelSelector, egressRules []netpolv1alpha2.ClusterNetworkPolicyEgressRule, ingressRules []netpolv1alpha2.ClusterNetworkPolicyIngressRule) *netpolv1alpha2.ClusterNetworkPolicy {
-	anp := &netpolv1alpha2.ClusterNetworkPolicy{
+func MakeClusterNetworkPolicy(name string, priority int32, namespaceSelector *metav1.LabelSelector, egressRules []netpolv1beta1.ClusterNetworkPolicyEgressRule, ingressRules []netpolv1beta1.ClusterNetworkPolicyIngressRule) *netpolv1beta1.ClusterNetworkPolicy {
+	anp := &netpolv1beta1.ClusterNetworkPolicy{
 		Name: name,
-		Spec: netpolv1alpha2.ClusterNetworkPolicySpec{
-			Tier:     netpolv1alpha2.AdminTier,
+		Spec: netpolv1beta1.ClusterNetworkPolicySpec{
+			Tier:     netpolv1beta1.AdminTier,
 			Priority: priority,
-			Subject: netpolv1alpha2.ClusterNetworkPolicySubject{
+			Subject: netpolv1beta1.ClusterNetworkPolicySubject{
 				Namespaces: namespaceSelector,
 			},
 			Egress:  egressRules,
@@ -68,11 +68,11 @@ func MakeAdminNetworkPolicyEgressRule(name string, action netpolv1alpha1.AdminNe
 }
 
 // MakeClusterNetworkPolicyEgressRule creates an egress rule with domain names
-func MakeClusterNetworkPolicyEgressRule(name string, action netpolv1alpha2.ClusterNetworkPolicyRuleAction, ports []netpolv1alpha2.ClusterNetworkPolicyProtocol, domainNames []netpolv1alpha2.DomainName) netpolv1alpha2.ClusterNetworkPolicyEgressRule {
-	rule := netpolv1alpha2.ClusterNetworkPolicyEgressRule{
+func MakeClusterNetworkPolicyEgressRule(name string, action netpolv1beta1.ClusterNetworkPolicyRuleAction, ports []netpolv1beta1.ClusterNetworkPolicyProtocol, domainNames []netpolv1beta1.DomainName) netpolv1beta1.ClusterNetworkPolicyEgressRule {
+	rule := netpolv1beta1.ClusterNetworkPolicyEgressRule{
 		Name:   name,
 		Action: action,
-		To: []netpolv1alpha2.ClusterNetworkPolicyEgressPeer{
+		To: []netpolv1beta1.ClusterNetworkPolicyEgressPeer{
 			{
 				DomainNames: domainNames,
 			},
@@ -93,18 +93,18 @@ func MakeAdminNetworkPolicyPort(port int32, protocol corev1.Protocol) netpolv1al
 }
 
 // MakeClusterNetworkPolicyPort creates a port specification
-func MakeClusterNetworkPolicyPort(port int32, protocol corev1.Protocol) netpolv1alpha2.ClusterNetworkPolicyProtocol {
-	destination := &netpolv1alpha2.Port{Number: port}
+func MakeClusterNetworkPolicyPort(port int32, protocol corev1.Protocol) netpolv1beta1.ClusterNetworkPolicyProtocol {
+	destination := &netpolv1beta1.Port{Number: port}
 	switch protocol {
 	case corev1.ProtocolTCP:
-		return netpolv1alpha2.ClusterNetworkPolicyProtocol{TCP: &netpolv1alpha2.ClusterNetworkPolicyProtocolTCP{DestinationPort: destination}}
+		return netpolv1beta1.ClusterNetworkPolicyProtocol{TCP: &netpolv1beta1.ClusterNetworkPolicyProtocolTCP{DestinationPort: destination}}
 	case corev1.ProtocolUDP:
-		return netpolv1alpha2.ClusterNetworkPolicyProtocol{UDP: &netpolv1alpha2.ClusterNetworkPolicyProtocolUDP{DestinationPort: destination}}
+		return netpolv1beta1.ClusterNetworkPolicyProtocol{UDP: &netpolv1beta1.ClusterNetworkPolicyProtocolUDP{DestinationPort: destination}}
 	case corev1.ProtocolSCTP:
-		return netpolv1alpha2.ClusterNetworkPolicyProtocol{SCTP: &netpolv1alpha2.ClusterNetworkPolicyProtocolSCTP{DestinationPort: destination}}
+		return netpolv1beta1.ClusterNetworkPolicyProtocol{SCTP: &netpolv1beta1.ClusterNetworkPolicyProtocolSCTP{DestinationPort: destination}}
 	default:
 		Failf("unsupported CNP protocol %s", protocol)
-		return netpolv1alpha2.ClusterNetworkPolicyProtocol{}
+		return netpolv1beta1.ClusterNetworkPolicyProtocol{}
 	}
 }
 
@@ -130,7 +130,7 @@ type CnpClient struct {
 func (f *Framework) CnpClient() *CnpClient {
 	return &CnpClient{
 		f:                             f,
-		ClusterNetworkPolicyInterface: f.AnpClientSet.PolicyV1alpha2().ClusterNetworkPolicies(),
+		ClusterNetworkPolicyInterface: f.AnpClientSet.PolicyV1beta1().ClusterNetworkPolicies(),
 	}
 }
 

@@ -15,7 +15,7 @@ import (
 	"k8s.io/kubernetes/test/e2e"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
-	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	netpolv1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
 )
@@ -30,7 +30,7 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 	ginkgo.BeforeEach(func() {
 		policyNames = nil
 		podClient = nil
-		f.SkipVersionPriorTo(1, 17, "ClusterNetworkPolicy protocols requires the v0.2.1 controller")
+		f.SkipVersionPriorTo(1, 17, "ClusterNetworkPolicy v1beta1 requires the v0.3.0 controller")
 		namespaceName = "ns-" + framework.RandomSuffix()
 		podName = "pod-" + framework.RandomSuffix()
 		cnpClient = f.CnpClient()
@@ -60,18 +60,18 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 			return (err == nil) == allowed, nil
 		}, fmt.Sprintf("HTTPS connectivity to %s, allowed=%t", target, allowed))
 	}
-	protocols := []netpolv1alpha2.ClusterNetworkPolicyProtocol{framework.MakeClusterNetworkPolicyPort(443, corev1.ProtocolTCP)}
-	allowDomain := func(name, domain string) netpolv1alpha2.ClusterNetworkPolicyEgressRule {
+	protocols := []netpolv1beta1.ClusterNetworkPolicyProtocol{framework.MakeClusterNetworkPolicyPort(443, corev1.ProtocolTCP)}
+	allowDomain := func(name, domain string) netpolv1beta1.ClusterNetworkPolicyEgressRule {
 		// DomainNames is valid only with Accept: denial uses a lower catch-all rule.
-		return framework.MakeClusterNetworkPolicyEgressRule(name, netpolv1alpha2.ClusterNetworkPolicyRuleActionAccept, protocols, []netpolv1alpha2.DomainName{netpolv1alpha2.DomainName(domain)})
+		return framework.MakeClusterNetworkPolicyEgressRule(name, netpolv1beta1.ClusterNetworkPolicyRuleActionAccept, protocols, []netpolv1beta1.DomainName{netpolv1beta1.DomainName(domain)})
 	}
-	denyHTTPS := func() netpolv1alpha2.ClusterNetworkPolicyEgressRule {
-		return netpolv1alpha2.ClusterNetworkPolicyEgressRule{
-			Name: "deny-other-https", Action: netpolv1alpha2.ClusterNetworkPolicyRuleActionDeny, Protocols: protocols,
-			To: []netpolv1alpha2.ClusterNetworkPolicyEgressPeer{{Networks: []netpolv1alpha2.CIDR{"0.0.0.0/0", "::/0"}}},
+	denyHTTPS := func() netpolv1beta1.ClusterNetworkPolicyEgressRule {
+		return netpolv1beta1.ClusterNetworkPolicyEgressRule{
+			Name: "deny-other-https", Action: netpolv1beta1.ClusterNetworkPolicyRuleActionDeny, Protocols: protocols,
+			To: []netpolv1beta1.ClusterNetworkPolicyEgressPeer{{Networks: []netpolv1beta1.CIDR{"0.0.0.0/0", "::/0"}}},
 		}
 	}
-	create := func(priority int32, rules ...netpolv1alpha2.ClusterNetworkPolicyEgressRule) *netpolv1alpha2.ClusterNetworkPolicy {
+	create := func(priority int32, rules ...netpolv1beta1.ClusterNetworkPolicyEgressRule) *netpolv1beta1.ClusterNetworkPolicy {
 		name := "cnp-" + framework.RandomSuffix()
 		policyNames = append(policyNames, name)
 		policy := framework.MakeClusterNetworkPolicy(name, priority, &metav1.LabelSelector{MatchLabels: map[string]string{"kubernetes.io/metadata.name": namespaceName}}, rules, nil)
@@ -79,7 +79,7 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 		framework.ExpectNoError(err)
 		return created
 	}
-	update := func(policy *netpolv1alpha2.ClusterNetworkPolicy, rules ...netpolv1alpha2.ClusterNetworkPolicyEgressRule) *netpolv1alpha2.ClusterNetworkPolicy {
+	update := func(policy *netpolv1beta1.ClusterNetworkPolicy, rules ...netpolv1beta1.ClusterNetworkPolicyEgressRule) *netpolv1beta1.ClusterNetworkPolicy {
 		policy.Spec.Egress = rules
 		updated, err := cnpClient.Update(context.Background(), policy, metav1.UpdateOptions{})
 		framework.ExpectNoError(err)
@@ -93,7 +93,7 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 			return len(list.Items) == count, nil
 		}, fmt.Sprintf("%d DNSNameResolvers for CNP %s", count, name))
 	}
-	remove := func(policy *netpolv1alpha2.ClusterNetworkPolicy) {
+	remove := func(policy *netpolv1beta1.ClusterNetworkPolicy) {
 		framework.ExpectNoError(cnpClient.Delete(context.Background(), policy.Name, metav1.DeleteOptions{}))
 	}
 
@@ -151,9 +151,9 @@ var _ = framework.SerialDescribe("[group:cluster-network-policy]", func() {
 		connect("https://www.baidu.com", true)
 		connect("https://www.google.com", true)
 		connect("https://8.8.8.8", true)
-		denyCIDR := netpolv1alpha2.ClusterNetworkPolicyEgressRule{
-			Name: "deny-google-dns", Action: netpolv1alpha2.ClusterNetworkPolicyRuleActionDeny, Protocols: protocols,
-			To: []netpolv1alpha2.ClusterNetworkPolicyEgressPeer{{Networks: []netpolv1alpha2.CIDR{"8.8.8.8/32"}}},
+		denyCIDR := netpolv1beta1.ClusterNetworkPolicyEgressRule{
+			Name: "deny-google-dns", Action: netpolv1beta1.ClusterNetworkPolicyRuleActionDeny, Protocols: protocols,
+			To: []netpolv1beta1.ClusterNetworkPolicyEgressPeer{{Networks: []netpolv1beta1.CIDR{"8.8.8.8/32"}}},
 		}
 		policy := create(80, denyCIDR, allowDomain("allow-baidu", "*.baidu.com."), denyHTTPS())
 		waitResolvers(policy.Name, 1)

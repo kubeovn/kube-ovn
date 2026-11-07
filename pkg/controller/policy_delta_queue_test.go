@@ -9,7 +9,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/util/workqueue"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	v1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -184,8 +184,8 @@ func TestUnnamedPolicyRuleChangesKeepTheirIndex(t *testing.T) {
 	}
 	controller.updateAnpQueue.Done(item)
 
-	oldCnp := &v1alpha2.ClusterNetworkPolicy{Name: "cnp", Spec: v1alpha2.ClusterNetworkPolicySpec{
-		Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{{From: []v1alpha2.ClusterNetworkPolicyIngressPeer{{Namespaces: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "old"}}}}}},
+	oldCnp := &v1beta1.ClusterNetworkPolicy{Name: "cnp", Spec: v1beta1.ClusterNetworkPolicySpec{
+		Ingress: []v1beta1.ClusterNetworkPolicyIngressRule{{From: []v1beta1.ClusterNetworkPolicyIngressPeer{{Namespaces: &metav1.LabelSelector{MatchLabels: map[string]string{"app": "old"}}}}}},
 	}}
 	newCnp := oldCnp.DeepCopy()
 	newCnp.Spec.Ingress[0].From[0].Namespaces.MatchLabels = map[string]string{"app": "new"}

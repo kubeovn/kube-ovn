@@ -11,7 +11,7 @@ import (
 	networkinglister "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	v1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 )
 
 const (
@@ -152,21 +152,21 @@ func benchmarkBANPRules(count int) ([]v1alpha1.BaselineAdminNetworkPolicyIngress
 	return ingress, egress
 }
 
-func benchmarkCNPRules(count int) ([]v1alpha2.ClusterNetworkPolicyIngressRule, []v1alpha2.ClusterNetworkPolicyEgressRule) {
-	ingress := make([]v1alpha2.ClusterNetworkPolicyIngressRule, count)
-	egress := make([]v1alpha2.ClusterNetworkPolicyEgressRule, count)
+func benchmarkCNPRules(count int) ([]v1beta1.ClusterNetworkPolicyIngressRule, []v1beta1.ClusterNetworkPolicyEgressRule) {
+	ingress := make([]v1beta1.ClusterNetworkPolicyIngressRule, count)
+	egress := make([]v1beta1.ClusterNetworkPolicyEgressRule, count)
 	for i := range count {
-		namespacedPod := v1alpha2.NamespacedPod{
+		namespacedPod := v1beta1.NamespacedPod{
 			NamespaceSelector: benchmarkSelector("tenant", fmt.Sprintf("tenant-%d", i%benchmarkPolicyLabelCount)),
 			PodSelector:       benchmarkSelector("app", fmt.Sprintf("app-%d", i%benchmarkPolicyLabelCount)),
 		}
-		ingress[i] = v1alpha2.ClusterNetworkPolicyIngressRule{
+		ingress[i] = v1beta1.ClusterNetworkPolicyIngressRule{
 			Name: fmt.Sprintf("ingress-%d", i),
-			From: []v1alpha2.ClusterNetworkPolicyIngressPeer{{Pods: &namespacedPod}},
+			From: []v1beta1.ClusterNetworkPolicyIngressPeer{{Pods: &namespacedPod}},
 		}
-		egress[i] = v1alpha2.ClusterNetworkPolicyEgressRule{
+		egress[i] = v1beta1.ClusterNetworkPolicyEgressRule{
 			Name: fmt.Sprintf("egress-%d", i),
-			To:   []v1alpha2.ClusterNetworkPolicyEgressPeer{{Pods: &namespacedPod}},
+			To:   []v1beta1.ClusterNetworkPolicyEgressPeer{{Pods: &namespacedPod}},
 		}
 	}
 	return ingress, egress
@@ -289,8 +289,8 @@ func BenchmarkClusterNetworkPolicyRuleFanout(b *testing.B) {
 	for _, count := range []int{10, 25} {
 		b.Run(fmt.Sprintf("rules-%d", count), func(b *testing.B) {
 			ingress, egress := benchmarkCNPRules(count)
-			cnp := &v1alpha2.ClusterNetworkPolicy{
-				Spec: v1alpha2.ClusterNetworkPolicySpec{Ingress: ingress, Egress: egress},
+			cnp := &v1beta1.ClusterNetworkPolicy{
+				Spec: v1beta1.ClusterNetworkPolicySpec{Ingress: ingress, Egress: egress},
 			}
 			for _, scenario := range changes {
 				b.Run(scenario.name, func(b *testing.B) {
