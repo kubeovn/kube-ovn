@@ -95,6 +95,33 @@ func TestVlanReconcilerDoesNotTagConflictingVlan(t *testing.T) {
 	require.True(t, updated.Status.Conflict)
 }
 
+func TestMigrateVlanSpec(t *testing.T) {
+	vlan := &kubeovnv1.Vlan{Spec: kubeovnv1.VlanSpec{
+		VlanID:                100,
+		ProviderInterfaceName: "provider-a",
+	}}
+
+	require.True(t, migrateVlanSpec(vlan))
+	require.Equal(t, 100, vlan.Spec.ID)
+	require.Equal(t, "provider-a", vlan.Spec.Provider)
+	require.Zero(t, vlan.Spec.VlanID)
+	require.Empty(t, vlan.Spec.ProviderInterfaceName)
+	require.False(t, migrateVlanSpec(vlan))
+}
+
+func TestVlanReconcilerRequestsRelatedConflictPeers(t *testing.T) {
+	changed := &kubeovnv1.Vlan{Name: "changed", Spec: kubeovnv1.VlanSpec{ID: 100, Provider: "provider-a"}}
+	reconciler := &VlanReconciler{Client: newRuntimeClient(t,
+		changed,
+		&kubeovnv1.Vlan{Name: "peer", Spec: changed.Spec},
+		&kubeovnv1.Vlan{Name: "other-id", Spec: kubeovnv1.VlanSpec{ID: 101, Provider: changed.Spec.Provider}},
+		&kubeovnv1.Vlan{Name: "other-provider", Spec: kubeovnv1.VlanSpec{ID: changed.Spec.ID, Provider: "provider-b"}},
+	)}
+
+	requests := reconciler.relatedVlanRequests(t.Context(), changed)
+	require.Equal(t, []ctrl.Request{{Name: "peer"}}, requests)
+}
+
 func TestProviderNetworkReconcilerMapsVlanProviderChanges(t *testing.T) {
 	reconciler := &ProviderNetworkReconciler{}
 	oldVlan := &kubeovnv1.Vlan{Name: "vlan-a", Spec: kubeovnv1.VlanSpec{Provider: "provider-old"}}

@@ -1058,11 +1058,11 @@ func Run(ctx context.Context, config *Configuration) {
 	}
 
 	vlanEventHandler := cache.ResourceEventHandlerFuncs{
+		UpdateFunc: controller.enqueueUpdateVlan,
 		DeleteFunc: controller.enqueueDelVlan,
 	}
 	if !controllerRuntimeVlanEnabled(config) {
 		vlanEventHandler.AddFunc = controller.enqueueAddVlan
-		vlanEventHandler.UpdateFunc = controller.enqueueUpdateVlan
 	}
 	if _, err = vlanInformer.Informer().AddEventHandler(vlanEventHandler); err != nil {
 		util.LogFatalAndExit(err, "failed to add vlan event handler")

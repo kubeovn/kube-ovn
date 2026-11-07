@@ -40,9 +40,24 @@ type VlanReconciler struct {
 }
 
 func (r *VlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	specChanged := predicate.Funcs{UpdateFunc: func(e event.UpdateEvent) bool {
+		oldVlan, oldOK := e.ObjectOld.(*kubeovnv1.Vlan)
+		newVlan, newOK := e.ObjectNew.(*kubeovnv1.Vlan)
+		return oldOK && newOK && !equality.Semantic.DeepEqual(oldVlan.Spec, newVlan.Spec)
+	}}
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("kube-ovn-vlan").
 		For(&kubeovnv1.Vlan{}).
+		Watches(&kubeovnv1.Vlan{}, handler.Funcs{
+			UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+				if !specChanged.Update(e) {
+					return
+				}
+				for _, request := range r.relatedVlanRequests(ctx, e.ObjectOld, e.ObjectNew) {
+					q.Add(request)
+				}
+			},
+		}).
 		Watches(&kubeovnv1.Subnet{}, handler.EnqueueRequestsFromMapFunc(r.requestsForSubnet)).
 		Watches(&kubeovnv1.ProviderNetwork{}, handler.EnqueueRequestsFromMapFunc(r.requestsForProviderNetwork)).
 		Complete(r)
@@ -52,6 +67,13 @@ func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	vlan := &kubeovnv1.Vlan{}
 	if err := r.Get(ctx, types.NamespacedName{Name: req.Name}, vlan); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	if migrateVlanSpec(vlan) {
+		if err := r.Update(ctx, vlan); err != nil {
+			return ctrl.Result{}, fmt.Errorf("migrate spec for vlan %s: %w", vlan.Name, err)
+		}
+		return ctrl.Result{}, nil
 	}
 
 	if vlan.Spec.Provider == "" {
@@ -82,16 +104,12 @@ func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	original := vlan.DeepCopy()
 	vlan.Status.Conflict = conflict
 	vlan.Status.Subnets = subnetNamesForVlan(vlan.Name, subnets.Items)
-	if conflict {
-		removeVlanReadyCondition(vlan)
-	}
-	if !equality.Semantic.DeepEqual(original.Status, vlan.Status) {
-		if err := r.Status().Patch(ctx, vlan, client.MergeFrom(original)); err != nil {
-			return ctrl.Result{}, fmt.Errorf("update status for vlan %s: %w", vlan.Name, err)
-		}
-	}
+	removeVlanReadyCondition(vlan)
 
 	if conflict {
+		if err := r.patchVlanStatus(ctx, vlan, original); err != nil {
+			return ctrl.Result{}, err
+		}
 		err := fmt.Errorf("vlan %s conflicts with another vlan in provider network %s", vlan.Name, vlan.Spec.Provider)
 		r.recordEvent(vlan, corev1.EventTypeWarning, "VlanConflict", err.Error())
 		return ctrl.Result{}, err
@@ -102,16 +120,15 @@ func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			continue
 		}
 		if err := r.OVN.SetLogicalSwitchPortVlanTag(ovs.GetLocalnetName(subnet.Name), vlan.Spec.ID); err != nil {
-			if statusErr := r.clearVlanReady(ctx, vlan); statusErr != nil {
+			if statusErr := r.patchVlanStatus(ctx, vlan, original); statusErr != nil {
 				return ctrl.Result{}, fmt.Errorf("set localnet tag for subnet %s and vlan %s: %w; clear ready status: %v", subnet.Name, vlan.Name, err, statusErr)
 			}
 			return ctrl.Result{}, fmt.Errorf("set localnet tag for subnet %s and vlan %s: %w", subnet.Name, vlan.Name, err)
 		}
 	}
-	readyOriginal := vlan.DeepCopy()
 	setVlanReadyCondition(vlan)
-	if err := r.Status().Patch(ctx, vlan, client.MergeFrom(readyOriginal)); err != nil {
-		return ctrl.Result{}, fmt.Errorf("mark vlan %s ready: %w", vlan.Name, err)
+	if err := r.patchVlanStatus(ctx, vlan, original); err != nil {
+		return ctrl.Result{}, err
 	}
 
 	if !slices.Contains(providerNetwork.Status.Vlans, vlan.Name) {
@@ -123,6 +140,34 @@ func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 
 	r.recordEvent(vlan, corev1.EventTypeNormal, "ReconcileSuccess", fmt.Sprintf("Vlan %s reconciled successfully", vlan.Name))
 	return ctrl.Result{}, nil
+}
+
+func migrateVlanSpec(vlan *kubeovnv1.Vlan) bool {
+	var changed bool
+	if vlan.Spec.VlanID != 0 && vlan.Spec.ID == 0 {
+		vlan.Spec.ID = vlan.Spec.VlanID
+		vlan.Spec.VlanID = 0
+		changed = true
+	}
+	//nolint:staticcheck // Ignore SA1019 for backward compatibility of deprecated field ProviderInterfaceName.
+	if vlan.Spec.ProviderInterfaceName != "" && vlan.Spec.Provider == "" {
+		//nolint:staticcheck // Ignore SA1019 for backward compatibility.
+		vlan.Spec.Provider = vlan.Spec.ProviderInterfaceName
+		//nolint:staticcheck // Ignore SA1019 for backward compatibility.
+		vlan.Spec.ProviderInterfaceName = ""
+		changed = true
+	}
+	return changed
+}
+
+func (r *VlanReconciler) patchVlanStatus(ctx context.Context, vlan, original *kubeovnv1.Vlan) error {
+	if equality.Semantic.DeepEqual(original.Status, vlan.Status) {
+		return nil
+	}
+	if err := r.Status().Patch(ctx, vlan, client.MergeFrom(original)); err != nil {
+		return fmt.Errorf("update status for vlan %s: %w", vlan.Name, err)
+	}
+	return nil
 }
 
 func (r *VlanReconciler) requestsForSubnet(_ context.Context, obj client.Object) []ctrl.Request {
@@ -148,6 +193,28 @@ func (r *VlanReconciler) requestsForProviderNetwork(ctx context.Context, obj cli
 	for _, vlan := range vlans.Items {
 		if vlan.Spec.Provider == providerNetwork.Name {
 			requests = append(requests, ctrl.Request{Name: vlan.Name})
+		}
+	}
+	return requests
+}
+
+func (r *VlanReconciler) relatedVlanRequests(ctx context.Context, objects ...client.Object) []ctrl.Request {
+	var vlans kubeovnv1.VlanList
+	if err := r.List(ctx, &vlans); err != nil {
+		klog.Errorf("list related vlans: %v", err)
+		return nil
+	}
+	requests := make([]ctrl.Request, 0)
+	for _, vlan := range vlans.Items {
+		for _, object := range objects {
+			changed, ok := object.(*kubeovnv1.Vlan)
+			if !ok || changed.Name == vlan.Name {
+				continue
+			}
+			if changed.Spec.ID != 0 && changed.Spec.ID == vlan.Spec.ID && changed.Spec.Provider == vlan.Spec.Provider {
+				requests = append(requests, ctrl.Request{Name: vlan.Name})
+				break
+			}
 		}
 	}
 	return requests
@@ -410,15 +477,6 @@ func removeVlanReadyCondition(vlan *kubeovnv1.Vlan) {
 		}
 	}
 	vlan.Status.Conditions = conditions
-}
-
-func (r *VlanReconciler) clearVlanReady(ctx context.Context, vlan *kubeovnv1.Vlan) error {
-	original := vlan.DeepCopy()
-	removeVlanReadyCondition(vlan)
-	if equality.Semantic.DeepEqual(original.Status, vlan.Status) {
-		return nil
-	}
-	return r.Status().Patch(ctx, vlan, client.MergeFrom(original))
 }
 
 func isKubeOvnCniPod(obj client.Object) bool {

@@ -47,12 +47,16 @@ func (c *Controller) enqueueUpdateVlan(oldObj, newObj any) {
 	newVlan := newObj.(*kubeovnv1.Vlan)
 	key := cache.MetaObjectToName(newVlan).String()
 	klog.V(3).Infof("enqueue update vlan %s", key)
-	c.updateVlanQueue.Add(key)
+	if !controllerRuntimeVlanEnabled(c.config) {
+		c.updateVlanQueue.Add(key)
+	}
 
 	if oldVlan.Spec.ID != newVlan.Spec.ID || oldVlan.Spec.Provider != newVlan.Spec.Provider {
-		if err := c.enqueueRelatedVlans(oldVlan, newVlan); err != nil {
-			klog.Errorf("failed to enqueue related vlans for %s: %v", key, err)
-			c.recordVlanEvent(newVlan, corev1.EventTypeWarning, "ListVlansFailed", err.Error())
+		if !controllerRuntimeVlanEnabled(c.config) {
+			if err := c.enqueueRelatedVlans(oldVlan, newVlan); err != nil {
+				klog.Errorf("failed to enqueue related vlans for %s: %v", key, err)
+				c.recordVlanEvent(newVlan, corev1.EventTypeWarning, "ListVlansFailed", err.Error())
+			}
 		}
 	}
 
