@@ -1063,6 +1063,66 @@ func policyRouteSrcMatches(podIP, nextHop string) []policyRouteMatch {
 	return matches
 }
 
+// reconcilePodPolicyRoutes returns whether any Pod address needs the Subnet gateway.
+func (c *Controller) reconcilePodPolicyRoutes(pod *v1.Pod, subnet *kubeovnv1.Subnet, podIP string) (bool, error) {
+	eip, snat := pod.Annotations[util.EipAnnotation], pod.Annotations[util.SnatAnnotation]
+	var externalGateway string
+	if c.config.EnableEipSnat && (eip != "" || snat != "") {
+		cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
+		if err != nil {
+			return false, fmt.Errorf("get external gateway config: %w", err)
+		}
+		externalGateway = cm.Data["external-gw-addr"]
+		if externalGateway == "" {
+			externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+			if err != nil {
+				return false, fmt.Errorf("get external subnet %s: %w", c.config.ExternalGatewaySwitch, err)
+			}
+			externalGateway = externalSubnet.Spec.Gateway
+			if externalGateway == "" {
+				return false, errors.New("no available gateway address")
+			}
+		}
+	}
+
+	// Older dual-stack policies used an invalid comma-separated IPv4 match.
+	if c.config.EnableEipSnat && strings.Contains(podIP, ",") {
+		if err := c.deletePolicyRouteFromVpc(subnet.Spec.Vpc, util.NorthGatewayRoutePolicyPriority, "ip4.src == "+podIP); err != nil {
+			return false, err
+		}
+	}
+
+	var needsSubnetRoute bool
+	for ip := range strings.SplitSeq(podIP, ",") {
+		protocol := util.CheckProtocol(ip)
+		nextHop := pod.Annotations[util.NorthGatewayAnnotation]
+		if c.config.EnableEipSnat && (util.CheckProtocol(eip) == protocol || util.CheckProtocol(snat) == protocol) {
+			nextHop = externalGateway
+		}
+		matches := policyRouteSrcMatches(ip, nextHop)
+		if len(matches) == 0 {
+			needsSubnetRoute = true
+			if c.config.EnableEipSnat {
+				if err := c.deletePolicyRouteFromVpc(subnet.Spec.Vpc, util.NorthGatewayRoutePolicyPriority,
+					fmt.Sprintf("%s.src == %s", getIPSuffix(protocol), ip)); err != nil {
+					return false, err
+				}
+			}
+			continue
+		}
+		match := matches[0]
+		if err := c.addPolicyRouteToVpc(subnet.Spec.Vpc, &kubeovnv1.PolicyRoute{
+			Priority:  util.NorthGatewayRoutePolicyPriority,
+			Match:     match.match,
+			Action:    kubeovnv1.PolicyRouteActionReroute,
+			NextHopIP: match.nextHopIP,
+		}, map[string]string{"vendor": util.CniTypeName, "subnet": subnet.Name}); err != nil {
+			return false, err
+		}
+	}
+	return needsSubnetRoute, nil
+}
+
 // do the same thing as update pod
 func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kubeovnNet) error {
 	// the lb-svc pod has dependencies on Running state, check it when pod state get updated
@@ -1170,147 +1230,72 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 				return err
 			}
 
-			if c.config.EnableEipSnat && (pod.Annotations[util.EipAnnotation] != "" || pod.Annotations[util.SnatAnnotation] != "") {
-				cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
-				if err != nil {
-					klog.Errorf("failed to get ex-gateway config, %v", err)
-					return err
-				}
-				nextHop := cm.Data["external-gw-addr"]
-				if nextHop == "" {
-					externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
-					if err != nil {
-						klog.Errorf("failed to get subnet %s, %v", c.config.ExternalGatewaySwitch, err)
-						return err
-					}
-					nextHop = externalSubnet.Spec.Gateway
-					if nextHop == "" {
-						klog.Errorf("no available gateway address")
-						return errors.New("no available gateway address")
-					}
-				}
-				legacyMatch := "ip4.src == " + podIP
-				matches := policyRouteSrcMatches(podIP, nextHop)
-				if !slices.ContainsFunc(matches, func(m policyRouteMatch) bool { return m.match == legacyMatch }) {
-					if err := c.deletePolicyRouteFromVpc(subnet.Spec.Vpc, util.NorthGatewayRoutePolicyPriority, legacyMatch); err != nil {
-						klog.Errorf("failed to delete stale policy route, %v", err)
-						return err
-					}
-				}
-
-				for _, match := range matches {
-					if err := c.addPolicyRouteToVpc(
-						subnet.Spec.Vpc,
-						&kubeovnv1.PolicyRoute{
-							Priority:  util.NorthGatewayRoutePolicyPriority,
-							Match:     match.match,
-							Action:    kubeovnv1.PolicyRouteActionReroute,
-							NextHopIP: match.nextHopIP,
-						},
-						map[string]string{
-							"vendor": util.CniTypeName,
-							"subnet": subnet.Name,
-						},
-					); err != nil {
-						klog.Errorf("failed to add policy route, %v", err)
-						return err
-					}
-				}
-
-				// remove lsp from port group to make EIP/SNAT work
-				if err = c.updatePortGroupPorts(pgName, ovsdb.MutateOperationDelete, portName); err != nil {
+			needsSubnetRoute, err := c.reconcilePodPolicyRoutes(pod, subnet, podIP)
+			if err != nil {
+				klog.Errorf("failed to reconcile policy routes for pod %s/%s: %v", namespace, name, err)
+				return err
+			}
+			if !needsSubnetRoute {
+				if err := c.updatePortGroupPorts(pgName, ovsdb.MutateOperationDelete, portName); err != nil {
 					klog.Error(err)
 					return err
 				}
-			} else {
-				if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType && pod.Annotations[util.NorthGatewayAnnotation] == "" {
-					nodeTunlIPAddr, err := getNodeTunlIP(node)
-					if err != nil {
-						klog.Error(err)
-						return err
-					}
-
-					var added bool
-					for _, nodeAddr := range nodeTunlIPAddr {
-						for podAddr := range strings.SplitSeq(podIP, ",") {
-							if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
-								continue
-							}
-
-							// remove lsp from other port groups
-							// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-							if len(subnetPortGroups) != 0 {
-								if err := c.removePortFromPortGroups(portName, subnetPortGroups...); err != nil {
-									klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
-									return err
-								}
-							}
-							if err := c.updatePortGroupPorts(pgName, ovsdb.MutateOperationInsert, portName); err != nil {
-								klog.Errorf("failed to add port %s to port group %s: %v", portName, pgName, err)
-								return err
-							}
-
-							added = true
-							break
-						}
-						if added {
-							break
-						}
-					}
+			} else if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
+				nodeTunlIPAddr, err := getNodeTunlIP(node)
+				if err != nil {
+					klog.Error(err)
+					return err
 				}
 
-				if pod.Annotations[util.NorthGatewayAnnotation] != "" && pod.Annotations[util.IPAddressAnnotation] != "" {
-					for _, match := range policyRouteSrcMatches(pod.Annotations[util.IPAddressAnnotation], pod.Annotations[util.NorthGatewayAnnotation]) {
-						if err := c.addPolicyRouteToVpc(
-							subnet.Spec.Vpc,
-							&kubeovnv1.PolicyRoute{
-								Priority:  util.NorthGatewayRoutePolicyPriority,
-								Match:     match.match,
-								Action:    kubeovnv1.PolicyRouteActionReroute,
-								NextHopIP: match.nextHopIP,
-							},
-							map[string]string{
-								"vendor": util.CniTypeName,
-								"subnet": subnet.Name,
-							},
-						); err != nil {
-							klog.Errorf("failed to add policy route, %v", err)
+				var added bool
+				for _, nodeAddr := range nodeTunlIPAddr {
+					for podAddr := range strings.SplitSeq(podIP, ",") {
+						if util.CheckProtocol(nodeAddr.String()) != util.CheckProtocol(podAddr) {
+							continue
+						}
+
+						// remove lsp from other port groups
+						// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
+						if len(subnetPortGroups) != 0 {
+							if err := c.removePortFromPortGroups(portName, subnetPortGroups...); err != nil {
+								klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
+								return err
+							}
+						}
+						if err := c.updatePortGroupPorts(pgName, ovsdb.MutateOperationInsert, portName); err != nil {
+							klog.Errorf("failed to add port %s to port group %s: %v", portName, pgName, err)
 							return err
 						}
+
+						added = true
+						break
 					}
-				} else if c.config.EnableEipSnat {
-					for ip := range strings.SplitSeq(podIP, ",") {
-						ipSuffix := "ip4"
-						if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
-							ipSuffix = "ip6"
-						}
-						if err := c.deletePolicyRouteFromVpc(subnet.Spec.Vpc, util.NorthGatewayRoutePolicyPriority,
-							fmt.Sprintf("%s.src == %s", ipSuffix, ip)); err != nil {
-							klog.Errorf("failed to delete policy route: %v", err)
-							return err
-						}
+					if added {
+						break
 					}
 				}
 			}
 
 			if c.config.EnableEipSnat {
 				for ipStr := range strings.SplitSeq(podIP, ",") {
-					if eip := pod.Annotations[util.EipAnnotation]; eip == "" {
-						if err = c.deleteNats(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, ipStr); err != nil {
+					if eip := pod.Annotations[util.EipAnnotation]; util.CheckProtocol(eip) != util.CheckProtocol(ipStr) {
+						if err := c.deleteNats(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, ipStr); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
+							return err
 						}
-					} else if util.CheckProtocol(eip) == util.CheckProtocol(ipStr) {
-						if err = c.updateDnatAndSnat(c.config.ClusterRouter, eip, ipStr, fmt.Sprintf("%s.%s", podName, pod.Namespace), pod.Annotations[util.MacAddressAnnotation], c.ExternalGatewayType); err != nil {
+					} else {
+						if err := c.updateDnatAndSnat(c.config.ClusterRouter, eip, ipStr, fmt.Sprintf("%s.%s", podName, pod.Namespace), pod.Annotations[util.MacAddressAnnotation], c.ExternalGatewayType); err != nil {
 							klog.Errorf("failed to add nat rules, %v", err)
 							return err
 						}
 					}
-					if eip := pod.Annotations[util.SnatAnnotation]; eip == "" {
-						if err = c.deleteNats(c.config.ClusterRouter, ovnnb.NATTypeSNAT, ipStr); err != nil {
+					if eip := pod.Annotations[util.SnatAnnotation]; util.CheckProtocol(eip) != util.CheckProtocol(ipStr) {
+						if err := c.deleteNats(c.config.ClusterRouter, ovnnb.NATTypeSNAT, ipStr); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
+							return err
 						}
-					} else if util.CheckProtocol(eip) == util.CheckProtocol(ipStr) {
-						if err = c.ensureSnat(c.config.ClusterRouter, eip, ipStr); err != nil {
+					} else {
+						if err := c.ensureSnat(c.config.ClusterRouter, eip, ipStr); err != nil {
 							klog.Errorf("failed to add nat rules, %v", err)
 							return err
 						}
@@ -1591,11 +1576,13 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 					if pod.Annotations[util.EipAnnotation] != "" {
 						if err = c.deleteNat(c.config.ClusterRouter, ovnnb.NATTypeDNATAndSNAT, pod.Annotations[util.EipAnnotation], address.IP); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
+							return err
 						}
 					}
 					if snatEip := pod.Annotations[util.SnatAnnotation]; snatEip != "" {
 						if err = c.deleteNat(c.config.ClusterRouter, ovnnb.NATTypeSNAT, snatEip, address.IP); err != nil {
 							klog.Errorf("failed to delete nat rules: %v", err)
+							return err
 						}
 					}
 				}

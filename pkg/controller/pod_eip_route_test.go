@@ -1,10 +1,13 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -12,6 +15,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -155,6 +159,109 @@ func TestReconcileRouteSubnetsRemovesEIPPolicy(t *testing.T) {
 					}
 				})
 			}
+		})
+	}
+}
+
+func TestReconcileRouteSubnetsRestoresUnaffectedAddressFamily(t *testing.T) {
+	for _, gateway := range []string{kubeovnv1.GWDistributedType, kubeovnv1.GWCentralizedType} {
+		for _, annotation := range []string{util.SnatAnnotation, util.NorthGatewayAnnotation} {
+			for _, remainingIP := range []string{"203.0.113.3", "fd01::3"} {
+				t.Run(gateway+"/"+annotation+"/"+remainingIP, func(t *testing.T) {
+					fc, client, pod, subnet := newPodEIPRouteFixture(t, gateway, true)
+					pod.Annotations[util.SnatAnnotation] = "fd01::3"
+					nets := []*kubeovnNet{{ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}}
+					require.NoError(t, fc.fakeController.reconcileRouteSubnets(pod, nets))
+					pod = pod.DeepCopy()
+					delete(pod.Annotations, util.EipAnnotation)
+					delete(pod.Annotations, util.SnatAnnotation)
+					pod.Annotations[annotation] = remainingIP
+					require.NoError(t, fc.fakeController.reconcileRouteSubnets(pod, nets))
+					policies, err := client.ListLogicalRouterPolicies(util.DefaultVpc, util.NorthGatewayRoutePolicyPriority, nil, true)
+					require.NoError(t, err)
+					require.Len(t, policies, 1)
+					match, nextHop, removedIP := "ip4.src == 10.0.0.2", "203.0.113.1", "fd00::2"
+					if remainingIP == "fd01::3" {
+						match, nextHop, removedIP = "ip6.src == fd00::2", "fd01::1", "10.0.0.2"
+					}
+					if annotation == util.NorthGatewayAnnotation {
+						nextHop = remainingIP
+					}
+					require.Equal(t, match, policies[0].Match)
+					require.Equal(t, []string{nextHop}, policies[0].Nexthops)
+					nats, err := client.ListNats(util.DefaultVpc, "", removedIP, nil)
+					require.NoError(t, err)
+					require.Empty(t, nats)
+					if gateway == kubeovnv1.GWDistributedType {
+						port, err := client.GetLogicalSwitchPort("test-pod.default", false)
+						require.NoError(t, err)
+						pg, err := client.GetPortGroup(getOverlaySubnetsPortGroupName(subnet.Name, "node1"), false)
+						require.NoError(t, err)
+						require.Contains(t, pg.Ports, port.UUID, "the other address family needs the Subnet route")
+					}
+				})
+			}
+		}
+	}
+}
+
+type podNATFailureProvider struct {
+	table.Provider
+	err error
+}
+
+func (p *podNATFailureProvider) Table(prototype model.Model) table.Handle {
+	return &podNATFailureHandle{Handle: p.Provider.Table(prototype), provider: p}
+}
+
+type podNATFailureHandle struct {
+	table.Handle
+	provider *podNATFailureProvider
+}
+
+func (h *podNATFailureHandle) Transact(ctx context.Context, name string, ops ...ovsdb.Operation) error {
+	if name == "nats-del" && h.provider.err != nil {
+		return h.provider.err
+	}
+	return h.Handle.Transact(ctx, name, ops...)
+}
+
+func TestPodNATCleanupFailureRetriesRouteWorker(t *testing.T) {
+	for _, annotation := range []string{util.EipAnnotation, util.SnatAnnotation} {
+		t.Run(annotation, func(t *testing.T) {
+			fc, client, pod, subnet := newPodEIPRouteFixture(t, kubeovnv1.GWDistributedType, false)
+			if annotation == util.SnatAnnotation {
+				delete(pod.Annotations, util.EipAnnotation)
+				pod.Annotations[annotation] = "203.0.113.3"
+			}
+			controller := fc.fakeController
+			nets := []*kubeovnNet{{ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}}
+			require.NoError(t, controller.reconcileRouteSubnets(pod, nets))
+			oldPod := pod.DeepCopy()
+			oldPod.ResourceVersion = "1"
+			pod = oldPod.DeepCopy()
+			pod.ResourceVersion = "2"
+			delete(pod.Annotations, annotation)
+			_, err := fc.kubeClient.CoreV1().Pods(pod.Namespace).Update(t.Context(), pod, metav1.UpdateOptions{})
+			require.NoError(t, err)
+			require.Eventually(t, func() bool {
+				cached, err := controller.podsLister.Pods(pod.Namespace).Get(pod.Name)
+				return err == nil && cached.ResourceVersion == pod.ResourceVersion
+			}, time.Second, time.Millisecond)
+			provider := &podNATFailureProvider{Provider: client, err: errors.New("NAT deletion failed")}
+			controller.OVNNbTables = provider
+			controller.enqueueUpdatePod(oldPod, pod)
+			queue := controller.updatePodRouteQueue
+			require.True(t, processNextWorkItem("update pod route", queue, controller.handleUpdatePodRoute, getWorkItemKey))
+			key := pod.Namespace + "/" + pod.Name
+			require.Equal(t, 1, queue.NumRequeues(key))
+			provider.err = nil
+			require.Eventually(t, func() bool { return queue.Len() == 1 }, time.Second, time.Millisecond)
+			require.True(t, processNextWorkItem("update pod route", queue, controller.handleUpdatePodRoute, getWorkItemKey))
+			require.Zero(t, queue.NumRequeues(key))
+			nats, err := client.ListNats(util.DefaultVpc, "", "10.0.0.2", nil)
+			require.NoError(t, err)
+			require.Empty(t, nats)
 		})
 	}
 }
