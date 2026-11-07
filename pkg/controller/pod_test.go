@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -2050,12 +2052,14 @@ func TestReconcileRouteSubnetsEIPUsesPerFamilyPolicyMatch(t *testing.T) {
 	)
 
 	tests := []struct {
-		name          string
-		podIP         string
-		nextHop       string
-		snat          bool
-		wantPolicies  []policyRouteMatch
-		wantLegacyDel string
+		name           string
+		podIP          string
+		nextHop        string
+		snat           bool
+		eip            string
+		additionalSnat string
+		wantPolicies   []policyRouteMatch
+		wantLegacyDel  string
 	}{
 		{
 			name:    "dual-stack pod with IPv4 external gateway",
@@ -2078,15 +2082,17 @@ func TestReconcileRouteSubnetsEIPUsesPerFamilyPolicyMatch(t *testing.T) {
 			name:    "dual-stack pod with IPv6 external gateway",
 			podIP:   dualPodIP,
 			nextHop: "2001:db8:2::1",
+			eip:     "2001:db8:2::26",
 			wantPolicies: []policyRouteMatch{
 				{match: "ip6.src == " + podIPv6, nextHopIP: "2001:db8:2::1"},
 			},
 			wantLegacyDel: "ip4.src == " + dualPodIP,
 		},
 		{
-			name:    "dual-stack pod with dual-stack external gateway",
-			podIP:   dualPodIP,
-			nextHop: nextHop + "/26,2001:db8:2::1/64",
+			name:           "dual-stack pod with dual-stack external gateway",
+			podIP:          dualPodIP,
+			nextHop:        nextHop + "/26,2001:db8:2::1/64",
+			additionalSnat: "2001:db8:2::26",
 			wantPolicies: []policyRouteMatch{
 				{match: "ip4.src == " + podIPv4, nextHopIP: nextHop},
 				{match: "ip6.src == " + podIPv6, nextHopIP: "2001:db8:2::1"},
@@ -2155,17 +2161,30 @@ func TestReconcileRouteSubnetsEIPUsesPerFamilyPolicyMatch(t *testing.T) {
 			portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
 			fc.mockOvnClient.EXPECT().ListPortGroups(gomock.Any()).Return(nil, nil).AnyTimes()
 			fc.mockOvnClient.EXPECT().PortGroupAddPorts(gomock.Any(), portName).Return(nil)
-			fc.mockOvnClient.EXPECT().PortGroupRemovePorts(gomock.Any(), portName).Return(nil)
+			fc.mockOvnClient.EXPECT().PortGroupRemovePorts(gomock.Any(), portName).Return(nil).AnyTimes()
 			if tc.snat {
 				pod.Annotations[util.SnatAnnotation] = eipV4
 			} else {
 				pod.Annotations[util.EipAnnotation] = eipV4
+				if tc.eip != "" {
+					pod.Annotations[util.EipAnnotation] = tc.eip
+				}
+				if tc.additionalSnat != "" {
+					pod.Annotations[util.SnatAnnotation] = tc.additionalSnat
+				}
 			}
 			fc.mockOvnClient.EXPECT().UpdateDnatAndSnat(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			fc.mockOvnClient.EXPECT().EnsureSnat(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+			fc.mockOvnClient.EXPECT().ListNats(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 			fc.mockOvnClient.EXPECT().DeleteNats(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			if tc.wantLegacyDel != "" {
 				fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicy(util.DefaultVpc, util.NorthGatewayRoutePolicyPriority, tc.wantLegacyDel).Return(nil)
+			}
+			for ip := range strings.SplitSeq(tc.podIP, ",") {
+				match := fmt.Sprintf("%s.src == %s", getIPSuffix(util.CheckProtocol(ip)), ip)
+				if !slices.ContainsFunc(tc.wantPolicies, func(policy policyRouteMatch) bool { return policy.match == match }) {
+					fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicy(util.DefaultVpc, util.NorthGatewayRoutePolicyPriority, match).Return(nil)
+				}
 			}
 			for _, policy := range tc.wantPolicies {
 				fc.mockOvnClient.EXPECT().AddLogicalRouterPolicy(
