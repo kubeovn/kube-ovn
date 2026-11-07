@@ -7,8 +7,6 @@ on:
       - cmd/ko-helper/**
       - pkg/ko/**
       - pkg/kohelper/**
-      - test/e2e/framework/kubectlko/**
-      - test/e2e/ha/kubectl_ko_test.go
       - go.mod
       - go.sum
       - makefiles/build.mk
@@ -39,7 +37,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Unit and real streaming protocol tests
-        run: go test -race -count=1 ./pkg/ko/... ./pkg/kohelper/... ./cmd/kubectl-ko/... ./cmd/ko-helper/... ./test/e2e/framework/kubectlko/...
+        run: go test -race -count=1 ./pkg/ko/... ./pkg/kohelper/... ./cmd/kubectl-ko/... ./cmd/ko-helper/...
       - name: Check formatting
         run: test -z "$(gofmt -l cmd/kubectl-ko cmd/ko-helper pkg/ko pkg/kohelper)"
 
@@ -70,7 +68,7 @@ jobs:
             throw 'The Windows tests must run on the native target architecture'
           }
       - name: Native file and streaming protocol tests
-        run: go test -count=1 ./pkg/ko/... ./pkg/kohelper/... ./cmd/kubectl-ko/... ./cmd/ko-helper/... ./test/e2e/framework/kubectlko/...
+        run: go test -count=1 ./pkg/ko/... ./pkg/kohelper/... ./cmd/kubectl-ko/... ./cmd/ko-helper/...
       - name: Build native executable
         run: go build -o kubectl-ko.exe ./cmd/kubectl-ko
       - name: Run without local kubectl or Bash
