@@ -12,6 +12,7 @@ on:
         type: choice
         options:
           - master
+          - release-1.17
           - release-1.16
           - release-1.15
           - release-1.14
@@ -28,6 +29,7 @@ jobs:
         - arm64
         branch:
         - master
+        - release-1.17
         - release-1.16
         - release-1.15
         - release-1.14
@@ -85,6 +87,7 @@ jobs:
       matrix:
         branch:
         - master
+        - release-1.17
         - release-1.16
         - release-1.15
         - release-1.14
