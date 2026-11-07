@@ -121,7 +121,7 @@ func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		}
 		if err := r.OVN.SetLogicalSwitchPortVlanTag(ovs.GetLocalnetName(subnet.Name), vlan.Spec.ID); err != nil {
 			if statusErr := r.patchVlanStatus(ctx, vlan, original); statusErr != nil {
-				return ctrl.Result{}, fmt.Errorf("set localnet tag for subnet %s and vlan %s: %w; clear ready status: %v", subnet.Name, vlan.Name, err, statusErr)
+				return ctrl.Result{}, fmt.Errorf("set localnet tag for subnet %s and vlan %s: %w; clear ready status: %w", subnet.Name, vlan.Name, err, statusErr)
 			}
 			return ctrl.Result{}, fmt.Errorf("set localnet tag for subnet %s and vlan %s: %w", subnet.Name, vlan.Name, err)
 		}

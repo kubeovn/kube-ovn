@@ -98,14 +98,14 @@ func TestVlanReconcilerDoesNotTagConflictingVlan(t *testing.T) {
 func TestMigrateVlanSpec(t *testing.T) {
 	vlan := &kubeovnv1.Vlan{Spec: kubeovnv1.VlanSpec{
 		VlanID:                100,
-		ProviderInterfaceName: "provider-a",
+		ProviderInterfaceName: "provider-a", //nolint:staticcheck // Exercise migration from the deprecated field.
 	}}
 
 	require.True(t, migrateVlanSpec(vlan))
 	require.Equal(t, 100, vlan.Spec.ID)
 	require.Equal(t, "provider-a", vlan.Spec.Provider)
 	require.Zero(t, vlan.Spec.VlanID)
-	require.Empty(t, vlan.Spec.ProviderInterfaceName)
+	require.Empty(t, vlan.Spec.ProviderInterfaceName) //nolint:staticcheck // Verify the deprecated field is cleared.
 	require.False(t, migrateVlanSpec(vlan))
 }
 
