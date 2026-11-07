@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
 
@@ -39,4 +41,23 @@ func TestNewManagerBuildsWithoutStartingBusinessControllers(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NotNil(t, mgr)
+}
+
+func TestTrimCacheObjectUsesControllerTransforms(t *testing.T) {
+	pod := &corev1.Pod{Spec: corev1.PodSpec{Volumes: []corev1.Volume{{Name: "cache"}}}}
+	pod.ManagedFields = []metav1.ManagedFieldsEntry{{Manager: "controller"}}
+	ret, err := trimCacheObject(pod)
+	require.NoError(t, err)
+	trimmedPod, ok := ret.(*corev1.Pod)
+	require.True(t, ok)
+	require.Empty(t, trimmedPod.ManagedFields)
+	require.Empty(t, trimmedPod.Spec.Volumes)
+
+	configMap := &corev1.ConfigMap{}
+	configMap.ManagedFields = []metav1.ManagedFieldsEntry{{Manager: "controller"}}
+	ret, err = trimCacheObject(configMap)
+	require.NoError(t, err)
+	trimmedConfigMap, ok := ret.(*corev1.ConfigMap)
+	require.True(t, ok)
+	require.Empty(t, trimmedConfigMap.ManagedFields)
 }

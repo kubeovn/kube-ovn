@@ -131,6 +131,36 @@ func TestProviderNetworkReconcilerMapsVlanProviderChanges(t *testing.T) {
 	require.Equal(t, []ctrl.Request{{Name: "provider-new"}}, reconciler.requestsForVlanObject(newVlan))
 }
 
+func TestVlanAndProviderNetworkEventMappers(t *testing.T) {
+	vlan := &kubeovnv1.Vlan{Name: "vlan-a", Spec: kubeovnv1.VlanSpec{Provider: "provider-a"}}
+	otherVlan := &kubeovnv1.Vlan{Name: "vlan-b", Spec: kubeovnv1.VlanSpec{Provider: "provider-b"}}
+	client := newRuntimeClient(t, vlan, otherVlan,
+		&kubeovnv1.ProviderNetwork{Name: "provider-a"},
+		&kubeovnv1.ProviderNetwork{Name: "provider-b"},
+	)
+	vlanReconciler := &VlanReconciler{Client: client}
+	require.Equal(t, []ctrl.Request{{Name: "vlan-a"}}, vlanReconciler.requestsForSubnet(t.Context(), &kubeovnv1.Subnet{
+		Spec: kubeovnv1.SubnetSpec{Vlan: "vlan-a"},
+	}))
+	require.Equal(t, []ctrl.Request{{Name: "vlan-a"}}, vlanReconciler.requestsForProviderNetwork(t.Context(), &kubeovnv1.ProviderNetwork{Name: "provider-a"}))
+
+	providerNetworkReconciler := &ProviderNetworkReconciler{Client: client}
+	require.ElementsMatch(t,
+		[]ctrl.Request{{Name: "provider-a"}, {Name: "provider-b"}},
+		providerNetworkReconciler.requestsForAllProviderNetworks(t.Context(), &corev1.Node{}),
+	)
+}
+
+func TestIsKubeOvnCniPod(t *testing.T) {
+	kubeOvnCniPod := &corev1.Pod{}
+	kubeOvnCniPod.Labels = map[string]string{"app": "kube-ovn-cni"}
+	otherPod := &corev1.Pod{}
+	otherPod.Labels = map[string]string{"app": "other"}
+	require.True(t, isKubeOvnCniPod(kubeOvnCniPod))
+	require.False(t, isKubeOvnCniPod(otherPod))
+	require.False(t, isKubeOvnCniPod(&corev1.Node{}))
+}
+
 func TestProviderNetworkReconcilerUpdatesVlanAndNodeStatus(t *testing.T) {
 	providerNetwork := &kubeovnv1.ProviderNetwork{Name: "provider-a"}
 	vlan := &kubeovnv1.Vlan{
