@@ -318,6 +318,31 @@ func TestPodNATCleanupFailureRetriesRouteWorker(t *testing.T) {
 	}
 }
 
+func TestCentralizedPodNorthGatewayWithoutDistributedPortGroup(t *testing.T) {
+	for _, enableEipSnat := range []bool{false, true} {
+		name := "EIPSNAT-disabled"
+		if enableEipSnat {
+			name = "EIPSNAT-enabled"
+		}
+		t.Run(name, func(t *testing.T) {
+			fc, client, pod, subnet := newPodEIPRouteFixture(t, kubeovnv1.GWCentralizedType, false)
+			fc.fakeController.config.EnableEipSnat = enableEipSnat
+			delete(pod.Annotations, util.EipAnnotation)
+			pod.Annotations[util.NorthGatewayAnnotation] = "203.0.113.3"
+			pg, err := client.GetPortGroup(getOverlaySubnetsPortGroupName(subnet.Name, "node1"), true)
+			require.NoError(t, err)
+			require.Nil(t, pg, "centralized Subnets do not create distributed port groups")
+			nets := []*kubeovnNet{{ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}}
+			require.NoError(t, fc.fakeController.reconcileRouteSubnets(pod, nets))
+			policies, err := client.ListLogicalRouterPolicies(util.DefaultVpc, util.NorthGatewayRoutePolicyPriority, nil, true)
+			require.NoError(t, err)
+			require.Len(t, policies, 1)
+			require.Equal(t, "ip4.src == 10.0.0.2", policies[0].Match)
+			require.Equal(t, []string{"203.0.113.3"}, policies[0].Nexthops)
+		})
+	}
+}
+
 func newPodEIPRouteFixture(t *testing.T, gateway string, dualStack bool) (*fakeController, *ovs.OVNNbClient, *corev1.Pod, *kubeovnv1.Subnet) {
 	t.Helper()
 	pod, subnet := podEventFixture()
@@ -364,7 +389,9 @@ func newPodEIPRouteFixture(t *testing.T, gateway string, dualStack bool) (*fakeC
 	require.NoError(t, client.CreateBareLogicalSwitchPort(subnet.Name, "test-pod.default",
 		pod.Annotations[util.IPAddressAnnotation], pod.Annotations[util.MacAddressAnnotation]))
 	require.NoError(t, client.CreatePortGroup("node.node1", map[string]string{"node": node.Name}))
-	require.NoError(t, client.CreatePortGroup(getOverlaySubnetsPortGroupName(subnet.Name, node.Name),
-		map[string]string{"subnet": subnet.Name, "node": node.Name}))
+	if gateway == kubeovnv1.GWDistributedType {
+		require.NoError(t, client.CreatePortGroup(getOverlaySubnetsPortGroupName(subnet.Name, node.Name),
+			map[string]string{"subnet": subnet.Name, "node": node.Name}))
+	}
 	return fc, client, pod, subnet
 }

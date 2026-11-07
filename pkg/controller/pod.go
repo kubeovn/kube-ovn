@@ -1251,7 +1251,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 				klog.Errorf("failed to reconcile policy routes for pod %s/%s: %v", namespace, name, err)
 				return err
 			}
-			if !needsSubnetRoute {
+			if !needsSubnetRoute && subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
 				if err := c.updatePortGroupPorts(pgName, ovsdb.MutateOperationDelete, portName); err != nil {
 					klog.Error(err)
 					return err
