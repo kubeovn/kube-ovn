@@ -89,6 +89,7 @@ type Controller struct {
 	podsSynced             cache.InformerSynced
 	policySelectorCache    policySelectorCache
 	addOrUpdatePodQueue    workqueue.TypedRateLimitingInterface[string]
+	updatePodRouteQueue    workqueue.TypedRateLimitingInterface[string]
 	deletePodQueue         workqueue.TypedRateLimitingInterface[string]
 	deletingPodObjMap      *xsync.Map[string, *corev1.Pod]
 	deletingNodeObjMap     *xsync.Map[string, *corev1.Node]
@@ -572,6 +573,7 @@ func Run(ctx context.Context, config *Configuration) {
 		podsLister:          podInformer.Lister(),
 		podsSynced:          podInformer.Informer().HasSynced,
 		addOrUpdatePodQueue: newTypedRateLimitingQueue[string]("AddOrUpdatePod", nil),
+		updatePodRouteQueue: newTypedRateLimitingQueue[string]("UpdatePodRoute", nil),
 		deletePodQueue: workqueue.NewTypedRateLimitingQueueWithConfig(
 			workqueue.DefaultTypedControllerRateLimiter[string](),
 			workqueue.TypedRateLimitingQueueConfig[string]{
@@ -1224,6 +1226,7 @@ func (c *Controller) shutdown() {
 	utilruntime.HandleCrash()
 
 	c.addOrUpdatePodQueue.ShutDown()
+	c.updatePodRouteQueue.ShutDown()
 	c.deletePodQueue.ShutDown()
 	c.updatePodSecurityQueue.ShutDown()
 
@@ -1458,6 +1461,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	for range c.config.WorkerNum {
 		go wait.Until(runWorker("delete pod", c.deletePodQueue, c.handleDeletePod), time.Second, ctx.Done())
 		go wait.Until(runWorker("add/update pod", c.addOrUpdatePodQueue, c.handleAddOrUpdatePod), time.Second, ctx.Done())
+		go wait.Until(runWorker("update pod route", c.updatePodRouteQueue, c.handleUpdatePodRoute), time.Second, ctx.Done())
 		go wait.Until(runWorker("update pod security", c.updatePodSecurityQueue, c.handleUpdatePodSecurity), time.Second, ctx.Done())
 
 		go wait.Until(runWorker("delete subnet", c.deleteSubnetQueue, c.handleDeleteSubnet), time.Second, ctx.Done())
