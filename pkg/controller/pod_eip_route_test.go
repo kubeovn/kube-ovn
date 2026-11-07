@@ -182,8 +182,10 @@ func newPodEIPRouteFixture(t *testing.T, gateway string, dualStack bool) (*fakeC
 	node := &corev1.Node{Name: "node1", Annotations: map[string]string{
 		util.PortNameAnnotation: "node-node1", util.IPAddressAnnotation: "100.64.0.2,fd02::2",
 	}}
-	cm := &corev1.ConfigMap{Name: util.ExternalGatewayConfig, Namespace: metav1.NamespaceSystem,
-		Data: map[string]string{"external-gw-addr": nextHop}}
+	cm := &corev1.ConfigMap{
+		Name: util.ExternalGatewayConfig, Namespace: metav1.NamespaceSystem,
+		Data: map[string]string{"external-gw-addr": nextHop},
+	}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		Pods: []*corev1.Pod{pod}, Nodes: []*corev1.Node{node}, Subnets: []*kubeovnv1.Subnet{subnet}, ConfigMaps: []*corev1.ConfigMap{cm},
 	})
