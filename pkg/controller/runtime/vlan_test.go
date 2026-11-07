@@ -1,12 +1,17 @@
 package controllerruntime
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -17,10 +22,29 @@ import (
 )
 
 type recordingVlanOVN struct {
-	tags map[string]int
+	tags     map[string]int
+	ports    map[string]bool
+	readErr  error
+	writeErr error
+}
+
+func (o *recordingVlanOVN) LogicalSwitchPortExists(name string) (bool, error) {
+	if o.readErr != nil {
+		return false, o.readErr
+	}
+	if o.ports == nil {
+		return true, nil
+	}
+	return o.ports[name], nil
 }
 
 func (o *recordingVlanOVN) SetLogicalSwitchPortVlanTag(name string, vlanID int) error {
+	if o.writeErr != nil {
+		return o.writeErr
+	}
+	if o.ports != nil && !o.ports[name] {
+		return fmt.Errorf("logical switch port %s not found", name)
+	}
 	if o.tags == nil {
 		o.tags = make(map[string]int)
 	}
@@ -253,4 +277,113 @@ func TestProviderNetworkReconcilerRemovesStaleNodeConditions(t *testing.T) {
 	updated := &kubeovnv1.ProviderNetwork{}
 	require.NoError(t, reconciler.Get(t.Context(), types.NamespacedName{Name: providerNetwork.Name}, updated))
 	require.Empty(t, updated.Status.Conditions)
+}
+
+// Count writes as well as comparing values: a no-op status patch can still
+// generate API traffic even if a fake API happens to preserve its version.
+type statusCountingClient struct {
+	client.Client
+	patches int
+}
+
+func (c *statusCountingClient) Status() client.SubResourceWriter {
+	return &statusCountingWriter{SubResourceWriter: c.Client.Status(), patches: &c.patches}
+}
+
+type statusCountingWriter struct {
+	client.SubResourceWriter
+	patches *int
+}
+
+func (w *statusCountingWriter) Patch(ctx context.Context, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+	*w.patches++
+	return w.SubResourceWriter.Patch(ctx, obj, patch, opts...)
+}
+
+func TestVlanReconcilerBootstrapsBeforeLocalnetPortExists(t *testing.T) {
+	vlan := &kubeovnv1.Vlan{Name: "vlan-a", Spec: kubeovnv1.VlanSpec{ID: 100, Provider: "provider-a"}}
+	pn := &kubeovnv1.ProviderNetwork{Name: vlan.Spec.Provider}
+	subnet := &kubeovnv1.Subnet{Name: "subnet-a", Spec: kubeovnv1.SubnetSpec{Vlan: vlan.Name}}
+	ovn := &recordingVlanOVN{ports: map[string]bool{}}
+	api := newRuntimeClient(t, vlan, pn, subnet)
+	r := &VlanReconciler{Client: api, OVN: ovn}
+
+	_, err := r.Reconcile(t.Context(), ctrl.Request{Name: vlan.Name})
+	require.NoError(t, err, "VLAN readiness must allow the Subnet controller to create its localnet port")
+	updated := &kubeovnv1.Vlan{}
+	require.NoError(t, api.Get(t.Context(), client.ObjectKeyFromObject(vlan), updated))
+	require.True(t, vlanIsReady(updated))
+	require.Empty(t, ovn.tags)
+
+	pnReconciler := &ProviderNetworkReconciler{Client: api, PodNamespace: "kube-system"}
+	_, err = pnReconciler.Reconcile(t.Context(), ctrl.Request{Name: pn.Name})
+	require.NoError(t, err)
+	require.NoError(t, api.Get(t.Context(), client.ObjectKeyFromObject(pn), pn))
+	require.Contains(t, pn.Status.Vlans, vlan.Name)
+
+	ovn.ports[ovs.GetLocalnetName(subnet.Name)] = true
+	updated.Spec.ID = 101
+	require.NoError(t, api.Update(t.Context(), updated))
+	_, err = r.Reconcile(t.Context(), ctrl.Request{Name: vlan.Name})
+	require.NoError(t, err)
+	require.Equal(t, 101, ovn.tags[ovs.GetLocalnetName(subnet.Name)])
+}
+
+func TestVlanReconcilerSettledStatusDoesNotWriteOrEmitEvents(t *testing.T) {
+	vlan := &kubeovnv1.Vlan{Name: "vlan-a", Spec: kubeovnv1.VlanSpec{ID: 100, Provider: "provider-a"}}
+	pn := &kubeovnv1.ProviderNetwork{Name: vlan.Spec.Provider, Status: kubeovnv1.ProviderNetworkStatus{Vlans: []string{vlan.Name}}}
+	api := &statusCountingClient{Client: newRuntimeClient(t, vlan, pn)}
+	recorder := events.NewFakeRecorder(10)
+	r := &VlanReconciler{Client: api, OVN: &recordingVlanOVN{}, Recorder: recorder}
+	_, err := r.Reconcile(t.Context(), ctrl.Request{Name: vlan.Name})
+	require.NoError(t, err)
+	require.Equal(t, 1, api.patches)
+	require.Len(t, recorder.Events, 1)
+	<-recorder.Events
+
+	// Force a timestamp older than the current second, so this test cannot
+	// accidentally pass because metav1.Time JSON truncates subsecond precision.
+	updated := &kubeovnv1.Vlan{}
+	require.NoError(t, api.Get(t.Context(), client.ObjectKeyFromObject(vlan), updated))
+	for i := range updated.Status.Conditions {
+		updated.Status.Conditions[i].LastUpdateTime = metav1.NewTime(time.Unix(1, 0))
+		updated.Status.Conditions[i].LastTransitionTime = metav1.NewTime(time.Unix(1, 0))
+	}
+	require.NoError(t, api.Client.Status().Update(t.Context(), updated))
+	before := updated.DeepCopy()
+	_, err = r.Reconcile(t.Context(), ctrl.Request{Name: vlan.Name})
+	require.NoError(t, err)
+	require.Equal(t, 1, api.patches, "settled reconciliation must not issue another status patch")
+	require.NoError(t, api.Get(t.Context(), client.ObjectKeyFromObject(vlan), updated))
+	require.Equal(t, before.Status, updated.Status)
+	require.Empty(t, recorder.Events)
+}
+
+func TestVlanReconcilerRetriesOVNFailureWithoutReadyStatus(t *testing.T) {
+	for _, operation := range []string{"read", "write"} {
+		t.Run(operation, func(t *testing.T) {
+			vlan := &kubeovnv1.Vlan{Name: "vlan-a", Spec: kubeovnv1.VlanSpec{ID: 100, Provider: "provider-a"}}
+			setVlanReadyCondition(vlan)
+			pn := &kubeovnv1.ProviderNetwork{Name: vlan.Spec.Provider}
+			subnet := &kubeovnv1.Subnet{Name: "subnet-a", Spec: kubeovnv1.SubnetSpec{Vlan: vlan.Name}}
+			ovn := &recordingVlanOVN{}
+			failure := errors.New("OVN unavailable")
+			if operation == "read" {
+				ovn.readErr = failure
+			} else {
+				ovn.writeErr = failure
+			}
+			r := &VlanReconciler{Client: newRuntimeClient(t, vlan, pn, subnet), OVN: ovn}
+			_, err := r.Reconcile(t.Context(), ctrl.Request{Name: vlan.Name})
+			require.ErrorIs(t, err, failure)
+			updated := &kubeovnv1.Vlan{}
+			require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(vlan), updated))
+			require.False(t, vlanIsReady(updated))
+			ovn.readErr, ovn.writeErr = nil, nil
+			_, err = r.Reconcile(t.Context(), ctrl.Request{Name: vlan.Name})
+			require.NoError(t, err)
+			require.NoError(t, r.Get(t.Context(), client.ObjectKeyFromObject(vlan), updated))
+			require.True(t, vlanIsReady(updated))
+		})
+	}
 }

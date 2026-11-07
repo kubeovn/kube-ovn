@@ -2404,6 +2404,78 @@ jobs:
       - name: Uninstall Kube-OVN
         run: make uninstall-chart
 
+  controller-runtime-vlan-smoke:
+    name: Controller-runtime VLAN Smoke
+    needs:
+      - prepare-kind-node-images
+      - build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: jlumbroso/free-disk-space@v2.0.0
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Install kind
+        uses: helm/kind-action@v1.15.2
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator
+          make kind-init-ipv4
+
+      - name: Install Kube-OVN with the controller-runtime VLAN pilot
+        env:
+          CONTROLLER_RUNTIME_MODE: vlan
+        run: make kind-install-underlay-ipv4
+
+      - name: Verify VLAN bootstrap, tag updates, restart, and status convergence
+        run: bash hack/controller-runtime-vlan-smoke.sh
+
+      - name: Collect Kind logs
+        if: failure()
+        run: kind export logs --name kube-ovn controller-runtime-vlan-smoke-logs
+
+      - name: Upload Kind logs
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: controller-runtime-vlan-smoke-logs
+          path: controller-runtime-vlan-smoke-logs
+
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
     needs:

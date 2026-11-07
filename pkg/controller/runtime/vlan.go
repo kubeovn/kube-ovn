@@ -27,6 +27,7 @@ import (
 )
 
 type vlanOVN interface {
+	LogicalSwitchPortExists(name string) (bool, error)
 	SetLogicalSwitchPortVlanTag(lspName string, vlanID int) error
 }
 
@@ -104,9 +105,9 @@ func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	original := vlan.DeepCopy()
 	vlan.Status.Conflict = conflict
 	vlan.Status.Subnets = subnetNamesForVlan(vlan.Name, subnets.Items)
-	removeVlanReadyCondition(vlan)
 
 	if conflict {
+		removeVlanReadyCondition(vlan)
 		if err := r.patchVlanStatus(ctx, vlan, original); err != nil {
 			return ctrl.Result{}, err
 		}
@@ -115,20 +116,20 @@ func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{}, err
 	}
 
-	for _, subnet := range subnets.Items {
-		if subnet.Spec.Vlan != vlan.Name {
-			continue
+	if err := r.updateLocalnetTags(vlan, subnets.Items); err != nil {
+		removeVlanReadyCondition(vlan)
+		if statusErr := r.patchVlanStatus(ctx, vlan, original); statusErr != nil {
+			return ctrl.Result{}, fmt.Errorf("%w; clear ready status: %w", err, statusErr)
 		}
-		if err := r.OVN.SetLogicalSwitchPortVlanTag(ovs.GetLocalnetName(subnet.Name), vlan.Spec.ID); err != nil {
-			if statusErr := r.patchVlanStatus(ctx, vlan, original); statusErr != nil {
-				return ctrl.Result{}, fmt.Errorf("set localnet tag for subnet %s and vlan %s: %w; clear ready status: %w", subnet.Name, vlan.Name, err, statusErr)
-			}
-			return ctrl.Result{}, fmt.Errorf("set localnet tag for subnet %s and vlan %s: %w", subnet.Name, vlan.Name, err)
-		}
+		return ctrl.Result{}, err
 	}
 	setVlanReadyCondition(vlan)
 	if err := r.patchVlanStatus(ctx, vlan, original); err != nil {
 		return ctrl.Result{}, err
+	}
+
+	if !equality.Semantic.DeepEqual(original.Status, vlan.Status) {
+		r.recordEvent(vlan, corev1.EventTypeNormal, "ReconcileSuccess", fmt.Sprintf("Vlan %s reconciled successfully", vlan.Name))
 	}
 
 	if !slices.Contains(providerNetwork.Status.Vlans, vlan.Name) {
@@ -138,8 +139,30 @@ func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 		return ctrl.Result{RequeueAfter: controllerRuntimeStatusRetry}, nil
 	}
 
-	r.recordEvent(vlan, corev1.EventTypeNormal, "ReconcileSuccess", fmt.Sprintf("Vlan %s reconciled successfully", vlan.Name))
 	return ctrl.Result{}, nil
+}
+
+// Subnet reconciliation creates each localnet port with the current VLAN tag.
+// A new VLAN must become ready before its Subnets can create those ports, so
+// only update ports that already exist here; propagate actual OVN failures.
+func (r *VlanReconciler) updateLocalnetTags(vlan *kubeovnv1.Vlan, subnets []kubeovnv1.Subnet) error {
+	for _, subnet := range subnets {
+		if subnet.Spec.Vlan != vlan.Name {
+			continue
+		}
+		port := ovs.GetLocalnetName(subnet.Name)
+		exists, err := r.OVN.LogicalSwitchPortExists(port)
+		if err != nil {
+			return fmt.Errorf("check localnet port for subnet %s and vlan %s: %w", subnet.Name, vlan.Name, err)
+		}
+		if !exists {
+			continue
+		}
+		if err := r.OVN.SetLogicalSwitchPortVlanTag(port, vlan.Spec.ID); err != nil {
+			return fmt.Errorf("set localnet tag for subnet %s and vlan %s: %w", subnet.Name, vlan.Name, err)
+		}
+	}
+	return nil
 }
 
 func migrateVlanSpec(vlan *kubeovnv1.Vlan) bool {
