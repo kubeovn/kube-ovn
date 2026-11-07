@@ -7,20 +7,20 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/keymutex"
-	"sigs.k8s.io/network-policy-api/apis/v1alpha2"
-	cnplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha2"
+	"sigs.k8s.io/network-policy-api/apis/v1beta1"
+	cnplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1beta1"
 )
 
 func TestCnpRejectsUnsupportedRulesBeforeOVNChanges(t *testing.T) {
 	for _, tt := range []struct {
 		name      string
-		protocols []v1alpha2.ClusterNetworkPolicyProtocol
-		peers     []v1alpha2.ClusterNetworkPolicyEgressPeer
+		protocols []v1beta1.ClusterNetworkPolicyProtocol
+		peers     []v1beta1.ClusterNetworkPolicyEgressPeer
 		wantError string
 	}{
 		{
 			name:      "disabled DNS resolver",
-			peers:     []v1alpha2.ClusterNetworkPolicyEgressPeer{{DomainNames: []v1alpha2.DomainName{"example.test."}}},
+			peers:     []v1beta1.ClusterNetworkPolicyEgressPeer{{DomainNames: []v1beta1.DomainName{"example.test."}}},
 			wantError: "DNSNameResolver is disabled",
 		},
 	} {
@@ -32,17 +32,17 @@ func TestCnpRejectsUnsupportedRulesBeforeOVNChanges(t *testing.T) {
 			c.anpPrioNameMap = map[int32]string{55: "existing"}
 			c.anpNamePrioMap = map[string]int32{"existing": 55}
 			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-			policy := &v1alpha2.ClusterNetworkPolicy{
+			policy := &v1beta1.ClusterNetworkPolicy{
 				Name: "existing",
-				Spec: v1alpha2.ClusterNetworkPolicySpec{
-					Tier: v1alpha2.AdminTier, Priority: 56,
-					Subject: v1alpha2.ClusterNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
-					Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{{
-						Action: v1alpha2.ClusterNetworkPolicyRuleActionDeny,
-						From:   []v1alpha2.ClusterNetworkPolicyIngressPeer{{Namespaces: &metav1.LabelSelector{}}},
+				Spec: v1beta1.ClusterNetworkPolicySpec{
+					Tier: v1beta1.AdminTier, Priority: 56,
+					Subject: v1beta1.ClusterNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
+					Ingress: []v1beta1.ClusterNetworkPolicyIngressRule{{
+						Action: v1beta1.ClusterNetworkPolicyRuleActionDeny,
+						From:   []v1beta1.ClusterNetworkPolicyIngressPeer{{Namespaces: &metav1.LabelSelector{}}},
 					}},
-					Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{{
-						Action: v1alpha2.ClusterNetworkPolicyRuleActionAccept, Protocols: tt.protocols, To: tt.peers,
+					Egress: []v1beta1.ClusterNetworkPolicyEgressRule{{
+						Action: v1beta1.ClusterNetworkPolicyRuleActionAccept, Protocols: tt.protocols, To: tt.peers,
 					}},
 				},
 			}
@@ -61,20 +61,20 @@ func TestCnpAllowsSamePriorityCnp(t *testing.T) {
 	c := fake.fakeController
 	c.anpPrioNameMap = map[int32]string{10: "existing"}
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	existing := &v1alpha2.ClusterNetworkPolicy{
+	existing := &v1beta1.ClusterNetworkPolicy{
 		Name: "existing",
-		Spec: v1alpha2.ClusterNetworkPolicySpec{
-			Tier:     v1alpha2.AdminTier,
+		Spec: v1beta1.ClusterNetworkPolicySpec{
+			Tier:     v1beta1.AdminTier,
 			Priority: 10,
 		},
 	}
 	require.NoError(t, indexer.Add(existing))
 	c.cnpsLister = cnplister.NewClusterNetworkPolicyLister(indexer)
 
-	candidate := &v1alpha2.ClusterNetworkPolicy{
+	candidate := &v1beta1.ClusterNetworkPolicy{
 		Name: "candidate",
-		Spec: v1alpha2.ClusterNetworkPolicySpec{
-			Tier:     v1alpha2.AdminTier,
+		Spec: v1beta1.ClusterNetworkPolicySpec{
+			Tier:     v1beta1.AdminTier,
 			Priority: 10,
 		},
 	}
@@ -88,13 +88,13 @@ func TestCnpPriorityMapRestoresSharedPriorityAfterDelete(t *testing.T) {
 	c.anpNamePrioMap = map[string]int32{"first": 10, "second": 10}
 
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	first := &v1alpha2.ClusterNetworkPolicy{
+	first := &v1beta1.ClusterNetworkPolicy{
 		Name: "first",
-		Spec: v1alpha2.ClusterNetworkPolicySpec{Tier: v1alpha2.AdminTier, Priority: 10},
+		Spec: v1beta1.ClusterNetworkPolicySpec{Tier: v1beta1.AdminTier, Priority: 10},
 	}
-	second := &v1alpha2.ClusterNetworkPolicy{
+	second := &v1beta1.ClusterNetworkPolicy{
 		Name: "second",
-		Spec: v1alpha2.ClusterNetworkPolicySpec{Tier: v1alpha2.AdminTier, Priority: 10},
+		Spec: v1beta1.ClusterNetworkPolicySpec{Tier: v1beta1.AdminTier, Priority: 10},
 	}
 	require.NoError(t, indexer.Add(first))
 	require.NoError(t, indexer.Add(second))

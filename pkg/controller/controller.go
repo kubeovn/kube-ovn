@@ -33,10 +33,10 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/keymutex"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	netpolv1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 	anpinformer "sigs.k8s.io/network-policy-api/pkg/client/informers/externalversions"
 	anplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
-	anplisterv1alpha2 "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha2"
+	anplisterv1beta1 "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1beta1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
@@ -356,11 +356,11 @@ type Controller struct {
 	deleteBanpQueue workqueue.TypedRateLimitingInterface[*v1alpha1.BaselineAdminNetworkPolicy]
 	banpKeyMutex    keymutex.KeyMutex
 
-	cnpsLister     anplisterv1alpha2.ClusterNetworkPolicyLister
+	cnpsLister     anplisterv1beta1.ClusterNetworkPolicyLister
 	cnpsSynced     cache.InformerSynced
 	addCnpQueue    workqueue.TypedRateLimitingInterface[string]
 	updateCnpQueue workqueue.TypedRateLimitingInterface[*ClusterNetworkPolicyChangedDelta]
-	deleteCnpQueue workqueue.TypedRateLimitingInterface[*netpolv1alpha2.ClusterNetworkPolicy]
+	deleteCnpQueue workqueue.TypedRateLimitingInterface[*netpolv1beta1.ClusterNetworkPolicy]
 	cnpKeyMutex    keymutex.KeyMutex
 
 	csrLister           certListerv1.CertificateSigningRequestLister
@@ -540,7 +540,7 @@ func Run(ctx context.Context, config *Configuration) {
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
 	anpInformer := anpInformerFactory.Policy().V1alpha1().AdminNetworkPolicies()
 	banpInformer := anpInformerFactory.Policy().V1alpha1().BaselineAdminNetworkPolicies()
-	cnpInformer := anpInformerFactory.Policy().V1alpha2().ClusterNetworkPolicies()
+	cnpInformer := anpInformerFactory.Policy().V1beta1().ClusterNetworkPolicies()
 	dnsNameResolverInformer := kubeovnInformerFactory.Kubeovn().V1().DNSNameResolvers()
 	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
 	netAttachInformer := attachNetInformerFactory.K8sCniCncfIo().V1().NetworkAttachmentDefinitions()
@@ -867,7 +867,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.updateCnpQueue = newCoalescingDeltaQueue("UpdateClusterNetworkPolicy", func(delta *ClusterNetworkPolicyChangedDelta) string {
 			return delta.key
 		}, mergeClusterNetworkPolicyDelta)
-		controller.deleteCnpQueue = newTypedRateLimitingQueue[*netpolv1alpha2.ClusterNetworkPolicy]("DeleteClusterNetworkPolicy", nil)
+		controller.deleteCnpQueue = newTypedRateLimitingQueue[*netpolv1beta1.ClusterNetworkPolicy]("DeleteClusterNetworkPolicy", nil)
 		controller.cnpKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
 

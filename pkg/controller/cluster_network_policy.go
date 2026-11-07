@@ -22,7 +22,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 
 	"sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	"sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	"sigs.k8s.io/network-policy-api/apis/v1beta1"
 )
 
 // ClusterNetworkPolicyChangedDelta is used to determine what changed within a ClusterNetworkPolicy
@@ -39,7 +39,7 @@ type ClusterNetworkPolicyChangedDelta struct {
 
 // enqueueAddCnp adds a new ClusterNetworkPolicy to the processing queue for creation
 func (c *Controller) enqueueAddCnp(obj any) {
-	cnp := obj.(*v1alpha2.ClusterNetworkPolicy)
+	cnp := obj.(*v1beta1.ClusterNetworkPolicy)
 	c.indexClusterNetworkPolicy(cnp)
 	key := cache.MetaObjectToName(cnp).String()
 	klog.V(3).Infof("enqueue add cnp %s", key)
@@ -48,8 +48,8 @@ func (c *Controller) enqueueAddCnp(obj any) {
 
 // enqueueUpdateCnp adds an existing ClusterNetworkPolicy to the processing queue for updates
 func (c *Controller) enqueueUpdateCnp(oldObj, newObj any) {
-	oldCnp := oldObj.(*v1alpha2.ClusterNetworkPolicy)
-	newCnp := newObj.(*v1alpha2.ClusterNetworkPolicy)
+	oldCnp := oldObj.(*v1beta1.ClusterNetworkPolicy)
+	newCnp := newObj.(*v1beta1.ClusterNetworkPolicy)
 	c.indexClusterNetworkPolicy(newCnp)
 
 	// If the CNP was modified in a way that needs the ACLs to be re-created, we enqueue the CNP to be re-created
@@ -94,12 +94,12 @@ func (c *Controller) enqueueUpdateCnp(oldObj, newObj any) {
 
 // enqueueDeleteCnp adds an existing ClusterNetworkPolicy to the processing queue for deletion
 func (c *Controller) enqueueDeleteCnp(obj any) {
-	var cnp *v1alpha2.ClusterNetworkPolicy
+	var cnp *v1beta1.ClusterNetworkPolicy
 	switch t := obj.(type) {
-	case *v1alpha2.ClusterNetworkPolicy:
+	case *v1beta1.ClusterNetworkPolicy:
 		cnp = t
 	case cache.DeletedFinalStateUnknown:
-		a, ok := t.Obj.(*v1alpha2.ClusterNetworkPolicy)
+		a, ok := t.Obj.(*v1beta1.ClusterNetworkPolicy)
 		if !ok {
 			klog.Warningf("unexpected object type: %T", t.Obj)
 			return
@@ -218,7 +218,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 
 		aclPriority := getCnpACLPriority(cnp, index)
 		rulePorts := rule.Protocols
-		numericPorts := make([]v1alpha2.ClusterNetworkPolicyProtocol, 0, len(rulePorts))
+		numericPorts := make([]v1beta1.ClusterNetworkPolicyProtocol, 0, len(rulePorts))
 		for _, port := range rulePorts {
 			if port.DestinationNamedPort == "" {
 				numericPorts = append(numericPorts, port)
@@ -256,7 +256,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 				if variant.name != protocol.DestinationNamedPort {
 					continue
 				}
-				variantPorts := []v1alpha2.ClusterNetworkPolicyProtocol{cnpNamedPortProtocol(namedPortKey{protocol: variant.protocol, port: variant.port})}
+				variantPorts := []v1beta1.ClusterNetworkPolicyProtocol{cnpNamedPortProtocol(namedPortKey{protocol: variant.protocol, port: variant.port})}
 				if as4len != 0 {
 					aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "ingress", index) + fmt.Sprintf("/named/%s/%s/%d", variant.name, variant.protocol, variant.port)
 					ops, err := aclBuilder.UpdateCnpRuleACLOps(variant.pgName, v4AddressSetName, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, variantPorts, true, cnpACLTier)
@@ -311,7 +311,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 
 		aclPriority := getCnpACLPriority(cnp, index)
 		rulePorts := rule.Protocols
-		numericPorts := make([]v1alpha2.ClusterNetworkPolicyProtocol, 0, len(rulePorts))
+		numericPorts := make([]v1beta1.ClusterNetworkPolicyProtocol, 0, len(rulePorts))
 		for _, port := range rulePorts {
 			if port.DestinationNamedPort == "" {
 				numericPorts = append(numericPorts, port)
@@ -358,7 +358,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 					}
 					desiredEgressAddrSet.Add(v4Name)
 					aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv4, "egress", index) + fmt.Sprintf("/named/%s/%s/%d", protocol.DestinationNamedPort, variant.protocol, variant.port)
-					ops, err := aclBuilder.UpdateCnpRuleACLOps(pgName, v4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, []v1alpha2.ClusterNetworkPolicyProtocol{cnpNamedPortProtocol(variant)}, false, cnpACLTier)
+					ops, err := aclBuilder.UpdateCnpRuleACLOps(pgName, v4Name, kubeovnv1.ProtocolIPv4, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, []v1beta1.ClusterNetworkPolicyProtocol{cnpNamedPortProtocol(variant)}, false, cnpACLTier)
 					if err != nil {
 						return err
 					}
@@ -370,7 +370,7 @@ func (c *Controller) handleAddCnp(key string) (err error) {
 					}
 					desiredEgressAddrSet.Add(v6Name)
 					aclName := getCnpACLName(cnpName, kubeovnv1.ProtocolIPv6, "egress", index) + fmt.Sprintf("/named/%s/%s/%d", protocol.DestinationNamedPort, variant.protocol, variant.port)
-					ops, err := aclBuilder.UpdateCnpRuleACLOps(pgName, v6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, []v1alpha2.ClusterNetworkPolicyProtocol{cnpNamedPortProtocol(variant)}, false, cnpACLTier)
+					ops, err := aclBuilder.UpdateCnpRuleACLOps(pgName, v6Name, kubeovnv1.ProtocolIPv6, aclName, aclPriority, getCnpACLAction(rule.Action), logActions, []v1beta1.ClusterNetworkPolicyProtocol{cnpNamedPortProtocol(variant)}, false, cnpACLTier)
 					if err != nil {
 						return err
 					}
@@ -437,7 +437,7 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 		for index, rule := range desiredCnp.Spec.Ingress {
 			// Make sure the rule is changed and go on update
 			if changedNameMatches(ruleNames[index], rule.Name) {
-				if err := c.setAddrSetForCnpRule(cnpName, pgName, rule.Name, index, rule.From, []v1alpha2.ClusterNetworkPolicyEgressPeer{}, true, false); err != nil {
+				if err := c.setAddrSetForCnpRule(cnpName, pgName, rule.Name, index, rule.From, []v1beta1.ClusterNetworkPolicyEgressPeer{}, true, false); err != nil {
 					klog.Errorf("failed to set ingress address-set for cnp rule %s/%s, %v", cnpName, rule.Name, err)
 					return err
 				}
@@ -453,7 +453,7 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 			needAddrSetUpdate := changedNameMatches(ruleNames[index], rule.Name) || changed.DNSReconcileDone
 
 			if needAddrSetUpdate {
-				if err := c.setAddrSetForCnpRule(cnpName, pgName, rule.Name, index, []v1alpha2.ClusterNetworkPolicyIngressPeer{}, rule.To, false, false); err != nil {
+				if err := c.setAddrSetForCnpRule(cnpName, pgName, rule.Name, index, []v1beta1.ClusterNetworkPolicyIngressPeer{}, rule.To, false, false); err != nil {
 					klog.Errorf("failed to set egress address-set for cnp rule %s/%s, %v", cnpName, rule.Name, err)
 					return err
 				}
@@ -471,7 +471,7 @@ func (c *Controller) handleUpdateCnp(changed *ClusterNetworkPolicyChangedDelta) 
 }
 
 // handleDeleteCnp handles deletion of a ClusterNetworkPolicy
-func (c *Controller) handleDeleteCnp(cnp *v1alpha2.ClusterNetworkPolicy) error {
+func (c *Controller) handleDeleteCnp(cnp *v1beta1.ClusterNetworkPolicy) error {
 	c.cnpKeyMutex.LockKey(cnp.Name)
 	defer func() { _ = c.cnpKeyMutex.UnlockKey(cnp.Name) }()
 
@@ -555,7 +555,7 @@ func (c *Controller) getCnpCurrentAddrSetByName(cnpName string) (*strset.Set, *s
 }
 
 // setupCnpPortGroup setups the port group of a ClusterNetworkPolicy
-func (c *Controller) setupCnpPortGroup(cnp *v1alpha2.ClusterNetworkPolicy) error {
+func (c *Controller) setupCnpPortGroup(cnp *v1beta1.ClusterNetworkPolicy) error {
 	pgName := getCnpPortGroupName(cnp)
 
 	// Create port group in OVN databases
@@ -581,7 +581,7 @@ func (c *Controller) setupCnpPortGroup(cnp *v1alpha2.ClusterNetworkPolicy) error
 }
 
 // getCnpPorts returns the ports targeted by a ClusterNetworkPolicy
-func (c *Controller) getCnpPorts(cnpSubject *v1alpha2.ClusterNetworkPolicySubject) ([]string, error) {
+func (c *Controller) getCnpPorts(cnpSubject *v1beta1.ClusterNetworkPolicySubject) ([]string, error) {
 	var ports []string
 
 	// Exactly one field must be set, either "namespaces", or "pods"
@@ -615,7 +615,7 @@ func (c *Controller) getCnpPorts(cnpSubject *v1alpha2.ClusterNetworkPolicySubjec
 // generateCnpIngressAddressSet generates the ingress address set for a rule of a ClusterNetworkPolicy
 // The function returns the name of the address sets for both IPv6 and IPv4. The number of addresses
 // contained in each address set is also returned.
-func (c *Controller) generateCnpIngressAddressSet(cnpName, pgName string, rule v1alpha2.ClusterNetworkPolicyIngressRule, index int) (string, int, string, int, error) {
+func (c *Controller) generateCnpIngressAddressSet(cnpName, pgName string, rule v1beta1.ClusterNetworkPolicyIngressRule, index int) (string, int, string, int, error) {
 	ingressAsV4Name, ingressAsV6Name := getAnpAddressSetName(pgName, rule.Name, index, true)
 
 	// Concatenate all the targeted addresses for the CNP
@@ -650,7 +650,7 @@ func (c *Controller) generateCnpIngressAddressSet(cnpName, pgName string, rule v
 // generateCnpEgressAddressSet generates the egress address set for a rule of a ClusterNetworkPolicy
 // The function returns the name of the address sets for both IPv6 and IPv4. The number of addresses
 // contained in each address set is also returned.
-func (c *Controller) generateCnpEgressAddressSet(cnpName, pgName string, rule v1alpha2.ClusterNetworkPolicyEgressRule, index int) (string, int, string, int, error) {
+func (c *Controller) generateCnpEgressAddressSet(cnpName, pgName string, rule v1beta1.ClusterNetworkPolicyEgressRule, index int) (string, int, string, int, error) {
 	egressAsV4Name, egressAsV6Name := getAnpAddressSetName(pgName, rule.Name, index, false)
 
 	// Concatenate all the targeted addresses for the CNP
@@ -699,7 +699,7 @@ func (c *Controller) createCnpAddressSet(cnpName, ruleName, direction, asName st
 	return nil
 }
 
-func (c *Controller) fetchIngressSelectedAddressesByCnp(ingressPeer *v1alpha2.ClusterNetworkPolicyIngressPeer) ([]string, []string, error) {
+func (c *Controller) fetchIngressSelectedAddressesByCnp(ingressPeer *v1beta1.ClusterNetworkPolicyIngressPeer) ([]string, []string, error) {
 	var v4Addresses, v6Addresses []string
 
 	// Exactly one of the selector pointers must be set for a given peer
@@ -730,11 +730,11 @@ func (c *Controller) fetchIngressSelectedAddressesByCnp(ingressPeer *v1alpha2.Cl
 	return v4Addresses, v6Addresses, nil
 }
 
-func (c *Controller) fetchEgressSelectedAddressesByCnp(egressPeer *v1alpha2.ClusterNetworkPolicyEgressPeer) ([]string, []string, error) {
+func (c *Controller) fetchEgressSelectedAddressesByCnp(egressPeer *v1beta1.ClusterNetworkPolicyEgressPeer) ([]string, []string, error) {
 	return c.fetchEgressSelectedAddressesCommonByCnp(egressPeer.Namespaces, egressPeer.Pods, egressPeer.Nodes, egressPeer.Networks, egressPeer.DomainNames)
 }
 
-func (c *Controller) fetchEgressSelectedAddressesCommonByCnp(namespaces *metav1.LabelSelector, pods *v1alpha2.NamespacedPod, nodes *metav1.LabelSelector, networks []v1alpha2.CIDR, domainNames []v1alpha2.DomainName) ([]string, []string, error) {
+func (c *Controller) fetchEgressSelectedAddressesCommonByCnp(namespaces *metav1.LabelSelector, pods *v1beta1.NamespacedPod, nodes *metav1.LabelSelector, networks []v1beta1.CIDR, domainNames []v1beta1.DomainName) ([]string, []string, error) {
 	var v4Addresses, v6Addresses []string
 
 	// Exactly one of the selector pointers must be set for a given peer.
@@ -792,11 +792,11 @@ func (c *Controller) fetchEgressSelectedAddressesCommonByCnp(namespaces *metav1.
 	return v4Addresses, v6Addresses, nil
 }
 
-func (c *Controller) setAddrSetForCnpRule(anpName, pgName, ruleName string, index int, from []v1alpha2.ClusterNetworkPolicyIngressPeer, to []v1alpha2.ClusterNetworkPolicyEgressPeer, isIngress, isBanp bool) error {
+func (c *Controller) setAddrSetForCnpRule(anpName, pgName, ruleName string, index int, from []v1beta1.ClusterNetworkPolicyIngressPeer, to []v1beta1.ClusterNetworkPolicyEgressPeer, isIngress, isBanp bool) error {
 	return c.setAddrSetForCnpRuleCommon(anpName, pgName, ruleName, index, from, to, nil, isIngress, isBanp)
 }
 
-func (c *Controller) setAddrSetForCnpRuleCommon(anpName, pgName, ruleName string, index int, from []v1alpha2.ClusterNetworkPolicyIngressPeer, to []v1alpha2.ClusterNetworkPolicyEgressPeer, baselineTo []v1alpha1.BaselineAdminNetworkPolicyEgressPeer, isIngress, isBanp bool) error {
+func (c *Controller) setAddrSetForCnpRuleCommon(anpName, pgName, ruleName string, index int, from []v1beta1.ClusterNetworkPolicyIngressPeer, to []v1beta1.ClusterNetworkPolicyEgressPeer, baselineTo []v1alpha1.BaselineAdminNetworkPolicyEgressPeer, isIngress, isBanp bool) error {
 	// A single address set must contain addresses of the same type and the name must be unique within table, so IPv4 and IPv6 address set should be different
 
 	var v4Addrs, v4Addr, v6Addrs, v6Addr []string
@@ -858,7 +858,7 @@ func (c *Controller) setAddrSetForCnpRuleCommon(anpName, pgName, ruleName string
 }
 
 // resolveDomainNames resolves domain names to IP addresses using DNSNameResolver lister
-func (c *Controller) resolveDomainNamesForCnp(domainNames []v1alpha2.DomainName) ([]string, []string, error) {
+func (c *Controller) resolveDomainNamesForCnp(domainNames []v1beta1.DomainName) ([]string, []string, error) {
 	var allV4Addresses, allV6Addresses []string
 
 	for _, domainName := range domainNames {
@@ -934,14 +934,14 @@ func (c *Controller) updateCnpsByLabelsChange(change labelChange) {
 	}
 }
 
-func doCnpLabelsMatchForChange(namespaces *metav1.LabelSelector, pods *v1alpha2.NamespacedPod, change labelChange) bool {
+func doCnpLabelsMatchForChange(namespaces *metav1.LabelSelector, pods *v1beta1.NamespacedPod, change labelChange) bool {
 	return change.anyMatch(func(nsLabels, podLabels map[string]string) bool {
 		return doCnpLabelsMatch(namespaces, pods, nsLabels, podLabels)
 	})
 }
 
 // getAffectedCnpRules returns the rules affected by a namespace/pod update by looking at the selectors within its peers.
-func getAffectedCnpRules(cnp *v1alpha2.ClusterNetworkPolicy, nsLabels, podLabels map[string]string) ([util.CnpMaxRules]ChangedName, [util.CnpMaxRules]ChangedName) {
+func getAffectedCnpRules(cnp *v1beta1.ClusterNetworkPolicy, nsLabels, podLabels map[string]string) ([util.CnpMaxRules]ChangedName, [util.CnpMaxRules]ChangedName) {
 	var changedIngressRuleNames, changedEgressRuleNames [util.CnpMaxRules]ChangedName
 
 	for index, rule := range cnp.Spec.Ingress {
@@ -965,7 +965,7 @@ func getAffectedCnpRules(cnp *v1alpha2.ClusterNetworkPolicy, nsLabels, podLabels
 	return changedIngressRuleNames, changedEgressRuleNames
 }
 
-func getAffectedCnpRulesForChange(cnp *v1alpha2.ClusterNetworkPolicy, change labelChange) ([util.CnpMaxRules]ChangedName, [util.CnpMaxRules]ChangedName) {
+func getAffectedCnpRulesForChange(cnp *v1beta1.ClusterNetworkPolicy, change labelChange) ([util.CnpMaxRules]ChangedName, [util.CnpMaxRules]ChangedName) {
 	oldIngress, oldEgress := getAffectedCnpRules(cnp, change.oldNsLabels, change.oldPodLabels)
 	newIngress, newEgress := getAffectedCnpRules(cnp, change.newNsLabels, change.newPodLabels)
 	return mergeCnpChangedNames(oldIngress, newIngress), mergeCnpChangedNames(oldEgress, newEgress)
@@ -994,7 +994,7 @@ func isCnpRulesArrayEmpty(rules [util.CnpMaxRules]ChangedName) bool {
 }
 
 // getCnpPortGroupName returns the normalized name for the port group of a ClusterNetworkPolicy
-func getCnpPortGroupName(cnp *v1alpha2.ClusterNetworkPolicy) string {
+func getCnpPortGroupName(cnp *v1beta1.ClusterNetworkPolicy) string {
 	// OVN port groups do not support name with '-', so we replace '-' by '.'
 	// This may cause conflict if two CNP with name test-cnp and test.cnp
 	// Maybe using hash is a better solution, but we do not want to lose the readability for now
@@ -1002,13 +1002,13 @@ func getCnpPortGroupName(cnp *v1alpha2.ClusterNetworkPolicy) string {
 }
 
 // shouldUpdateCnpPortGroup determines if the port group of a ClusterNetworkPolicy needs to be updated
-func shouldUpdateCnpPortGroup(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) bool {
+func shouldUpdateCnpPortGroup(oldCnp, newCnp *v1beta1.ClusterNetworkPolicy) bool {
 	return !reflect.DeepEqual(oldCnp.Spec.Subject, newCnp.Spec.Subject)
 }
 
 // getCnpAddressSetsToUpdate returns the ingress/egress address sets that need to be updated following a ClusterNetworkPolicy update.
 // Rule renames are not handled here: they recreate the ACLs from scratch via shouldRecreateCnpACLs.
-func getCnpAddressSetsToUpdate(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) (ingress, egress [util.CnpMaxRules]ChangedName) {
+func getCnpAddressSetsToUpdate(oldCnp, newCnp *v1beta1.ClusterNetworkPolicy) (ingress, egress [util.CnpMaxRules]ChangedName) {
 	// Search through every ingress rule for changed selectors
 	for index, rule := range newCnp.Spec.Ingress {
 		oldRule := oldCnp.Spec.Ingress[index]
@@ -1039,7 +1039,7 @@ func getCnpAddressSetsToUpdate(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) (i
 }
 
 // shouldRecreateCnpACLs determines if the ACLs for a ClusterNetworkPolicy should be re-created following an update
-func shouldRecreateCnpACLs(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) bool {
+func shouldRecreateCnpACLs(oldCnp, newCnp *v1beta1.ClusterNetworkPolicy) bool {
 	// ACLs must be re-created if:
 	//   - the tier of the CNP has changed
 	//   - the priority of the CNP has changed
@@ -1078,11 +1078,11 @@ func shouldRecreateCnpACLs(oldCnp, newCnp *v1alpha2.ClusterNetworkPolicy) bool {
 }
 
 // getCnpPriorityMaps returns the maps linking CNPs in a specific tier with their priority
-func (c *Controller) getCnpPriorityMaps(tier v1alpha2.Tier) (map[int32]string, map[string]int32, error) {
+func (c *Controller) getCnpPriorityMaps(tier v1beta1.Tier) (map[int32]string, map[string]int32, error) {
 	switch tier {
-	case v1alpha2.AdminTier:
+	case v1beta1.AdminTier:
 		return c.anpPrioNameMap, c.anpNamePrioMap, nil
-	case v1alpha2.BaselineTier:
+	case v1beta1.BaselineTier:
 		return c.bnpPrioNameMap, c.bnpNamePrioMap, nil
 	default:
 		return nil, nil, fmt.Errorf("unknown cnp tier %s", tier)
@@ -1090,7 +1090,7 @@ func (c *Controller) getCnpPriorityMaps(tier v1alpha2.Tier) (map[int32]string, m
 }
 
 // updateCnpPriorityMapEntries updates the entries of a ClusterNetworkPolicy in the priority maps of all tiers
-func (c *Controller) updateCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPolicy) error {
+func (c *Controller) updateCnpPriorityMapEntries(cnp *v1beta1.ClusterNetworkPolicy) error {
 	// Wipe the CNP from all the priority maps (this handles both tier change and priority change)
 	if err := c.wipeCnpPriorityMapEntries(cnp); err != nil {
 		return fmt.Errorf("failed to handle tier change for cnp %s: %w", cnp.Name, err)
@@ -1113,7 +1113,7 @@ func (c *Controller) updateCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPol
 }
 
 // deleteCnpPriorityMapEntries deletes entries of a ClusterNetworkPolicy in the priority maps
-func (c *Controller) deleteCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPolicy) error {
+func (c *Controller) deleteCnpPriorityMapEntries(cnp *v1beta1.ClusterNetworkPolicy) error {
 	priorityNameMap, namePriorityMap, err := c.getCnpPriorityMaps(cnp.Spec.Tier)
 	if err != nil {
 		return fmt.Errorf("failed to get priority maps for cnp %s: %w", cnp.Name, err)
@@ -1129,8 +1129,8 @@ func (c *Controller) deleteCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPol
 }
 
 // wipeCnpPriorityMapEntries removes a ClusterNetworkPolicy from every priority map in all tiers
-func (c *Controller) wipeCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPolicy) error {
-	tiers := []v1alpha2.Tier{v1alpha2.AdminTier, v1alpha2.BaselineTier}
+func (c *Controller) wipeCnpPriorityMapEntries(cnp *v1beta1.ClusterNetworkPolicy) error {
+	tiers := []v1beta1.Tier{v1beta1.AdminTier, v1beta1.BaselineTier}
 
 	// For each exiting CNP tier, we wipe the CNP from the associated priority maps
 	for _, tier := range tiers {
@@ -1155,7 +1155,7 @@ func (c *Controller) wipeCnpPriorityMapEntries(cnp *v1alpha2.ClusterNetworkPolic
 }
 
 // validateCnpConfig verifies a CNP is correctly written and doesn't conflict with any other
-func (c *Controller) validateCnpConfig(cnp *v1alpha2.ClusterNetworkPolicy) error {
+func (c *Controller) validateCnpConfig(cnp *v1beta1.ClusterNetworkPolicy) error {
 	if err := cnputil.ValidateProtocols(cnp); err != nil {
 		return err
 	}
@@ -1194,7 +1194,7 @@ func (c *Controller) validateCnpConfig(cnp *v1alpha2.ClusterNetworkPolicy) error
 // validateCnpPriority applies the CNP-specific priority semantics to the
 // controller's shared priority map. CNPs may share a priority, while ANP and
 // BANP entries remain conflicts in their respective tiers.
-func (c *Controller) validateCnpPriority(priorityNameMap map[int32]string, cnp *v1alpha2.ClusterNetworkPolicy) error {
+func (c *Controller) validateCnpPriority(priorityNameMap map[int32]string, cnp *v1beta1.ClusterNetworkPolicy) error {
 	if priorityNameMap == nil || cnp == nil {
 		return checkCnpPriorities(priorityNameMap, cnp)
 	}
@@ -1208,7 +1208,7 @@ func (c *Controller) validateCnpPriority(priorityNameMap map[int32]string, cnp *
 	return checkCnpPriorities(map[int32]string{}, cnp)
 }
 
-func (c *Controller) isCnpName(name string, tier v1alpha2.Tier) bool {
+func (c *Controller) isCnpName(name string, tier v1beta1.Tier) bool {
 	if c.cnpsLister == nil {
 		return false
 	}
@@ -1221,13 +1221,13 @@ func (c *Controller) isCnpName(name string, tier v1alpha2.Tier) bool {
 	// object in the corresponding legacy lister means the shared map entry may
 	// belong to the legacy policy, so keep the conflict conservative.
 	switch tier {
-	case v1alpha2.AdminTier:
+	case v1beta1.AdminTier:
 		if c.anpsLister != nil {
 			if _, err := c.anpsLister.Get(name); err == nil {
 				return false
 			}
 		}
-	case v1alpha2.BaselineTier:
+	case v1beta1.BaselineTier:
 		if c.banpsLister != nil {
 			if _, err := c.banpsLister.Get(name); err == nil {
 				return false
@@ -1237,7 +1237,7 @@ func (c *Controller) isCnpName(name string, tier v1alpha2.Tier) bool {
 	return true
 }
 
-func (c *Controller) restoreCnpPriorityMapEntry(priorityNameMap map[int32]string, tier v1alpha2.Tier, priority int32) {
+func (c *Controller) restoreCnpPriorityMapEntry(priorityNameMap map[int32]string, tier v1beta1.Tier, priority int32) {
 	if c.cnpsLister == nil {
 		return
 	}
@@ -1257,7 +1257,7 @@ func (c *Controller) restoreCnpPriorityMapEntry(priorityNameMap map[int32]string
 // checkCnpPriorities enforces exclusive priority ownership for the supplied
 // policy. validateCnpPriority uses this strict check only when the shared map
 // entry belongs to an ANP or BANP (CNPs in the same tier may share a priority).
-func checkCnpPriorities(priorityNameMap map[int32]string, cnp *v1alpha2.ClusterNetworkPolicy) error {
+func checkCnpPriorities(priorityNameMap map[int32]string, cnp *v1beta1.ClusterNetworkPolicy) error {
 	// Sanitize the function input
 	if priorityNameMap == nil || cnp == nil {
 		err := errors.New("must provide a priorityMap and a CNP")
@@ -1287,10 +1287,10 @@ func checkCnpPriorities(priorityNameMap map[int32]string, cnp *v1alpha2.ClusterN
 // checkNetworkAndDomainRules checks if a clusterNetworkPolicy respects the following rules:
 //   - number of domains per peer egress is not greater than the limit
 //   - number of networks per peer egress is not greater than the limit
-func checkNetworkAndDomainRules(cnp *v1alpha2.ClusterNetworkPolicy) error {
+func checkNetworkAndDomainRules(cnp *v1beta1.ClusterNetworkPolicy) error {
 	for _, egressRule := range cnp.Spec.Egress {
 		for _, peer := range egressRule.To {
-			if len(peer.DomainNames) > 0 && egressRule.Action != v1alpha2.ClusterNetworkPolicyRuleActionAccept {
+			if len(peer.DomainNames) > 0 && egressRule.Action != v1beta1.ClusterNetworkPolicyRuleActionAccept {
 				return errors.New("domain names are only supported for Accept rules")
 			}
 
@@ -1308,7 +1308,7 @@ func checkNetworkAndDomainRules(cnp *v1alpha2.ClusterNetworkPolicy) error {
 }
 
 // fetchCnpCIDRAddresses returns the IPv4 and IPv6 addresses within a CNP CIDR
-func fetchCnpCIDRAddresses(networks []v1alpha2.CIDR) ([]string, []string) {
+func fetchCnpCIDRAddresses(networks []v1beta1.CIDR) ([]string, []string) {
 	var v4Addresses, v6Addresses []string
 
 	// Sort IPv4 and IPv6 networks by protocol
@@ -1343,13 +1343,13 @@ func getCnpName(name string) string {
 }
 
 // getCnpACLAction returns the OVN ACL action associated with a CNP rule action
-func getCnpACLAction(action v1alpha2.ClusterNetworkPolicyRuleAction) ovnnb.ACLAction {
+func getCnpACLAction(action v1beta1.ClusterNetworkPolicyRuleAction) ovnnb.ACLAction {
 	switch action {
-	case v1alpha2.ClusterNetworkPolicyRuleActionAccept:
+	case v1beta1.ClusterNetworkPolicyRuleActionAccept:
 		return ovnnb.ACLActionAllowRelated
-	case v1alpha2.ClusterNetworkPolicyRuleActionDeny:
+	case v1beta1.ClusterNetworkPolicyRuleActionDeny:
 		return ovnnb.ACLActionDrop
-	case v1alpha2.ClusterNetworkPolicyRuleActionPass:
+	case v1beta1.ClusterNetworkPolicyRuleActionPass:
 		return ovnnb.ACLActionPass
 	default:
 		return ovnnb.ACLActionDrop
@@ -1357,11 +1357,11 @@ func getCnpACLAction(action v1alpha2.ClusterNetworkPolicyRuleAction) ovnnb.ACLAc
 }
 
 // getCnpACLTier returns the OVN ACL tier for a given CNP tier
-func getCnpACLTier(tier v1alpha2.Tier) int {
+func getCnpACLTier(tier v1beta1.Tier) int {
 	switch tier {
-	case v1alpha2.AdminTier:
+	case v1beta1.AdminTier:
 		return util.AnpACLTier
-	case v1alpha2.BaselineTier:
+	case v1beta1.BaselineTier:
 		return util.BanpACLTier
 	default:
 		return util.BanpACLTier
@@ -1369,7 +1369,7 @@ func getCnpACLTier(tier v1alpha2.Tier) int {
 }
 
 // getCnpDomainsNames returns all the domain names in rules contained within a ClusterNetworkPolicy
-func getCnpDomainsNames(cnp *v1alpha2.ClusterNetworkPolicy) (domainNames []string) {
+func getCnpDomainsNames(cnp *v1beta1.ClusterNetworkPolicy) (domainNames []string) {
 	for _, rule := range cnp.Spec.Egress {
 		for _, to := range rule.To {
 			for _, domainName := range to.DomainNames {
@@ -1382,7 +1382,7 @@ func getCnpDomainsNames(cnp *v1alpha2.ClusterNetworkPolicy) (domainNames []strin
 }
 
 // hasCnpDomainNames returns whether a ClusterNetworkPolicy has domain names defined
-func hasCnpDomainNames(cnp *v1alpha2.ClusterNetworkPolicy) bool {
+func hasCnpDomainNames(cnp *v1beta1.ClusterNetworkPolicy) bool {
 	for _, rule := range cnp.Spec.Egress {
 		for _, to := range rule.To {
 			if len(to.DomainNames) > 0 {
@@ -1395,7 +1395,7 @@ func hasCnpDomainNames(cnp *v1alpha2.ClusterNetworkPolicy) bool {
 }
 
 // getCnpACLPriority returns the ACL priority of a ClusterNetworkPolicy for a given priority and rule index
-func getCnpACLPriority(cnp *v1alpha2.ClusterNetworkPolicy, index int) int {
+func getCnpACLPriority(cnp *v1beta1.ClusterNetworkPolicy, index int) int {
 	return util.CnpACLMaxPriority - int(cnp.Spec.Priority*util.CnpMaxRules) - index
 }
 
@@ -1406,7 +1406,7 @@ func getCnpACLName(cnpName, protocol, direction string, index int) string {
 
 // doCnpLabelsMatch returns whether namespace/pod selectors on a ClusterNetworkPolicy match the labels of some pods/namespaces
 // This is used to determine if the "subject" or "rule peers" of a CNP match pods/namespaces
-func doCnpLabelsMatch(namespaces *metav1.LabelSelector, pods *v1alpha2.NamespacedPod, nsLabels, podLabels map[string]string) bool {
+func doCnpLabelsMatch(namespaces *metav1.LabelSelector, pods *v1beta1.NamespacedPod, nsLabels, podLabels map[string]string) bool {
 	// A nil podLabels denotes a namespace event; pod events always pass a non-nil map.
 	// Exactly one field of namespaces/pods must be set
 	if namespaces != nil {

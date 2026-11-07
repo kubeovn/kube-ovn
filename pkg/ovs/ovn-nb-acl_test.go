@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	"sigs.k8s.io/network-policy-api/apis/v1beta1"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
@@ -3198,7 +3198,7 @@ func (suite *OvnClientTestSuite) testUpdateCnpRuleACLOps() {
 		priority := 1000
 		aclAction := ovnnb.ACLActionAllow
 		logACLActions := []ovnnb.ACLAction{ovnnb.ACLActionAllow}
-		rulePorts := []v1alpha2.ClusterNetworkPolicyProtocol{}
+		rulePorts := []v1beta1.ClusterNetworkPolicyProtocol{}
 		isIngress := true
 
 		err := nbClient.DeletePortGroup(pgName)
@@ -3219,7 +3219,7 @@ func (suite *OvnClientTestSuite) testUpdateCnpRuleACLOps() {
 		priority := 2000
 		aclAction := ovnnb.ACLActionDrop
 		logACLActions := []ovnnb.ACLAction{ovnnb.ACLActionDrop}
-		rulePorts := []v1alpha2.ClusterNetworkPolicyProtocol{}
+		rulePorts := []v1beta1.ClusterNetworkPolicyProtocol{}
 		isIngress := false
 
 		err := nbClient.DeletePortGroup(pgName)

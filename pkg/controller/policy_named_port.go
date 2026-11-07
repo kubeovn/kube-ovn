@@ -12,7 +12,7 @@ import (
 	"k8s.io/utils/set"
 
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	v1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -52,7 +52,7 @@ func namedPortSelectorsForAnpSubject(subject *v1alpha1.AdminNetworkPolicySubject
 	return &subject.Pods.NamespaceSelector, &subject.Pods.PodSelector
 }
 
-func namedPortSelectorsForCnpSubject(subject *v1alpha2.ClusterNetworkPolicySubject) (*metav1.LabelSelector, *metav1.LabelSelector) {
+func namedPortSelectorsForCnpSubject(subject *v1beta1.ClusterNetworkPolicySubject) (*metav1.LabelSelector, *metav1.LabelSelector) {
 	if subject.Namespaces != nil {
 		return subject.Namespaces, nil
 	}
@@ -69,7 +69,7 @@ func namedPortSelectorsForAnpEgressPeer(peer *v1alpha1.AdminNetworkPolicyEgressP
 	return &peer.Pods.NamespaceSelector, &peer.Pods.PodSelector
 }
 
-func namedPortSelectorsForCnpEgressPeer(peer *v1alpha2.ClusterNetworkPolicyEgressPeer) (*metav1.LabelSelector, *metav1.LabelSelector) {
+func namedPortSelectorsForCnpEgressPeer(peer *v1beta1.ClusterNetworkPolicyEgressPeer) (*metav1.LabelSelector, *metav1.LabelSelector) {
 	if peer.Namespaces != nil {
 		return peer.Namespaces, nil
 	}
@@ -139,7 +139,7 @@ func requestedNamedPortNamesBanpEgress(rules []v1alpha1.BaselineAdminNetworkPoli
 	return requested
 }
 
-func requestedNamedPortNamesCnp(rules []v1alpha2.ClusterNetworkPolicyIngressRule) map[string]struct{} {
+func requestedNamedPortNamesCnp(rules []v1beta1.ClusterNetworkPolicyIngressRule) map[string]struct{} {
 	requested := make(map[string]struct{})
 	for _, rule := range rules {
 		for _, protocol := range rule.Protocols {
@@ -151,7 +151,7 @@ func requestedNamedPortNamesCnp(rules []v1alpha2.ClusterNetworkPolicyIngressRule
 	return requested
 }
 
-func requestedNamedPortNamesCnpEgress(rules []v1alpha2.ClusterNetworkPolicyEgressRule) map[string]struct{} {
+func requestedNamedPortNamesCnpEgress(rules []v1beta1.ClusterNetworkPolicyEgressRule) map[string]struct{} {
 	requested := make(map[string]struct{})
 	for _, rule := range rules {
 		for _, protocol := range rule.Protocols {
@@ -163,16 +163,16 @@ func requestedNamedPortNamesCnpEgress(rules []v1alpha2.ClusterNetworkPolicyEgres
 	return requested
 }
 
-func cnpNamedPortProtocol(variant namedPortKey) v1alpha2.ClusterNetworkPolicyProtocol {
-	port := &v1alpha2.Port{Number: variant.port}
-	protocol := v1alpha2.ClusterNetworkPolicyProtocol{}
+func cnpNamedPortProtocol(variant namedPortKey) v1beta1.ClusterNetworkPolicyProtocol {
+	port := &v1beta1.Port{Number: variant.port}
+	protocol := v1beta1.ClusterNetworkPolicyProtocol{}
 	switch variant.protocol {
 	case corev1.ProtocolUDP:
-		protocol.UDP = &v1alpha2.ClusterNetworkPolicyProtocolUDP{DestinationPort: port}
+		protocol.UDP = &v1beta1.ClusterNetworkPolicyProtocolUDP{DestinationPort: port}
 	case corev1.ProtocolSCTP:
-		protocol.SCTP = &v1alpha2.ClusterNetworkPolicyProtocolSCTP{DestinationPort: port}
+		protocol.SCTP = &v1beta1.ClusterNetworkPolicyProtocolSCTP{DestinationPort: port}
 	default:
-		protocol.TCP = &v1alpha2.ClusterNetworkPolicyProtocolTCP{DestinationPort: port}
+		protocol.TCP = &v1beta1.ClusterNetworkPolicyProtocolTCP{DestinationPort: port}
 	}
 	return protocol
 }
@@ -249,7 +249,7 @@ func hasBanpNamedPort(ingress []v1alpha1.BaselineAdminNetworkPolicyIngressRule, 
 	return false
 }
 
-func hasCnpNamedPort(policy *v1alpha2.ClusterNetworkPolicy) bool {
+func hasCnpNamedPort(policy *v1beta1.ClusterNetworkPolicy) bool {
 	for _, rule := range policy.Spec.Ingress {
 		for _, protocol := range rule.Protocols {
 			if protocol.DestinationNamedPort != "" {
@@ -267,7 +267,7 @@ func hasCnpNamedPort(policy *v1alpha2.ClusterNetworkPolicy) bool {
 	return false
 }
 
-func (c *Controller) namedPortAddressesForCnpEgressPeers(peers []v1alpha2.ClusterNetworkPolicyEgressPeer, name string) (map[namedPortKey]*policyNamedPortAddresses, error) {
+func (c *Controller) namedPortAddressesForCnpEgressPeers(peers []v1beta1.ClusterNetworkPolicyEgressPeer, name string) (map[namedPortKey]*policyNamedPortAddresses, error) {
 	result := make(map[namedPortKey]*policyNamedPortAddresses)
 	for _, peer := range peers {
 		nsSelector, podSelector := namedPortSelectorsForCnpEgressPeer(&peer)

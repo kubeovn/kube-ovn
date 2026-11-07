@@ -5,7 +5,7 @@ import (
 
 	netv1 "k8s.io/api/networking/v1"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	v1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 
@@ -36,7 +36,7 @@ type adminNetworkPolicyACLBuilder interface {
 
 // clusterNetworkPolicyACLBuilder builds ACL operations for CNP.
 type clusterNetworkPolicyACLBuilder interface {
-	UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, action ovnnb.ACLAction, logActions []ovnnb.ACLAction, ports []v1alpha2.ClusterNetworkPolicyProtocol, isIngress bool, tier int) ([]ovsdb.Operation, error)
+	UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, action ovnnb.ACLAction, logActions []ovnnb.ACLAction, ports []v1beta1.ClusterNetworkPolicyProtocol, isIngress bool, tier int) ([]ovsdb.Operation, error)
 }
 
 func (c *Controller) networkPolicyACLBuilder() (networkPolicyACLBuilder, error) {

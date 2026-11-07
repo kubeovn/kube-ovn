@@ -15,7 +15,7 @@ import (
 	"k8s.io/klog/v2"
 
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	v1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/cnp"
@@ -1620,7 +1620,7 @@ func (c *OVNNbClient) UpdateAnpRuleACLOps(pgName, asName, protocol, aclName stri
 	return c.createNamedRuleACLOps(pgName, aclName, priority, aclAction, logACLActions, tier, isIngress, matches)
 }
 
-func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyProtocol, isIngress bool, tier int) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1beta1.ClusterNetworkPolicyProtocol, isIngress bool, tier int) ([]ovsdb.Operation, error) {
 	matches, err := newCnpACLMatch(pgName, asName, protocol, namedACLDirection(isIngress), rulePorts)
 	if err != nil {
 		return nil, err
@@ -1663,7 +1663,7 @@ func newAnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1al
 	return newNamedACLMatch(pgName, asName, protocol, direction, "anp", anpPorts(rulePorts))
 }
 
-func newCnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1alpha2.ClusterNetworkPolicyProtocol) ([]string, error) {
+func newCnpACLMatch(pgName, asName, protocol, direction string, rulePorts []v1beta1.ClusterNetworkPolicyProtocol) ([]string, error) {
 	ipSuffix := "ip4"
 	if protocol == kubeovnv1.ProtocolIPv6 {
 		ipSuffix = "ip6"
