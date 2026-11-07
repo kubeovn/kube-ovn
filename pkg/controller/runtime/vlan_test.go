@@ -95,11 +95,37 @@ func TestVlanReconcilerDoesNotTagConflictingVlan(t *testing.T) {
 	require.True(t, updated.Status.Conflict)
 }
 
+func TestVlanReconcilerRequestsSubnetsForDeletedVlan(t *testing.T) {
+	vlan := &kubeovnv1.Vlan{Name: "vlan-a"}
+	reconciler := &VlanReconciler{Client: newRuntimeClient(t,
+		vlan,
+		&kubeovnv1.Subnet{Name: "subnet-a", Spec: kubeovnv1.SubnetSpec{Vlan: vlan.Name}},
+		&kubeovnv1.Subnet{Name: "subnet-b", Spec: kubeovnv1.SubnetSpec{Vlan: "vlan-b"}},
+	)}
+
+	requests := reconciler.requestsForDeletedVlan(t.Context(), vlan)
+	require.Equal(t, []ctrl.Request{{Name: "subnet-a"}}, requests)
+}
+
+func TestProviderNetworkReconcilerMapsVlanProviderChanges(t *testing.T) {
+	reconciler := &ProviderNetworkReconciler{}
+	oldVlan := &kubeovnv1.Vlan{Name: "vlan-a", Spec: kubeovnv1.VlanSpec{Provider: "provider-old"}}
+	newVlan := &kubeovnv1.Vlan{Name: "vlan-a", Spec: kubeovnv1.VlanSpec{Provider: "provider-new"}}
+
+	require.Equal(t, []ctrl.Request{{Name: "provider-old"}}, reconciler.requestsForVlanObject(oldVlan))
+	require.Equal(t, []ctrl.Request{{Name: "provider-new"}}, reconciler.requestsForVlanObject(newVlan))
+}
+
 func TestProviderNetworkReconcilerUpdatesVlanAndNodeStatus(t *testing.T) {
 	providerNetwork := &kubeovnv1.ProviderNetwork{Name: "provider-a"}
 	vlan := &kubeovnv1.Vlan{
 		Name: "vlan-a",
 		Spec: kubeovnv1.VlanSpec{ID: 100, Provider: providerNetwork.Name},
+		Status: kubeovnv1.VlanStatus{Conditions: []kubeovnv1.Condition{{
+			Type:               kubeovnv1.Ready,
+			Status:             corev1.ConditionTrue,
+			ObservedGeneration: 0,
+		}}},
 	}
 	node := &corev1.Node{
 		Name: "node-a",
@@ -121,6 +147,46 @@ func TestProviderNetworkReconcilerUpdatesVlanAndNodeStatus(t *testing.T) {
 	require.Equal(t, []string{node.Name}, updated.Status.ReadyNodes)
 	require.Empty(t, updated.Status.NotReadyNodes)
 	require.True(t, updated.Status.Ready)
+}
+
+func TestProviderNetworkReconcilerExcludesUnreadyAndConflictingVlans(t *testing.T) {
+	providerNetwork := &kubeovnv1.ProviderNetwork{Name: "provider-a"}
+	readyVlan := &kubeovnv1.Vlan{
+		Name: "vlan-ready",
+		Spec: kubeovnv1.VlanSpec{ID: 100, Provider: providerNetwork.Name},
+		Status: kubeovnv1.VlanStatus{Conditions: []kubeovnv1.Condition{{
+			Type:               kubeovnv1.Ready,
+			Status:             corev1.ConditionTrue,
+			ObservedGeneration: 0,
+		}}},
+	}
+	unreadyVlan := &kubeovnv1.Vlan{
+		Name: "vlan-unready",
+		Spec: kubeovnv1.VlanSpec{ID: 101, Provider: providerNetwork.Name},
+	}
+	conflictingVlan := &kubeovnv1.Vlan{
+		Name: "vlan-conflict",
+		Spec: kubeovnv1.VlanSpec{ID: 102, Provider: providerNetwork.Name},
+		Status: kubeovnv1.VlanStatus{
+			Conflict: true,
+			Conditions: []kubeovnv1.Condition{{
+				Type:               kubeovnv1.Ready,
+				Status:             corev1.ConditionTrue,
+				ObservedGeneration: 0,
+			}},
+		},
+	}
+	reconciler := &ProviderNetworkReconciler{
+		Client:       newRuntimeClient(t, providerNetwork, readyVlan, unreadyVlan, conflictingVlan),
+		PodNamespace: "kube-system",
+	}
+
+	_, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: providerNetwork.Name})
+	require.NoError(t, err)
+
+	updated := &kubeovnv1.ProviderNetwork{}
+	require.NoError(t, reconciler.Get(t.Context(), types.NamespacedName{Name: providerNetwork.Name}, updated))
+	require.Equal(t, []string{readyVlan.Name}, updated.Status.Vlans)
 }
 
 func TestProviderNetworkReconcilerRemovesStaleNodeConditions(t *testing.T) {

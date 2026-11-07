@@ -9,6 +9,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
@@ -39,9 +40,16 @@ type VlanReconciler struct {
 }
 
 func (r *VlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	deletedVlanPredicate := predicate.Funcs{
+		DeleteFunc: func(e event.DeleteEvent) bool {
+			_, ok := e.Object.(*kubeovnv1.Vlan)
+			return ok
+		},
+	}
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("kube-ovn-vlan").
 		For(&kubeovnv1.Vlan{}).
+		Watches(&kubeovnv1.Vlan{}, handler.EnqueueRequestsFromMapFunc(r.requestsForDeletedVlan), builder.WithPredicates(deletedVlanPredicate)).
 		Watches(&kubeovnv1.Subnet{}, handler.EnqueueRequestsFromMapFunc(r.requestsForSubnet)).
 		Watches(&kubeovnv1.ProviderNetwork{}, handler.EnqueueRequestsFromMapFunc(r.requestsForProviderNetwork)).
 		Complete(r)
@@ -81,6 +89,9 @@ func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	original := vlan.DeepCopy()
 	vlan.Status.Conflict = conflict
 	vlan.Status.Subnets = subnetNamesForVlan(vlan.Name, subnets.Items)
+	if conflict {
+		removeVlanReadyCondition(vlan)
+	}
 	if !equality.Semantic.DeepEqual(original.Status, vlan.Status) {
 		if err := r.Status().Patch(ctx, vlan, client.MergeFrom(original)); err != nil {
 			return ctrl.Result{}, fmt.Errorf("update status for vlan %s: %w", vlan.Name, err)
@@ -98,8 +109,16 @@ func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 			continue
 		}
 		if err := r.OVN.SetLogicalSwitchPortVlanTag(ovs.GetLocalnetName(subnet.Name), vlan.Spec.ID); err != nil {
+			if statusErr := r.clearVlanReady(ctx, vlan); statusErr != nil {
+				return ctrl.Result{}, fmt.Errorf("set localnet tag for subnet %s and vlan %s: %w; clear ready status: %v", subnet.Name, vlan.Name, err, statusErr)
+			}
 			return ctrl.Result{}, fmt.Errorf("set localnet tag for subnet %s and vlan %s: %w", subnet.Name, vlan.Name, err)
 		}
+	}
+	readyOriginal := vlan.DeepCopy()
+	setVlanReadyCondition(vlan)
+	if err := r.Status().Patch(ctx, vlan, client.MergeFrom(readyOriginal)); err != nil {
+		return ctrl.Result{}, fmt.Errorf("mark vlan %s ready: %w", vlan.Name, err)
 	}
 
 	if !slices.Contains(providerNetwork.Status.Vlans, vlan.Name) {
@@ -119,6 +138,30 @@ func (r *VlanReconciler) requestsForSubnet(_ context.Context, obj client.Object)
 		return nil
 	}
 	return []ctrl.Request{{Name: subnet.Spec.Vlan}}
+}
+
+// requestsForDeletedVlan requeues subnets that still reference a deleted VLAN.
+// The legacy delete handler did this before removing VLAN-owned OVN state; the
+// mapper keeps the same dependency visible to the migrated subnet reconciler.
+func (r *VlanReconciler) requestsForDeletedVlan(ctx context.Context, obj client.Object) []ctrl.Request {
+	vlan, ok := obj.(*kubeovnv1.Vlan)
+	if !ok {
+		return nil
+	}
+
+	var subnets kubeovnv1.SubnetList
+	if err := r.List(ctx, &subnets); err != nil {
+		klog.Errorf("list subnets for deleted vlan %s: %v", vlan.Name, err)
+		return nil
+	}
+
+	requests := make([]ctrl.Request, 0)
+	for _, subnet := range subnets.Items {
+		if subnet.Spec.Vlan == vlan.Name {
+			requests = append(requests, ctrl.Request{Name: subnet.Name})
+		}
+	}
+	return requests
 }
 
 func (r *VlanReconciler) requestsForProviderNetwork(ctx context.Context, obj client.Object) []ctrl.Request {
@@ -164,7 +207,21 @@ func (r *ProviderNetworkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("kube-ovn-provider-network").
 		For(&kubeovnv1.ProviderNetwork{}).
-		Watches(&kubeovnv1.Vlan{}, handler.EnqueueRequestsFromMapFunc(r.requestsForVlan)).
+		Watches(&kubeovnv1.Vlan{}, handler.Funcs{
+			CreateFunc: func(_ context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+				r.enqueueVlanProvider(q, e.Object)
+			},
+			UpdateFunc: func(_ context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+				r.enqueueVlanProvider(q, e.ObjectOld)
+				r.enqueueVlanProvider(q, e.ObjectNew)
+			},
+			DeleteFunc: func(_ context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+				r.enqueueVlanProvider(q, e.Object)
+			},
+			GenericFunc: func(_ context.Context, e event.GenericEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+				r.enqueueVlanProvider(q, e.Object)
+			},
+		}).
 		Watches(&corev1.Node{}, handler.EnqueueRequestsFromMapFunc(r.requestsForAllProviderNetworks)).
 		Watches(&corev1.Pod{}, handler.EnqueueRequestsFromMapFunc(r.requestsForAllProviderNetworks), builder.WithPredicates(cniPodPredicate)).
 		Complete(r)
@@ -190,7 +247,7 @@ func (r *ProviderNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	original := providerNetwork.DeepCopy()
-	providerNetwork.Status.Vlans = vlanNamesForProviderNetwork(providerNetwork.Name, vlans.Items)
+	providerNetwork.Status.Vlans = readyVlanNamesForProviderNetwork(providerNetwork.Name, vlans.Items)
 	providerNetwork.Status.ReadyNodes = nil
 	providerNetwork.Status.NotReadyNodes = nil
 
@@ -250,12 +307,18 @@ func (r *ProviderNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return ctrl.Result{}, nil
 }
 
-func (r *ProviderNetworkReconciler) requestsForVlan(_ context.Context, obj client.Object) []ctrl.Request {
+func (r *ProviderNetworkReconciler) requestsForVlanObject(obj client.Object) []ctrl.Request {
 	vlan, ok := obj.(*kubeovnv1.Vlan)
 	if !ok || vlan.Spec.Provider == "" {
 		return nil
 	}
 	return []ctrl.Request{{Name: vlan.Spec.Provider}}
+}
+
+func (r *ProviderNetworkReconciler) enqueueVlanProvider(q workqueue.TypedRateLimitingInterface[ctrl.Request], obj client.Object) {
+	for _, request := range r.requestsForVlanObject(obj) {
+		q.Add(request)
+	}
 }
 
 func (r *ProviderNetworkReconciler) requestsForAllProviderNetworks(ctx context.Context, _ client.Object) []ctrl.Request {
@@ -338,15 +401,55 @@ func subnetNamesForVlan(vlanName string, subnets []kubeovnv1.Subnet) []string {
 	return names
 }
 
-func vlanNamesForProviderNetwork(providerNetworkName string, vlans []kubeovnv1.Vlan) []string {
+func readyVlanNamesForProviderNetwork(providerNetworkName string, vlans []kubeovnv1.Vlan) []string {
 	names := make([]string, 0)
 	for _, vlan := range vlans {
-		if vlan.Spec.Provider == providerNetworkName {
+		if vlan.Spec.Provider == providerNetworkName && vlanIsReady(&vlan) {
 			names = append(names, vlan.Name)
 		}
 	}
 	slices.Sort(names)
 	return names
+}
+
+func vlanIsReady(vlan *kubeovnv1.Vlan) bool {
+	if vlan.Status.Conflict {
+		return false
+	}
+	for _, condition := range vlan.Status.Conditions {
+		if condition.Type == kubeovnv1.Ready && condition.Status == corev1.ConditionTrue && condition.ObservedGeneration == vlan.Generation {
+			return true
+		}
+	}
+	return false
+}
+
+func setVlanReadyCondition(vlan *kubeovnv1.Vlan) {
+	vlan.Status.SetVlanCondition(kubeovnv1.Ready, "ReconcileSuccess", "")
+	for i := range vlan.Status.Conditions {
+		if vlan.Status.Conditions[i].Type == kubeovnv1.Ready {
+			vlan.Status.Conditions[i].ObservedGeneration = vlan.Generation
+		}
+	}
+}
+
+func removeVlanReadyCondition(vlan *kubeovnv1.Vlan) {
+	conditions := vlan.Status.Conditions[:0]
+	for _, condition := range vlan.Status.Conditions {
+		if condition.Type != kubeovnv1.Ready {
+			conditions = append(conditions, condition)
+		}
+	}
+	vlan.Status.Conditions = conditions
+}
+
+func (r *VlanReconciler) clearVlanReady(ctx context.Context, vlan *kubeovnv1.Vlan) error {
+	original := vlan.DeepCopy()
+	removeVlanReadyCondition(vlan)
+	if equality.Semantic.DeepEqual(original.Status, vlan.Status) {
+		return nil
+	}
+	return r.Status().Patch(ctx, vlan, client.MergeFrom(original))
 }
 
 func isKubeOvnCniPod(obj client.Object) bool {
