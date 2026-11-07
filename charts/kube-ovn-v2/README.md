@@ -1,6 +1,6 @@
 # Helm chart for Kube-OVN
 
-![Version: v1.16.17](https://img.shields.io/badge/Version-v1.16.17-informational?style=flat-square)
+![Version: v1.16.18](https://img.shields.io/badge/Version-v1.16.18-informational?style=flat-square)
 
 This is the v2 of the Helm Chart, replacing the first version in the long term.
 Make sure to adjust your old values with the new ones and pre-generate your templates with a dry-run to ensure no breaking change occurs.
@@ -12,7 +12,7 @@ Make sure to adjust your old values with the new ones and pre-generate your temp
 The Helm chart is available from GitHub Container Registry:
 
 ```bash
-helm install kube-ovn oci://ghcr.io/kubeovn/charts/kube-ovn-v2 --version v1.16.17
+helm install kube-ovn oci://ghcr.io/kubeovn/charts/kube-ovn-v2 --version v1.16.18
 ```
 
 ### From Source
@@ -767,7 +767,7 @@ false
   "images": {
     "kubeovn": {
       "repository": "kube-ovn",
-      "tag": "v1.16.17"
+      "tag": "v1.16.18"
     }
   },
   "registry": {
@@ -1657,7 +1657,7 @@ false
 			<td>natGw.bgpSpeaker.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.16.17"
+"v1.16.18"
 </pre>
 </td>
 			<td>Image tag.</td>
@@ -1693,7 +1693,7 @@ false
 			<td>natGw.image.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.16.17"
+"v1.16.18"
 </pre>
 </td>
 			<td>Image tag.</td>
@@ -2195,7 +2195,7 @@ false
 			<td>ovsOvn.dpdkHybrid.tag</td>
 			<td>string</td>
 			<td><pre lang="json">
-"v1.16.17-dpdk"
+"v1.16.18-dpdk"
 </pre>
 </td>
 			<td>DPDK image tag.</td>
