@@ -403,6 +403,7 @@ func (suite *OvnClientTestSuite) testCreateLocalnetLogicalSwitchPort() {
 		require.Equal(t, "fd00::/120", lsp.ExternalIDs["ipv6_network"])
 		require.NotNil(t, lsp.Tag)
 		require.Equal(t, 200, *lsp.Tag)
+		require.Equal(t, new(200), lsp.TagRequest)
 	})
 
 	t.Run("create localnet logical switch port without vlan id", func(t *testing.T) {
@@ -421,6 +422,7 @@ func (suite *OvnClientTestSuite) testCreateLocalnetLogicalSwitchPort() {
 		require.Equal(t, "192.168.1.0/24", lsp.ExternalIDs["ipv4_network"])
 		require.Equal(t, "fd01::/120", lsp.ExternalIDs["ipv6_network"])
 		require.Nil(t, lsp.Tag)
+		require.Nil(t, lsp.TagRequest)
 	})
 
 	t.Run("should no err when create logical switch port repeatedly", func(t *testing.T) {
