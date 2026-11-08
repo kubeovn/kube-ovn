@@ -33,8 +33,9 @@ func TestCleanupSkipsFreshHardwareOffloadNode(t *testing.T) {
 	require.Empty(t, errs)
 	ovsdbServer, err := server.NewOvsdbServer(db, nil, dbMod, svrMod)
 	require.NoError(t, err)
-	go func() { _ = ovsdbServer.Serve("unix", socket) }()
-	t.Cleanup(ovsdbServer.Close)
+	serverDone := make(chan error, 1)
+	go func() { serverDone <- ovsdbServer.Serve("unix", socket) }()
+	t.Cleanup(func() { ovsdbServer.Close(); require.NoError(t, <-serverDone) })
 	require.Eventually(t, ovsdbServer.Ready, 3e9, 1e7)
 
 	seed, err := client.NewOVSDBClient(dbModel, client.WithEndpoint("unix:"+socket))
