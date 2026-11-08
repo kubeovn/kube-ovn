@@ -50,14 +50,18 @@ func (ipam *IPAM) GetRandomAddress(podName, nicName string, mac *string, subnetN
 }
 
 func (ipam *IPAM) GetRandomAddressWithFamily(podName, nicName string, mac *string, subnetName, poolName, ipFamily string, skippedAddrs []string, checkConflict bool) (string, string, string, error) {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+	return getRandomAddressWithFamily(ipam.Subnets, podName, nicName, mac, subnetName, poolName, ipFamily, skippedAddrs, checkConflict)
+}
+
+func getRandomAddressWithFamily(subnets map[string]*Subnet, podName, nicName string, mac *string, subnetName, poolName, ipFamily string, skippedAddrs []string, checkConflict bool) (string, string, string, error) {
 	ipFamily = util.NormalizeIPFamily(ipFamily)
 	if err := validateRequestedIPFamily(ipFamily); err != nil {
 		return "", "", "", err
 	}
-	ipam.mutex.Lock()
-	defer ipam.mutex.Unlock()
 	var v4, v6 string
-	subnet, ok := ipam.Subnets[subnetName]
+	subnet, ok := subnets[subnetName]
 	if !ok {
 		return "", "", "", ErrNoSubnet
 	}
@@ -82,16 +86,20 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, sub
 }
 
 func (ipam *IPAM) GetStaticAddressWithFamily(podName, nicName, ip string, mac *string, subnetName, ipFamily string, checkConflict bool) (string, string, string, error) {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+	return getStaticAddressWithFamily(ipam.Subnets, podName, nicName, ip, mac, subnetName, ipFamily, checkConflict)
+}
+
+func getStaticAddressWithFamily(subnets map[string]*Subnet, podName, nicName, ip string, mac *string, subnetName, ipFamily string, checkConflict bool) (string, string, string, error) {
 	ipFamily = util.NormalizeIPFamily(ipFamily)
 	if err := validateRequestedIPFamily(ipFamily); err != nil {
 		return "", "", "", err
 	}
-	ipam.mutex.Lock()
-	defer ipam.mutex.Unlock()
 	var subnet *Subnet
 	var ok bool
 	klog.Infof("allocating static ip %s from subnet %s", ip, subnetName)
-	if subnet, ok = ipam.Subnets[subnetName]; !ok {
+	if subnet, ok = subnets[subnetName]; !ok {
 		return "", "", "", ErrNoSubnet
 	}
 
@@ -208,12 +216,16 @@ func checkAndAppendIpsForDual(ips []IP, mac, podName, nicName string, subnet *Su
 func (ipam *IPAM) ReleaseAddressByPod(podName, subnetName string) {
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
+	releaseAddressByPod(ipam.Subnets, podName, subnetName)
+}
+
+func releaseAddressByPod(subnets map[string]*Subnet, podName, subnetName string) {
 	if subnetName != "" {
-		if subnet, ok := ipam.Subnets[subnetName]; ok {
+		if subnet, ok := subnets[subnetName]; ok {
 			subnet.ReleaseAddress(podName)
 		}
 	} else {
-		for _, subnet := range ipam.Subnets {
+		for _, subnet := range subnets {
 			subnet.ReleaseAddress(podName)
 		}
 	}
@@ -222,12 +234,16 @@ func (ipam *IPAM) ReleaseAddressByPod(podName, subnetName string) {
 func (ipam *IPAM) ReleaseAddressByNic(podName, nicName, subnetName string) {
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
+	releaseAddressByNic(ipam.Subnets, podName, nicName, subnetName)
+}
+
+func releaseAddressByNic(subnets map[string]*Subnet, podName, nicName, subnetName string) {
 	if subnetName != "" {
-		if subnet, ok := ipam.Subnets[subnetName]; ok {
+		if subnet, ok := subnets[subnetName]; ok {
 			subnet.ReleaseAddressWithNicName(podName, nicName)
 		}
 	} else {
-		for _, subnet := range ipam.Subnets {
+		for _, subnet := range subnets {
 			subnet.ReleaseAddressWithNicName(podName, nicName)
 		}
 	}
