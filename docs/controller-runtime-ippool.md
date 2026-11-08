@@ -46,8 +46,10 @@ must remain explicit: changes between pools can leave total Subnet usage
 unchanged, producing no Subnet API event. They never trigger membership activation,
 OVN preparation or namespace notifications for a live pool.
 
-The runtime uses one worker and retains the configured `--cust-crd-retry-min-delay`
-and `--cust-crd-retry-max-delay` bounds plus the existing token-bucket limit.
+The runtime uses one worker and retains the legacy IPPool queues' default retry
+limiter: exponential backoff from 5 ms to 1000 s, combined with a 10 QPS token
+bucket with a burst of 100. The `--cust-crd-retry-min-delay` and
+`--cust-crd-retry-max-delay` flags do not configure IPPool retries.
 Errors are retried only by the runtime queue. Ingress forwarding stops with the
 leader context; shutdown waits for the runtime before closing shared OVN clients.
 
@@ -61,11 +63,14 @@ deliberately releases the allocation lock during external I/O.
 
 Deletion requests retain informer snapshots for force-deleted objects. Under
 the shared pool lock, the backend first reads the live API. A snapshot for an old
-UID is discarded when a same-name replacement exists. A missing object is cleaned
+UID preserves a same-name replacement's state. If the replacement uses a different
+Subnet, its live reconciliation or terminating cleanup must succeed before the
+old Subnet's orphaned IPAM entry is removed. Preparation or API failures retain
+the old reservations and retry the deletion snapshot. A missing object is cleaned
 up without attempting a finalizer patch; an existing terminating object uses its
-current snapshot. Address-set cleanup still precedes returning reservations to
-the default pool. Terminating objects received by an initial informer list follow
-the same cleanup path.
+current snapshot. Address-set preparation or cleanup still precedes returning
+reservations to the default pool. Terminating objects received by an initial
+informer list follow the same cleanup path.
 
 ## Remaining migration work
 

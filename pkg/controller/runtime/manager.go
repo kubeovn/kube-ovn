@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	netattachv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	appsv1 "k8s.io/api/apps/v1"
@@ -120,11 +119,7 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 		}
 	}
 	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeIPPool {
-		r := &IPPoolReconciler{
-			Backend:       backend,
-			RetryMinDelay: time.Duration(config.CustCrdRetryMinDelay) * time.Second,
-			RetryMaxDelay: time.Duration(config.CustCrdRetryMaxDelay) * time.Second,
-		}
+		r := &IPPoolReconciler{Backend: backend}
 		if err := r.SetupWithManager(mgr); err != nil {
 			return err
 		}

@@ -1,20 +1,26 @@
 package controller
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	ktesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/utils/keymutex"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	listers "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -142,6 +148,189 @@ func TestIPPoolRuntimeTerminatingAddRunsCleanup(t *testing.T) {
 	got, err := c.config.KubeOvnClient.KubeovnV1().IPPools().Get(t.Context(), pool.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Empty(t, got.Finalizers)
+}
+
+func newIPPoolRuntimeReplacement(t *testing.T) (*fakeController, *kubeovnv1.IPPool, *kubeovnv1.IPPool) {
+	t.Helper()
+	deleted := &kubeovnv1.IPPool{Name: "pool", UID: "old", Finalizers: []string{util.KubeOVNControllerFinalizer}, Spec: kubeovnv1.IPPoolSpec{Subnet: "old-subnet"}}
+	subnet := &kubeovnv1.Subnet{Name: "new-subnet", Spec: kubeovnv1.SubnetSpec{CIDRBlock: "10.1.0.0/29"}}
+	replacement := &kubeovnv1.IPPool{Name: deleted.Name, UID: "new", Finalizers: []string{util.KubeOVNControllerFinalizer}, Spec: kubeovnv1.IPPoolSpec{Subnet: subnet.Name, IPCount: 1, EnableAddressSet: true}}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}, IPPools: []*kubeovnv1.IPPool{replacement}})
+	require.NoError(t, err)
+	c := fc.fakeController
+	c.ippoolKeyMutex = keymutex.NewHashed(97)
+	require.NoError(t, c.ipam.AddOrUpdateSubnet(deleted.Spec.Subnet, "10.0.0.0/29", "", nil))
+	require.NoError(t, c.ipam.AddOrUpdateIPPool(deleted.Spec.Subnet, deleted.Name, []string{"10.0.0.1"}))
+	require.NoError(t, c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, "", nil))
+	return fc, deleted, replacement
+}
+
+func TestIPPoolRuntimeDeletionCleansOldSubnetAfterPreparingReplacement(t *testing.T) {
+	fc, deleted, replacement := newIPPoolRuntimeReplacement(t)
+	c := fc.fakeController
+	fc.mockOvnClient.EXPECT().CreateAddressSet(replacement.Name, map[string]string{ippoolKey: replacement.Name}).Return(nil)
+	fc.mockOvnClient.EXPECT().AddressSetUpdateAddress(replacement.Name, "10.1.0.1").DoAndReturn(func(string, ...string) error {
+		require.Contains(t, c.ipam.Subnets[deleted.Spec.Subnet].IPPools, deleted.Name, "old addresses must stay reserved until OVN stops referencing them")
+		return nil
+	})
+	require.NoError(t, c.ReconcileIPPool(t.Context(), IPPoolRequest{Name: deleted.Name, Operation: IPPoolDelete, Deleted: deleted}))
+	require.NotContains(t, c.ipam.Subnets[deleted.Spec.Subnet].IPPools, deleted.Name)
+	require.Equal(t, "10.1.0.1", c.ipam.Subnets[replacement.Spec.Subnet].IPPools[replacement.Name].V4IPs.String())
+	got, err := c.config.KubeOvnClient.KubeovnV1().IPPools().Get(t.Context(), replacement.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, replacement.UID, got.UID)
+	require.Equal(t, replacement.Finalizers, got.Finalizers)
+	require.Equal(t, []string{"10.1.0.1"}, got.Status.IPs)
+}
+
+func TestIPPoolRuntimeReplacementPreparationFailureRetainsReservations(t *testing.T) {
+	for _, failure := range []string{"OVN", "status API"} {
+		t.Run(failure, func(t *testing.T) {
+			fc, deleted, replacement := newIPPoolRuntimeReplacement(t)
+			c := fc.fakeController
+			prepareErr := errors.New("replacement preparation failed")
+			failing := true
+			fc.mockOvnClient.EXPECT().CreateAddressSet(replacement.Name, map[string]string{ippoolKey: replacement.Name}).DoAndReturn(func(string, map[string]string) error {
+				require.Contains(t, c.ipam.Subnets[deleted.Spec.Subnet].IPPools, deleted.Name)
+				if failing && failure == "OVN" {
+					return prepareErr
+				}
+				return nil
+			}).Times(2)
+			updates := 2
+			if failure == "OVN" {
+				updates = 1
+			}
+			fc.mockOvnClient.EXPECT().AddressSetUpdateAddress(replacement.Name, "10.1.0.1").Return(nil).Times(updates)
+			c.config.KubeOvnClient.(*kubeovnfake.Clientset).PrependReactor("patch", "ippools", func(action ktesting.Action) (bool, runtime.Object, error) {
+				if failing && failure == "status API" && action.GetSubresource() == "status" && bytes.Contains(action.(ktesting.PatchAction).GetPatch(), []byte(`"ips":`)) {
+					return true, nil, prepareErr
+				}
+				return false, nil, nil
+			})
+			request := IPPoolRequest{Name: deleted.Name, Operation: IPPoolDelete, Deleted: deleted}
+			require.ErrorIs(t, c.ReconcileIPPool(t.Context(), request), prepareErr)
+			require.Contains(t, c.ipam.Subnets[deleted.Spec.Subnet].IPPools, deleted.Name)
+			_, _, _, allocErr := c.ipam.GetRandomAddress("pod", "nic", nil, replacement.Spec.Subnet, replacement.Name, nil, true)
+			require.ErrorIs(t, allocErr, ipam.ErrNoAvailable, "failed replacement selections must remain reserved")
+			failing = false
+			require.NoError(t, c.ReconcileIPPool(t.Context(), request))
+			require.NotContains(t, c.ipam.Subnets[deleted.Spec.Subnet].IPPools, deleted.Name)
+			require.Equal(t, "10.1.0.1", c.ipam.Subnets[replacement.Spec.Subnet].IPPools[replacement.Name].V4IPs.String())
+			got, err := c.config.KubeOvnClient.KubeovnV1().IPPools().Get(t.Context(), replacement.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Equal(t, replacement.Finalizers, got.Finalizers)
+		})
+	}
+}
+
+func TestIPPoolRuntimeDeletionCleansTerminatingReplacementBeforeOldSubnet(t *testing.T) {
+	for _, fail := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cleanup failure=%t", fail), func(t *testing.T) {
+			fc, deleted, replacement := newIPPoolRuntimeReplacement(t)
+			c := fc.fakeController
+			replacement.DeletionTimestamp = new(metav1.Now())
+			_, err := c.config.KubeOvnClient.KubeovnV1().IPPools().Update(t.Context(), replacement, metav1.UpdateOptions{})
+			require.NoError(t, err)
+			require.NoError(t, c.ipam.AddOrUpdateIPPool(replacement.Spec.Subnet, replacement.Name, []string{"10.1.0.1"}))
+			cleanupErr := errors.New("address set cleanup failed")
+			attempts := 1
+			if fail {
+				attempts++
+			}
+			fc.mockOvnClient.EXPECT().DeleteAddressSet(replacement.Name).DoAndReturn(func(string) error {
+				require.Contains(t, c.ipam.Subnets[deleted.Spec.Subnet].IPPools, deleted.Name)
+				require.Contains(t, c.ipam.Subnets[replacement.Spec.Subnet].IPPools, replacement.Name)
+				if fail {
+					return cleanupErr
+				}
+				return nil
+			}).Times(attempts)
+			request := IPPoolRequest{Name: deleted.Name, Operation: IPPoolDelete, Deleted: deleted}
+			if fail {
+				require.ErrorIs(t, c.ReconcileIPPool(t.Context(), request), cleanupErr)
+				require.Contains(t, c.ipam.Subnets[deleted.Spec.Subnet].IPPools, deleted.Name)
+				require.Contains(t, c.ipam.Subnets[replacement.Spec.Subnet].IPPools, replacement.Name)
+				fail = false
+			}
+			require.NoError(t, c.ReconcileIPPool(t.Context(), request))
+			require.NotContains(t, c.ipam.Subnets[deleted.Spec.Subnet].IPPools, deleted.Name)
+			require.NotContains(t, c.ipam.Subnets[replacement.Spec.Subnet].IPPools, replacement.Name)
+			got, err := c.config.KubeOvnClient.KubeovnV1().IPPools().Get(t.Context(), replacement.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Empty(t, got.Finalizers)
+		})
+	}
+}
+
+func TestIPPoolRuntimeReplacementDisappearsOrTerminatesDuringCountRead(t *testing.T) {
+	for _, disappears := range []bool{false, true} {
+		t.Run(fmt.Sprintf("disappears=%t", disappears), func(t *testing.T) {
+			fc, deleted, replacement := newIPPoolRuntimeReplacement(t)
+			c := fc.fakeController
+			client := c.config.KubeOvnClient.(*kubeovnfake.Clientset)
+			gets := 0
+			client.PrependReactor("get", "ippools", func(ktesting.Action) (bool, runtime.Object, error) {
+				gets++
+				if gets == 2 {
+					resource := kubeovnv1.SchemeGroupVersion.WithResource("ippools")
+					if disappears {
+						require.NoError(t, client.Tracker().Delete(resource, "", replacement.Name))
+					} else {
+						terminating := replacement.DeepCopy()
+						terminating.DeletionTimestamp = new(metav1.Now())
+						require.NoError(t, client.Tracker().Update(resource, terminating, ""))
+					}
+				}
+				return false, nil, nil
+			})
+			request := IPPoolRequest{Name: deleted.Name, Operation: IPPoolDelete, Deleted: deleted}
+			// The business helper returns nil without touching the address set.
+			// The old addresses must remain reserved until deletion is retried.
+			require.Error(t, c.ReconcileIPPool(t.Context(), request))
+			require.Contains(t, c.ipam.Subnets[deleted.Spec.Subnet].IPPools, deleted.Name)
+			fc.mockOvnClient.EXPECT().DeleteAddressSet(replacement.Name).Return(nil)
+			require.NoError(t, c.ReconcileIPPool(t.Context(), request))
+			require.NotContains(t, c.ipam.Subnets[deleted.Spec.Subnet].IPPools, deleted.Name)
+			if disappears {
+				for _, action := range client.Actions() {
+					require.NotEqual(t, "patch", action.GetVerb(), "missing objects must not receive finalizer patches")
+				}
+			}
+		})
+	}
+}
+
+func TestIPPoolRuntimeReplacementChangesDuringCountRead(t *testing.T) {
+	for _, changeUID := range []bool{false, true} {
+		t.Run(fmt.Sprintf("UID change=%t", changeUID), func(t *testing.T) {
+			fc, deleted, replacement := newIPPoolRuntimeReplacement(t)
+			c := fc.fakeController
+			client := c.config.KubeOvnClient.(*kubeovnfake.Clientset)
+			gets := 0
+			client.PrependReactor("get", "ippools", func(ktesting.Action) (bool, runtime.Object, error) {
+				gets++
+				if gets == 2 {
+					changed := replacement.DeepCopy()
+					if changeUID {
+						changed.UID = "newer"
+					} else {
+						changed.Generation++
+					}
+					require.NoError(t, client.Tracker().Update(kubeovnv1.SchemeGroupVersion.WithResource("ippools"), changed, ""))
+				}
+				return false, nil, nil
+			})
+			fc.mockOvnClient.EXPECT().CreateAddressSet(replacement.Name, map[string]string{ippoolKey: replacement.Name}).Return(nil).Times(2)
+			fc.mockOvnClient.EXPECT().AddressSetUpdateAddress(replacement.Name, "10.1.0.1").Return(nil).Times(2)
+			request := IPPoolRequest{Name: deleted.Name, Operation: IPPoolDelete, Deleted: deleted}
+			require.ErrorContains(t, c.ReconcileIPPool(t.Context(), request), "changed during replacement reconciliation")
+			require.Contains(t, c.ipam.Subnets[deleted.Spec.Subnet].IPPools, deleted.Name)
+			require.NoError(t, c.ReconcileIPPool(t.Context(), request))
+			require.NotContains(t, c.ipam.Subnets[deleted.Spec.Subnet].IPPools, deleted.Name)
+			require.Equal(t, "10.1.0.1", c.ipam.Subnets[replacement.Spec.Subnet].IPPools[replacement.Name].V4IPs.String())
+		})
+	}
 }
 
 func TestStartControllerRuntimeSharesBackendAndStops(t *testing.T) {

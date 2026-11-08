@@ -3,9 +3,7 @@ package controllerruntime
 import (
 	"context"
 	"fmt"
-	"time"
 
-	"golang.org/x/time/rate"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	runtimecontroller "sigs.k8s.io/controller-runtime/pkg/controller"
@@ -22,9 +20,7 @@ type ipPoolBackend interface {
 // IPPoolReconciler migrates scheduling and retries while keeping the initialized
 // legacy controller as the only owner of allocation and data-plane operations.
 type IPPoolReconciler struct {
-	Backend       ipPoolBackend
-	RetryMinDelay time.Duration
-	RetryMaxDelay time.Duration
+	Backend ipPoolBackend
 }
 
 func (r *IPPoolReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -33,10 +29,7 @@ func (r *IPPoolReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		// Operations on the same pool share a key mutex in the backend. Start
 		// with one worker while the legacy business handlers are being reused.
 		MaxConcurrentReconciles: 1,
-		RateLimiter: workqueue.NewTypedMaxOfRateLimiter(
-			workqueue.NewTypedItemExponentialFailureRateLimiter[controller.IPPoolRequest](r.RetryMinDelay, r.RetryMaxDelay),
-			&workqueue.TypedBucketRateLimiter[controller.IPPoolRequest]{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
-		),
+		RateLimiter:             workqueue.DefaultTypedControllerRateLimiter[controller.IPPoolRequest](),
 	})
 	if err != nil {
 		return fmt.Errorf("create IPPool controller: %w", err)

@@ -88,8 +88,9 @@ func (c *Controller) ReconcileIPPool(ctx context.Context, request IPPoolRequest)
 			// The API object is gone: perform local/OVN cleanup without trying
 			// to patch a finalizer on a missing or subsequently recreated object.
 			pool.Finalizers = nil
-		} else if pool.UID != request.Deleted.UID || pool.DeletionTimestamp.IsZero() {
-			// A delayed old deletion must never clean a same-name replacement.
+		} else if pool.UID != request.Deleted.UID {
+			return c.reconcileReplacedIPPool(ctx, pool, request.Deleted)
+		} else if pool.DeletionTimestamp.IsZero() {
 			return nil
 		}
 		return c.handleDeleteIPPoolObject(pool)
@@ -108,6 +109,37 @@ func (c *Controller) ReconcileIPPool(ctx context.Context, request IPPoolRequest)
 	default:
 		return fmt.Errorf("unknown IPPool operation %d", request.Operation)
 	}
+}
+
+// The caller holds the shared name lock. Only the old subnet's IPAM entry is
+// orphaned; the globally named address set must first follow the live object.
+func (c *Controller) reconcileReplacedIPPool(ctx context.Context, pool, deleted *kubeovnv1.IPPool) error {
+	if pool.Spec.Subnet == deleted.Spec.Subnet {
+		// The same IPAM entry already belongs to the replacement.
+		return nil
+	}
+	if !pool.DeletionTimestamp.IsZero() {
+		if err := c.handleDeleteIPPoolObject(pool); err != nil {
+			return err
+		}
+	} else {
+		if err := c.handleAddOrUpdateIPPoolObject(pool); err != nil {
+			return err
+		}
+		// Count-pool reconciliation rereads the API and can return nil when the
+		// object disappears or starts terminating, without preparing OVN. Keep
+		// the old reservation until a retry can safely prepare or remove it.
+		latest, err := c.config.KubeOvnClient.KubeovnV1().IPPools().Get(ctx, pool.Name, metav1.GetOptions{})
+		if err != nil {
+			return c.recordIPPoolKeyError(pool.Name, "GetIPPoolFailed", err)
+		}
+		if latest.UID != pool.UID || latest.Generation != pool.Generation || !latest.DeletionTimestamp.IsZero() {
+			return fmt.Errorf("IPPool %q changed during replacement reconciliation", pool.Name)
+		}
+	}
+	// Never delete the replacement's address set, finalizers or IPAM entry.
+	c.ipam.RemoveIPPool(deleted.Spec.Subnet, deleted.Name)
+	return nil
 }
 
 func startControllerRuntime(ctx context.Context, c *Controller, start RuntimeStarter) <-chan struct{} {
