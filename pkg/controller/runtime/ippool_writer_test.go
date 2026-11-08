@@ -2,14 +2,17 @@ package controllerruntime
 
 import (
 	"context"
+	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"errors"
 	"testing"
 
+	jsonpatch "github.com/evanphx/json-patch/v5"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
@@ -29,6 +32,72 @@ func newIPPoolWriterTest(t *testing.T, funcs interceptor.Funcs) (*ipPoolWriter, 
 	current, err := w.get(pool.Name)
 	require.NoError(t, err)
 	return w, api, current
+}
+
+func TestIPPoolWriterPersistsZeroStatisticsInPatch(t *testing.T) {
+	for _, operation := range []string{"statistics", "status"} {
+		t.Run(operation, func(t *testing.T) {
+			conditions := operation == "status"
+			// Keep the wire representation: typed decoding hides missing zero fields.
+			document := []byte(`{"status":{"ips":["10.0.0.2","10.0.0.3"],"conditions":[{"type":"Foreign","status":"True"}],"foreign":"preserved"}}`)
+			used := "0"
+			patches := 0
+			w, api, pool := newIPPoolWriterTest(t, interceptor.Funcs{
+				SubResourcePatch: func(ctx context.Context, c client.Client, resource string, obj client.Object, patch client.Patch, opts ...client.SubResourcePatchOption) error {
+					patches++
+					data, err := patch.Data(obj)
+					require.NoError(t, err)
+					var payload struct {
+						Metadata map[string]string         `json:"metadata"`
+						Status   map[string]jsontext.Value `json:"status"`
+					}
+					require.NoError(t, json.Unmarshal(data, &payload))
+					require.Equal(t, types.MergePatchType, patch.Type())
+					require.Equal(t, map[string]string{"resourceVersion": obj.GetResourceVersion()}, payload.Metadata)
+					for _, field := range []string{"v4AvailableIPs", "v4UsingIPs", "v6AvailableIPs", "v6UsingIPs", "v4AvailableIPRange", "v4UsingIPRange", "v6AvailableIPRange", "v6UsingIPRange"} {
+						require.Contains(t, payload.Status, field, "zero and empty statistics must be explicit")
+					}
+					require.Equal(t, used, string(payload.Status["v4UsingIPs"]))
+					require.Equal(t, "18446744073709551617", string(payload.Status["v6AvailableIPs"]))
+					require.Equal(t, "0", string(payload.Status["v6UsingIPs"]))
+					require.NotContains(t, payload.Status, "ips")
+					_, hasConditions := payload.Status["conditions"]
+					require.Equal(t, conditions, hasConditions)
+					document, err = jsonpatch.MergePatch(document, data)
+					require.NoError(t, err)
+					var persisted struct {
+						Status struct {
+							IPs        []string              `json:"ips"`
+							Conditions []kubeovnv1.Condition `json:"conditions"`
+							Foreign    string                `json:"foreign"`
+						} `json:"status"`
+					}
+					require.NoError(t, json.Unmarshal(document, &persisted))
+					require.Equal(t, []string{"10.0.0.2", "10.0.0.3"}, persisted.Status.IPs)
+					require.Equal(t, "preserved", persisted.Status.Foreign)
+					require.Equal(t, kubeovnv1.ConditionType("Foreign"), persisted.Status.Conditions[0].Type)
+					return c.SubResource(resource).Patch(ctx, obj, patch, opts...)
+				},
+			})
+			pool.Status.Conditions = []kubeovnv1.Condition{{Type: "Foreign", Status: corev1.ConditionTrue}}
+			require.NoError(t, api.Status().Update(t.Context(), pool))
+			pool.Status.IPs = []string{"stale-membership"}
+			pool.Status.Ready("Prepared", "")
+			_, ok := pool.Status.V6AvailableIPs.SetString("18446744073709551617", 10)
+			require.True(t, ok)
+			for _, count := range []int64{0, 1, 0} {
+				pool.Status.V4UsingIPs.SetInt64(count)
+				used = pool.Status.V4UsingIPs.String()
+				pool.Status.V4AvailableIPs.SetInt64(2 - count)
+				if conditions {
+					require.NoError(t, w.PatchStatus(pool))
+				} else {
+					require.NoError(t, w.PatchStatistics(pool))
+				}
+			}
+			require.Equal(t, 3, patches)
+		})
+	}
 }
 
 func TestIPPoolWriterSequencesWritesWithoutOwningForeignFields(t *testing.T) {

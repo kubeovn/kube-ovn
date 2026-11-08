@@ -2,6 +2,7 @@ package controllerruntime
 
 import (
 	"context"
+	"encoding/json/v2"
 	"errors"
 	"reflect"
 	"slices"
@@ -133,9 +134,23 @@ func (w *ipPoolWriter) patchStatus(pool *kubeovnv1.IPPool, conditions bool) erro
 		}
 	}
 	if !reflect.DeepEqual(current.Status, desired.Status) {
+		// A typed merge diff cannot distinguish an absent statistic from zero.
+		// Send every statistic explicitly, without claiming membership ownership.
+		status := desired.Status
+		status.IPs = nil
+		if !conditions {
+			status.Conditions = nil
+		}
+		data, err := json.Marshal(struct {
+			Metadata map[string]string      `json:"metadata"`
+			Status   kubeovnv1.IPPoolStatus `json:"status"`
+		}{Metadata: map[string]string{"resourceVersion": current.ResourceVersion}, Status: status})
+		if err != nil {
+			return err
+		}
 		ctx, cancel := context.WithTimeout(w.ctx, ipPoolWriteTimeout)
 		defer cancel()
-		if err := w.client.Status().Patch(ctx, desired, client.MergeFromWithOptions(current, client.MergeFromWithOptimisticLock{})); err != nil {
+		if err := w.client.Status().Patch(ctx, desired, client.RawPatch(types.MergePatchType, data)); err != nil {
 			return err
 		}
 	}
