@@ -448,6 +448,20 @@ func enqueueUpdateIfTerminatingWithFinalizer(queue workqueue.TypedRateLimitingIn
 
 // Run creates and runs a new ovn controller
 func Run(ctx context.Context, config *Configuration) {
+	run(ctx, config, nil)
+}
+
+// RuntimeStarter runs a migration manager using the initialized controller's
+// shared IPAM and OVN backend. It must stop when the leader context is cancelled.
+type RuntimeStarter func(context.Context, *Controller) error
+
+// RunWithRuntime starts the migration manager after durable IPAM recovery and
+// before workers can allocate addresses. The outer leader lease owns both.
+func RunWithRuntime(ctx context.Context, config *Configuration, startRuntime RuntimeStarter) {
+	run(ctx, config, startRuntime)
+}
+
+func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter) {
 	klog.V(4).Info("Creating event broadcaster")
 	eventBroadcaster := record.NewBroadcasterWithCorrelatorOptions(record.CorrelatorOptions{BurstSize: 100})
 	eventBroadcaster.StartLogging(klog.Infof)
@@ -1246,7 +1260,7 @@ func Run(ctx context.Context, config *Configuration) {
 		}
 	}
 
-	controller.Run(ctx)
+	controller.run(ctx, startRuntime)
 }
 
 // Run will set up the event handlers for types we are interested in, as well
@@ -1254,6 +1268,10 @@ func Run(ctx context.Context, config *Configuration) {
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
 func (c *Controller) Run(ctx context.Context) {
+	c.run(ctx, nil)
+}
+
+func (c *Controller) run(ctx context.Context, startRuntime RuntimeStarter) {
 	// The init process can only be placed here if the init process do really affect the normal process of controller, such as Nodes/Pods/Subnets...
 	// Otherwise, the init process should be placed after all workers have already started working
 	if err := c.setNBGlobalOption("ls_dnat_mod_dl_dst", strconv.FormatBool(c.config.LsDnatModDlDst), true); err != nil {
@@ -1321,6 +1339,10 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
 	}
 
+	// Recovery above is the allocation barrier for the IPPool runtime backend.
+	// Await the manager before closing its shared OVN clients on shutdown.
+	runtimeDone := startControllerRuntime(ctx, c, startRuntime)
+
 	c.startKubeOVNTLSManager(ctx)
 	if c.config.EnableOVNIPSec && c.config.CertManagerIPSecCert {
 		go c.watchIPsecCertificateRequests(ctx)
@@ -1349,6 +1371,7 @@ func (c *Controller) Run(ctx context.Context) {
 	<-ctx.Done()
 	klog.Info("Shutting down workers")
 
+	<-runtimeDone
 	c.closeNB()
 	c.closeSB()
 }
@@ -1577,7 +1600,9 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	for range c.config.WorkerNum {
 		go wait.Until(runWorker("add/update subnet", c.addOrUpdateSubnetQueue, c.handleAddOrUpdateSubnet), time.Second, ctx.Done())
 	}
-	go wait.Until(runWorker("add/update ippool", c.addOrUpdateIPPoolQueue, c.handleAddOrUpdateIPPool), time.Second, ctx.Done())
+	if !controllerRuntimeIPPoolEnabled(c.config) {
+		go wait.Until(runWorker("add/update ippool", c.addOrUpdateIPPoolQueue, c.handleAddOrUpdateIPPool), time.Second, ctx.Done())
+	}
 	if !controllerRuntimeVlanEnabled(c.config) {
 		go wait.Until(runWorker("add vlan", c.addVlanQueue, c.handleAddVlan), time.Second, ctx.Done())
 	}
@@ -1666,9 +1691,13 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("update pod security", c.updatePodSecurityQueue, c.handleUpdatePodSecurity), time.Second, ctx.Done())
 
 		go wait.Until(runWorker("delete subnet", c.deleteSubnetQueue, c.handleDeleteSubnet), time.Second, ctx.Done())
-		go wait.Until(runWorker("delete ippool", c.deleteIPPoolQueue, c.handleDeleteIPPool), time.Second, ctx.Done())
+		if !controllerRuntimeIPPoolEnabled(c.config) {
+			go wait.Until(runWorker("delete ippool", c.deleteIPPoolQueue, c.handleDeleteIPPool), time.Second, ctx.Done())
+		}
 		go wait.Until(runWorker("update status of subnet", c.updateSubnetStatusQueue, c.handleUpdateSubnetStatus), time.Second, ctx.Done())
-		go wait.Until(runWorker("update status of ippool", c.updateIPPoolStatusQueue, c.handleUpdateIPPoolStatus), time.Second, ctx.Done())
+		if !controllerRuntimeIPPoolEnabled(c.config) {
+			go wait.Until(runWorker("update status of ippool", c.updateIPPoolStatusQueue, c.handleUpdateIPPoolStatus), time.Second, ctx.Done())
+		}
 		go wait.Until(runWorker("virtual port for subnet", c.syncVirtualPortsQueue, c.syncVirtualPort), time.Second, ctx.Done())
 
 		if c.config.EnableOvnLB || c.podLbSvcEnabled() {

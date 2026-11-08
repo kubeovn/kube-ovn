@@ -95,12 +95,32 @@ func trimCacheObject(obj any) (any, error) {
 
 // Run starts the migration manager under the legacy leader election.
 func Run(ctx context.Context, config *controller.Configuration) error {
+	return run(ctx, config, nil)
+}
+
+// RunWithIPPool starts the manager with the controller that has completed IPAM
+// recovery. Allocation must use this shared backend, never a second IPAM.
+func RunWithIPPool(ctx context.Context, config *controller.Configuration, backend *controller.Controller) error {
+	return run(ctx, config, backend)
+}
+
+func run(ctx context.Context, config *controller.Configuration, backend *controller.Controller) error {
 	mgr, err := NewManager(config)
 	if err != nil {
 		return err
 	}
-	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeVlan {
+	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeIPPool && backend == nil {
+		return errors.New("IPPool runtime mode requires an initialized controller backend")
+	}
+	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeVlan ||
+		config.ControllerRuntimeMode == controller.ControllerRuntimeModeIPPool {
 		if err := setupVlanReconcilers(mgr, config); err != nil {
+			return err
+		}
+	}
+	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeIPPool {
+		r := &IPPoolReconciler{Backend: backend}
+		if err := r.SetupWithManager(mgr); err != nil {
 			return err
 		}
 	}

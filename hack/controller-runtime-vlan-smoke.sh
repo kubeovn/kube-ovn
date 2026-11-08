@@ -122,9 +122,9 @@ waitSettled() {
   return 1
 }
 
-k -n kube-system get deployment kube-ovn-controller -o json | jq -e '
+k -n kube-system get deployment kube-ovn-controller -o json | jq -e --arg mode "${EXPECTED_RUNTIME_MODE:-vlan}" '
   any(.spec.template.spec.containers[]; .name == "kube-ovn-controller" and
-    any(.args[]; . == "--controller-runtime-mode=vlan"))
+    any(.args[]; . == ("--controller-runtime-mode=" + $mode)))
 ' >/dev/null
 waitFor 'default ProviderNetwork readiness' providerReady
 waitFor 'default VLAN readiness' vlanReady ovn-vlan
