@@ -329,10 +329,17 @@ func (c *Controller) handleUpdateIPPoolStatusObject(cachedIPPool *kubeovnv1.IPPo
 		return nil
 	}
 
-	if err := c.patchIPPoolStatus(ippool); err != nil {
+	if err := c.patchIPPoolStatistics(ippool); err != nil {
 		return c.recordResourceError(ippool, "UpdateStatusFailed", err)
 	}
 	return nil
+}
+
+func (c *Controller) patchIPPoolStatistics(ippool *kubeovnv1.IPPool) error {
+	if c.ipPoolWriter != nil {
+		return c.ipPoolWriter.PatchStatistics(ippool)
+	}
+	return c.patchIPPoolStatus(ippool)
 }
 
 func (c *Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason, errMsg string) error {
@@ -356,6 +363,9 @@ func (c *Controller) patchIPPoolStatusCondition(ippool *kubeovnv1.IPPool, reason
 // only writer of status.ips: patchIPPoolStatus deliberately leaves the field out, so that
 // a statistics update built from a stale informer cache cannot roll the addresses back.
 func (c *Controller) patchIPPoolIPs(ippool *kubeovnv1.IPPool, ips []string) error {
+	if c.ipPoolWriter != nil {
+		return c.ipPoolWriter.PatchIPs(ippool, ips)
+	}
 	// A matching informer snapshot does not prove that the API contains this selection.
 	bytes, err := json.Marshal(map[string]any{"status": map[string]any{"ips": ips}})
 	if err != nil {
@@ -383,6 +393,9 @@ func (c *Controller) patchIPPoolIPs(ippool *kubeovnv1.IPPool, ips []string) erro
 }
 
 func (c *Controller) patchIPPoolStatus(ippool *kubeovnv1.IPPool) error {
+	if c.ipPoolWriter != nil {
+		return c.ipPoolWriter.PatchStatus(ippool)
+	}
 	status := ippool.Status
 	status.IPs = nil // owned by patchIPPoolIPs, see the comment there
 	bytes, err := status.Bytes()
@@ -409,6 +422,9 @@ func (c *Controller) syncIPPoolFinalizer(cl client.Client) error {
 }
 
 func (c *Controller) handleAddIPPoolFinalizer(ippool *kubeovnv1.IPPool) error {
+	if c.ipPoolWriter != nil {
+		return c.ipPoolWriter.AddFinalizer(ippool)
+	}
 	if !ippool.DeletionTimestamp.IsZero() {
 		return nil
 	}
@@ -437,6 +453,9 @@ func (c *Controller) handleAddIPPoolFinalizer(ippool *kubeovnv1.IPPool) error {
 func (c *Controller) handleDelIPPoolFinalizer(ippool *kubeovnv1.IPPool) error {
 	if ippool == nil || len(ippool.GetFinalizers()) == 0 {
 		return nil
+	}
+	if c.ipPoolWriter != nil {
+		return c.ipPoolWriter.RemoveFinalizer(ippool)
 	}
 
 	newIPPool := ippool.DeepCopy()

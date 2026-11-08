@@ -193,6 +193,7 @@ type Controller struct {
 	updateIPPoolStatusQueue workqueue.TypedRateLimitingInterface[string]
 	deleteIPPoolQueue       workqueue.TypedRateLimitingInterface[*kubeovnv1.IPPool]
 	ippoolKeyMutex          keymutex.KeyMutex
+	ipPoolWriter            IPPoolWriter
 
 	ipsLister     kubeovnlister.IPLister
 	ipSynced      cache.InformerSynced
@@ -504,17 +505,20 @@ func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter
 		anpinformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
-	attachNetInformerFactory := netAttach.NewSharedInformerFactoryWithOptions(config.AttachNetClient, 0,
+	attachNetInformerFactory := netAttach.NewSharedInformerFactoryWithOptions(
+		config.AttachNetClient, 0,
 		netAttach.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}),
 	)
-	kubevirtInformerFactory := informer.NewKubeVirtInformerFactoryWithOptions(config.KubevirtClient.RestClient(), config.KubevirtClient,
+	kubevirtInformerFactory := informer.NewKubeVirtInformerFactoryWithOptions(
+		config.KubevirtClient.RestClient(), config.KubevirtClient,
 		informer.WithTransform(util.TrimManagedFields),
 	)
 	// Dedicated factory so that on clusters without the ServiceCIDR API the
 	// failed list/watch does not contaminate the main informer factory.
-	serviceCIDRInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+	serviceCIDRInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(
+		config.KubeClient, 0,
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}),
