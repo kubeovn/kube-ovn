@@ -54,7 +54,8 @@ func TestIPPoolRuntimeRetriesFailedOperationAndStops(t *testing.T) {
 		Reconciler: r,
 		Logger:     logr.Discard(),
 		RateLimiter: workqueue.NewTypedItemExponentialFailureRateLimiter[controller.IPPoolRequest](
-			time.Millisecond, 10*time.Millisecond),
+			time.Millisecond, 10*time.Millisecond,
+		),
 	})
 	require.NoError(t, err)
 	require.NoError(t, c.Watch(r.eventSource()))
