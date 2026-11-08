@@ -1,0 +1,108 @@
+diff --git a/ovsdb/ovsdb-tool.c b/ovsdb/ovsdb-tool.c
+index 7d9d3a0589..f6a89cae88 100644
+--- a/ovsdb/ovsdb-tool.c
++++ b/ovsdb/ovsdb-tool.c
+@@ -55,7 +55,7 @@ static int show_log_verbosity;
+ /* --role: RBAC role to use for "transact" and "query" commands. */
+ static const char *rbac_role;
+ 
+-/* --cid: Cluster ID for "join-cluster" command. */
++/* --cid: Cluster ID for "create-cluster" and "join-cluster" commands. */
+ static struct uuid cid;
+ 
+ /* --sid: Server ID for "join-cluster" command. */
+@@ -178,7 +178,8 @@ usage(void)
+     printf("%s: Open vSwitch database management utility\n"
+            "usage: %s [OPTIONS] COMMAND [ARG...]\n"
+            "  create [DB [SCHEMA]]    create DB with the given SCHEMA\n"
+-           "  [--election-timer=ms] create-cluster DB CONTENTS LOCAL\n"
++           "  [--election-timer=ms] [--cid=UUID] create-cluster DB "
++           "CONTENTS LOCAL\n"
+            "    create clustered DB with given CONTENTS and LOCAL address\n"
+            "  [--cid=UUID] [--sid=UUID] join-cluster DB NAME LOCAL REMOTE...\n"
+            "    join clustered DB with given NAME and LOCAL and REMOTE addrs\n"
+@@ -328,7 +329,8 @@ do_create_cluster(struct ovs_cmdl_context *ctx)
+     /* Create database file. */
+     struct json *snapshot = json_array_create_2(schema_json, data);
+     check_ovsdb_error(raft_create_cluster(db_file_name, schema->name,
+-                                          local, snapshot, election_timer));
++                                          local, snapshot, election_timer,
++                                          uuid_is_zero(&cid) ? NULL : &cid));
+     ovsdb_schema_destroy(schema);
+     json_destroy(snapshot);
+ }
+diff --git a/ovsdb/raft.c b/ovsdb/raft.c
+index aa5492bcd4..a8680e2a7e 100644
+--- a/ovsdb/raft.c
++++ b/ovsdb/raft.c
+@@ -479,12 +479,15 @@ raft_alloc(void)
+  * leader election timer for the new cluster, in miliseconds. If non-zero, it
+  * must be between 100 and 600000 inclusive.
+  *
++ * The optional cid argument sets the cluster UUID for the new cluster. If it
++ * is NULL, a random UUID is generated.
++ *
+  * Returns null if successful, otherwise an ovsdb_error describing the
+  * problem. */
+ struct ovsdb_error * OVS_WARN_UNUSED_RESULT
+ raft_create_cluster(const char *file_name, const char *name,
+                     const char *local_address, const struct json *data,
+-                    const uint64_t election_timer)
++                    const uint64_t election_timer, const struct uuid *cid)
+ {
+     /* Parse and verify validity of the local address. */
+     struct ovsdb_error *error = raft_address_validate(local_address);
+@@ -500,6 +503,10 @@ raft_create_cluster(const char *file_name, const char *name,
+         }
+     }
+ 
++    if (cid && uuid_is_zero(cid)) {
++        return ovsdb_error(NULL, "all-zero UUID is not valid cluster ID");
++    }
++
+     /* Create log file. */
+     struct ovsdb_log *log;
+     error = ovsdb_log_open(file_name, RAFT_MAGIC, OVSDB_LOG_CREATE_EXCL,
+@@ -513,7 +520,7 @@ raft_create_cluster(const char *file_name, const char *name,
+     uint64_t index = 1;
+     struct raft_header h = {
+         .sid = uuid_random(),
+-        .cid = uuid_random(),
++        .cid = cid ? *cid : uuid_random(),
+         .name = xstrdup(name),
+         .local_address = xstrdup(local_address),
+         .joining = false,
+diff --git a/ovsdb/raft.h b/ovsdb/raft.h
+index 1e582b9e04..00fcbcd921 100644
+--- a/ovsdb/raft.h
++++ b/ovsdb/raft.h
+@@ -82,7 +82,8 @@ struct ovsdb_error *raft_create_cluster(const char *file_name,
+                                         const char *name,
+                                         const char *local_address,
+                                         const struct json *snapshot,
+-                                        const uint64_t election_timer)
++                                        const uint64_t election_timer,
++                                        const struct uuid *cid)
+     OVS_WARN_UNUSED_RESULT;
+ struct ovsdb_error *raft_join_cluster(const char *file_name, const char *name,
+                                       const char *local_address,
+diff --git a/tests/ovsdb-tool.at b/tests/ovsdb-tool.at
+index cf4a0fd2ec..8b315d66a2 100644
+--- a/tests/ovsdb-tool.at
++++ b/tests/ovsdb-tool.at
+@@ -319,6 +319,15 @@ AT_CHECK([ovsdb-tool transact db '[[]]'], [1], [], [ovsdb-tool: ovsdb error: db:
+ ])
+ AT_CLEANUP
+ 
++AT_SETUP([ovsdb-tool create-cluster with explicit cluster ID])
++AT_KEYWORDS([ovsdb file positive create-cluster cluster-id])
++ordinal_schema > schema
++cid=520cf525-3772-43cc-8268-23bf5b548cf4
++AT_CHECK([ovsdb-tool --cid=$cid create-cluster db schema tcp:1.2.3.4:1234])
++AT_CHECK([ovsdb-tool db-cid db], [0], [$cid
++])
++AT_CLEANUP
++
+ AT_SETUP([ovsdb-tool schema-version, schema-cksum, schema-name])
+ AT_KEYWORDS([ovsdb file positive schema-version schema-cksum])
+ ordinal_schema > schema
