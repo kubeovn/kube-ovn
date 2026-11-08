@@ -83,14 +83,15 @@ func (c *Controller) ReconcileIPPool(ctx context.Context, request IPPoolRequest)
 		if request.Deleted == nil || request.Deleted.Name != request.Name {
 			return fmt.Errorf("IPPool delete request %q is missing its snapshot", request.Name)
 		}
-		if k8serrors.IsNotFound(err) {
+		switch {
+		case k8serrors.IsNotFound(err):
 			pool = request.Deleted.DeepCopy()
 			// The API object is gone: perform local/OVN cleanup without trying
 			// to patch a finalizer on a missing or subsequently recreated object.
 			pool.Finalizers = nil
-		} else if pool.UID != request.Deleted.UID {
+		case pool.UID != request.Deleted.UID:
 			return c.reconcileReplacedIPPool(ctx, pool, request.Deleted)
-		} else if pool.DeletionTimestamp.IsZero() {
+		case pool.DeletionTimestamp.IsZero():
 			return nil
 		}
 		return c.handleDeleteIPPoolObject(pool)
