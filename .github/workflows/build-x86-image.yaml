@@ -2426,12 +2426,16 @@ jobs:
         run: make uninstall-chart
 
   controller-runtime-vlan-smoke:
-    name: Controller-runtime VLAN Smoke
+    name: Controller-runtime Smoke (${{ matrix.mode }})
     needs:
       - prepare-kind-node-images
       - build-kube-ovn
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [vlan, ippool]
     steps:
       - uses: jlumbroso/free-disk-space@v2.0.0
         with:
@@ -2478,24 +2482,30 @@ jobs:
           pipx install jinjanator
           make kind-init-ipv4
 
-      - name: Install Kube-OVN with the controller-runtime VLAN pilot
+      - name: Install Kube-OVN with the controller-runtime pilot
         env:
-          CONTROLLER_RUNTIME_MODE: vlan
+          CONTROLLER_RUNTIME_MODE: ${{ matrix.mode }}
         run: make kind-install-underlay-ipv4
 
       - name: Verify VLAN bootstrap, tag updates, restart, and status convergence
+        env:
+          EXPECTED_RUNTIME_MODE: ${{ matrix.mode }}
         run: bash hack/controller-runtime-vlan-smoke.sh
+
+      - name: Verify IPPool allocation, statistics, restart, and deletion
+        if: matrix.mode == 'ippool'
+        run: bash hack/controller-runtime-ippool-smoke.sh
 
       - name: Collect Kind logs
         if: failure()
-        run: kind export logs --name kube-ovn controller-runtime-vlan-smoke-logs
+        run: kind export logs --name kube-ovn controller-runtime-smoke-logs
 
       - name: Upload Kind logs
         uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: controller-runtime-vlan-smoke-logs
-          path: controller-runtime-vlan-smoke-logs
+          name: controller-runtime-smoke-${{ matrix.mode }}-logs
+          path: controller-runtime-smoke-logs
 
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test

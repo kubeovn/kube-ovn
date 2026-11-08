@@ -91,17 +91,23 @@ func (c *Controller) handleAddOrUpdateIPPool(key string) error {
 		klog.Error(err)
 		return c.recordIPPoolKeyError(key, "GetIPPoolFailed", err)
 	}
+	return c.handleAddOrUpdateIPPoolObject(cachedIPPool)
+}
+
+// The caller holds ippoolKeyMutex for this object.
+func (c *Controller) handleAddOrUpdateIPPoolObject(cachedIPPool *kubeovnv1.IPPool) error {
 	klog.Infof("handle add/update ippool %s", cachedIPPool.Name)
 
+	var err error
 	ippool := cachedIPPool.DeepCopy()
 	if ippool.Spec.IPCount > 0 || len(ippool.Status.IPs) > 0 {
 		// Membership order comes from the durable snapshot, not a delayed watch event.
-		ippool, err = c.config.KubeOvnClient.KubeovnV1().IPPools().Get(context.Background(), key, metav1.GetOptions{})
+		ippool, err = c.config.KubeOvnClient.KubeovnV1().IPPools().Get(context.Background(), cachedIPPool.Name, metav1.GetOptions{})
 		if err != nil {
 			if k8serrors.IsNotFound(err) {
 				return nil
 			}
-			return c.recordIPPoolKeyError(key, "GetIPPoolFailed", err)
+			return c.recordIPPoolKeyError(cachedIPPool.Name, "GetIPPoolFailed", err)
 		}
 	}
 	if err = c.handleAddIPPoolFinalizer(ippool); err != nil {
@@ -254,6 +260,11 @@ func (c *Controller) activateIPPoolIPs(ippool *kubeovnv1.IPPool, subnet *kubeovn
 func (c *Controller) handleDeleteIPPool(ippool *kubeovnv1.IPPool) (err error) {
 	c.ippoolKeyMutex.LockKey(ippool.Name)
 	defer func() { _ = c.ippoolKeyMutex.UnlockKey(ippool.Name) }()
+	return c.handleDeleteIPPoolObject(ippool)
+}
+
+// The caller holds ippoolKeyMutex for this object.
+func (c *Controller) handleDeleteIPPoolObject(ippool *kubeovnv1.IPPool) (err error) {
 	defer func() {
 		if err != nil {
 			_ = c.recordResourceError(ippool, "DeleteFailed", fmt.Errorf("failed to delete ippool %s: %w", ippool.Name, err))
@@ -307,6 +318,11 @@ func (c *Controller) handleUpdateIPPoolStatus(key string) error {
 		return c.recordIPPoolKeyError(key, "GetIPPoolFailed", err)
 	}
 
+	return c.handleUpdateIPPoolStatusObject(cachedIPPool)
+}
+
+// The caller holds ippoolKeyMutex for this object.
+func (c *Controller) handleUpdateIPPoolStatusObject(cachedIPPool *kubeovnv1.IPPool) error {
 	ippool := cachedIPPool.DeepCopy()
 	c.updateIPPoolStatistics(ippool)
 	if reflect.DeepEqual(ippool.Status, cachedIPPool.Status) {

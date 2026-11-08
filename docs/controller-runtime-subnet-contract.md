@@ -16,7 +16,7 @@ contract is deliberately separate from production wiring: the current
 | Subnet finalizer | `syncFinalizers`/`syncSubnetFinalizer` and subnet deletion handling | Observe deletion and finalizer state | Occupied IP, U2O, OVN/API error and restart tests |
 | OVN logical switch/router, DHCP, ACL, routes and virtual ports | `handleAddOrUpdateSubnet`, `handleDeleteSubnet`, and related workers | No calls | OVN adapter transaction seam and native OVN restart tests |
 | IPAM subnet allocation and release | `c.ipam` calls from Subnet, Pod, IP and IPPool handlers | No calls | IPAM transaction seam and allocation consistency tests |
-| `IPPool` status/finalizer/address set | Existing IPPool handlers | Observe only | Migrate after the IPAM seam |
+| `IPPool` status/finalizer/address set | Existing handlers, scheduled by runtime only in opt-in `ippool` mode | Observe only | Shared recovered backend; see [IPPool scheduling](controller-runtime-ippool.md) |
 | `IP` status/finalizer/address ownership | Existing IP handlers and Pod/VIP paths | Observe only | Migrate after IPPool |
 
 The shadow must not patch a status, add/remove a finalizer, enqueue a legacy
@@ -60,8 +60,9 @@ Subnet writer:
 - rollback from a future `subnet-shadow`/`subnet-new` mode to legacy without
   duplicate cleanup or lost IPAM ownership.
 
-The next implementation step is an IPAM transaction seam. Only after that seam
-has consistency and conflict tests should IPPool status/finalizer/address-set
-ownership move. IP is last because Pod, VM, LSP and `syncIPCR` paths depend on
-it. No full OVN `envtest` or production IPAM refactor belongs in this contract
-PR.
+The IPAM transaction seam is now available. The next production increment is
+opt-in [IPPool scheduling](controller-runtime-ippool.md), which reuses the recovered
+legacy backend and its count-pool activation protocol. Further business-handler
+extraction and conflict-safe client writes remain separate steps. IP is last
+because Pod, VM, LSP and `syncIPCR` paths depend on it. Subnet writers remain
+legacy-owned in every currently supported mode.

@@ -7,9 +7,9 @@ VERSION="v1.18.0"
 # Keep the legacy implementation by default; enable the pilot explicitly.
 CONTROLLER_RUNTIME_MODE=${CONTROLLER_RUNTIME_MODE:-disabled}
 case "$CONTROLLER_RUNTIME_MODE" in
-  disabled|manager|vlan) ;;
+  disabled|manager|vlan|ippool) ;;
   *)
-    echo "CONTROLLER_RUNTIME_MODE must be disabled, manager, or vlan" >&2
+    echo "CONTROLLER_RUNTIME_MODE must be disabled, manager, vlan, or ippool" >&2
     exit 1
     ;;
 esac

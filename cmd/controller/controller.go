@@ -93,6 +93,12 @@ func CmdMain() {
 		RetryPeriod:   config.LeaderElection.RetryPeriod,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
+				if config.ControllerRuntimeMode == controller.ControllerRuntimeModeIPPool {
+					controller.RunWithRuntime(ctx, config, func(ctx context.Context, backend *controller.Controller) error {
+						return controllerruntime.RunWithIPPool(ctx, config, backend)
+					})
+					return
+				}
 				if config.ControllerRuntimeMode == controller.ControllerRuntimeModeManager ||
 					config.ControllerRuntimeMode == controller.ControllerRuntimeModeVlan {
 					// The legacy controller still owns every resource that has not
