@@ -2,8 +2,8 @@
 
 The experimental `--controller-runtime-mode=ippool` moves IPPool scheduling,
 retries, native IPPool watches and API writes to controller-runtime. The existing
-controller remains the
-shared business backend for allocation, address-set preparation and namespace
+controller remains the shared business backend for allocation, address-set
+preparation and namespace
 notifications. Its API persistence calls delegate to a native writer in this mode.
 This increment does not create another IPAM or migrate Subnet/IP writers.
 
@@ -45,8 +45,8 @@ both sources
 ```
 
 The three legacy IPPool business workers are disabled only in `ippool` mode.
-Legacy IPPool create and membership-update events are disabled in this mode. The queues
-retain explicit notifications from Subnet handlers received before recovery or
+Legacy IPPool create and membership-update events are disabled in this mode.
+The queues retain explicit notifications from Subnet handlers before recovery or
 while the manager is busy. The legacy delete handler remains a snapshot backstop:
 a pool restored into IPAM can disappear between recovery and the manager's initial
 list. A relist UID replacement also retains the old object as a deletion snapshot.
@@ -58,8 +58,8 @@ Native updates reconcile spec or ordered `status.ips` changes and terminating
 objects. Statistics, conditions, finalizers and metadata alone do not trigger
 membership reconciliation. Initial terminating objects are routed to cleanup.
 
-Statistics notifications must remain explicit: changes between pools can leave total Subnet usage
-unchanged, producing no Subnet API event. They never trigger membership activation,
+Statistics notifications must remain explicit: changes between pools can leave
+total Subnet usage unchanged, producing no Subnet API event. They never trigger membership activation,
 OVN preparation or namespace notifications for a live pool.
 
 The runtime uses one worker and retains the legacy IPPool queues' default retry
@@ -128,4 +128,5 @@ notifications and the legacy deletion backstop. Extracting an IPPool domain adap
 and making recovery atomic with native watch ownership are later increments.
 The legacy IPPool lister remains available to other resource handlers; this stage
 adds a manager cache for IPPools and does not claim a cache-memory reduction.
-The IPPool migration does not satisfy the Subnet writer's OVN, conflict, deletion and restart gates.
+The IPPool migration does not satisfy the Subnet writer's OVN, conflict, deletion
+and restart gates.
