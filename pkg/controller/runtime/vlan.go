@@ -59,6 +59,11 @@ func (r *VlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 					q.Add(request)
 				}
 			},
+			DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+				for _, request := range r.relatedVlanRequests(ctx, e.Object) {
+					q.Add(request)
+				}
+			},
 		}).
 		Watches(&kubeovnv1.Subnet{}, handler.EnqueueRequestsFromMapFunc(r.requestsForSubnet)).
 		Watches(&kubeovnv1.ProviderNetwork{}, handler.EnqueueRequestsFromMapFunc(r.requestsForProviderNetwork)).

@@ -51,6 +51,49 @@ func TestIPPoolRuntimeRecoveryGateWithoutSetup(t *testing.T) {
 	require.NoError(t, c.WaitForIPPoolRuntimeRecovery(t.Context()))
 }
 
+type recordingIPPoolKeyMutex struct {
+	lockCalls   int
+	unlockCalls int
+}
+
+func (m *recordingIPPoolKeyMutex) LockKey(string) {
+	m.lockCalls++
+}
+
+func (m *recordingIPPoolKeyMutex) UnlockKey(string) error {
+	m.unlockCalls++
+	return nil
+}
+
+func TestReconcileIPPoolWaitsForRecoveryBeforeSideEffects(t *testing.T) {
+	pool := &kubeovnv1.IPPool{Name: "pool"}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{IPPools: []*kubeovnv1.IPPool{pool}})
+	require.NoError(t, err)
+	c := fc.fakeController
+	c.beginIPPoolRuntimeRecovery()
+	keyMutex := &recordingIPPoolKeyMutex{}
+	c.ippoolKeyMutex = keyMutex
+	client := c.config.KubeOvnClient.(*kubeovnfake.Clientset)
+	getActions := func() int {
+		var count int
+		for _, action := range client.Actions() {
+			if action.GetVerb() == "get" && action.GetResource().Resource == "ippools" {
+				count++
+			}
+		}
+		return count
+	}
+	getsBefore := getActions()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	err = c.ReconcileIPPool(ctx, IPPoolRequest{Name: pool.Name, Operation: IPPoolReconcile})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.Equal(t, 0, keyMutex.lockCalls)
+	require.Equal(t, 0, keyMutex.unlockCalls)
+	require.Equal(t, getsBefore, getActions())
+}
+
 func TestIPPoolRuntimeBridgeRetainsStartupBacklog(t *testing.T) {
 	c := &Controller{
 		addOrUpdateIPPoolQueue:  workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),

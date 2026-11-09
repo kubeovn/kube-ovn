@@ -71,6 +71,14 @@ func TestVlanReconcilerWaitsForRecoveryGate(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 }
 
+func TestProviderNetworkReconcilerWaitsForRecoveryGate(t *testing.T) {
+	reconciler := &ProviderNetworkReconciler{RecoveryGate: func(context.Context) error {
+		return context.Canceled
+	}}
+	_, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: "provider-a"})
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestVlanReconcilerUpdatesStatusAndLocalnetTag(t *testing.T) {
 	vlan := &kubeovnv1.Vlan{
 		Name: "vlan-a",
@@ -151,6 +159,16 @@ func TestVlanReconcilerRequestsRelatedConflictPeers(t *testing.T) {
 	)}
 
 	requests := reconciler.relatedVlanRequests(t.Context(), changed)
+	require.Equal(t, []ctrl.Request{{Name: "peer"}}, requests)
+}
+
+func TestVlanReconcilerRequestsConflictPeersAfterDelete(t *testing.T) {
+	deleted := &kubeovnv1.Vlan{Name: "deleted", Spec: kubeovnv1.VlanSpec{ID: 100, Provider: "provider-a"}}
+	reconciler := &VlanReconciler{Client: newRuntimeClient(t,
+		&kubeovnv1.Vlan{Name: "peer", Spec: deleted.Spec},
+	)}
+
+	requests := reconciler.relatedVlanRequests(t.Context(), deleted)
 	require.Equal(t, []ctrl.Request{{Name: "peer"}}, requests)
 }
 

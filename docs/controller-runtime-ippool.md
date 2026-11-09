@@ -61,7 +61,10 @@ duplicate notifications do not add a writer. The manager waits for its IPPool
 cache to sync before processing either source. In `ippool` mode this also starts
 the existing VLAN/ProviderNetwork runtime shell during recovery, but those
 reconcilers wait on the same gate, so their first reconcile retains the prior
-post-recovery startup ordering.
+post-recovery startup ordering. The legacy VLAN deletion coordinator still
+enqueues dependent Subnets and conflicting VLANs for cleanup, but it does not
+write `ProviderNetwork.status` in `vlan` or `ippool` mode; the runtime
+ProviderNetwork reconciler is the sole status writer there.
 Native updates reconcile spec or ordered `status.ips` changes and terminating
 objects. Statistics, conditions, finalizers and metadata alone do not trigger
 membership reconciliation. Initial terminating objects are routed to cleanup.

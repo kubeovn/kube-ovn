@@ -339,16 +339,21 @@ func (c *Controller) handleDelVlan(vlan *kubeovnv1.Vlan) error {
 		}
 	}
 
-	providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
-	if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to list provider networks: %v", err)
-		return c.recordVlanError(vlan, "ListProviderNetworksFailed", err)
-	}
+	// Keep this legacy delete coordinator active in runtime modes so subnet and
+	// conflict cleanup still runs, but leave ProviderNetwork status ownership to
+	// the controller-runtime reconciler.
+	if !controllerRuntimeVlanEnabled(c.config) {
+		providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
+		if err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to list provider networks: %v", err)
+			return c.recordVlanError(vlan, "ListProviderNetworksFailed", err)
+		}
 
-	for _, pn := range providerNetworks {
-		if err = c.updateProviderNetworkStatusForVlanDeletion(pn, key); err != nil {
-			klog.Error(err)
-			return c.recordVlanError(vlan, "UpdateProviderNetworkStatusFailed", err)
+		for _, pn := range providerNetworks {
+			if err = c.updateProviderNetworkStatusForVlanDeletion(pn, key); err != nil {
+				klog.Error(err)
+				return c.recordVlanError(vlan, "UpdateProviderNetworkStatusFailed", err)
+			}
 		}
 	}
 
