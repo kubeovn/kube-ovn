@@ -109,6 +109,7 @@ type LogicalSwitch interface {
 }
 
 type LogicalSwitchPort interface {
+	ReconcileExternalLBLocalPort(subnet, uid string, enabled bool) error
 	CreateLogicalSwitchPort(lsName, lspName, ip, mac, podName, namespace string, portSecurity bool, securityGroups, vips string, enableDHCP bool, dhcpOptions *DHCPOptionsUUIDs, vpc string) error
 	CreateBareLogicalSwitchPort(lsName, lspName, ip, mac string) error
 	CreateLocalnetLogicalSwitchPort(lsName, lspName, provider, cidrBlock string, vlanID int) error

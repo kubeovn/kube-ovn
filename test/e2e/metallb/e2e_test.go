@@ -684,6 +684,66 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		}
 	}
 
+	framework.ConformanceIt("should advertise through an addressless underlay localport", func() {
+		f.SkipVersionPriorTo(1, 17, "External LB localport interfaces were introduced in v1.17.")
+		if f.HasIPv6() {
+			ginkgo.Skip("Addressless L2 speaker interfaces support IPv4-only subnets")
+		}
+		env := setupUnderlayEnvironment()
+		modified := env.subnet.DeepCopy()
+		modified.Spec.ExternalLBInterface = "mlb0"
+		env.subnet = subnetClient.PatchSync(env.subnet, modified)
+		macs := make(map[string]bool)
+		for _, nodeName := range nodeNames {
+			framework.WaitUntil(time.Second, time.Minute, func(ctx context.Context) (bool, error) {
+				node, err := cs.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+				return err == nil && node.Labels[util.ExternalLBReadyLabel("mlb0")] == "true", err
+			}, "external LB interface should be ready on "+nodeName)
+			output, stderr, err := nodeExecMap[nodeName].Exec("ip", "-o", "addr", "show", "dev", "mlb0")
+			framework.ExpectNoError(err, "%s", stderr)
+			framework.ExpectEqual(strings.TrimSpace(string(output)), "")
+			output, stderr, err = nodeExecMap[nodeName].Exec("cat", "/sys/class/net/mlb0/address")
+			framework.ExpectNoError(err, "%s", stderr)
+			mac := strings.TrimSpace(string(output))
+			framework.ExpectFalse(macs[mac], "each node must use a different MAC")
+			macs[mac] = true
+			output, stderr, err = nodeExecMap[nodeName].Exec("cat", "/proc/sys/net/ipv4/conf/mlb0/arp_ignore")
+			framework.ExpectNoError(err, "%s", stderr)
+			framework.ExpectEqual(strings.TrimSpace(string(output)), "8")
+		}
+		env.l2Advertisement.Spec.Interfaces = []string{"mlb0"}
+		env.l2Advertisement.Spec.NodeSelectors = []metav1.LabelSelector{{MatchLabels: map[string]string{util.ExternalLBReadyLabel("mlb0"): "true"}}}
+		_, err := f.MetallbClientSet.UpdateL2Advertisement(env.l2Advertisement)
+		framework.ExpectNoError(err)
+		podLabels := map[string]string{"app": "localport-lb"}
+		deploy := framework.MakeDeployment(deployName, 3, podLabels, env.annotations, "backend", framework.AgnhostImage, "")
+		deploy.Spec.Template.Spec.Containers[0].Args = []string{"netexec", "--http-port", "80"}
+		_ = deployClient.CreateSync(deploy)
+		service := framework.MakeService(serviceName, corev1.ServiceTypeLoadBalancer, nil, podLabels, []corev1.ServicePort{{Name: "http", Port: 80, TargetPort: intstr.FromInt(80), Protocol: corev1.ProtocolTCP}}, "")
+		service.Annotations = map[string]string{util.ServiceExternalIPFromSubnetAnnotation: subnetName, "metallb.io/address-pool": metallbIPPoolName}
+		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
+		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) { return len(s.Status.LoadBalancer.Ingress) != 0, nil }, "LoadBalancer address should be allocated")
+		vip := service.Status.LoadBalancer.Ingress[0].IP
+		checkReachable(f, containerID, clientIPv4, clientIPv6, vip, "80", clusterName, true, true)
+		waitUnderlayServiceFlowCleaned(nodeNames, providerNetworkName, vip, 80, 30*time.Second)
+
+		ginkgo.By("Restoring the legacy mode and removing the local interfaces")
+		modified = env.subnet.DeepCopy()
+		modified.Spec.ExternalLBInterface = ""
+		_ = subnetClient.PatchSync(env.subnet, modified)
+		for _, nodeName := range nodeNames {
+			framework.WaitUntil(time.Second, time.Minute, func(ctx context.Context) (bool, error) {
+				node, err := cs.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
+				if err != nil {
+					return false, err
+				}
+				_, _, linkErr := nodeExecMap[nodeName].Exec("ip", "link", "show", "dev", "mlb0")
+				return node.Labels[util.ExternalLBReadyLabel("mlb0")] == "" && linkErr != nil, nil
+			}, "external LB interface and readiness label should be removed")
+		}
+		waitUnderlayServiceFlowOnAnyNode(nodeNames, providerNetworkName, vip, 80, 30*time.Second)
+	})
+
 	framework.ConformanceIt("should support MetalLB underlay service lifecycle", func() {
 		env := setupUnderlayEnvironment()
 		hasInternalUnderlayVIP := !f.VersionPriorTo(1, 15)
