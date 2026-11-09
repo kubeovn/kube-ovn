@@ -38,6 +38,7 @@ type VlanReconciler struct {
 	OVN                 vlanOVN
 	DefaultProviderName string
 	Recorder            record.EventRecorder
+	RecoveryGate        func(context.Context) error
 }
 
 func (r *VlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -58,6 +59,11 @@ func (r *VlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 					q.Add(request)
 				}
 			},
+			DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+				for _, request := range r.relatedVlanRequests(ctx, e.Object) {
+					q.Add(request)
+				}
+			},
 		}).
 		Watches(&kubeovnv1.Subnet{}, handler.EnqueueRequestsFromMapFunc(r.requestsForSubnet)).
 		Watches(&kubeovnv1.ProviderNetwork{}, handler.EnqueueRequestsFromMapFunc(r.requestsForProviderNetwork)).
@@ -65,6 +71,11 @@ func (r *VlanReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *VlanReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	if r.RecoveryGate != nil {
+		if err := r.RecoveryGate(ctx); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 	vlan := &kubeovnv1.Vlan{}
 	if err := r.Get(ctx, types.NamespacedName{Name: req.Name}, vlan); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -252,6 +263,7 @@ func (r *VlanReconciler) recordEvent(vlan *kubeovnv1.Vlan, eventType, reason, me
 type ProviderNetworkReconciler struct {
 	client.Client
 	PodNamespace string
+	RecoveryGate func(context.Context) error
 }
 
 func (r *ProviderNetworkReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -287,6 +299,11 @@ func (r *ProviderNetworkReconciler) SetupWithManager(mgr ctrl.Manager) error {
 }
 
 func (r *ProviderNetworkReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+	if r.RecoveryGate != nil {
+		if err := r.RecoveryGate(ctx); err != nil {
+			return ctrl.Result{}, err
+		}
+	}
 	providerNetwork := &kubeovnv1.ProviderNetwork{}
 	if err := r.Get(ctx, types.NamespacedName{Name: req.Name}, providerNetwork); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
@@ -393,17 +410,18 @@ func (r *ProviderNetworkReconciler) requestsForAllProviderNetworks(ctx context.C
 	return requests
 }
 
-func newVlanReconciler(mgr ctrl.Manager, ovn vlanOVN, defaultProviderName string) *VlanReconciler {
+func newVlanReconciler(mgr ctrl.Manager, ovn vlanOVN, defaultProviderName string, recoveryGate func(context.Context) error) *VlanReconciler {
 	return &VlanReconciler{
 		Client:              mgr.GetClient(),
 		OVN:                 ovn,
 		DefaultProviderName: defaultProviderName,
+		RecoveryGate:        recoveryGate,
 		// Keep the pilot on the core Events API authorized by existing installations.
 		Recorder: mgr.GetEventRecorderFor("kube-ovn-vlan"), //nolint:staticcheck // The migration must not require additional events.k8s.io permissions.
 	}
 }
 
-func setupVlanReconcilers(mgr ctrl.Manager, config *controller.Configuration) error {
+func setupVlanReconcilers(mgr ctrl.Manager, config *controller.Configuration, recoveryGate func(context.Context) error) error {
 	nbClient, err := ovs.NewOvnNbClient(
 		config.OvnNbAddr,
 		config.OvnTimeout,
@@ -415,7 +433,7 @@ func setupVlanReconcilers(mgr ctrl.Manager, config *controller.Configuration) er
 		return fmt.Errorf("create OVN NB client for vlan reconcilers: %w", err)
 	}
 
-	vlanReconciler := newVlanReconciler(mgr, nbClient, config.DefaultProviderName)
+	vlanReconciler := newVlanReconciler(mgr, nbClient, config.DefaultProviderName, recoveryGate)
 	if err := vlanReconciler.SetupWithManager(mgr); err != nil {
 		nbClient.Close()
 		return fmt.Errorf("setup vlan reconciler: %w", err)
@@ -423,6 +441,7 @@ func setupVlanReconcilers(mgr ctrl.Manager, config *controller.Configuration) er
 	providerNetworkReconciler := &ProviderNetworkReconciler{
 		Client:       mgr.GetClient(),
 		PodNamespace: config.PodNamespace,
+		RecoveryGate: recoveryGate,
 	}
 	if err := providerNetworkReconciler.SetupWithManager(mgr); err != nil {
 		nbClient.Close()

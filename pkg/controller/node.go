@@ -511,7 +511,7 @@ func (c *Controller) handleNodeAnnotationsForProviderNetworks(node *v1.Node) err
 				newPn = newPn.DeepCopy()
 			}
 
-			if newPn.Status.EnsureNodeStandardConditions(node.Name) {
+			if newPn.Status.EnsureNodeStandardConditions(node.Name) && !controllerRuntimeVlanEnabled(c.config) {
 				_, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{})
 				if err != nil {
 					klog.Errorf("failed to update status of provider network %s: %v", pn.Name, err)
@@ -627,7 +627,7 @@ func (c *Controller) updateProviderNetworkForNodeDeletion(pn *kubeovnv1.Provider
 	if newPn.Status.RemoveNodeConditions(node) {
 		needUpdate = true
 	}
-	if needUpdate {
+	if needUpdate && !controllerRuntimeVlanEnabled(c.config) {
 		var err error
 		newPn, err = c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().UpdateStatus(context.Background(), newPn, metav1.UpdateOptions{})
 		if err != nil {
@@ -636,8 +636,13 @@ func (c *Controller) updateProviderNetworkForNodeDeletion(pn *kubeovnv1.Provider
 		}
 	}
 
-	// update provider network spec
-	pn, newPn = newPn, nil
+	// update provider network spec. In runtime modes, ProviderNetwork status is
+	// owned by its reconciler, so keep the original status in this spec update.
+	if !needUpdate || controllerRuntimeVlanEnabled(c.config) {
+		newPn = nil
+	} else {
+		pn, newPn = newPn, nil
+	}
 	if excludeNodes := util.RemoveString(pn.Spec.ExcludeNodes, node); len(excludeNodes) != len(pn.Spec.ExcludeNodes) {
 		newPn = pn.DeepCopy()
 		newPn.Spec.ExcludeNodes = excludeNodes

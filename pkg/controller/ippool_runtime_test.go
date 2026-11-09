@@ -24,6 +24,88 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func TestIPPoolRuntimeRecoveryGate(t *testing.T) {
+	c := &Controller{}
+	c.beginIPPoolRuntimeRecovery()
+
+	require.NotNil(t, c.ipPoolRecoveryReady)
+	select {
+	case <-c.ipPoolRecoveryReady:
+		t.Fatal("recovery gate opened before recovery completed")
+	default:
+	}
+	blocked, cancel := context.WithCancel(t.Context())
+	cancel()
+	require.ErrorIs(t, c.waitForIPPoolRuntimeRecovery(blocked), context.Canceled)
+
+	c.finishIPPoolRuntimeRecovery()
+	require.NoError(t, c.waitForIPPoolRuntimeRecovery(t.Context()))
+	c.finishIPPoolRuntimeRecovery()
+}
+
+func TestIPPoolRuntimeRecoveryGateFollowsContext(t *testing.T) {
+	c := &Controller{}
+	c.beginIPPoolRuntimeRecovery()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	require.ErrorIs(t, c.waitForIPPoolRuntimeRecovery(ctx), context.Canceled)
+}
+
+func TestIPPoolRuntimeRecoveryGateWithoutSetup(t *testing.T) {
+	c := &Controller{}
+	c.finishIPPoolRuntimeRecovery()
+	require.NoError(t, c.WaitForIPPoolRuntimeRecovery(t.Context()))
+}
+
+type recordingIPPoolKeyMutex struct {
+	lockCalls   int
+	unlockCalls int
+}
+
+func (m *recordingIPPoolKeyMutex) LockKey(string) {
+	m.lockCalls++
+}
+
+func (m *recordingIPPoolKeyMutex) UnlockKey(string) error {
+	m.unlockCalls++
+	return nil
+}
+
+func TestReconcileIPPoolWaitsForRecoveryBeforeSideEffects(t *testing.T) {
+	pool := &kubeovnv1.IPPool{Name: "pool"}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{IPPools: []*kubeovnv1.IPPool{pool}})
+	require.NoError(t, err)
+	c := fc.fakeController
+	c.beginIPPoolRuntimeRecovery()
+	keyMutex := &recordingIPPoolKeyMutex{}
+	c.ippoolKeyMutex = keyMutex
+	client := c.config.KubeOvnClient.(*kubeovnfake.Clientset)
+	getActions := func() int {
+		var count int
+		for _, action := range client.Actions() {
+			if action.GetVerb() == "get" && action.GetResource().Resource == "ippools" {
+				count++
+			}
+		}
+		return count
+	}
+	getsBefore := getActions()
+
+	require.NotNil(t, c.ipPoolRecoveryReady)
+	select {
+	case <-c.ipPoolRecoveryReady:
+		t.Fatal("recovery gate opened before recovery completed")
+	default:
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	err = c.ReconcileIPPool(ctx, IPPoolRequest{Name: pool.Name, Operation: IPPoolReconcile})
+	require.ErrorIs(t, err, context.Canceled)
+	require.Equal(t, 0, keyMutex.lockCalls)
+	require.Equal(t, 0, keyMutex.unlockCalls)
+	require.Equal(t, getsBefore, getActions())
+}
+
 func TestIPPoolRuntimeBridgeRetainsStartupBacklog(t *testing.T) {
 	c := &Controller{
 		addOrUpdateIPPoolQueue:  workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),

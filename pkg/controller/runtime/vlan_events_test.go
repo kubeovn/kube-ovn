@@ -51,7 +51,7 @@ func TestVlanReconcilerUsesExistingCoreEventPermissions(t *testing.T) {
 			t.Error("manager did not stop")
 		}
 	})
-	r := newVlanReconciler(mgr, &recordingVlanOVN{}, "provider")
+	r := newVlanReconciler(mgr, &recordingVlanOVN{}, "provider", nil)
 	vlan := &kubeovnv1.Vlan{Name: "vlan-a", UID: "vlan-uid"}
 	r.recordEvent(vlan, corev1.EventTypeNormal, "ReconcileSuccess", "Vlan reconciled successfully")
 	select {
