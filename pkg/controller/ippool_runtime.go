@@ -30,6 +30,43 @@ type IPPoolRequest struct {
 	Deleted   *kubeovnv1.IPPool
 }
 
+// beginIPPoolRuntimeRecovery closes the reconcile gate until InitIPAM and the
+// startup prerequisite syncs have rebuilt the shared allocation state.
+func (c *Controller) beginIPPoolRuntimeRecovery() {
+	if c.ipPoolRecoveryReady == nil {
+		c.ipPoolRecoveryReady = make(chan struct{})
+	}
+}
+
+// finishIPPoolRuntimeRecovery transfers the recovered IPAM state to the
+// native runtime queue. It is intentionally idempotent for startup error paths
+// and tests that exercise the handoff directly.
+func (c *Controller) finishIPPoolRuntimeRecovery() {
+	if c.ipPoolRecoveryReady == nil {
+		return
+	}
+	c.ipPoolRecoveryOnce.Do(func() { close(c.ipPoolRecoveryReady) })
+}
+
+func (c *Controller) waitForIPPoolRuntimeRecovery(ctx context.Context) error {
+	if c.ipPoolRecoveryReady == nil {
+		return nil
+	}
+	select {
+	case <-c.ipPoolRecoveryReady:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+// WaitForIPPoolRuntimeRecovery exposes the startup barrier to reconcilers that
+// share the runtime manager with IPPool. A nil gate keeps standalone tests and
+// other controller-runtime modes unchanged.
+func (c *Controller) WaitForIPPoolRuntimeRecovery(ctx context.Context) error {
+	return c.waitForIPPoolRuntimeRecovery(ctx)
+}
+
 func (c *Controller) ipPoolEventHandler() cache.ResourceEventHandlerFuncs {
 	// Retain deletion snapshots through recovery and native cache startup. An
 	// object restored into IPAM can disappear before the manager's initial list.
@@ -89,6 +126,9 @@ func forwardIPPoolQueue[T comparable](ctx context.Context, ingress workqueue.Typ
 // ReconcileIPPool is the migration backend. It uses the same IPAM, OVN clients
 // and per-pool lock as the legacy workers, with a live API read before dispatch.
 func (c *Controller) ReconcileIPPool(ctx context.Context, request IPPoolRequest) error {
+	if err := c.waitForIPPoolRuntimeRecovery(ctx); err != nil {
+		return err
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}

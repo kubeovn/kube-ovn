@@ -98,8 +98,9 @@ func Run(ctx context.Context, config *controller.Configuration) error {
 	return run(ctx, config, nil)
 }
 
-// RunWithIPPool starts the manager with the controller that has completed IPAM
-// recovery. Allocation must use this shared backend, never a second IPAM.
+// RunWithIPPool starts the manager with the controller that owns the shared
+// IPAM backend. In IPPool mode the controller may still be restoring durable
+// state; reconcile requests wait on its recovery gate before allocation.
 func RunWithIPPool(ctx context.Context, config *controller.Configuration, backend *controller.Controller) error {
 	return run(ctx, config, backend)
 }
@@ -112,9 +113,13 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeIPPool && backend == nil {
 		return errors.New("IPPool runtime mode requires an initialized controller backend")
 	}
+	var recoveryGate func(context.Context) error
+	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeIPPool {
+		recoveryGate = backend.WaitForIPPoolRuntimeRecovery
+	}
 	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeVlan ||
 		config.ControllerRuntimeMode == controller.ControllerRuntimeModeIPPool {
-		if err := setupVlanReconcilers(mgr, config); err != nil {
+		if err := setupVlanReconcilers(mgr, config, recoveryGate); err != nil {
 			return err
 		}
 	}

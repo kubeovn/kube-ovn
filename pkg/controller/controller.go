@@ -194,6 +194,12 @@ type Controller struct {
 	deleteIPPoolQueue       workqueue.TypedRateLimitingInterface[*kubeovnv1.IPPool]
 	ippoolKeyMutex          keymutex.KeyMutex
 	ipPoolWriter            IPPoolWriter
+	// ipPoolRecoveryReady keeps native IPPool events owned by the runtime
+	// controller while the shared IPAM state is being restored. The channel is
+	// created before the runtime starts and closed after startup recovery and
+	// prerequisite syncs complete.
+	ipPoolRecoveryReady chan struct{}
+	ipPoolRecoveryOnce  sync.Once
 
 	ipsLister     kubeovnlister.IPLister
 	ipSynced      cache.InformerSynced
@@ -1323,6 +1329,17 @@ func (c *Controller) run(ctx context.Context, startRuntime RuntimeStarter) {
 		klog.Errorf("failed to migrate NAT UID labels: %v", err)
 	}
 
+	// In IPPool runtime mode, start native event ownership before recovery and
+	// hold reconcile requests behind the shared IPAM recovery gate. This makes
+	// the handoff atomic: no native event can observe partially restored state,
+	// and the legacy delete snapshot remains the only recovery backstop.
+	runtimeStartedBeforeRecovery := controllerRuntimeIPPoolEnabled(c.config) && startRuntime != nil
+	var runtimeDone <-chan struct{}
+	if runtimeStartedBeforeRecovery {
+		c.beginIPPoolRuntimeRecovery()
+		runtimeDone = startControllerRuntime(ctx, c, startRuntime)
+	}
+
 	if err := c.InitIPAM(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ipam")
 	}
@@ -1338,10 +1355,15 @@ func (c *Controller) run(ctx context.Context, startRuntime RuntimeStarter) {
 	if err := c.syncVlanCR(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
 	}
+	if runtimeStartedBeforeRecovery {
+		c.finishIPPoolRuntimeRecovery()
+	}
 
 	// Recovery above is the allocation barrier for the IPPool runtime backend.
 	// Await the manager before closing its shared OVN clients on shutdown.
-	runtimeDone := startControllerRuntime(ctx, c, startRuntime)
+	if !runtimeStartedBeforeRecovery {
+		runtimeDone = startControllerRuntime(ctx, c, startRuntime)
+	}
 
 	c.startKubeOVNTLSManager(ctx)
 	if c.config.EnableOVNIPSec && c.config.CertManagerIPSecCert {

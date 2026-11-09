@@ -63,6 +63,14 @@ func newRuntimeClient(t *testing.T, objects ...client.Object) client.Client {
 		Build()
 }
 
+func TestVlanReconcilerWaitsForRecoveryGate(t *testing.T) {
+	reconciler := &VlanReconciler{RecoveryGate: func(context.Context) error {
+		return context.Canceled
+	}}
+	_, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: "vlan-a"})
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestVlanReconcilerUpdatesStatusAndLocalnetTag(t *testing.T) {
 	vlan := &kubeovnv1.Vlan{
 		Name: "vlan-a",

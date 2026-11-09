@@ -26,10 +26,12 @@ The outer controller leader lease remains the ownership boundary for both paths.
 ```text
 legacy informer caches sync
   -> InitOVN / syncIPCR / syncFinalizers
-  -> InitIPAM (restore durable count-pool address sets and membership)
-  -> syncSubnetCR / syncVlanCR
   -> install the native IPPool writer with the leader context
   -> start runtime with that same Controller backend
+  -> hold native IPPool reconcile behind the recovery gate
+  -> InitIPAM (restore durable count-pool address sets and membership)
+  -> syncSubnetCR / syncVlanCR
+  -> release the recovery gate
   -> start legacy workers for resources that have not migrated
 
 manager IPPool initial list + native create/update/delete watch
@@ -46,14 +48,20 @@ both sources
 
 The three legacy IPPool business workers are disabled only in `ippool` mode.
 Legacy IPPool create and membership-update events are disabled in this mode.
-The queues retain explicit notifications from Subnet handlers before recovery or
-while the manager is busy. The legacy delete handler remains a snapshot backstop:
-a pool restored into IPAM can disappear between recovery and the manager's initial
-list. A relist UID replacement also retains the old object as a deletion snapshot.
-Dropping those events would orphan reservations and OVN state. Native and
-legacy deletion snapshots share the same runtime worker, per-pool lock and
-idempotent replacement-aware cleanup; duplicate notifications do not add a writer.
-The manager waits for its IPPool cache to sync before processing either source.
+The manager and native watch start before recovery, but the runtime reconcile
+worker waits on a controller-owned gate until `InitIPAM`, `syncSubnetCR`, and
+`syncVlanCR` have completed. The queues retain explicit notifications from
+Subnet handlers while the gate is closed or while the manager is busy. The
+legacy delete handler remains a snapshot backstop: a pool restored into IPAM can
+disappear before the manager's initial list. A relist UID replacement also
+retains the old object as a deletion snapshot. Dropping those events would
+orphan reservations and OVN state. Native and legacy deletion snapshots share
+the same runtime worker, per-pool lock and idempotent replacement-aware cleanup;
+duplicate notifications do not add a writer. The manager waits for its IPPool
+cache to sync before processing either source. In `ippool` mode this also starts
+the existing VLAN/ProviderNetwork runtime shell during recovery, but those
+reconcilers wait on the same gate, so their first reconcile retains the prior
+post-recovery startup ordering.
 Native updates reconcile spec or ordered `status.ips` changes and terminating
 objects. Statistics, conditions, finalizers and metadata alone do not trigger
 membership reconciliation. Initial terminating objects are routed to cleanup.
@@ -124,8 +132,8 @@ No-op membership/status/finalizer writes do not patch the API.
 ## Remaining migration work
 
 This stage retains startup restoration, business handlers, explicit dependency
-notifications and the legacy deletion backstop. Extracting an IPPool domain adapter
-and making recovery atomic with native watch ownership are later increments.
+notifications and the legacy deletion backstop. Extracting an IPPool domain
+adapter remains a later increment.
 The legacy IPPool lister remains available to other resource handlers; this stage
 adds a manager cache for IPPools and does not claim a cache-memory reduction.
 The IPPool migration does not satisfy the Subnet writer's OVN, conflict, deletion

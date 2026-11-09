@@ -24,6 +24,27 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func TestIPPoolRuntimeRecoveryGate(t *testing.T) {
+	c := &Controller{}
+	c.beginIPPoolRuntimeRecovery()
+
+	blocked, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	require.ErrorIs(t, c.waitForIPPoolRuntimeRecovery(blocked), context.DeadlineExceeded)
+	cancel()
+
+	c.finishIPPoolRuntimeRecovery()
+	require.NoError(t, c.waitForIPPoolRuntimeRecovery(t.Context()))
+	c.finishIPPoolRuntimeRecovery()
+}
+
+func TestIPPoolRuntimeRecoveryGateFollowsContext(t *testing.T) {
+	c := &Controller{}
+	c.beginIPPoolRuntimeRecovery()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	require.ErrorIs(t, c.waitForIPPoolRuntimeRecovery(ctx), context.Canceled)
+}
+
 func TestIPPoolRuntimeBridgeRetainsStartupBacklog(t *testing.T) {
 	c := &Controller{
 		addOrUpdateIPPoolQueue:  workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
