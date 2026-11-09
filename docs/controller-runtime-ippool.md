@@ -1,9 +1,9 @@
 # Controller-runtime IPPool scheduling
 
-The experimental `--controller-runtime-mode=ippool` moves IPPool scheduling and
-retries to a controller-runtime reconciler. The existing controller remains the
-shared business backend: allocation, address-set preparation, membership status,
-statistics, finalizers and namespace notifications retain their existing handlers.
+The experimental `--controller-runtime-mode=ippool` moves IPPool scheduling,
+retries and API writes to controller-runtime. The existing controller remains the
+shared business backend for allocation, address-set preparation and namespace
+notifications. Its API persistence calls delegate to a native writer in this mode.
 This increment does not create another IPAM or migrate Subnet/IP writers.
 
 ## Modes and ownership
@@ -27,6 +27,7 @@ legacy informer caches sync
   -> InitOVN / syncIPCR / syncFinalizers
   -> InitIPAM (restore durable count-pool address sets and membership)
   -> syncSubnetCR / syncVlanCR
+  -> install the native IPPool writer with the leader context
   -> start runtime with that same Controller backend
   -> start legacy workers for resources that have not migrated
 
@@ -72,10 +73,42 @@ current snapshot. Address-set preparation or cleanup still precedes returning
 reservations to the default pool. Terminating objects received by an initial
 informer list follow the same cleanup path.
 
+## API write ownership and conflicts
+
+The native writer uses the manager client for writes and its uncached APIReader
+for validation and readback. It is installed once, before runtime processing
+starts, only in `ippool` mode. Startup finalizer migration remains a legacy
+compatibility step, and every other mode keeps its existing persistence path.
+
+| Operation | Fields written |
+| --- | --- |
+| Membership | `status.ips`, preserving allocation order, or clearing it in explicit mode |
+| Statistics notification | The four IP counters and four range fields only |
+| Reconciliation status | Statistics and Kube-OVN `Ready` / `Error` conditions; foreign conditions are retained |
+| Finalizer | Add/remove the Kube-OVN finalizer names; foreign finalizers are retained |
+
+Before each operation, a live read must match the reconciliation snapshot's UID,
+generation, spec and resource version. Membership/status/add-finalizer operations
+also reject terminating objects. The subsequent merge patch carries the resource
+version as an optimistic lock, so an update or same-name replacement during
+external I/O cannot receive an old snapshot's status or finalizer mutation.
+Conflicts return to the queue to restart the operation from a fresh snapshot.
+Membership reconciliation repeats selection and OVN preparation; a statistics
+notification only recomputes statistics. The writer never blindly replays old
+membership.
+
+Successful writes advance the working object's metadata for its next write while
+retaining pending conditions. A failed membership response is confirmed through a
+fresh uncached read only when UID, generation, spec and ordered membership still
+match and the object is not terminating. Otherwise activation retains its blocked
+reservations for retry. Each write/read uses a separate five-second timeout under
+the leader context; cancellation cannot confirm activation. Failed finalizer
+addition aborts before address selection, including when the object disappeared.
+No-op membership/status/finalizer writes do not patch the API.
+
 ## Remaining migration work
 
 This stage intentionally retains legacy informer ingress, startup restoration
-and business handlers. Extracting an IPPool domain adapter, migrating its writes
-to conflict-safe runtime clients, and replacing ingress with native watches are
-later increments. The scheduling migration alone does not satisfy the Subnet
-writer's OVN, conflict, deletion and restart gates.
+and business handlers. Extracting an IPPool domain adapter and replacing ingress
+with native watches are later increments. The IPPool migration does not satisfy
+the Subnet writer's OVN, conflict, deletion and restart gates.

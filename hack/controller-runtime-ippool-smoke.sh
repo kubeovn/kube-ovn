@@ -11,9 +11,21 @@ readonly smokePool="runtime-ippool-smoke-${GITHUB_RUN_ID:-$$}"
 readonly smokeSubnet="$smokePool"
 readonly smokePod="$smokePool"
 readonly addressSetName="${smokePool//-/.}"
+readonly smokeFinalizer=smoke.kubeovn.io/external-writer
 
 k() {
   kubectl --context="$smokeContext" --request-timeout=15s "$@"
+}
+
+removeSmokeFinalizer() {
+  local object index patch
+  object=$(k get ippool "$smokePool" --ignore-not-found -o json) || return 1
+  [[ -n $object ]] || return 0
+  index=$(jq -r --arg finalizer "$smokeFinalizer" '(.metadata.finalizers // []) | index($finalizer)' <<<"$object")
+  [[ $index != null ]] || return 0
+  patch=$(jq -nc --arg path "/metadata/finalizers/$index" --arg value "$smokeFinalizer" \
+    '[{op:"test", path:$path, value:$value}, {op:"remove", path:$path}]')
+  k patch ippool "$smokePool" --type=json -p "$patch"
 }
 
 finish() {
@@ -28,6 +40,7 @@ finish() {
       ovn-nbctl --timeout=10 list address_set "$addressSetName" || true
   fi
   k delete pod "$smokePod" --ignore-not-found --timeout=60s || true
+  removeSmokeFinalizer || true
   k delete ippool "$smokePool" --ignore-not-found --timeout=60s || true
   k delete subnet "$smokeSubnet" --ignore-not-found --timeout=60s || true
   exit "$result"
@@ -60,6 +73,19 @@ poolUsage() {
   k get ippool "$smokePool" -o json | jq -e --argjson used "$1" --argjson available "$2" '
     (.status.v4UsingIPs | tonumber) == $used and
     (.status.v4AvailableIPs | tonumber) == $available
+  ' >/dev/null
+}
+
+externalFieldsPreserved() {
+  k get ippool "$smokePool" -o json | jq -e --arg finalizer "$smokeFinalizer" '
+    ((.metadata.finalizers // []) | index($finalizer) != null) and
+    any(.status.conditions[]?; .type == "SmokeExternal" and .status == "True" and .reason == "ExternalWriter")
+  ' >/dev/null
+}
+
+controllerFinalized() {
+  k get ippool "$smokePool" -o json | jq -e --arg finalizer "$smokeFinalizer" '
+    .metadata.deletionTimestamp != null and .metadata.finalizers == [$finalizer]
   ' >/dev/null
 }
 
@@ -148,6 +174,12 @@ waitFor 'count-based IPPool activation and finalizer' poolReady 2
 waitFor 'OVN address set matches durable membership' addressSetMatches
 waitFor 'initial IPPool statistics' poolUsage 0 2
 initialMembership=$(membership)
+# Represent another controller's fields. Native status/finalizer writes must
+# preserve them through allocation, growth, restart and our own finalization.
+k patch ippool "$smokePool" --type=json -p \
+  "[{\"op\":\"add\",\"path\":\"/metadata/finalizers/-\",\"value\":\"$smokeFinalizer\"}]"
+k patch ippool "$smokePool" --subresource=status --type=json -p \
+  '[{"op":"add","path":"/status/conditions/-","value":{"type":"SmokeExternal","status":"True","reason":"ExternalWriter","lastUpdateTime":"2026-01-01T00:00:00Z","lastTransitionTime":"2026-01-01T00:00:00Z"}}]'
 
 k create -f - <<EOF_POD
 apiVersion: v1
@@ -167,6 +199,7 @@ EOF_POD
 k wait pod "$smokePod" --for=condition=Ready --timeout=180s
 waitFor 'Pod allocated from the activated pool' podInPool
 waitFor 'statistics-only allocation notification' poolUsage 1 1
+waitFor 'external fields preserved after statistics update' externalFieldsPreserved
 waitSettled
 
 k -n kube-system rollout restart deployment/kube-ovn-controller
@@ -178,10 +211,14 @@ membership | jq -e --argjson original "$initialMembership" '.[0:2] == $original'
 waitFor 'restored and expanded OVN address set' addressSetMatches
 waitFor 'restored Pod ownership and expanded statistics' poolUsage 1 2
 waitFor 'Pod retains pool address after controller restart' podInPool
+waitFor 'external fields preserved after restart and membership growth' externalFieldsPreserved
 waitSettled
 
 k delete pod "$smokePod" --wait=true --timeout=60s
 waitFor 'statistics-only release notification' poolUsage 0 3
-k delete ippool "$smokePool" --wait=true --timeout=60s
+k delete ippool "$smokePool" --wait=false
+waitFor 'controller finalization preserves external finalizer' controllerFinalized
 waitFor 'IPPool finalization removes OVN address set' addressSetDeleted
+removeSmokeFinalizer
+k wait --for=delete "ippool/$smokePool" --timeout=60s
 printf '%s\n' 'controller-runtime IPPool smoke passed'
