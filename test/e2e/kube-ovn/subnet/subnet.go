@@ -17,6 +17,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	e2enode "k8s.io/kubernetes/test/e2e/framework/node"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
 
@@ -1090,7 +1091,7 @@ var _ = framework.Describe("[group:subnet]", func() {
 		}, fmt.Sprintf("OVN LB record for subnet %s to sync", subnet.Name))
 	})
 
-	framework.ConformanceIt("should support subnet add gateway event and metrics", func() {
+	framework.ConformanceIt("should support subnet add gateway event and metrics", k8sframework.WithSerial(), func() {
 		f.SkipVersionPriorTo(1, 12, "Support for subnet add gateway event and metrics is introduced in v1.12")
 		nftablesMode := f.IsGatewayNFTables()
 
