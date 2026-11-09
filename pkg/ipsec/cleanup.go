@@ -105,7 +105,9 @@ func (a *Agent) restoreCleanupProtection(ctx context.Context) (bool, error) {
 			return false, err
 		}
 	}
-	row, err := a.ovs.IPsecDatapathConfiguration()
+	// The datapath is validated only once protection is restored or armed; a
+	// fresh node, such as one with hardware offload, has nothing to clean up.
+	row, err := a.ovs.IPsecConfiguration()
 	if err != nil {
 		return false, err
 	}
@@ -145,7 +147,13 @@ func (a *Agent) restoreCleanupProtection(ctx context.Context) (bool, error) {
 		if state.Phase != DisablingPhase && state.Phase != CleanupPhase && state.Phase != ReleasePhase {
 			return false, errors.New("IPsec cleanup is waiting for disable authorization")
 		}
+		if _, err := a.ovs.IPsecDatapathConfiguration(); err != nil {
+			return false, err
+		}
 		return true, a.ensureProtection(string(node.UID), row.ExternalIDs["system-id"])
+	}
+	if _, err := a.ovs.IPsecDatapathConfiguration(); err != nil {
+		return false, err
 	}
 	if !reservation.Required && reservation.Released {
 		// A crash after the guarded release but before the API receipt patch
