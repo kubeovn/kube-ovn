@@ -45,6 +45,12 @@ func TestIPPoolRuntimeRecoveryGateFollowsContext(t *testing.T) {
 	require.ErrorIs(t, c.waitForIPPoolRuntimeRecovery(ctx), context.Canceled)
 }
 
+func TestIPPoolRuntimeRecoveryGateWithoutSetup(t *testing.T) {
+	c := &Controller{}
+	c.finishIPPoolRuntimeRecovery()
+	require.NoError(t, c.WaitForIPPoolRuntimeRecovery(t.Context()))
+}
+
 func TestIPPoolRuntimeBridgeRetainsStartupBacklog(t *testing.T) {
 	c := &Controller{
 		addOrUpdateIPPoolQueue:  workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
