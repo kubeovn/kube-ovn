@@ -15,6 +15,8 @@ ADD patches/ovsdb-tool-add-optional-server-id-parameter-for-join-cluster-command
 ADD patches/fix-memory-leak-in-qos.patch $SRC_DIR
 ADD patches/ovsdb-tool-add-command-fix-cluster.patch $SRC_DIR
 ADD patches/increase-the-default-probe-to-60s.patch $SRC_DIR
+ADD patches/ovn-controller-localport-arp-only.patch $SRC_DIR
+ADD patches/ovn-northd-dnat-lsp.patch $SRC_DIR
 ADD patches/ovn-controller-do-not-send-garp-on-localnet-for-kube-ovn-ports.patch $SRC_DIR
 
 RUN apt update && apt install -y git curl
@@ -46,6 +48,9 @@ RUN cd /usr/src/ && git clone -b branch-26.03 --depth=1 https://github.com/ovn-o
     cd ovn && \
     # ovn-controller: do not send GARP on localnet for Kube-OVN ports
     git apply --unidiff-zero $SRC_DIR/ovn-controller-do-not-send-garp-on-localnet-for-kube-ovn-ports.patch && \
+    # match the underlay localport and backend DNAT behavior of the normal image
+    git apply --unidiff-zero $SRC_DIR/ovn-northd-dnat-lsp.patch && \
+    git apply $SRC_DIR/ovn-controller-localport-arp-only.patch && \
     ovn_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?ovn\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovn_commit}\2\3/" configure.ac
 

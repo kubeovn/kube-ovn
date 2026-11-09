@@ -1,3 +1,27 @@
+diff --git a/controller/binding.c b/controller/binding.c
+index 56aa904be9..bd08646008 100644
+--- a/controller/binding.c
++++ b/controller/binding.c
+@@ -1981,6 +1981,19 @@ consider_localport(const struct sbrec_port_binding *pb,
+         remove_related_lport(pb, b_ctx_out);
+     }
+
++    if (smap_get_bool(&pb->options, "localnet-arp-only", false) &&
++        is_lbinding_set(lbinding)) {
++        /* An ARP-only speaker must work on a provider node even when this
++         * switch has no ordinary VIF on the node.  Do not claim the shared
++         * port binding or change the default localport behavior. */
++        add_local_datapath(b_ctx_in->sbrec_datapath_binding_by_key,
++                           b_ctx_in->sbrec_port_binding_by_datapath,
++                           b_ctx_in->sbrec_port_binding_by_name,
++                           pb->datapath, b_ctx_in->chassis_rec,
++                           b_ctx_out->local_datapaths,
++                           b_ctx_out->tracked_dp_bindings);
++    }
++
+     /* Add all localnet ports to local_ifaces so that we allocate ct zones
+      * for them. */
+     update_local_lports(pb->logical_port, b_ctx_out, LPORT_STATUS_BOUND);
 diff --git a/controller/physical.c b/controller/physical.c
 index fd8a4be7f6..1005f40ce4 100644
 --- a/controller/physical.c
@@ -5,7 +29,7 @@ index fd8a4be7f6..1005f40ce4 100644
 @@ -2478,7 +2478,9 @@ consider_port_binding(const struct physical_ctx *ctx,
          load_logical_ingress_metadata(binding, &zone_ids, ctx->n_encap_ips,
                                        ctx->encap_ips, ofpacts_p, true);
- 
+
 -        if (type == LP_LOCALPORT) {
 +        bool localnet_arp_only = type == LP_LOCALPORT &&
 +            smap_get_bool(&binding->options, "localnet-arp-only", false);
@@ -16,7 +40,7 @@ index fd8a4be7f6..1005f40ce4 100644
 @@ -2489,6 +2491,23 @@ consider_port_binding(const struct physical_ctx *ctx,
                          tag ? 150 : 100, binding->header_.uuid.parts[0],
                          &match, ofpacts_p, &binding->header_.uuid);
- 
+
 +        if (localnet_arp_only) {
 +            /* An addressless L2 speaker may advertise its per-chassis MAC on
 +             * the physical network. Never admit IP traffic from this port.
@@ -35,12 +59,12 @@ index fd8a4be7f6..1005f40ce4 100644
 +        }
 +
          if (!tag && (type == LP_LOCALNET || type == LP_L2GATEWAY)) {
- 
+
              /* Add a second flow for frames that lack any 802.1Q
 @@ -2532,6 +2551,21 @@ consider_port_binding(const struct physical_ctx *ctx,
                          binding->header_.uuid.parts[0],
                          &match, ofpacts_p, &binding->header_.uuid);
- 
+
 +        if (localnet_arp_only) {
 +            /* Unknown addresses must not deliver flooded service data to the
 +             * host stack. Only raw ARP reaches the L2 speaker. */
@@ -66,7 +90,7 @@ index 22d0e21766..b6d87d1add 100644
 @@ -14392,6 +14392,37 @@ AT_CHECK([tcpdump -vnne -r hv1/br-phys_n1-tx.pcap arp[[24:4]]=0x0a000064 | wc -l
  0
  ],[ignore])
- 
+
 +dnl The explicit ARP-only option allows an addressless L2 speaker to use
 +dnl a per-chassis MAC, without changing default localport behavior.
 +check ovn-nbctl lsp-set-addresses lp unknown

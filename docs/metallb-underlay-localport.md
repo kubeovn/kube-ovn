@@ -16,6 +16,8 @@ Its locally administered unicast MAC is derived from the node name and Subnet
 UID, so advertisements from different nodes do not move the same source MAC
 between physical switch ports. In OVN 26.03 localports do not learn logical FDB
 entries; the per-node MACs therefore do not compete for one logical FDB entry.
+The explicit option also makes the logical switch local to a node that has only
+the speaker port, allowing Cluster-policy election without a local backend.
 
 ## Requirements
 
@@ -106,9 +108,25 @@ Unit tests cover scope validation, stable distinct MACs, kernel isolation errors
 address removal, provider eligibility, foreign interface ownership, LSP drift
 repair and deletion, and removal of cached flows after Subnet deletion or mode
 changes. The OVN patch extends the existing localport gARP regression with option
-enablement and removal. The MetalLB E2E suite includes an IPv4 localport case
-that checks distinct addressless interfaces, external access without source NAT,
-absence of provider Service flows and cleanup when returning to legacy mode.
+enablement and removal. The base-image CI runs a dummy-datapath packet test
+against the packaged OVN/OVS binaries before uploading normal and DPDK images.
+It verifies default ARP suppression, bidirectional ARP with the option enabled,
+bidirectional IP drops, no localport FDB learning, backend destination MAC
+rewrite, suppression after removing the option, and ARP advertisement from a
+switch with no local backend or router port. The same test runs in the
+scheduled base-image workflows, including normal multi-architecture builds.
 
-A real cluster run with the rebuilt base image is required before graduating
-this implementation from draft, including VIP failover and interface recreation.
+The MetalLB E2E suite runs the IPv4 localport case using the rebuilt image from
+the PR build. It checks unique addressless interfaces and kernel isolation,
+external access without source NAT, a local backend on the advertising node,
+absence of provider Service flows, VIP migration between two backend nodes,
+accidental address removal, internal port recreation, CNI daemon restart,
+provider exclusion and restoration, Cluster-policy access through a node without
+a local backend, and cleanup and connectivity after returning
+to legacy mode. Leader checks use ServiceL2Status and the speaker MAC rather than
+the physical NIC MAC used by the legacy integration. IPv6 and dual-stack jobs
+continue to exercise the legacy cases and skip this IPv4-only feature.
+
+A passing real-cluster E2E run with the rebuilt base image is required before
+graduating this implementation from draft. Building the suite alone does not
+validate MetalLB election or the lifecycle scenarios above.

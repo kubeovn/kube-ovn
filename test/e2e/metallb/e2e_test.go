@@ -690,58 +690,90 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			ginkgo.Skip("Addressless L2 speaker interfaces support IPv4-only subnets")
 		}
 		env := setupUnderlayEnvironment()
+		legacyAdvertisement := env.l2Advertisement.DeepCopy()
 		modified := env.subnet.DeepCopy()
 		modified.Spec.ExternalLBInterface = "mlb0"
 		env.subnet = subnetClient.PatchSync(env.subnet, modified)
-		macs := make(map[string]bool)
-		for _, nodeName := range nodeNames {
-			framework.WaitUntil(time.Second, time.Minute, func(ctx context.Context) (bool, error) {
-				node, err := cs.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-				return err == nil && node.Labels[util.ExternalLBReadyLabel("mlb0")] == "true", err
-			}, "external LB interface should be ready on "+nodeName)
-			output, stderr, err := nodeExecMap[nodeName].Exec("ip", "-o", "addr", "show", "dev", "mlb0")
-			framework.ExpectNoError(err, "%s", stderr)
-			framework.ExpectEqual(strings.TrimSpace(string(output)), "")
-			output, stderr, err = nodeExecMap[nodeName].Exec("cat", "/sys/class/net/mlb0/address")
-			framework.ExpectNoError(err, "%s", stderr)
-			mac := strings.TrimSpace(string(output))
-			framework.ExpectFalse(macs[mac], "each node must use a different MAC")
-			macs[mac] = true
-			output, stderr, err = nodeExecMap[nodeName].Exec("cat", "/proc/sys/net/ipv4/conf/mlb0/arp_ignore")
-			framework.ExpectNoError(err, "%s", stderr)
-			framework.ExpectEqual(strings.TrimSpace(string(output)), "8")
+		localport := &localportTestEnvironment{
+			f: f, nodes: nodeExecMap, names: nodeNames, macs: make(map[string]string),
+			containerID: containerID, clientIPv4: clientIPv4, clientIPv6: clientIPv6,
+			clusterName: clusterName, providerNetworkName: providerNetworkName,
 		}
+		localport.waitAllInterfaces()
+		localport.checkLogicalPort(subnetName, true)
 		env.l2Advertisement.Spec.Interfaces = []string{"mlb0"}
 		env.l2Advertisement.Spec.NodeSelectors = []metav1.LabelSelector{{MatchLabels: map[string]string{util.ExternalLBReadyLabel("mlb0"): "true"}}}
-		_, err := f.MetallbClientSet.UpdateL2Advertisement(env.l2Advertisement)
+		var err error
+		env.l2Advertisement, err = f.MetallbClientSet.UpdateL2Advertisement(env.l2Advertisement)
 		framework.ExpectNoError(err)
 		podLabels := map[string]string{"app": "localport-lb"}
-		deploy := framework.MakeDeployment(deployName, 3, podLabels, env.annotations, "backend", framework.AgnhostImage, "")
+		deploy := framework.MakeDeployment(deployName, 2, podLabels, env.annotations, "backend", framework.AgnhostImage, "")
+		deploy.Spec.Template.Spec.Affinity = &corev1.Affinity{
+			PodAntiAffinity: &corev1.PodAntiAffinity{
+				RequiredDuringSchedulingIgnoredDuringExecution: []corev1.PodAffinityTerm{{
+					LabelSelector: &metav1.LabelSelector{MatchLabels: podLabels},
+					TopologyKey:   "kubernetes.io/hostname",
+				}},
+			},
+		}
 		deploy.Spec.Template.Spec.Containers[0].Args = []string{"netexec", "--http-port", "80"}
 		_ = deployClient.CreateSync(deploy)
 		service := framework.MakeService(serviceName, corev1.ServiceTypeLoadBalancer, nil, podLabels, []corev1.ServicePort{{Name: "http", Port: 80, TargetPort: intstr.FromInt(80), Protocol: corev1.ProtocolTCP}}, "")
 		service.Annotations = map[string]string{util.ServiceExternalIPFromSubnetAnnotation: subnetName, "metallb.io/address-pool": metallbIPPoolName}
 		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
 		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) { return len(s.Status.LoadBalancer.Ingress) != 0, nil }, "LoadBalancer address should be allocated")
-		vip := service.Status.LoadBalancer.Ingress[0].IP
-		checkReachable(f, containerID, clientIPv4, clientIPv6, vip, "80", clusterName, true, true)
-		waitUnderlayServiceFlowCleaned(nodeNames, providerNetworkName, vip, 80, 30*time.Second)
+		localport.service = service
+		vipNode := localport.checkTraffic()
+
+		ginkgo.By("Moving the VIP to another node with a local backend")
+		backends, err := cs.CoreV1().Pods(f.Namespace.Name).List(context.Background(), metav1.ListOptions{LabelSelector: "app=localport-lb"})
+		framework.ExpectNoError(err)
+		framework.ExpectHaveLen(backends.Items, 2)
+		newVIPNode := backends.Items[0].Spec.NodeName
+		if newVIPNode == vipNode {
+			newVIPNode = backends.Items[1].Spec.NodeName
+		}
+		framework.ExpectNotEqual(newVIPNode, vipNode)
+		env.l2Advertisement.Spec.NodeSelectors[0].MatchLabels["kubernetes.io/hostname"] = newVIPNode
+		env.l2Advertisement, err = f.MetallbClientSet.UpdateL2Advertisement(env.l2Advertisement)
+		framework.ExpectNoError(err)
+		waitVIPNodeFromService(f, serviceName, newVIPNode, time.Minute)
+		framework.ExpectEqual(localport.checkTraffic(), newVIPNode)
+		localport.checkRecovery(newVIPNode)
+		localport.checkProviderExclusion(vipNode)
+
+		ginkgo.By("Advertising a Cluster-policy VIP from a node without a local backend")
+		var noBackendNode string
+		for _, name := range nodeNames {
+			if name != backends.Items[0].Spec.NodeName && name != backends.Items[1].Spec.NodeName {
+				noBackendNode = name
+				break
+			}
+		}
+		framework.ExpectNotEmpty(noBackendNode, "Cluster-policy coverage requires a node without a backend")
+		modifiedService := service.DeepCopy()
+		modifiedService.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeCluster
+		service = serviceClient.Patch(service, modifiedService)
+		localport.service = service
+		env.l2Advertisement.Spec.NodeSelectors[0].MatchLabels["kubernetes.io/hostname"] = noBackendNode
+		env.l2Advertisement, err = f.MetallbClientSet.UpdateL2Advertisement(env.l2Advertisement)
+		framework.ExpectNoError(err)
+		waitVIPNodeFromService(f, serviceName, noBackendNode, time.Minute)
+		framework.ExpectEqual(localport.checkTraffic(), noBackendNode)
 
 		ginkgo.By("Restoring the legacy mode and removing the local interfaces")
 		modified = env.subnet.DeepCopy()
 		modified.Spec.ExternalLBInterface = ""
 		_ = subnetClient.PatchSync(env.subnet, modified)
 		for _, nodeName := range nodeNames {
-			framework.WaitUntil(time.Second, time.Minute, func(ctx context.Context) (bool, error) {
-				node, err := cs.CoreV1().Nodes().Get(ctx, nodeName, metav1.GetOptions{})
-				if err != nil {
-					return false, err
-				}
-				_, _, linkErr := nodeExecMap[nodeName].Exec("ip", "link", "show", "dev", "mlb0")
-				return node.Labels[util.ExternalLBReadyLabel("mlb0")] == "" && linkErr != nil, nil
-			}, "external LB interface and readiness label should be removed")
+			localport.waitInterfaceRemoved(nodeName)
 		}
-		waitUnderlayServiceFlowOnAnyNode(nodeNames, providerNetworkName, vip, 80, 30*time.Second)
+		localport.checkLogicalPort(subnetName, false)
+		env.l2Advertisement.Spec = legacyAdvertisement.Spec
+		_, err = f.MetallbClientSet.UpdateL2Advertisement(env.l2Advertisement)
+		framework.ExpectNoError(err)
+		waitUnderlayServiceFlowOnAnyNode(nodeNames, providerNetworkName, service.Status.LoadBalancer.Ingress[0].IP, 80, 30*time.Second)
+		checkReachable(f, containerID, clientIPv4, clientIPv6, service.Status.LoadBalancer.Ingress[0].IP, "80", clusterName, true, false)
 	})
 
 	framework.ConformanceIt("should support MetalLB underlay service lifecycle", func() {
