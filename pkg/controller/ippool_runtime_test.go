@@ -28,9 +28,15 @@ func TestIPPoolRuntimeRecoveryGate(t *testing.T) {
 	c := &Controller{}
 	c.beginIPPoolRuntimeRecovery()
 
-	blocked, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	require.ErrorIs(t, c.waitForIPPoolRuntimeRecovery(blocked), context.DeadlineExceeded)
+	require.NotNil(t, c.ipPoolRecoveryReady)
+	select {
+	case <-c.ipPoolRecoveryReady:
+		t.Fatal("recovery gate opened before recovery completed")
+	default:
+	}
+	blocked, cancel := context.WithCancel(t.Context())
 	cancel()
+	require.ErrorIs(t, c.waitForIPPoolRuntimeRecovery(blocked), context.Canceled)
 
 	c.finishIPPoolRuntimeRecovery()
 	require.NoError(t, c.waitForIPPoolRuntimeRecovery(t.Context()))
@@ -85,10 +91,16 @@ func TestReconcileIPPoolWaitsForRecoveryBeforeSideEffects(t *testing.T) {
 	}
 	getsBefore := getActions()
 
-	ctx, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
-	defer cancel()
+	require.NotNil(t, c.ipPoolRecoveryReady)
+	select {
+	case <-c.ipPoolRecoveryReady:
+		t.Fatal("recovery gate opened before recovery completed")
+	default:
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
 	err = c.ReconcileIPPool(ctx, IPPoolRequest{Name: pool.Name, Operation: IPPoolReconcile})
-	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 0, keyMutex.lockCalls)
 	require.Equal(t, 0, keyMutex.unlockCalls)
 	require.Equal(t, getsBefore, getActions())
