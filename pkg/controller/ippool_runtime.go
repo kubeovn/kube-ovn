@@ -6,6 +6,7 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -29,9 +30,28 @@ type IPPoolRequest struct {
 	Deleted   *kubeovnv1.IPPool
 }
 
-// StartIPPoolEventBridge transfers the existing unbounded ingress to the
-// manager's queue. Informers may enqueue before recovery or while the manager
-// is busy; no event is dropped and retries belong exclusively to the manager.
+func (c *Controller) ipPoolEventHandler() cache.ResourceEventHandlerFuncs {
+	// Retain deletion snapshots through recovery and native cache startup. An
+	// object restored into IPAM can disappear before the manager's initial list.
+	h := cache.ResourceEventHandlerFuncs{DeleteFunc: c.enqueueDeleteIPPool}
+	if !controllerRuntimeIPPoolEnabled(c.config) {
+		h.AddFunc = c.enqueueAddIPPool
+		h.UpdateFunc = c.enqueueUpdateIPPool
+	} else {
+		h.UpdateFunc = func(oldObj, newObj any) {
+			oldPool := oldObj.(*kubeovnv1.IPPool)
+			if oldPool.UID != newObj.(*kubeovnv1.IPPool).UID {
+				// Relisting can report a replacement as an update.
+				c.enqueueDeleteIPPool(oldPool)
+			}
+		}
+	}
+	return h
+}
+
+// StartIPPoolEventBridge transfers explicit Subnet membership/statistics
+// notifications and legacy deletion snapshots to the manager queue. The delete
+// backstop covers objects lost between IPAM recovery and the native initial list.
 func (c *Controller) StartIPPoolEventBridge(ctx context.Context, enqueue func(IPPoolRequest)) {
 	context.AfterFunc(ctx, func() {
 		c.addOrUpdateIPPoolQueue.ShutDown()
