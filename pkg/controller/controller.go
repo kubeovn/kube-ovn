@@ -1061,11 +1061,7 @@ func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter
 		util.LogFatalAndExit(err, "failed to add subnet event handler")
 	}
 
-	if _, err = ippoolInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddIPPool,
-		UpdateFunc: controller.enqueueUpdateIPPool,
-		DeleteFunc: controller.enqueueDeleteIPPool,
-	}); err != nil {
+	if _, err = ippoolInformer.Informer().AddEventHandler(controller.ipPoolEventHandler()); err != nil {
 		util.LogFatalAndExit(err, "failed to add ippool event handler")
 	}
 

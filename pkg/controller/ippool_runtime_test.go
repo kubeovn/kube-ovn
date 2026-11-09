@@ -40,7 +40,7 @@ func TestIPPoolRuntimeBridgeRetainsStartupBacklog(t *testing.T) {
 		c.deleteIPPoolQueue.Add(&kubeovnv1.IPPool{Name: name, UID: types.UID(name)})
 	}
 	// No manager consumes events until recovery is complete. The ingress is
-	// unbounded and must retain every operation, including deletion snapshots.
+	// unbounded and retains Subnet notifications and pre-manager deletions.
 	received := make(chan IPPoolRequest, count*3)
 	c.StartIPPoolEventBridge(ctx, func(request IPPoolRequest) { received <- request })
 	seen := make(map[string]bool)
@@ -359,5 +359,45 @@ func TestStartControllerRuntimeSharesBackendAndStops(t *testing.T) {
 	case <-startControllerRuntime(t.Context(), c, nil):
 	default:
 		t.Fatal("disabled mode must not wait for a runtime")
+	}
+}
+
+func TestIPPoolRuntimeIngressOwnership(t *testing.T) {
+	for _, mode := range []string{ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool} {
+		t.Run(mode, func(t *testing.T) {
+			c := &Controller{
+				config:                 &Configuration{ControllerRuntimeMode: mode},
+				addOrUpdateIPPoolQueue: workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
+				deleteIPPoolQueue:      workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[*kubeovnv1.IPPool]()),
+			}
+			t.Cleanup(c.addOrUpdateIPPoolQueue.ShutDown)
+			t.Cleanup(c.deleteIPPoolQueue.ShutDown)
+			h := c.ipPoolEventHandler()
+			pool := &kubeovnv1.IPPool{Name: "pool", UID: "uid", Spec: kubeovnv1.IPPoolSpec{IPCount: 1}}
+			h.OnAdd(pool, true)
+			updated := pool.DeepCopy()
+			updated.Name = "updated"
+			updated.Spec.IPCount = 2
+			h.OnUpdate(pool, updated)
+			if mode == ControllerRuntimeModeIPPool {
+				require.Zero(t, c.addOrUpdateIPPoolQueue.Len(), "native watch owns create/update events")
+			} else {
+				require.Equal(t, 2, c.addOrUpdateIPPoolQueue.Len(), "other modes retain legacy ingress")
+			}
+			h.OnDelete(cache.DeletedFinalStateUnknown{Obj: pool})
+			require.Equal(t, 1, c.deleteIPPoolQueue.Len(), "pre-manager deletion must survive in every mode")
+			snapshot, _ := c.deleteIPPoolQueue.Get()
+			require.Equal(t, pool, snapshot)
+			c.deleteIPPoolQueue.Done(snapshot)
+			if mode == ControllerRuntimeModeIPPool {
+				replacement := pool.DeepCopy()
+				replacement.UID = "replacement"
+				h.OnUpdate(pool, replacement)
+				require.Equal(t, 1, c.deleteIPPoolQueue.Len(), "relist replacement must preserve old UID cleanup")
+				replaced, _ := c.deleteIPPoolQueue.Get()
+				defer c.deleteIPPoolQueue.Done(replaced)
+				require.Equal(t, pool, replaced)
+			}
+		})
 	}
 }
