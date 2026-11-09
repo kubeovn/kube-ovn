@@ -127,7 +127,7 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 		if err := backend.SetIPPoolWriter(&ipPoolWriter{ctx: ctx, client: mgr.GetClient(), reader: mgr.GetAPIReader()}); err != nil {
 			return err
 		}
-		r := &IPPoolReconciler{Backend: backend}
+		r := &IPPoolReconciler{Events: backend, Adapter: backend}
 		if err := r.SetupWithManager(mgr); err != nil {
 			return err
 		}

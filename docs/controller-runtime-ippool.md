@@ -135,8 +135,10 @@ No-op membership/status/finalizer writes do not patch the API.
 ## Remaining migration work
 
 This stage retains startup restoration, business handlers, explicit dependency
-notifications and the legacy deletion backstop. Extracting an IPPool domain
-adapter remains a later increment.
+notifications and the legacy deletion backstop. The runtime now depends on
+separate event-source and domain-adapter interfaces; the legacy controller
+still implements both. Extracting the adapter's business methods into a
+standalone domain module remains a later increment.
 The legacy IPPool lister remains available to other resource handlers; this stage
 adds a manager cache for IPPools and does not claim a cache-memory reduction.
 The IPPool migration does not satisfy the Subnet writer's OVN, conflict, deletion

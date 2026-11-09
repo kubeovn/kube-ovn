@@ -21,6 +21,22 @@ type fakeIPPoolBackend struct {
 	reconcile func(context.Context, controller.IPPoolRequest) error
 }
 
+type fakeIPPoolEventSource struct {
+	start func(context.Context, func(controller.IPPoolRequest))
+}
+
+func (s *fakeIPPoolEventSource) StartIPPoolEventBridge(ctx context.Context, enqueue func(controller.IPPoolRequest)) {
+	s.start(ctx, enqueue)
+}
+
+type fakeIPPoolDomainAdapter struct {
+	reconcile func(context.Context, controller.IPPoolRequest) error
+}
+
+func (a *fakeIPPoolDomainAdapter) ReconcileIPPool(ctx context.Context, request controller.IPPoolRequest) error {
+	return a.reconcile(ctx, request)
+}
+
 func (b *fakeIPPoolBackend) StartIPPoolEventBridge(ctx context.Context, enqueue func(controller.IPPoolRequest)) {
 	b.start(ctx, enqueue)
 }
@@ -49,7 +65,7 @@ func TestIPPoolRuntimeRetriesFailedOperationAndStops(t *testing.T) {
 			return nil
 		},
 	}
-	r := &IPPoolReconciler{Backend: backend}
+	r := &IPPoolReconciler{Events: backend, Adapter: backend}
 	c, err := runtimecontroller.NewTypedUnmanaged("ippool-runtime-retry-test", runtimecontroller.TypedOptions[controller.IPPoolRequest]{
 		Reconciler: r,
 		Logger:     logr.Discard(),
@@ -80,6 +96,32 @@ func TestIPPoolRuntimeRetriesFailedOperationAndStops(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("runtime controller did not stop with the leader context")
 	}
+}
+
+func TestIPPoolRuntimeUsesSeparateEventSourceAndDomainAdapter(t *testing.T) {
+	request := controller.IPPoolRequest{Name: "pool", Operation: controller.IPPoolStatus}
+	var received controller.IPPoolRequest
+	events := &fakeIPPoolEventSource{start: func(_ context.Context, enqueue func(controller.IPPoolRequest)) {
+		enqueue(request)
+	}}
+	adapter := &fakeIPPoolDomainAdapter{reconcile: func(_ context.Context, got controller.IPPoolRequest) error {
+		received = got
+		return nil
+	}}
+	reconciler := &IPPoolReconciler{Events: events, Adapter: adapter}
+
+	_, err := reconciler.Reconcile(t.Context(), request)
+	require.NoError(t, err)
+	require.Equal(t, request, received)
+
+	queue := workqueue.NewTypedRateLimitingQueue[controller.IPPoolRequest](workqueue.DefaultTypedControllerRateLimiter[controller.IPPoolRequest]())
+	t.Cleanup(queue.ShutDown)
+	require.NoError(t, reconciler.eventSource().Start(t.Context(), queue))
+	queued, shutdown := queue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, request, queued)
+	queue.Done(queued)
+	queue.Forget(queued)
 }
 
 func TestIPPoolRuntimeRejectsMissingSharedBackend(t *testing.T) {
