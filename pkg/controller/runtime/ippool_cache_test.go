@@ -113,7 +113,7 @@ func TestIPPoolNativeWatchWaitsForCacheAndStops(t *testing.T) {
 	}
 }
 
-func writeIPPoolWatchEvent(t *testing.T, ctx context.Context, w http.ResponseWriter, eventType string, pool *kubeovnv1.IPPool) bool {
+func writeIPPoolWatchEvent(ctx context.Context, t *testing.T, w http.ResponseWriter, eventType string, pool *kubeovnv1.IPPool) bool {
 	t.Helper()
 	data, err := json.Marshal(struct {
 		Type   string            `json:"type"`
@@ -191,9 +191,9 @@ func (api *ipPoolWatchServer) serve(t *testing.T, w http.ResponseWriter, req *ht
 			TypeMeta: live.TypeMeta, ResourceVersion: "1",
 			Annotations: map[string]string{metav1.InitialEventsAnnotationKey: "true"},
 		}
-		if !writeIPPoolWatchEvent(t, req.Context(), w, "ADDED", live) ||
-			!writeIPPoolWatchEvent(t, req.Context(), w, "ADDED", terminating) ||
-			!writeIPPoolWatchEvent(t, req.Context(), w, "BOOKMARK", bookmark) {
+		if !writeIPPoolWatchEvent(req.Context(), t, w, "ADDED", live) ||
+			!writeIPPoolWatchEvent(req.Context(), t, w, "ADDED", terminating) ||
+			!writeIPPoolWatchEvent(req.Context(), t, w, "BOOKMARK", bookmark) {
 			return
 		}
 	}
@@ -210,7 +210,7 @@ func (api *ipPoolWatchServer) serve(t *testing.T, w http.ResponseWriter, req *ht
 		case <-req.Context().Done():
 			return
 		case pool := <-api.watchEvents:
-			if !writeIPPoolWatchEvent(t, req.Context(), w, "MODIFIED", pool) {
+			if !writeIPPoolWatchEvent(req.Context(), t, w, "MODIFIED", pool) {
 				return
 			}
 		}
