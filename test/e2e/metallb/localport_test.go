@@ -183,7 +183,11 @@ func (t *localportTestEnvironment) checkProviderExclusion(nodeName string) {
 		current := client.Get(t.providerNetworkName)
 		restored := current.DeepCopy()
 		restored.Spec.ExcludeNodes = original.Spec.ExcludeNodes
-		client.PatchSync(current, restored, nil, time.Minute)
+		// The restore patch is accepted by the API, and waitInterface below
+		// observes the controller's actual recovery result. Waiting for a
+		// ResourceVersion change is racy here because restoring the original
+		// exclusion can leave the provider network status unchanged.
+		client.Patch(current, restored)
 		t.waitInterface(nodeName)
 		t.checkTraffic()
 	}()
