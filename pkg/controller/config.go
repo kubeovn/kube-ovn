@@ -255,7 +255,7 @@ func ParseFlags() (*Configuration, error) {
 		argDefaultVlanName             = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name")
 		argDefaultVlanID               = pflag.Int("default-vlan-id", 1, "The default vlan id")
 		argLsDnatModDlDst              = pflag.Bool("ls-dnat-mod-dl-dst", true, "Set ethernet destination address for DNAT on logical switch")
-		argLsCtSkipDstLportIPs         = pflag.Bool("ls-ct-skip-dst-lport-ips", true, "Skip conntrack for direct traffic between lports")
+		argLsCtSkipDstLportIPs         = pflag.Bool("ls-ct-skip-dst-lport-ips", false, "Skip conntrack for direct traffic between lports")
 		argPodNicType                  = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
 		argEnableOvnLB                 = pflag.Bool("enable-lb", true, "Enable the OVN load balancer")
 		argEnableNP                    = pflag.Bool("enable-np", true, "Enable network policy support")
