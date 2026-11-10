@@ -1,11 +1,14 @@
 package controllerruntime
 
 import (
+	"slices"
 	"testing"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestClassifySubnetDependencyEvent(t *testing.T) {
@@ -75,6 +78,50 @@ func TestObserveSubnetHasNoWriteSideEffects(t *testing.T) {
 	}
 	if observed.ResourceVersion != subnet.ResourceVersion || observed.Generation != subnet.Generation {
 		t.Fatalf("observation mutated subnet metadata: before=%+v after=%+v", subnet.ObjectMeta, observed.ObjectMeta)
+	}
+}
+
+func TestObserveSubnetReportsDeletionAndFinalizerState(t *testing.T) {
+	deletionTimestamp := metav1.Now()
+	tests := []struct {
+		name                    string
+		deleting                bool
+		finalizers              []string
+		wantControllerFinalizer bool
+		wantDeprecatedFinalizer bool
+	}{
+		{name: "active current finalizer", finalizers: []string{util.KubeOVNControllerFinalizer}, wantControllerFinalizer: true},
+		{name: "terminating current finalizer", deleting: true, finalizers: []string{util.KubeOVNControllerFinalizer}, wantControllerFinalizer: true},
+		{name: "terminating deprecated finalizer", deleting: true, finalizers: []string{util.DeprecatedFinalizerName}, wantDeprecatedFinalizer: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			subnet := testSubnet("")
+			subnet.Finalizers = append([]string(nil), test.finalizers...)
+			if test.deleting {
+				subnet.DeletionTimestamp = &deletionTimestamp
+			}
+			api := newRuntimeClient(t, subnet)
+
+			got, err := ObserveSubnet(t.Context(), api, subnet.Name)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got.Deleting != test.deleting ||
+				got.HasControllerFinalizer != test.wantControllerFinalizer ||
+				got.HasDeprecatedFinalizer != test.wantDeprecatedFinalizer {
+				t.Fatalf("unexpected observation: %+v", got)
+			}
+
+			var observed kubeovnv1.Subnet
+			if err := api.Get(t.Context(), clientKey(subnet.Name), &observed); err != nil {
+				t.Fatal(err)
+			}
+			if observed.DeletionTimestamp == nil != (subnet.DeletionTimestamp == nil) ||
+				!slices.Equal(observed.Finalizers, subnet.Finalizers) {
+				t.Fatalf("observation mutated deletion metadata: before=%+v after=%+v", subnet.ObjectMeta, observed.ObjectMeta)
+			}
+		})
 	}
 }
 
