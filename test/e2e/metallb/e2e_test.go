@@ -451,6 +451,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			[]string{},
 		)
 		subnet.Spec.EnableExternalLBAddress = true
+		subnet.Spec.EnableLb = new(true)
 		subnet = subnetClient.CreateSync(subnet)
 
 		return &underlayTestEnvironment{
