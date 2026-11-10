@@ -721,6 +721,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		_ = deployClient.CreateSync(deploy)
 		service := framework.MakeService(serviceName, corev1.ServiceTypeLoadBalancer, nil, podLabels, []corev1.ServicePort{{Name: "http", Port: 80, TargetPort: intstr.FromInt(80), Protocol: corev1.ProtocolTCP}}, "")
 		service.Annotations = map[string]string{util.ServiceExternalIPFromSubnetAnnotation: subnetName, "metallb.io/address-pool": metallbIPPoolName}
+		service.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicySingleStack)
 		service.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
 		service = serviceClient.CreateSync(service, func(s *corev1.Service) (bool, error) { return len(s.Status.LoadBalancer.Ingress) != 0, nil }, "LoadBalancer address should be allocated")
 		localport.service = service
@@ -752,6 +753,16 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			}
 		}
 		framework.ExpectNotEmpty(noBackendNode, "Cluster-policy coverage requires a node without a backend")
+		node, err := cs.CoreV1().Nodes().Get(context.Background(), noBackendNode, metav1.GetOptions{})
+		framework.ExpectNoError(err)
+		if value, excluded := node.Labels[corev1.LabelNodeExcludeBalancers]; excluded {
+			// Kind excludes the control-plane node from external load balancers.
+			// Allow MetalLB to announce here for this scenario, then restore it.
+			ginkgo.DeferCleanup(func() {
+				framework.ExpectNoError(util.PatchLabels(cs.CoreV1().Nodes(), noBackendNode, util.KVPatch{corev1.LabelNodeExcludeBalancers: value}))
+			})
+			framework.ExpectNoError(util.PatchLabels(cs.CoreV1().Nodes(), noBackendNode, util.KVPatch{corev1.LabelNodeExcludeBalancers: nil}))
+		}
 		modifiedService := service.DeepCopy()
 		modifiedService.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeCluster
 		service = serviceClient.Patch(service, modifiedService)
