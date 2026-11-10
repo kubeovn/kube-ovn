@@ -2,10 +2,13 @@ package controllerruntime
 
 import (
 	"context"
+	"slices"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -41,6 +44,23 @@ func (r *SubnetShadowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		For(&kubeovnv1.Subnet{}).
 		Watches(&kubeovnv1.Vlan{}, handler.EnqueueRequestsFromMapFunc(r.requestsForVlan)).
 		Watches(&kubeovnv1.ProviderNetwork{}, handler.EnqueueRequestsFromMapFunc(r.requestsForProviderNetwork)).
+		Watches(&kubeovnv1.IP{}, handler.Funcs{
+			CreateFunc: func(_ context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+				for _, request := range r.requestsForIP(e.Object) {
+					q.Add(request)
+				}
+			},
+			UpdateFunc: func(_ context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+				for _, request := range r.requestsForIP(e.ObjectOld, e.ObjectNew) {
+					q.Add(request)
+				}
+			},
+			DeleteFunc: func(_ context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+				for _, request := range r.requestsForIP(e.Object) {
+					q.Add(request)
+				}
+			},
+		}).
 		Complete(r)
 }
 
@@ -92,6 +112,34 @@ func (r *SubnetShadowReconciler) requestsForProviderNetwork(ctx context.Context,
 		if _, ok := providers[subnet.Spec.Vlan]; ok {
 			requests = append(requests, ctrl.Request{Name: subnet.Name})
 		}
+	}
+	return requests
+}
+
+func (r *SubnetShadowReconciler) requestsForIP(objects ...client.Object) []ctrl.Request {
+	names := make(map[string]struct{})
+	for _, obj := range objects {
+		ip, ok := obj.(*kubeovnv1.IP)
+		if !ok || ip == nil {
+			continue
+		}
+		if ip.Spec.Subnet != "" {
+			names[ip.Spec.Subnet] = struct{}{}
+		}
+		for _, subnet := range ip.Spec.AttachSubnets {
+			if subnet != "" {
+				names[subnet] = struct{}{}
+			}
+		}
+	}
+	ordered := make([]string, 0, len(names))
+	for name := range names {
+		ordered = append(ordered, name)
+	}
+	slices.Sort(ordered)
+	requests := make([]ctrl.Request, 0, len(ordered))
+	for _, name := range ordered {
+		requests = append(requests, ctrl.Request{Name: name})
 	}
 	return requests
 }
