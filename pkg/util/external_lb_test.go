@@ -28,6 +28,13 @@ func TestExternalLBInterface(t *testing.T) {
 		"foreign provider": func(s *kubeovnv1.Subnet) { s.Spec.Provider = "example.net" },
 		"LB disabled":      func(s *kubeovnv1.Subnet) { s.Spec.EnableLb = new(false) },
 	}
+	for _, provider := range []string{OvnProvider, "", "nad.namespace.ovn"} {
+		t.Run("OVN provider "+provider, func(t *testing.T) {
+			changed := subnet.DeepCopy()
+			changed.Spec.Provider = provider
+			require.NoError(t, ValidateExternalLBInterface(*changed))
+		})
+	}
 	for name, mutate := range tests {
 		t.Run(name, func(t *testing.T) {
 			changed := subnet.DeepCopy()

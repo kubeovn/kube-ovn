@@ -41,7 +41,7 @@ func ValidateExternalLBInterface(subnet kubeovnv1.Subnet) error {
 	if !subnet.Spec.EnableExternalLBAddress || subnet.Spec.Vlan == "" || CheckProtocol(subnet.Spec.CIDRBlock) != kubeovnv1.ProtocolIPv4 {
 		return errors.New("externalLBInterface requires enableExternalLBAddress and an IPv4-only underlay subnet")
 	}
-	if subnet.Spec.Routed || subnet.Spec.Provider != "" && subnet.Spec.Provider != CniTypeName || subnet.Spec.LogicalGateway || subnet.Spec.U2OInterconnection || subnet.Spec.Vpc != "" && subnet.Spec.Vpc != DefaultVpc || subnet.Spec.EnableLb != nil && !*subnet.Spec.EnableLb {
+	if subnet.Spec.Routed || !IsOvnProvider(subnet.Spec.Provider) || subnet.Spec.LogicalGateway || subnet.Spec.U2OInterconnection || subnet.Spec.Vpc != "" && subnet.Spec.Vpc != DefaultVpc || subnet.Spec.EnableLb != nil && !*subnet.Spec.EnableLb {
 		return errors.New("externalLBInterface requires OVN load balancing in the default VPC without logicalGateway or u2oInterconnection")
 	}
 	return nil
