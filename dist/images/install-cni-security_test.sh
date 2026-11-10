@@ -25,7 +25,12 @@ grep -Fq 'setcap CAP_NET_ADMIN+eip /kube-ovn/vpc-egress-gateway-observer' <<<"$s
 ! grep -Eq 'setcap .*CAP_SYS_ADMIN.*kube-ovn-daemon' <<<"$setcap_stage"
 
 final_stage=$(sed -n '/^FROM kubeovn\/kube-ovn-base:\$BASE_TAG$/,$p' "$IMAGE_DOCKERFILE")
-! grep -Eq '(^|[[:space:]])setcap[[:space:]]' <<<"$final_stage"
+# The final stage must normalize the OVS capability when it is built from an
+# older base image. Keep this contract exact so a broad capability grant cannot
+# be reintroduced silently.
+grep -Fq 'setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE+eip "$(readlink -f "$(which ovs-vswitchd)")"' <<<"$final_stage"
+[[ "$(grep -Ec '(^|[[:space:]])setcap[[:space:]]' <<<"$final_stage")" == 1 ]]
+! grep -Eq 'setcap .*CAP_SYS_ADMIN' <<<"$final_stage"
 grep -Fq 'test "$(getcap /kube-ovn/kube-ovn-tproxy)" = "/kube-ovn/kube-ovn-tproxy cap_sys_admin=ep"' <<<"$final_stage"
 grep -Fq 'test "$(getcap /kube-ovn/kube-ovn)" = ""' <<<"$final_stage"
 grep -Fq 'test "$(getcap /kube-ovn/kube-ovn-acl-sample)" = ""' <<<"$final_stage"
