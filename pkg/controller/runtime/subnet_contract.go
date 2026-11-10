@@ -10,6 +10,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 // SubnetEventPath describes the legacy work that a future Subnet shadow may
@@ -56,15 +57,18 @@ func SubnetAllocationGate(vlan *kubeovnv1.Vlan, providerNetwork *kubeovnv1.Provi
 // intentionally unwired seam: constructing an observation has no status,
 // finalizer, OVN, IPAM, or queue side effects.
 type SubnetShadowObservation struct {
-	Name              string
-	Generation        int64
-	VlanName          string
-	VlanFound         bool
-	VlanConflict      bool
-	ProviderFound     bool
-	ProviderReady     bool
-	ProviderHasVlan   bool
-	AllocationAllowed bool
+	Name                   string
+	Generation             int64
+	Deleting               bool
+	HasControllerFinalizer bool
+	HasDeprecatedFinalizer bool
+	VlanName               string
+	VlanFound              bool
+	VlanConflict           bool
+	ProviderFound          bool
+	ProviderReady          bool
+	ProviderHasVlan        bool
+	AllocationAllowed      bool
 }
 
 // ObserveSubnet reads a Subnet and its VLAN dependency without mutating any
@@ -77,9 +81,12 @@ func ObserveSubnet(ctx context.Context, reader client.Reader, name string) (Subn
 		return SubnetShadowObservation{}, fmt.Errorf("get subnet %s: %w", name, err)
 	}
 	observation := SubnetShadowObservation{
-		Name:       subnet.Name,
-		Generation: subnet.Generation,
-		VlanName:   subnet.Spec.Vlan,
+		Name:                   subnet.Name,
+		Generation:             subnet.Generation,
+		Deleting:               !subnet.DeletionTimestamp.IsZero(),
+		HasControllerFinalizer: slices.Contains(subnet.Finalizers, util.KubeOVNControllerFinalizer),
+		HasDeprecatedFinalizer: slices.Contains(subnet.Finalizers, util.DeprecatedFinalizerName),
+		VlanName:               subnet.Spec.Vlan,
 	}
 	if subnet.Spec.Vlan == "" {
 		observation.AllocationAllowed = true
