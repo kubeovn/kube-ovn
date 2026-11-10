@@ -38,7 +38,8 @@ COPY --chmod=0644 THIRD-PARTY-NOTICES /usr/share/doc/kube-ovn/THIRD-PARTY-NOTICE
 COPY --chmod=0644 licenses /usr/share/doc/kube-ovn/licenses
 
 COPY --from=setcap /kube-ovn /kube-ovn
-RUN test "$(getcap /kube-ovn/kube-ovn-tproxy)" = "/kube-ovn/kube-ovn-tproxy cap_sys_admin=ep" && \
+RUN setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE+eip "$(readlink -f "$(which ovs-vswitchd)")" && \
+    test "$(getcap /kube-ovn/kube-ovn-tproxy)" = "/kube-ovn/kube-ovn-tproxy cap_sys_admin=ep" && \
     test "$(getcap /kube-ovn/kube-ovn)" = "" && \
     test "$(getcap /kube-ovn/kube-ovn-acl-sample)" = "" && \
     test "$(getcap /kube-ovn/kube-ovn-acl-sample-listener)" = "/kube-ovn/kube-ovn-acl-sample-listener cap_net_admin,cap_net_raw=eip" && \

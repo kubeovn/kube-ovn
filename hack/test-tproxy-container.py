@@ -53,6 +53,9 @@ def validate(manifest, enabled, recompute_enabled=False):
         ovs_pod = item["spec"]["template"]["spec"]
         assert all(volume["name"] != "host-netns" for volume in ovs_pod["volumes"])
         for container in ovs_pod["containers"]:
+            if container["name"] == "openvswitch":
+                capabilities = container.get("securityContext", {}).get("capabilities", {})
+                assert "SYS_ADMIN" not in capabilities.get("add", [])
             assert all(mount["mountPath"] != "/var/run/netns" for mount in container.get("volumeMounts", []))
 
 
@@ -92,6 +95,11 @@ def main():
     dockerfile = (ROOT / "dist/images/Dockerfile").read_text()
     assert "setcap CAP_SYS_ADMIN+ep /kube-ovn/kube-ovn-tproxy" in dockerfile
     assert 'getcap /kube-ovn/kube-ovn-tproxy)" = "/kube-ovn/kube-ovn-tproxy cap_sys_admin=ep"' in dockerfile
+    base_dockerfile = (ROOT / "dist/images/Dockerfile.base").read_text()
+    assert "setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE+eip $(readlink -f $(which ovs-vswitchd))" in base_dockerfile
+    assert "setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd))" not in base_dockerfile
+    image_dockerfile = (ROOT / "dist/images/Dockerfile").read_text()
+    assert 'setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE+eip "$(readlink -f "$(which ovs-vswitchd)")"' in image_dockerfile
     print("TProxy enabled/disabled, DPDK, installer and capability separation checks passed.")
 
 

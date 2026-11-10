@@ -8662,7 +8662,6 @@ spec:
                 - NET_BIND_SERVICE
                 - NET_RAW
                 - SYS_NICE
-                - SYS_ADMIN
           env:
             - name: ENABLE_OVN_IPSEC
               value: "$ENABLE_OVN_IPSEC"
