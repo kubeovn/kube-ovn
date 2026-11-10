@@ -18,7 +18,7 @@ func TestSubnetShadowReconcilerIsReadOnly(t *testing.T) {
 	reader := newRuntimeClient(t, subnet, vlan, provider)
 	reconciler := &SubnetShadowReconciler{Reader: reader}
 
-	result, err := reconciler.Reconcile(t.Context(), ctrl.Request{NamespacedName: types.NamespacedName{Name: subnet.Name}})
+	result, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: subnet.Name})
 	require.NoError(t, err)
 	require.Zero(t, result)
 
@@ -34,14 +34,14 @@ func TestSubnetShadowReconcilerMapsDependencies(t *testing.T) {
 	provider := testProvider("provider-a", true, "vlan-a")
 	reconciler := &SubnetShadowReconciler{Reader: newRuntimeClient(t, subnet, vlan, provider)}
 
-	require.Equal(t, []ctrl.Request{{NamespacedName: types.NamespacedName{Name: subnet.Name}}},
+	require.Equal(t, []ctrl.Request{{Name: subnet.Name}},
 		reconciler.requestsForVlan(t.Context(), vlan))
-	require.Equal(t, []ctrl.Request{{NamespacedName: types.NamespacedName{Name: subnet.Name}}},
+	require.Equal(t, []ctrl.Request{{Name: subnet.Name}},
 		reconciler.requestsForProviderNetwork(t.Context(), provider))
 }
 
 func TestSubnetShadowReconcilerIgnoresDeletedSubnet(t *testing.T) {
 	reconciler := &SubnetShadowReconciler{Reader: newRuntimeClient(t)}
-	_, err := reconciler.Reconcile(t.Context(), ctrl.Request{NamespacedName: types.NamespacedName{Name: "missing"}})
+	_, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: "missing"})
 	require.NoError(t, err)
 }

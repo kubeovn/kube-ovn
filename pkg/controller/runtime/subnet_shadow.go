@@ -4,7 +4,6 @@ import (
 	"context"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -58,7 +57,7 @@ func (r *SubnetShadowReconciler) requestsForVlan(ctx context.Context, obj client
 	requests := make([]ctrl.Request, 0)
 	for _, subnet := range subnets.Items {
 		if subnet.Spec.Vlan == vlan.Name {
-			requests = append(requests, ctrl.Request{NamespacedName: types.NamespacedName{Name: subnet.Name}})
+			requests = append(requests, ctrl.Request{Name: subnet.Name})
 		}
 	}
 	return requests
@@ -91,7 +90,7 @@ func (r *SubnetShadowReconciler) requestsForProviderNetwork(ctx context.Context,
 	requests := make([]ctrl.Request, 0)
 	for _, subnet := range subnets.Items {
 		if _, ok := providers[subnet.Spec.Vlan]; ok {
-			requests = append(requests, ctrl.Request{NamespacedName: types.NamespacedName{Name: subnet.Name}})
+			requests = append(requests, ctrl.Request{Name: subnet.Name})
 		}
 	}
 	return requests
