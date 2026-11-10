@@ -62,6 +62,7 @@ type SubnetShadowObservation struct {
 	Deleting               bool
 	HasControllerFinalizer bool
 	HasDeprecatedFinalizer bool
+	Status                 SubnetStatusObservation
 	VlanName               string
 	VlanFound              bool
 	VlanConflict           bool
@@ -69,6 +70,23 @@ type SubnetShadowObservation struct {
 	ProviderReady          bool
 	ProviderHasVlan        bool
 	AllocationAllowed      bool
+}
+
+// SubnetStatusObservation is a copy of the status surfaces that a future
+// status-only path may compare. Big integer counters are represented as
+// strings so the observation cannot share mutable numeric state with the API
+// object.
+type SubnetStatusObservation struct {
+	Conditions         []kubeovnv1.Condition
+	V4AvailableIPs     string
+	V4AvailableIPRange string
+	V4UsingIPs         string
+	V4UsingIPRange     string
+	V6AvailableIPs     string
+	V6AvailableIPRange string
+	V6UsingIPs         string
+	V6UsingIPRange     string
+	GatewayMAC         string
 }
 
 // ObserveSubnet reads a Subnet and its VLAN dependency without mutating any
@@ -86,7 +104,19 @@ func ObserveSubnet(ctx context.Context, reader client.Reader, name string) (Subn
 		Deleting:               !subnet.DeletionTimestamp.IsZero(),
 		HasControllerFinalizer: slices.Contains(subnet.Finalizers, util.KubeOVNControllerFinalizer),
 		HasDeprecatedFinalizer: slices.Contains(subnet.Finalizers, util.DeprecatedFinalizerName),
-		VlanName:               subnet.Spec.Vlan,
+		Status: SubnetStatusObservation{
+			Conditions:         slices.Clone(subnet.Status.Conditions),
+			V4AvailableIPs:     subnet.Status.V4AvailableIPs.String(),
+			V4AvailableIPRange: subnet.Status.V4AvailableIPRange,
+			V4UsingIPs:         subnet.Status.V4UsingIPs.String(),
+			V4UsingIPRange:     subnet.Status.V4UsingIPRange,
+			V6AvailableIPs:     subnet.Status.V6AvailableIPs.String(),
+			V6AvailableIPRange: subnet.Status.V6AvailableIPRange,
+			V6UsingIPs:         subnet.Status.V6UsingIPs.String(),
+			V6UsingIPRange:     subnet.Status.V6UsingIPRange,
+			GatewayMAC:         subnet.Status.GatewayMAC,
+		},
+		VlanName: subnet.Spec.Vlan,
 	}
 	if subnet.Spec.Vlan == "" {
 		observation.AllocationAllowed = true
