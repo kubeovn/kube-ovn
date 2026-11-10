@@ -5,10 +5,25 @@ import json
 import os
 from pathlib import Path
 import re
+import shutil
 import struct
 import subprocess
 import tempfile
 import time
+
+
+def start_daemon(name, directory, env, *args):
+    # Release images set file capabilities on OVS daemons. Executing those
+    # files with an empty capability bounding set fails before main(). Run
+    # identical binary contents without copying the security.capability xattr.
+    executable = directory / name
+    source = shutil.which(name, path=env.get("PATH"))
+    if source is None:
+        raise FileNotFoundError("daemon not found in PATH: " + name)
+    shutil.copyfile(source, executable)
+    executable.chmod(0o755)
+    with (directory / (name + ".log")).open("w") as log:
+        return subprocess.Popen([str(executable), *args], env=env, stdout=log, stderr=log)
 
 
 def frames(path):
@@ -39,9 +54,7 @@ def run_test(directory):
         return subprocess.check_output(args, env=env, text=True, stderr=subprocess.STDOUT, timeout=20)
 
     def start(name, *args):
-        with (directory / (name + ".log")).open("w") as log:
-            process = subprocess.Popen([name, *args], env=env, stdout=log, stderr=log)
-            processes.append(process)
+        processes.append(start_daemon(name, directory, env, *args))
 
     def wait(description, condition):
         deadline = time.monotonic() + 20
@@ -189,7 +202,10 @@ def run_test(directory):
         if isinstance(error, subprocess.CalledProcessError):
             print(error.output, flush=True)
         for table in (0, 47, 65):
-            print(flows(table), flush=True)
+            try:
+                print(flows(table), flush=True)
+            except (OSError, subprocess.SubprocessError) as diagnostic_error:
+                print("OpenFlow diagnostics unavailable: " + str(diagnostic_error), flush=True)
         for log in directory.glob("*.log"):
             print(log.name + ":\n" + log.read_text(), flush=True)
         raise

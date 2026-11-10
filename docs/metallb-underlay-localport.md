@@ -110,6 +110,9 @@ repair and deletion, and removal of cached flows after Subnet deletion or mode
 changes. The OVN patch extends the existing localport gARP regression with option
 enablement and removal. The base-image CI runs a dummy-datapath packet test
 against the packaged OVN/OVS binaries before uploading normal and DPDK images.
+The test runs byte-identical daemon copies from an executable temporary filesystem
+without inheriting file capability xattrs, so it can keep all container capabilities
+dropped. The image filesystem and its production binaries remain read-only.
 It verifies default ARP suppression, bidirectional ARP with the option enabled,
 bidirectional IP drops, no localport FDB learning, backend destination MAC
 rewrite, suppression after removing the option, and ARP advertisement from a

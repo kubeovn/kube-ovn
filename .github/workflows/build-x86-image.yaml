@@ -150,7 +150,7 @@ jobs:
       - name: Test OVN localport ARP isolation
         if: steps.check.outputs.build-base == 1 && hashFiles('dist/images/tests/ovn-localport-arp.py') != ''
         run: |
-          docker run --rm --network=none --cap-drop=ALL --read-only --tmpfs /tmp \
+          docker run --rm --network=none --cap-drop=ALL --read-only --tmpfs /tmp:exec \
             --mount "type=bind,source=$PWD/dist/images/tests/ovn-localport-arp.py,target=/ovn-localport-arp.py,readonly" \
             --entrypoint python3 \
             "kubeovn/kube-ovn-base:$(cat VERSION)-amd64" \
@@ -213,7 +213,7 @@ jobs:
       - name: Test OVN localport ARP isolation
         if: steps.check.outputs.build-dpdk-base == 1 && hashFiles('dist/images/tests/ovn-localport-arp.py') != ''
         run: |
-          docker run --rm --network=none --cap-drop=ALL --read-only --tmpfs /tmp \
+          docker run --rm --network=none --cap-drop=ALL --read-only --tmpfs /tmp:exec \
             --mount "type=bind,source=$PWD/dist/images/tests/ovn-localport-arp.py,target=/ovn-localport-arp.py,readonly" \
             --entrypoint python3 \
             "kubeovn/kube-ovn-base:$(cat VERSION)-amd64-dpdk" \
