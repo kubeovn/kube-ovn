@@ -188,7 +188,9 @@ func (t *localportTestEnvironment) checkProviderExclusion(nodeName string) {
 		// ResourceVersion change is racy here because restoring the original
 		// exclusion can leave the provider network status unchanged.
 		client.Patch(current, restored)
-		t.waitInterface(nodeName)
+		// ProviderNetwork reconciliation can briefly recompute readiness for
+		// every node while the exclusion is restored.
+		t.waitAllInterfaces()
 		t.checkTraffic()
 	}()
 	t.waitInterfaceRemoved(nodeName)
