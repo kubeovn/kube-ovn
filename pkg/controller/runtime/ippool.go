@@ -17,15 +17,24 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/controller"
 )
 
-type ipPoolBackend interface {
+// IPPoolEventSource bridges legacy dependency notifications into the native
+// runtime queue. It owns scheduling only; it does not perform IPAM or OVN work.
+type IPPoolEventSource interface {
 	StartIPPoolEventBridge(context.Context, func(controller.IPPoolRequest))
+}
+
+// IPPoolDomainAdapter is the narrow business seam used by the runtime
+// reconciler. The legacy controller remains the implementation and therefore
+// retains IPAM, OVN, finalizer, and conflict-safe API write ownership.
+type IPPoolDomainAdapter interface {
 	ReconcileIPPool(context.Context, controller.IPPoolRequest) error
 }
 
 // IPPoolReconciler migrates scheduling and retries while keeping the initialized
 // legacy controller as the only owner of allocation and data-plane operations.
 type IPPoolReconciler struct {
-	Backend ipPoolBackend
+	Events  IPPoolEventSource
+	Adapter IPPoolDomainAdapter
 }
 
 func (r *IPPoolReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -47,13 +56,13 @@ func (r *IPPoolReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func (r *IPPoolReconciler) eventSource() source.TypedSource[controller.IPPoolRequest] {
 	return source.TypedFunc[controller.IPPoolRequest](func(ctx context.Context, q workqueue.TypedRateLimitingInterface[controller.IPPoolRequest]) error {
-		r.Backend.StartIPPoolEventBridge(ctx, q.Add)
+		r.Events.StartIPPoolEventBridge(ctx, q.Add)
 		return nil
 	})
 }
 
 func (r *IPPoolReconciler) Reconcile(ctx context.Context, request controller.IPPoolRequest) (ctrl.Result, error) {
-	return ctrl.Result{}, r.Backend.ReconcileIPPool(ctx, request)
+	return ctrl.Result{}, r.Adapter.ReconcileIPPool(ctx, request)
 }
 
 // Only membership-affecting updates run the full backend. Our own statistics,

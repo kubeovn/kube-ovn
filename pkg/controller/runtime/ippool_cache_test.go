@@ -52,7 +52,7 @@ func TestIPPoolNativeWatchWaitsForCacheAndStops(t *testing.T) {
 		},
 		reconcile: func(_ context.Context, request controller.IPPoolRequest) error { received <- request; return nil },
 	}
-	require.NoError(t, (&IPPoolReconciler{Backend: backend}).SetupWithManager(mgr))
+	require.NoError(t, (&IPPoolReconciler{Events: backend, Adapter: backend}).SetupWithManager(mgr))
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
 	go func() { done <- mgr.Start(ctx) }()
