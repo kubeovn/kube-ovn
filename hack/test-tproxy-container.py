@@ -98,6 +98,8 @@ def main():
     base_dockerfile = (ROOT / "dist/images/Dockerfile.base").read_text()
     assert "setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE+eip $(readlink -f $(which ovs-vswitchd))" in base_dockerfile
     assert "setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd))" not in base_dockerfile
+    image_dockerfile = (ROOT / "dist/images/Dockerfile").read_text()
+    assert 'setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE+eip "$(readlink -f "$(which ovs-vswitchd)")"' in image_dockerfile
     print("TProxy enabled/disabled, DPDK, installer and capability separation checks passed.")
 
 
