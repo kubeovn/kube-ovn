@@ -4,10 +4,12 @@ import (
 	"slices"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/internal"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -122,6 +124,48 @@ func TestObserveSubnetReportsDeletionAndFinalizerState(t *testing.T) {
 				t.Fatalf("observation mutated deletion metadata: before=%+v after=%+v", subnet.ObjectMeta, observed.ObjectMeta)
 			}
 		})
+	}
+}
+
+func TestObserveSubnetReportsStatusWithoutMutation(t *testing.T) {
+	subnet := testSubnet("")
+	subnet.Status.Conditions = []kubeovnv1.Condition{{
+		Type:               kubeovnv1.Ready,
+		Status:             corev1.ConditionTrue,
+		Reason:             "Ready",
+		ObservedGeneration: subnet.Generation,
+	}}
+	subnet.Status.V4AvailableIPs = internal.NewBigInt(42)
+	subnet.Status.V4AvailableIPRange = "10.0.0.2-10.0.0.43"
+	subnet.Status.V4UsingIPs = internal.NewBigInt(1)
+	subnet.Status.V4UsingIPRange = "10.0.0.2"
+	subnet.Status.V6AvailableIPs = internal.NewBigInt(84)
+	subnet.Status.V6AvailableIPRange = "fd00::2-fd00::55"
+	subnet.Status.V6UsingIPs = internal.NewBigInt(2)
+	subnet.Status.V6UsingIPRange = "fd00::2-fd00::3"
+	subnet.Status.GatewayMAC = "00:00:00:00:00:01"
+	api := newRuntimeClient(t, subnet)
+
+	got, err := ObserveSubnet(t.Context(), api, subnet.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(got.Status.Conditions, subnet.Status.Conditions) ||
+		got.Status.V4AvailableIPs != "42" || got.Status.V4AvailableIPRange != subnet.Status.V4AvailableIPRange ||
+		got.Status.V4UsingIPs != "1" || got.Status.V4UsingIPRange != subnet.Status.V4UsingIPRange ||
+		got.Status.V6AvailableIPs != "84" || got.Status.V6AvailableIPRange != subnet.Status.V6AvailableIPRange ||
+		got.Status.V6UsingIPs != "2" || got.Status.V6UsingIPRange != subnet.Status.V6UsingIPRange ||
+		got.Status.GatewayMAC != subnet.Status.GatewayMAC {
+		t.Fatalf("unexpected status observation: %+v", got.Status)
+	}
+
+	got.Status.Conditions[0].Reason = "mutated copy"
+	var observed kubeovnv1.Subnet
+	if err := api.Get(t.Context(), clientKey(subnet.Name), &observed); err != nil {
+		t.Fatal(err)
+	}
+	if observed.Status.Conditions[0].Reason != "Ready" {
+		t.Fatalf("observation mutated status conditions: %+v", observed.Status.Conditions)
 	}
 }
 
