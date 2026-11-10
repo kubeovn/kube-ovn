@@ -267,7 +267,7 @@ features:
 
   ENABLE_BIND_LOCAL_IP: true
   LS_DNAT_MOD_DL_DST: true
-  LS_CT_SKIP_DST_LPORT_IPS: true
+  LS_CT_SKIP_DST_LPORT_IPS: false
   ENABLE_ANP: false
   ENABLE_DNS_NAME_RESOLVER: false
   SET_GENEVE_TX_OFF: false
