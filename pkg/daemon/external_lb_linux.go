@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netlink/nl"
+	"golang.org/x/sys/unix"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog/v2"
@@ -222,9 +224,10 @@ func configureExternalLBHostInterface(name string, mac net.HardwareAddr) error {
 			return fmt.Errorf("external LB interface requires net.ipv4.conf.all.%s=0", key)
 		}
 	}
-	if err := protectExternalLBInterface(name, func(path, value string) error {
-		return os.WriteFile(filepath.Join("/proc/sys/net", path), []byte(value), 0o600)
-	}); err != nil {
+	if err := netlink.LinkSetIP6AddrGenMode(link, nl.IN6_ADDR_GEN_MODE_NONE); err != nil && !errors.Is(err, unix.EAFNOSUPPORT) {
+		return fmt.Errorf("disable IPv6 address generation: %w", err)
+	}
+	if err := protectExternalLBInterface(link); err != nil {
 		return err
 	}
 	return reconcileExternalLBLink(link, mac, externalLBLinkOperations{
@@ -258,21 +261,47 @@ func reconcileExternalLBLink(link netlink.Link, mac net.HardwareAddr, ops extern
 	return ops.setUp(link)
 }
 
-func protectExternalLBInterface(name string, write func(string, string) error) error {
-	for _, setting := range []struct{ family, key, value string }{
-		{"ipv4", "arp_ignore", "8"},
-		{"ipv4", "proxy_arp", "0"},
-		{"ipv4", "proxy_arp_pvlan", "0"},
-		{"ipv4", "forwarding", "0"},
-		{"ipv6", "disable_ipv6", "1"},
-	} {
-		path := filepath.Join(setting.family, "conf", name, setting.key)
-		if err := write(path, setting.value); err != nil {
-			return fmt.Errorf("set %s: %w", path, err)
-		}
+func protectExternalLBInterface(link netlink.Link) error {
+	if link == nil || link.Attrs() == nil || link.Attrs().Index == 0 {
+		return errors.New("external LB interface has no link index")
+	}
+	if int64(link.Attrs().Index) > 1<<31-1 {
+		return fmt.Errorf("external LB interface has invalid link index %d", link.Attrs().Index)
+	}
+
+	// The CNI server is intentionally non-root and container runtimes mount
+	// /proc/sys read-only. Configure per-interface sysctls through rtnetlink
+	// instead; this uses the daemon's existing CAP_NET_ADMIN capability and
+	// avoids exposing a writable host /proc or granting CAP_SYS_ADMIN.
+	request := externalLBInterfaceSysctlRequest(link.Attrs().Index)
+	if _, err := request.Execute(unix.NETLINK_ROUTE, 0); err != nil {
+		return fmt.Errorf("set external LB interface sysctls through rtnetlink: %w", err)
 	}
 	return nil
 }
+
+func externalLBInterfaceSysctlRequest(index int) *nl.NetlinkRequest {
+	request := nl.NewNetlinkRequest(unix.RTM_SETLINK, unix.NLM_F_ACK)
+	message := nl.NewIfInfomsg(unix.AF_UNSPEC)
+	message.Index = int32(index) //nolint:gosec // validated by protectExternalLBInterface
+	request.AddData(message)
+	spec := nl.NewRtAttr(unix.IFLA_AF_SPEC, nil)
+	ipv4 := spec.AddRtAttr(unix.AF_INET, nil)
+	ipv4Conf := ipv4.AddRtAttr(int(unix.IFLA_INET_CONF)|int(unix.NLA_F_NESTED), nil)
+	ipv4Conf.AddRtAttr(ipv4DevconfArpIgnore, nl.Uint32Attr(8))
+	ipv4Conf.AddRtAttr(ipv4DevconfProxyArp, nl.Uint32Attr(0))
+	ipv4Conf.AddRtAttr(ipv4DevconfProxyArpPvlan, nl.Uint32Attr(0))
+	ipv4Conf.AddRtAttr(ipv4DevconfForwarding, nl.Uint32Attr(0))
+	request.AddData(spec)
+	return request
+}
+
+const (
+	ipv4DevconfForwarding    = 1
+	ipv4DevconfProxyArp      = 3
+	ipv4DevconfArpIgnore     = 19
+	ipv4DevconfProxyArpPvlan = 25
+)
 
 func (c *Controller) pruneExternalLBFlows(subnets []*kubeovnv1.Subnet) {
 	legacy := make(map[string]bool)

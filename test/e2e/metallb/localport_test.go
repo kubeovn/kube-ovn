@@ -46,12 +46,15 @@ func (t *localportTestEnvironment) waitInterface(nodeName string) {
 		for name, expected := range map[string]string{
 			"ipv4/conf/mlb0/arp_ignore": "8", "ipv4/conf/mlb0/proxy_arp": "0",
 			"ipv4/conf/mlb0/proxy_arp_pvlan": "0", "ipv4/conf/mlb0/forwarding": "0",
-			"ipv6/conf/mlb0/disable_ipv6": "1",
 		} {
 			output, _, err = t.nodes[nodeName].Exec("cat", "/proc/sys/net/"+name)
 			if err != nil || strings.TrimSpace(string(output)) != expected {
 				return false, nil
 			}
+		}
+		output, _, err = t.nodes[nodeName].Exec("ip", "-d", "link", "show", "dev", localportInterface)
+		if err != nil || !strings.Contains(string(output), "addrgenmode none") {
+			return false, nil
 		}
 		output, _, err = t.nodes[nodeName].Exec("cat", "/sys/class/net/mlb0/address")
 		mac = strings.TrimSpace(string(output))

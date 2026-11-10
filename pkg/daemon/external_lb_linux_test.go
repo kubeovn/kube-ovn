@@ -7,6 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/vishvananda/netlink"
+	"github.com/vishvananda/netlink/nl"
+	"golang.org/x/sys/unix"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientfake "k8s.io/client-go/kubernetes/fake"
@@ -20,15 +22,15 @@ import (
 )
 
 func TestExternalLBKernelARPProtection(t *testing.T) {
-	settings := make(map[string]string)
-	require.NoError(t, protectExternalLBInterface("mlb0", func(path, value string) error { settings[path] = value; return nil }))
-	require.Equal(t, "8", settings["ipv4/conf/mlb0/arp_ignore"])
-	require.Equal(t, "0", settings["ipv4/conf/mlb0/proxy_arp"])
-	require.Equal(t, "0", settings["ipv4/conf/mlb0/proxy_arp_pvlan"])
-	require.Equal(t, "0", settings["ipv4/conf/mlb0/forwarding"])
-	require.Equal(t, "1", settings["ipv6/conf/mlb0/disable_ipv6"])
-	denied := errors.New("read-only sysctl")
-	require.ErrorIs(t, protectExternalLBInterface("mlb0", func(string, string) error { return denied }), denied)
+	require.ErrorContains(t, protectExternalLBInterface(nil), "no link index")
+	request := externalLBInterfaceSysctlRequest(17)
+	require.Len(t, request.Data, 2)
+	require.Equal(t, uint16(unix.RTM_SETLINK), request.Type)
+	require.NotEmpty(t, request.Serialize())
+	attrs, err := nl.ParseRouteAttr(request.Serialize()[unix.SizeofNlMsghdr+unix.SizeofIfInfomsg:])
+	require.NoError(t, err)
+	require.Len(t, attrs, 1)
+	require.Equal(t, uint16(unix.IFLA_AF_SPEC), attrs[0].Attr.Type)
 }
 
 func TestExternalLBAddressRemoval(t *testing.T) {
