@@ -55,7 +55,7 @@ func TestSubnetShadowReconcilerMapsVlanStatusAcrossEvents(t *testing.T) {
 	require.Empty(t, reconciler.requestsForVlanStatus(&kubeovnv1.Subnet{}))
 }
 
-func TestSubnetShadowReconcilerRetriesDependencyList(t *testing.T) {
+func TestSubnetShadowReconcilerRetriesProviderNetworkStatusMapping(t *testing.T) {
 	subnet := testSubnet("vlan-a")
 	vlan := testVlan("vlan-a", "provider-a")
 	vlan.Status.Subnets = []string{subnet.Name}
@@ -139,27 +139,8 @@ type canceledSubnetMapperReader struct {
 	client.Reader
 }
 
-func (r canceledSubnetMapperReader) List(ctx context.Context, _ client.ObjectList, _ ...client.ListOption) error {
-	return ctx.Err()
-}
-
 func (r canceledSubnetMapperReader) Get(ctx context.Context, _ client.ObjectKey, _ client.Object, _ ...client.GetOption) error {
 	return ctx.Err()
-}
-
-func (r *transientSubnetMapperReader) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
-	resource := ""
-	switch list.(type) {
-	case *kubeovnv1.SubnetList:
-		resource = "subnets"
-	case *kubeovnv1.VlanList:
-		resource = "vlans"
-	}
-	if r.failures[resource] > 0 {
-		r.failures[resource]--
-		return errors.New("injected transient list failure")
-	}
-	return r.Reader.List(ctx, list, opts...)
 }
 
 func (r *transientSubnetMapperReader) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
