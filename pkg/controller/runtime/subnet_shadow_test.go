@@ -60,13 +60,13 @@ func TestSubnetShadowReconcilerRetriesDependencyList(t *testing.T) {
 	provider := testProvider("provider-a", true, "vlan-a")
 	reader := &transientSubnetMapperReader{
 		Reader:   newRuntimeClient(t, subnet, vlan, provider),
-		failures: map[string]int{"subnets": 1, "vlans": 1},
+		failures: map[string]int{"subnets": 1},
 	}
 	reconciler := &SubnetShadowReconciler{Reader: reader}
 
 	require.Equal(t, []ctrl.Request{{Name: subnet.Name}},
 		reconciler.requestsForProviderNetworkWithRetry(t.Context(), provider))
-	require.Equal(t, map[string]int{"subnets": 0, "vlans": 0}, reader.failures)
+	require.Equal(t, map[string]int{"subnets": 0}, reader.failures)
 }
 
 func TestSubnetShadowReconcilerRecordsDependencyMappingFailure(t *testing.T) {

@@ -74,19 +74,24 @@ func TestSubnetShadowCacheMapsDependencyUpdates(t *testing.T) {
 	api.send(t, "provider-networks", "ADDED", provider, "4")
 	awaitSubnetShadowVersionReads(t, reader, "provider-networks", "4", "subnet-a")
 	provider = provider.DeepCopy()
-	provider.Status.Ready = true
+	provider.Status.Vlans = nil
 	api.send(t, "provider-networks", "MODIFIED", provider, "5")
 	awaitSubnetShadowVersionReads(t, reader, "provider-networks", "5", "subnet-a")
+	provider = provider.DeepCopy()
+	provider.Status.Vlans = []string{"vlan-a"}
+	provider.Status.Ready = true
+	api.send(t, "provider-networks", "MODIFIED", provider, "6")
+	awaitSubnetShadowVersionReads(t, reader, "provider-networks", "6", "subnet-a")
 
 	ip := &kubeovnv1.IP{Name: "ip-a", Spec: kubeovnv1.IPSpec{Subnet: "subnet-a", AttachSubnets: []string{"subnet-b"}}}
-	api.send(t, "ips", "ADDED", ip, "6")
-	awaitSubnetShadowVersionReads(t, reader, "ips", "6", "subnet-a", "subnet-b")
+	api.send(t, "ips", "ADDED", ip, "7")
+	awaitSubnetShadowVersionReads(t, reader, "ips", "7", "subnet-a", "subnet-b")
 	ip = ip.DeepCopy()
 	ip.Spec.Subnet = "subnet-c"
 	ip.Spec.AttachSubnets = nil
-	api.send(t, "ips", "MODIFIED", ip, "7")
-	awaitSubnetShadowVersionReads(t, reader, "ips", "7", "subnet-a", "subnet-b", "subnet-c")
-	api.send(t, "ips", "DELETED", ip, "8")
+	api.send(t, "ips", "MODIFIED", ip, "8")
+	awaitSubnetShadowVersionReads(t, reader, "ips", "8", "subnet-a", "subnet-b", "subnet-c")
+	api.send(t, "ips", "DELETED", ip, "9")
 	awaitSubnetShadowVersionReads(t, reader, "ips", "missing", "subnet-c")
 }
 
