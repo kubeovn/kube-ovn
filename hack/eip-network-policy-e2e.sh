@@ -22,6 +22,26 @@ cleanup() {
   trap - EXIT
   docker logs "$client" > "$ARTIFACT_DIR/ping.log" 2>&1 || true
   kubectl -n "$namespace" get pod,networkpolicy -o yaml > "$ARTIFACT_DIR/resources.yaml" 2>&1 || true
+  # Keep the external client until the deleted EIP stops answering, so a
+  # subsequent run can safely reuse this address instead of racing teardown.
+  if kubectl -n "$namespace" get pod server >/dev/null 2>&1; then
+    kubectl -n "$namespace" delete pod server --wait=true --timeout=120s >/dev/null || result=1
+    local unreachable=false
+    for ((attempt=0; attempt<30; attempt++)); do
+      docker exec "$client" ping -n -c 3 -W 1 "$EIP" > "$ARTIFACT_DIR/deleted-eip-ping.log" 2>&1 || true
+      if grep -Eq '3 packets transmitted, 0 packets received' "$ARTIFACT_DIR/deleted-eip-ping.log"; then
+        unreachable=true
+        break
+      fi
+      sleep 1
+    done
+    if [[ $unreachable != true ]]; then
+      echo "FAIL: deleted EIP still answers or its unreachability could not be verified" >&2
+      result=1
+    else
+      echo "Deleted EIP verified unreachable before reuse"
+    fi
+  fi
   docker rm -f "$client" >/dev/null 2>&1 || true
   kubectl delete namespace "$namespace" --ignore-not-found --wait=false >/dev/null || true
   echo "Artifacts: $ARTIFACT_DIR"
