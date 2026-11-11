@@ -39,9 +39,19 @@ func TestSubnetShadowReconcilerMapsDependencies(t *testing.T) {
 	reconciler := &SubnetShadowReconciler{Reader: newRuntimeClient(t, subnet, vlan, provider)}
 
 	require.Equal(t, []ctrl.Request{{Name: subnet.Name}},
-		reconciler.requestsForVlan(t.Context(), vlan))
-	require.Equal(t, []ctrl.Request{{Name: subnet.Name}},
 		reconciler.requestsForProviderNetwork(t.Context(), provider))
+}
+
+func TestSubnetShadowReconcilerMapsVlanStatusAcrossEvents(t *testing.T) {
+	reconciler := &SubnetShadowReconciler{}
+	oldVlan := &kubeovnv1.Vlan{Status: kubeovnv1.VlanStatus{Subnets: []string{"subnet-b", "subnet-a", ""}}}
+	newVlan := &kubeovnv1.Vlan{Status: kubeovnv1.VlanStatus{Subnets: []string{"subnet-c", "subnet-b", "subnet-c"}}}
+
+	require.Equal(t,
+		[]ctrl.Request{{Name: "subnet-a"}, {Name: "subnet-b"}, {Name: "subnet-c"}},
+		reconciler.requestsForVlanStatus(oldVlan, newVlan))
+	require.Equal(t, []ctrl.Request{{Name: "subnet-a"}, {Name: "subnet-b"}}, reconciler.requestsForVlanStatus(oldVlan))
+	require.Empty(t, reconciler.requestsForVlanStatus(&kubeovnv1.Subnet{}))
 }
 
 func TestSubnetShadowReconcilerRetriesDependencyList(t *testing.T) {
@@ -55,8 +65,6 @@ func TestSubnetShadowReconcilerRetriesDependencyList(t *testing.T) {
 	reconciler := &SubnetShadowReconciler{Reader: reader}
 
 	require.Equal(t, []ctrl.Request{{Name: subnet.Name}},
-		reconciler.requestsForVlanWithRetry(t.Context(), vlan))
-	require.Equal(t, []ctrl.Request{{Name: subnet.Name}},
 		reconciler.requestsForProviderNetworkWithRetry(t.Context(), provider))
 	require.Equal(t, map[string]int{"subnets": 0, "vlans": 0}, reader.failures)
 }
@@ -68,21 +76,21 @@ func TestSubnetShadowReconcilerRecordsDependencyMappingFailure(t *testing.T) {
 		Reader:   newRuntimeClient(t, subnet, vlan),
 		failures: map[string]int{"subnets": 3},
 	}
-	before := testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("vlan", "exhausted"))
+	before := testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("provider_network", "exhausted"))
 	reconciler := &SubnetShadowReconciler{Reader: reader}
 
-	require.Empty(t, reconciler.requestsForVlanWithRetry(t.Context(), vlan))
-	require.Equal(t, before+1, testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("vlan", "exhausted")))
+	require.Empty(t, reconciler.requestsForProviderNetworkWithRetry(t.Context(), testProvider("provider-a", true, "vlan-a")))
+	require.Equal(t, before+1, testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("provider_network", "exhausted")))
 }
 
 func TestSubnetShadowReconcilerRecordsCanceledDependencyMapping(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	before := testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("vlan", "canceled"))
+	before := testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("provider_network", "canceled"))
 	reconciler := &SubnetShadowReconciler{Reader: canceledSubnetMapperReader{Reader: newRuntimeClient(t)}}
 
-	require.Empty(t, reconciler.requestsForVlanWithRetry(ctx, testVlan("vlan-a", "provider-a")))
-	require.Equal(t, before+1, testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("vlan", "canceled")))
+	require.Empty(t, reconciler.requestsForProviderNetworkWithRetry(ctx, testProvider("provider-a", true, "vlan-a")))
+	require.Equal(t, before+1, testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("provider_network", "canceled")))
 }
 
 func TestSubnetDependencyMappingRetryExhaustsAttempts(t *testing.T) {

@@ -61,9 +61,11 @@ func TestSubnetShadowCacheMapsDependencyUpdates(t *testing.T) {
 	api.awaitWatches(t)
 
 	vlan := testVlan("vlan-a", "provider-a")
+	vlan.Status.Subnets = []string{"subnet-a"}
 	api.send(t, "vlans", "ADDED", vlan, "2")
 	awaitSubnetShadowVersionReads(t, reader, "vlans", "2", "subnet-a")
 	vlan = vlan.DeepCopy()
+	vlan.Status.Subnets = nil
 	vlan.Status.Conflict = true
 	api.send(t, "vlans", "MODIFIED", vlan, "3")
 	awaitSubnetShadowVersionReads(t, reader, "vlans", "3", "subnet-a")
@@ -103,6 +105,21 @@ func TestSubnetShadowCacheRetriesWithoutAnotherEvent(t *testing.T) {
 	}
 	awaitSubnetShadowReads(t, reader, "subnet-a")
 	api.awaitWatches(t)
+}
+
+func TestSubnetShadowCacheMapsVlanDeletion(t *testing.T) {
+	api := newSubnetShadowWatchServer(t)
+	vlan := testVlan("vlan-a", "provider-a")
+	vlan.Status.Subnets = []string{"subnet-a"}
+	api.resources["subnets"].initial = []client.Object{testSubnet("")}
+	api.resources["vlans"].initial = []client.Object{vlan}
+	reader := startSubnetShadowManager(t, api)
+	api.release()
+	awaitSubnetShadowReads(t, reader, "subnet-a")
+	api.awaitWatches(t)
+
+	api.send(t, "vlans", "DELETED", vlan, "2")
+	awaitSubnetShadowVersionReads(t, reader, "vlans", "missing", "subnet-a")
 }
 
 type subnetShadowRead struct {
