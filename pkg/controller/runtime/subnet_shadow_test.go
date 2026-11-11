@@ -75,6 +75,16 @@ func TestSubnetShadowReconcilerRecordsDependencyMappingFailure(t *testing.T) {
 	require.Equal(t, before+1, testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("vlan", "exhausted")))
 }
 
+func TestSubnetShadowReconcilerRecordsCanceledDependencyMapping(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	before := testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("vlan", "canceled"))
+	reconciler := &SubnetShadowReconciler{Reader: canceledSubnetMapperReader{Reader: newRuntimeClient(t)}}
+
+	require.Empty(t, reconciler.requestsForVlanWithRetry(ctx, testVlan("vlan-a", "provider-a")))
+	require.Equal(t, before+1, testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("vlan", "canceled")))
+}
+
 func TestSubnetDependencyMappingRetryExhaustsAttempts(t *testing.T) {
 	wantErrors := []error{
 		errors.New("first list failure"),
@@ -112,6 +122,14 @@ func TestSubnetDependencyMappingRetryStopsWhenContextCanceled(t *testing.T) {
 type transientSubnetMapperReader struct {
 	client.Reader
 	failures map[string]int
+}
+
+type canceledSubnetMapperReader struct {
+	client.Reader
+}
+
+func (r canceledSubnetMapperReader) List(ctx context.Context, _ client.ObjectList, _ ...client.ListOption) error {
+	return ctx.Err()
 }
 
 func (r *transientSubnetMapperReader) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
