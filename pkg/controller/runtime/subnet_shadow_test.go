@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -58,6 +59,20 @@ func TestSubnetShadowReconcilerRetriesDependencyList(t *testing.T) {
 	require.Equal(t, []ctrl.Request{{Name: subnet.Name}},
 		reconciler.requestsForProviderNetworkWithRetry(t.Context(), provider))
 	require.Equal(t, map[string]int{"subnets": 0, "vlans": 0}, reader.failures)
+}
+
+func TestSubnetShadowReconcilerRecordsDependencyMappingFailure(t *testing.T) {
+	subnet := testSubnet("vlan-a")
+	vlan := testVlan("vlan-a", "provider-a")
+	reader := &transientSubnetMapperReader{
+		Reader:   newRuntimeClient(t, subnet, vlan),
+		failures: map[string]int{"subnets": 3},
+	}
+	before := testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("vlan", "exhausted"))
+	reconciler := &SubnetShadowReconciler{Reader: reader}
+
+	require.Empty(t, reconciler.requestsForVlanWithRetry(t.Context(), vlan))
+	require.Equal(t, before+1, testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("vlan", "exhausted")))
 }
 
 func TestSubnetDependencyMappingRetryExhaustsAttempts(t *testing.T) {
