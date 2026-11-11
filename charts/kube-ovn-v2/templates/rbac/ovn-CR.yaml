@@ -273,6 +273,7 @@ rules:
       - "get"
       - "list"
       - "watch"
+{{- if .Values.features.enableOvnIpsec }}
   - apiGroups:
       - certificates.k8s.io
     resources:
@@ -289,6 +290,7 @@ rules:
     verbs:
       - approve
       - sign
+{{- end }}
   - apiGroups:
       - kubevirt.io
     resources:
