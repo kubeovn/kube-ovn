@@ -1,6 +1,6 @@
 module github.com/kubeovn/kube-ovn
 
-go 1.27.3
+go 1.27.4
 
 require (
 	cel.dev/cel-go v0.33.2
