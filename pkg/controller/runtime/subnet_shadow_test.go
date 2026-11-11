@@ -61,14 +61,20 @@ func TestSubnetShadowReconcilerRetriesDependencyList(t *testing.T) {
 }
 
 func TestSubnetDependencyMappingRetryExhaustsAttempts(t *testing.T) {
-	wantErr := errors.New("persistent list failure")
+	wantErrors := []error{
+		errors.New("first list failure"),
+		errors.New("second list failure"),
+		errors.New("third list failure"),
+	}
 	var calls int
 	requests, err := retrySubnetDependencyMapping(t.Context(), &kubeovnv1.Vlan{}, func(context.Context, client.Object) ([]ctrl.Request, error) {
+		failure := wantErrors[calls]
 		calls++
-		return nil, wantErr
+		return nil, failure
 	})
 
-	require.ErrorIs(t, err, wantErr)
+	require.ErrorIs(t, err, wantErrors[2])
+	require.NotErrorIs(t, err, wantErrors[0])
 	require.Nil(t, requests)
 	require.Equal(t, 3, calls)
 }
