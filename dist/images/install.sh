@@ -7691,6 +7691,29 @@ subjects:
     namespace: kube-system
 EOF
 
+IPSEC_CSR_SIGNER_RULES=""
+if [[ "$ENABLE_OVN_IPSEC" == "true" ]]; then
+  IPSEC_CSR_SIGNER_RULES=$(cat <<EOF
+  - apiGroups:
+    - certificates.k8s.io
+    resources:
+    - certificatesigningrequests/status
+    - certificatesigningrequests/approval
+    verbs:
+    - update
+  - apiGroups:
+    - certificates.k8s.io
+    resourceNames:
+    - kubeovn.io/signer
+    resources:
+    - signers
+    verbs:
+    - approve
+    - sign
+EOF
+)
+fi
+
 cat <<EOF > kube-ovn-sa.yaml
 ---
 apiVersion: v1
@@ -7971,22 +7994,7 @@ rules:
       - "get"
       - "list"
       - "watch"
-  - apiGroups:
-    - certificates.k8s.io
-    resources:
-    - certificatesigningrequests/status
-    - certificatesigningrequests/approval
-    verbs:
-    - update
-  - apiGroups:
-    - certificates.k8s.io
-    resourceNames:
-    - kubeovn.io/signer
-    resources:
-    - signers
-    verbs:
-    - approve
-    - sign
+$IPSEC_CSR_SIGNER_RULES
   - apiGroups:
       - kubevirt.io
     resources:
