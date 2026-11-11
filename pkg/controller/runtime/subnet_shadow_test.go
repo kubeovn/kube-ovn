@@ -60,6 +60,34 @@ func TestSubnetShadowReconcilerRetriesDependencyList(t *testing.T) {
 	require.Equal(t, map[string]int{"subnets": 0, "vlans": 0}, reader.failures)
 }
 
+func TestSubnetDependencyMappingRetryExhaustsAttempts(t *testing.T) {
+	wantErr := errors.New("persistent list failure")
+	var calls int
+	requests, err := retrySubnetDependencyMapping(t.Context(), &kubeovnv1.Vlan{}, func(context.Context, client.Object) ([]ctrl.Request, error) {
+		calls++
+		return nil, wantErr
+	})
+
+	require.ErrorIs(t, err, wantErr)
+	require.Nil(t, requests)
+	require.Equal(t, 3, calls)
+}
+
+func TestSubnetDependencyMappingRetryStopsWhenContextCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var calls int
+	requests, err := retrySubnetDependencyMapping(ctx, &kubeovnv1.Vlan{}, func(context.Context, client.Object) ([]ctrl.Request, error) {
+		calls++
+		cancel()
+		return nil, errors.New("transient list failure")
+	})
+
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, requests)
+	require.Equal(t, 1, calls)
+}
+
 type transientSubnetMapperReader struct {
 	client.Reader
 	failures map[string]int
