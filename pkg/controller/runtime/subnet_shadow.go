@@ -2,10 +2,12 @@ package controllerruntime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -13,9 +15,21 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/metrics"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
+
+var subnetShadowDependencyMappingFailures = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "kube_ovn_subnet_shadow_dependency_mapping_failures_total",
+		Help: "Number of exhausted or canceled Subnet shadow dependency mapping retries.",
+	}, []string{"source", "result"},
+)
+
+func init() {
+	metrics.Registry.MustRegister(subnetShadowDependencyMappingFailures)
+}
 
 // SubnetShadowReconciler observes Subnet readiness without taking ownership of
 // any API status, finalizer, queue, OVN, or IPAM operation. It is intentionally
@@ -78,6 +92,7 @@ func (r *SubnetShadowReconciler) requestsForVlan(ctx context.Context, obj client
 func (r *SubnetShadowReconciler) requestsForVlanWithRetry(ctx context.Context, obj client.Object) []ctrl.Request {
 	requests, err := retrySubnetDependencyMapping(ctx, obj, r.requestsForVlanWithError)
 	if err != nil {
+		subnetShadowDependencyMappingFailures.WithLabelValues("vlan", subnetShadowRetryResult(err)).Inc()
 		log.FromContext(ctx).Error(err, "retry list subnets for VLAN shadow event")
 		return nil
 	}
@@ -114,10 +129,18 @@ func (r *SubnetShadowReconciler) requestsForProviderNetwork(ctx context.Context,
 func (r *SubnetShadowReconciler) requestsForProviderNetworkWithRetry(ctx context.Context, obj client.Object) []ctrl.Request {
 	requests, err := retrySubnetDependencyMapping(ctx, obj, r.requestsForProviderNetworkWithError)
 	if err != nil {
+		subnetShadowDependencyMappingFailures.WithLabelValues("provider_network", subnetShadowRetryResult(err)).Inc()
 		log.FromContext(ctx).Error(err, "retry list dependencies for ProviderNetwork shadow event")
 		return nil
 	}
 	return requests
+}
+
+func subnetShadowRetryResult(err error) string {
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return "canceled"
+	}
+	return "exhausted"
 }
 
 func (r *SubnetShadowReconciler) requestsForProviderNetworkWithError(ctx context.Context, obj client.Object) ([]ctrl.Request, error) {
