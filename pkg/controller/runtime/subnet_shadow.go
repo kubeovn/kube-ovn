@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"time"
 
@@ -58,7 +59,17 @@ func (r *SubnetShadowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("kube-ovn-subnet-shadow").
 		For(&kubeovnv1.Subnet{}).
-		Watches(&kubeovnv1.Vlan{}, handler.EnqueueRequestsFromMapFunc(r.requestsForVlanWithRetry)).
+		Watches(&kubeovnv1.Vlan{}, handler.Funcs{
+			CreateFunc: func(_ context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+				r.enqueueVlanStatusRequests(q, e.Object)
+			},
+			UpdateFunc: func(_ context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+				r.enqueueVlanStatusRequests(q, e.ObjectOld, e.ObjectNew)
+			},
+			DeleteFunc: func(_ context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+				r.enqueueVlanStatusRequests(q, e.Object)
+			},
+		}).
 		Watches(&kubeovnv1.ProviderNetwork{}, handler.EnqueueRequestsFromMapFunc(r.requestsForProviderNetworkWithRetry)).
 		Watches(&kubeovnv1.IP{}, handler.Funcs{
 			CreateFunc: func(_ context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
@@ -80,41 +91,26 @@ func (r *SubnetShadowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		Complete(r)
 }
 
-func (r *SubnetShadowReconciler) requestsForVlan(ctx context.Context, obj client.Object) []ctrl.Request {
-	requests, err := r.requestsForVlanWithError(ctx, obj)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "list subnets for VLAN shadow event")
-		return nil
+func (r *SubnetShadowReconciler) enqueueVlanStatusRequests(q workqueue.TypedRateLimitingInterface[ctrl.Request], objects ...client.Object) {
+	for _, request := range r.requestsForVlanStatus(objects...) {
+		q.Add(request)
 	}
-	return requests
 }
 
-func (r *SubnetShadowReconciler) requestsForVlanWithRetry(ctx context.Context, obj client.Object) []ctrl.Request {
-	requests, err := retrySubnetDependencyMapping(ctx, obj, r.requestsForVlanWithError)
-	if err != nil {
-		subnetShadowDependencyMappingFailures.WithLabelValues("vlan", subnetShadowRetryResult(err)).Inc()
-		log.FromContext(ctx).Error(err, "retry list subnets for VLAN shadow event")
-		return nil
-	}
-	return requests
-}
-
-func (r *SubnetShadowReconciler) requestsForVlanWithError(ctx context.Context, obj client.Object) ([]ctrl.Request, error) {
-	vlan, ok := obj.(*kubeovnv1.Vlan)
-	if !ok {
-		return nil, nil
-	}
-	var subnets kubeovnv1.SubnetList
-	if err := r.List(ctx, &subnets); err != nil {
-		return nil, fmt.Errorf("list subnets for VLAN %s: %w", vlan.Name, err)
-	}
-	requests := make([]ctrl.Request, 0)
-	for _, subnet := range subnets.Items {
-		if subnet.Spec.Vlan == vlan.Name {
-			requests = append(requests, ctrl.Request{Name: subnet.Name})
+func (r *SubnetShadowReconciler) requestsForVlanStatus(objects ...client.Object) []ctrl.Request {
+	names := make(map[string]struct{})
+	for _, obj := range objects {
+		vlan, ok := obj.(*kubeovnv1.Vlan)
+		if !ok || vlan == nil {
+			continue
+		}
+		for _, subnet := range vlan.Status.Subnets {
+			if subnet != "" {
+				names[subnet] = struct{}{}
+			}
 		}
 	}
-	return requests, nil
+	return subnetRequestsForNames(names)
 }
 
 func (r *SubnetShadowReconciler) requestsForProviderNetwork(ctx context.Context, obj client.Object) []ctrl.Request {
@@ -216,11 +212,11 @@ func (r *SubnetShadowReconciler) requestsForIP(objects ...client.Object) []ctrl.
 			}
 		}
 	}
-	ordered := make([]string, 0, len(names))
-	for name := range names {
-		ordered = append(ordered, name)
-	}
-	slices.Sort(ordered)
+	return subnetRequestsForNames(names)
+}
+
+func subnetRequestsForNames(names map[string]struct{}) []ctrl.Request {
+	ordered := slices.Sorted(maps.Keys(names))
 	requests := make([]ctrl.Request, 0, len(ordered))
 	for _, name := range ordered {
 		requests = append(requests, ctrl.Request{Name: name})
