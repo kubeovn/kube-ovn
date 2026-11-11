@@ -68,6 +68,7 @@ ADD patches/52b727b3315463668669ff423ce8bfa129861162.patch $SRC_DIR
 ADD patches/sbrec-delete-null-check.patch $SRC_DIR
 ADD patches/pinctrl-adapt-ovs-compose-nd-ns.patch $SRC_DIR
 ADD patches/northd-bcast-arp-nd-req-flood-default-false.patch $SRC_DIR
+ADD patches/northd-gate-default-allow-on-acl-tier.patch $SRC_DIR
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
@@ -143,6 +144,8 @@ RUN cd /usr/src/ && git clone -b branch-25.03 --depth=1 https://github.com/ovn-o
     git apply $SRC_DIR/pinctrl-adapt-ovs-compose-nd-ns.patch && \
     # northd: skip underlay ARP/ND request flood by default
     git apply $SRC_DIR/northd-bcast-arp-nd-req-flood-default-false.patch && \
+    # Prevent established blocked connections from bypassing higher-tier ACLs (#7935).
+    git apply $SRC_DIR/northd-gate-default-allow-on-acl-tier.patch && \
     ovn_commit=$(git rev-parse --short=12 HEAD) && \
     sed -i -E "s/^(AC_INIT\(\[?ovn\]?, \[?[^],)]+)(\]?)(,.*)$/\1+g${ovn_commit}\2\3/" configure.ac
 
