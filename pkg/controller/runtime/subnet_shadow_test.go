@@ -1,11 +1,14 @@
 package controllerruntime
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
@@ -38,6 +41,43 @@ func TestSubnetShadowReconcilerMapsDependencies(t *testing.T) {
 		reconciler.requestsForVlan(t.Context(), vlan))
 	require.Equal(t, []ctrl.Request{{Name: subnet.Name}},
 		reconciler.requestsForProviderNetwork(t.Context(), provider))
+}
+
+func TestSubnetShadowReconcilerRetriesDependencyList(t *testing.T) {
+	subnet := testSubnet("vlan-a")
+	vlan := testVlan("vlan-a", "provider-a")
+	provider := testProvider("provider-a", true, "vlan-a")
+	reader := &transientSubnetMapperReader{
+		Reader:   newRuntimeClient(t, subnet, vlan, provider),
+		failures: map[string]int{"subnets": 1, "vlans": 1},
+	}
+	reconciler := &SubnetShadowReconciler{Reader: reader}
+
+	require.Equal(t, []ctrl.Request{{Name: subnet.Name}},
+		reconciler.requestsForVlanWithRetry(t.Context(), vlan))
+	require.Equal(t, []ctrl.Request{{Name: subnet.Name}},
+		reconciler.requestsForProviderNetworkWithRetry(t.Context(), provider))
+	require.Equal(t, map[string]int{"subnets": 0, "vlans": 0}, reader.failures)
+}
+
+type transientSubnetMapperReader struct {
+	client.Reader
+	failures map[string]int
+}
+
+func (r *transientSubnetMapperReader) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	resource := ""
+	switch list.(type) {
+	case *kubeovnv1.SubnetList:
+		resource = "subnets"
+	case *kubeovnv1.VlanList:
+		resource = "vlans"
+	}
+	if r.failures[resource] > 0 {
+		r.failures[resource]--
+		return errors.New("injected transient list failure")
+	}
+	return r.Reader.List(ctx, list, opts...)
 }
 
 func TestSubnetShadowReconcilerMapsIPDependenciesAcrossUpdates(t *testing.T) {
