@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression for #7935: apply a tiered NetworkPolicy to an established EIP flow.
+# Regressions for #7935/#7962: revoke an established EIP flow, then delete/reuse EIP.
 # Requires an installed cluster with its external gateway enabled and an external
 # Docker network connected to the gateway. Reserve EIP outside Docker/IPAM pools.
 # Example:
@@ -17,6 +17,19 @@ namespace="eip-policy-$(date +%s)-$$"
 client="$namespace-client"
 mkdir -p "$ARTIFACT_DIR"
 
+verify_deleted_eip() {
+  for ((attempt=0; attempt<30; attempt++)); do
+    docker exec "$client" ping -n -c 3 -W 1 "$EIP" > "$ARTIFACT_DIR/deleted-eip-ping.log" 2>&1 || true
+    if grep -Eq '3 packets transmitted, 0 packets received' "$ARTIFACT_DIR/deleted-eip-ping.log"; then
+      echo "Deleted EIP verified unreachable before reuse"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "FAIL: deleted EIP still answers or its unreachability could not be verified" >&2
+  return 1
+}
+
 cleanup() {
   local result=$?
   trap - EXIT
@@ -26,21 +39,7 @@ cleanup() {
   # subsequent run can safely reuse this address instead of racing teardown.
   if kubectl -n "$namespace" get pod server >/dev/null 2>&1; then
     kubectl -n "$namespace" delete pod server --wait=true --timeout=120s >/dev/null || result=1
-    local unreachable=false
-    for ((attempt=0; attempt<30; attempt++)); do
-      docker exec "$client" ping -n -c 3 -W 1 "$EIP" > "$ARTIFACT_DIR/deleted-eip-ping.log" 2>&1 || true
-      if grep -Eq '3 packets transmitted, 0 packets received' "$ARTIFACT_DIR/deleted-eip-ping.log"; then
-        unreachable=true
-        break
-      fi
-      sleep 1
-    done
-    if [[ $unreachable != true ]]; then
-      echo "FAIL: deleted EIP still answers or its unreachability could not be verified" >&2
-      result=1
-    else
-      echo "Deleted EIP verified unreachable before reuse"
-    fi
+    verify_deleted_eip || result=1
   fi
   docker rm -f "$client" >/dev/null 2>&1 || true
   kubectl delete namespace "$namespace" --ignore-not-found --wait=false >/dev/null || true
@@ -133,3 +132,29 @@ if [[ $recovered != true ]]; then
   exit 1
 fi
 echo "PASS: established EIP ICMP flow was blocked without alternating leaks"
+
+# Validate externally observable deletion before binding the same EIP again.
+kubectl -n "$namespace" delete pod server --wait=true --timeout=120s
+verify_deleted_eip
+kubectl -n "$namespace" run server --image="$KUBE_OVN_IMAGE" \
+  --labels=app=eip-policy --annotations="ovn.kubernetes.io/eip=$EIP" \
+  --command -- sleep infinity
+kubectl -n "$namespace" wait pod/server --for=condition=Ready --timeout=120s
+
+# Use a new ping process in the SAME client namespace: it has a new ICMP ID.
+# Retaining the original ID can correctly retain the previous NAT mapping until
+# its idle timeout (#7962). Deletion unreachability does not imply CT expiration.
+reused=false
+for ((attempt=0; attempt<30; attempt++)); do
+  docker exec "$client" ping -n -c 3 -W 1 "$EIP" > "$ARTIFACT_DIR/reused-eip-ping.log" 2>&1 || true
+  if grep -Eq '3 packets transmitted, 3 packets received' "$ARTIFACT_DIR/reused-eip-ping.log"; then
+    reused=true
+    break
+  fi
+  sleep 1
+done
+if [[ $reused != true ]]; then
+  echo "FAIL: new ICMP flow could not reach the reused EIP" >&2
+  exit 1
+fi
+echo "PASS: deleted EIP stopped replying and was successfully reused by a new flow"
