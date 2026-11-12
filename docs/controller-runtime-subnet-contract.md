@@ -43,6 +43,17 @@ must be present in `ProviderNetwork.status.vlans` before a future writer may
 allocate IPAM or create OVN objects. This is stricter than the current legacy
 validator and is intentionally not wired into production by this PR.
 
+`pkg/controller/runtime/subnet_writer_gate.go` now makes the writer gates
+executable without enabling a second production writer. Every side effect must
+carry an immutable Subnet identity/spec/resource-version snapshot. Status and
+finalizer-add operations require an active object; finalizer removal, OVN
+cleanup, and IPAM release require a terminating object; OVN/IPAM allocation
+requires `AllocationAllowed`. UID, generation, spec, resource-version, and
+deletion-state changes return a Kubernetes conflict. A missing recovery callback
+fails closed, so a restart cannot allocate or mutate OVN state before durable
+recovery completes. The gate is still an unwired contract until the legacy
+Subnet writer has an explicit replacement and rollback path.
+
 ## Readiness and deletion gates
 
 The following cases remain legacy-owned and must be covered before enabling a
