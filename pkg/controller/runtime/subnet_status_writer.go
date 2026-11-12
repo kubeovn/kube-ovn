@@ -78,19 +78,9 @@ func (w *subnetStatusWriter) PatchStatus(subnet *kubeovnv1.Subnet) error {
 		subnet.Status = *desired.Status.DeepCopy()
 		return nil
 	}
-
-	ctx, cancel := context.WithTimeout(w.ctx, subnetStatusWriteTimeout)
-	err = w.client.Status().Patch(ctx, desired, client.MergeFromWithOptions(current, client.MergeFromWithOptimisticLock{}))
-	cancel()
-	if err != nil {
-		return w.confirmStatus(subnet, desired.Status, err)
-	}
-	if err := w.ctx.Err(); err != nil {
-		return err
-	}
-	subnet.ObjectMeta = *desired.ObjectMeta.DeepCopy()
-	subnet.Status = *desired.Status.DeepCopy()
-	return nil
+	return w.patchStatus(subnet, current, desired, func(live *kubeovnv1.Subnet) bool {
+		return sameSubnetStatus(&live.Status, &desired.Status)
+	})
 }
 
 // PatchGatewayMAC updates the gateway MAC without requiring callers to carry
@@ -114,11 +104,17 @@ func (w *subnetStatusWriter) PatchGatewayMAC(subnet *kubeovnv1.Subnet, gatewayMA
 	}
 	desired := current.DeepCopy()
 	desired.Status.GatewayMAC = gatewayMAC
+	return w.patchStatus(subnet, current, desired, func(live *kubeovnv1.Subnet) bool {
+		return live.Status.GatewayMAC == gatewayMAC
+	})
+}
+
+func (w *subnetStatusWriter) patchStatus(subnet, current, desired *kubeovnv1.Subnet, matches func(*kubeovnv1.Subnet) bool) error {
 	ctx, cancel := context.WithTimeout(w.ctx, subnetStatusWriteTimeout)
-	err = w.client.Status().Patch(ctx, desired, client.MergeFromWithOptions(current, client.MergeFromWithOptimisticLock{}))
+	err := w.client.Status().Patch(ctx, desired, client.MergeFromWithOptions(current, client.MergeFromWithOptimisticLock{}))
 	cancel()
 	if err != nil {
-		return w.confirmGatewayMAC(subnet, gatewayMAC, err)
+		return w.confirmStatus(subnet, matches, err)
 	}
 	if err := w.ctx.Err(); err != nil {
 		return err
@@ -128,7 +124,7 @@ func (w *subnetStatusWriter) PatchGatewayMAC(subnet *kubeovnv1.Subnet, gatewayMA
 	return nil
 }
 
-func (w *subnetStatusWriter) confirmStatus(subnet *kubeovnv1.Subnet, desired kubeovnv1.SubnetStatus, writeErr error) error {
+func (w *subnetStatusWriter) confirmStatus(subnet *kubeovnv1.Subnet, matches func(*kubeovnv1.Subnet) bool, writeErr error) error {
 	if apierrors.IsConflict(writeErr) {
 		return writeErr
 	}
@@ -142,32 +138,7 @@ func (w *subnetStatusWriter) confirmStatus(subnet *kubeovnv1.Subnet, desired kub
 	if !sameSubnetSpec(subnet, current) || !current.DeletionTimestamp.IsZero() {
 		return writeErr
 	}
-	if !sameSubnetStatus(&current.Status, &desired) {
-		return writeErr
-	}
-	if err := w.ctx.Err(); err != nil {
-		return errors.Join(writeErr, err)
-	}
-	subnet.ObjectMeta = *current.ObjectMeta.DeepCopy()
-	subnet.Status = *current.Status.DeepCopy()
-	return nil
-}
-
-func (w *subnetStatusWriter) confirmGatewayMAC(subnet *kubeovnv1.Subnet, gatewayMAC string, writeErr error) error {
-	if apierrors.IsConflict(writeErr) {
-		return writeErr
-	}
-	current, err := w.get(subnet.Name)
-	if err != nil {
-		return errors.Join(writeErr, err)
-	}
-	if err := w.gate.WaitForRecovery(w.ctx); err != nil {
-		return errors.Join(writeErr, err)
-	}
-	if !sameSubnetSpec(subnet, current) || !current.DeletionTimestamp.IsZero() {
-		return writeErr
-	}
-	if current.Status.GatewayMAC != gatewayMAC {
+	if !matches(current) {
 		return writeErr
 	}
 	if err := w.ctx.Err(); err != nil {
