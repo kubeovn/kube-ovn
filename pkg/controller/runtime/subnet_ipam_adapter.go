@@ -3,7 +3,6 @@ package controllerruntime
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -98,12 +97,12 @@ func (r *subnetIPAMReceipt) Compensate(ctx context.Context) error {
 	current, ok := r.adapter.owners[r.allocation.key]
 	if !ok || current != r.allocation {
 		r.adapter.mu.Unlock()
-		return fmt.Errorf("IPAM allocation receipt is stale or owned by another writer")
+		return errors.New("IPAM allocation receipt is stale or owned by another writer")
 	}
 	r.adapter.mu.Unlock()
 	v4, v6, mac, ok := existingIPAMAllocation(r.adapter.ipam, r.allocation.key.subnet, r.allocation.key.pod, r.allocation.key.nic)
 	if !ok || v4 != r.allocation.v4 || v6 != r.allocation.v6 || mac != r.allocation.mac {
-		return fmt.Errorf("IPAM allocation receipt no longer matches the owned address")
+		return errors.New("IPAM allocation receipt no longer matches the owned address")
 	}
 	if err := r.adapter.ipam.WithTransaction(func(tx *ipam.Transaction) error {
 		return tx.ReleaseAddressByNic(r.allocation.key.pod, r.allocation.key.nic, r.allocation.key.subnet)
@@ -113,7 +112,7 @@ func (r *subnetIPAMReceipt) Compensate(ctx context.Context) error {
 	r.adapter.mu.Lock()
 	defer r.adapter.mu.Unlock()
 	if current, ok := r.adapter.owners[r.allocation.key]; !ok || current != r.allocation {
-		return fmt.Errorf("IPAM allocation owner changed during compensation")
+		return errors.New("IPAM allocation owner changed during compensation")
 	}
 	delete(r.adapter.owners, r.allocation.key)
 	return nil
