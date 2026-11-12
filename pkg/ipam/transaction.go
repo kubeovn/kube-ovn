@@ -36,7 +36,10 @@ func (ipam *IPAM) WithTransaction(action func(*Transaction) error) error {
 
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
+	return ipam.withTransactionLocked(action)
+}
 
+func (ipam *IPAM) withTransactionLocked(action func(*Transaction) error) error {
 	tx := &Transaction{ipam: ipam, subnets: make(map[string]*Subnet)}
 	defer func() { tx.closed = true }()
 	if err := action(tx); err != nil {
@@ -58,7 +61,16 @@ func (ipam *IPAM) WithTransactionContext(ctx context.Context, action func(*Trans
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return errors.Join(ipam.WithTransaction(action), ctx.Err())
+	if action == nil {
+		return ErrTransactionNilAction
+	}
+
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return errors.Join(ipam.withTransactionLocked(action), ctx.Err())
 }
 
 // GetRandomAddress stages a random allocation on the transaction's subnet.

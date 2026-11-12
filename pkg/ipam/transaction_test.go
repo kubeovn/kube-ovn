@@ -180,6 +180,40 @@ func TestWithTransactionContextRejectsCancellationBeforeAction(t *testing.T) {
 	require.Equal(t, "10.0.0.1", address)
 }
 
+func TestWithTransactionContextChecksCancellationAfterWaitingForLock(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	ipam.mutex.Lock()
+	locked := true
+	defer func() {
+		if locked {
+			ipam.mutex.Unlock()
+		}
+	}()
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	started := make(chan struct{})
+	called := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		close(started)
+		done <- ipam.WithTransactionContext(ctx, func(*Transaction) error {
+			close(called)
+			return nil
+		})
+	}()
+	<-started
+	cancel()
+	ipam.mutex.Unlock()
+	locked = false
+	require.ErrorIs(t, <-done, context.Canceled)
+	select {
+	case <-called:
+		t.Fatal("transaction action ran after cancellation while waiting for the IPAM lock")
+	default:
+	}
+}
+
 func TestWithTransactionContextRollsBackActionCancellation(t *testing.T) {
 	ipam := newTransactionIPAM(t)
 	ctx, cancel := context.WithCancel(t.Context())
