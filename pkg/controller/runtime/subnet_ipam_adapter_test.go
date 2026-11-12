@@ -80,12 +80,10 @@ func TestSubnetIPAMAdapterConcurrentSameKeyHasOneOwner(t *testing.T) {
 	results := make(chan result, 2)
 	var wg sync.WaitGroup
 	for range 2 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			v4, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
 			results <- result{v4: v4, receipt: receipt, err: err}
-		}()
+		})
 	}
 	wg.Wait()
 	close(results)

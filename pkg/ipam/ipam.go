@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -489,14 +490,7 @@ func (ipam *IPAM) GetPodAddressByNic(podName, nicName, subnetName string) (strin
 	}
 	subnet.Mutex.RLock()
 	defer subnet.Mutex.RUnlock()
-	owned := false
-	for _, listedNIC := range subnet.PodToNicList[podName] {
-		if listedNIC == nicName {
-			owned = true
-			break
-		}
-	}
-	if !owned {
+	if !slices.Contains(subnet.PodToNicList[podName], nicName) {
 		return "", "", "", false
 	}
 	v4IP, v6IP, mac, protocol := subnet.GetPodAddress(nicName)
