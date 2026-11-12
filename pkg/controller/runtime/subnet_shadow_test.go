@@ -120,6 +120,21 @@ func TestSubnetShadowReconcilerFallbackHandlerEnqueuesSubnet(t *testing.T) {
 	require.Equal(t, ctrl.Request{Name: subnet.Name}, request)
 }
 
+func TestSubnetShadowReconcilerFallbackUsesProviderNetworkUpdateUnion(t *testing.T) {
+	oldProvider := testProvider("provider-a", true, "vlan-old")
+	newProvider := testProvider("provider-a", true, "vlan-new")
+	oldSubnet := &kubeovnv1.Subnet{Name: "subnet-old", Spec: kubeovnv1.SubnetSpec{Vlan: "vlan-old"}}
+	newSubnet := &kubeovnv1.Subnet{Name: "subnet-new", Spec: kubeovnv1.SubnetSpec{Vlan: "vlan-new"}}
+	reconciler := &SubnetShadowReconciler{Reader: &transientSubnetMapperReader{
+		Reader:   newRuntimeClient(t, oldSubnet, newSubnet),
+		failures: map[string]int{"vlans": 3},
+	}}
+
+	requests, err := reconciler.providerNetworkStatusRequestsWithFallback(t.Context(), oldProvider, newProvider)
+	require.NoError(t, err)
+	require.Equal(t, []ctrl.Request{{Name: "subnet-new"}, {Name: "subnet-old"}}, requests)
+}
+
 func TestSubnetShadowReconcilerRecordsCanceledDependencyMapping(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
