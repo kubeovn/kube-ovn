@@ -184,20 +184,7 @@ func (r *SubnetShadowReconciler) requestsForProviderNetworkWithError(ctx context
 }
 
 func (r *SubnetShadowReconciler) requestsForProviderNetworkStatusWithError(ctx context.Context, objects ...client.Object) ([]ctrl.Request, error) {
-	var providerName string
-	vlans := make(map[string]struct{})
-	for _, obj := range objects {
-		provider, ok := obj.(*kubeovnv1.ProviderNetwork)
-		if !ok || provider == nil {
-			continue
-		}
-		providerName = provider.Name
-		for _, vlan := range provider.Status.Vlans {
-			if vlan != "" {
-				vlans[vlan] = struct{}{}
-			}
-		}
-	}
+	providerName, vlans := providerNetworkVlanNames(objects...)
 	if providerName == "" || len(vlans) == 0 {
 		return nil, nil
 	}
@@ -217,18 +204,7 @@ func (r *SubnetShadowReconciler) requestsForProviderNetworkStatusWithError(ctx c
 }
 
 func (r *SubnetShadowReconciler) requestsForProviderNetworkBySubnetSpec(ctx context.Context, objects ...client.Object) ([]ctrl.Request, error) {
-	vlans := make(map[string]struct{})
-	for _, obj := range objects {
-		provider, ok := obj.(*kubeovnv1.ProviderNetwork)
-		if !ok || provider == nil {
-			continue
-		}
-		for _, vlan := range provider.Status.Vlans {
-			if vlan != "" {
-				vlans[vlan] = struct{}{}
-			}
-		}
-	}
+	_, vlans := providerNetworkVlanNames(objects...)
 	if len(vlans) == 0 {
 		return nil, nil
 	}
@@ -243,6 +219,24 @@ func (r *SubnetShadowReconciler) requestsForProviderNetworkBySubnetSpec(ctx cont
 		}
 	}
 	return subnetRequestsForNames(names), nil
+}
+
+func providerNetworkVlanNames(objects ...client.Object) (string, map[string]struct{}) {
+	var providerName string
+	vlans := make(map[string]struct{})
+	for _, obj := range objects {
+		provider, ok := obj.(*kubeovnv1.ProviderNetwork)
+		if !ok || provider == nil {
+			continue
+		}
+		providerName = provider.Name
+		for _, vlan := range provider.Status.Vlans {
+			if vlan != "" {
+				vlans[vlan] = struct{}{}
+			}
+		}
+	}
+	return providerName, vlans
 }
 
 type subnetDependencyMapper func(context.Context, client.Object) ([]ctrl.Request, error)
