@@ -69,6 +69,10 @@ func TestSubnetShadowCacheMapsDependencyUpdates(t *testing.T) {
 	vlan.Status.Conflict = true
 	api.send(t, "vlans", "MODIFIED", vlan, "3")
 	awaitSubnetShadowVersionReads(t, reader, "vlans", "3", "subnet-a")
+	vlan = vlan.DeepCopy()
+	vlan.Status.Subnets = []string{"subnet-a"}
+	api.send(t, "vlans", "MODIFIED", vlan, "3-rebound")
+	awaitSubnetShadowVersionReads(t, reader, "vlans", "3-rebound", "subnet-a")
 
 	provider := testProvider("provider-a", false, "vlan-a")
 	api.send(t, "provider-networks", "ADDED", provider, "4")

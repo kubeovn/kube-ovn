@@ -10,6 +10,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -192,14 +193,16 @@ func (r *SubnetShadowReconciler) requestsForProviderNetworkStatusWithError(ctx c
 	if providerName == "" || len(vlans) == 0 {
 		return nil, nil
 	}
-	var subnets kubeovnv1.SubnetList
-	if err := r.List(ctx, &subnets); err != nil {
-		return nil, fmt.Errorf("list subnets for ProviderNetwork %s: %w", providerName, err)
-	}
 	names := make(map[string]struct{})
-	for _, subnet := range subnets.Items {
-		if _, ok := vlans[subnet.Spec.Vlan]; ok {
-			names[subnet.Name] = struct{}{}
+	for vlanName := range vlans {
+		var vlan kubeovnv1.Vlan
+		if err := r.Get(ctx, types.NamespacedName{Name: vlanName}, &vlan); err != nil {
+			return nil, fmt.Errorf("get VLAN %s for ProviderNetwork %s: %w", vlanName, providerName, err)
+		}
+		for _, subnet := range vlan.Status.Subnets {
+			if subnet != "" {
+				names[subnet] = struct{}{}
+			}
 		}
 	}
 	return subnetRequestsForNames(names), nil
