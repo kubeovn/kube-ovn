@@ -57,6 +57,7 @@ IPSEC_CERT_DURATION=${IPSEC_CERT_DURATION:-63072000} # 2 years in seconds
 CERT_MANAGER_ISSUER_NAME=${CERT_MANAGER_ISSUER_NAME:-kube-ovn}
 ENABLE_ANP=${ENABLE_ANP:-false}
 ENABLE_DNS_NAME_RESOLVER=${ENABLE_DNS_NAME_RESOLVER:-false}
+SET_GENEVE_TX_OFF=${SET_GENEVE_TX_OFF:-true}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
@@ -5757,6 +5758,7 @@ spec:
           - --cert-manager-ipsec-cert=$CERT_MANAGER_IPSEC_CERT
           - --ovn-ipsec-cert-duration=$IPSEC_CERT_DURATION
           - --cert-manager-issuer-name=$CERT_MANAGER_ISSUER_NAME
+          - --set-geneve-tx-off=$SET_GENEVE_TX_OFF
           - --set-vxlan-tx-off=$SET_VXLAN_TX_OFF
         securityContext:
           runAsUser: 0

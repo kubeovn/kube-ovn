@@ -866,6 +866,7 @@ false
   "LS_DNAT_MOD_DL_DST": true,
   "OVSDB_CON_TIMEOUT": 3,
   "OVSDB_INACTIVITY_TIMEOUT": 10,
+  "SET_GENEVE_TX_OFF": true,
   "SET_VXLAN_TX_OFF": false,
   "enableExternalVpcs": false,
   "enableHardwareOffload": false,
