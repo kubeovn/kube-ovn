@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 // SubnetSideEffectAction is the operation-specific OVN or IPAM mutation that
@@ -35,44 +35,50 @@ type SubnetSideEffectPlan struct {
 // Subnet snapshot and recovery barrier. It does not own or implement either
 // backend and remains unwired while the legacy controller is the sole writer.
 type subnetSideEffectWriter struct {
-	ctx  context.Context
-	gate SubnetWriterGate
+	ctx context.Context
+	// reader must be an uncached APIReader, not a manager cache.
+	reader client.Reader
+	gate   SubnetWriterGate
 }
 
-const subnetSideEffectCompensationTimeout = 5 * time.Second
+const (
+	subnetSideEffectReadTimeout         = 5 * time.Second
+	subnetSideEffectCompensationTimeout = 5 * time.Second
+)
 
-func (w *subnetSideEffectWriter) AllocateOVN(snapshot SubnetWriteSnapshot, current *kubeovnv1.Subnet, action SubnetSideEffectAction) error {
-	return w.execute(snapshot, current, SubnetOVNAllocateOperation, action)
+func (w *subnetSideEffectWriter) AllocateOVN(snapshot SubnetWriteSnapshot, action SubnetSideEffectAction) error {
+	return w.execute(snapshot, SubnetOVNAllocateOperation, action)
 }
 
-func (w *subnetSideEffectWriter) CleanupOVN(snapshot SubnetWriteSnapshot, current *kubeovnv1.Subnet, action SubnetSideEffectAction) error {
-	return w.execute(snapshot, current, SubnetOVNCleanupOperation, action)
+func (w *subnetSideEffectWriter) CleanupOVN(snapshot SubnetWriteSnapshot, action SubnetSideEffectAction) error {
+	return w.execute(snapshot, SubnetOVNCleanupOperation, action)
 }
 
-func (w *subnetSideEffectWriter) AllocateIPAM(snapshot SubnetWriteSnapshot, current *kubeovnv1.Subnet, action SubnetSideEffectAction) error {
-	return w.execute(snapshot, current, SubnetIPAMAllocateOperation, action)
+func (w *subnetSideEffectWriter) AllocateIPAM(snapshot SubnetWriteSnapshot, action SubnetSideEffectAction) error {
+	return w.execute(snapshot, SubnetIPAMAllocateOperation, action)
 }
 
-func (w *subnetSideEffectWriter) ReleaseIPAM(snapshot SubnetWriteSnapshot, current *kubeovnv1.Subnet, action SubnetSideEffectAction) error {
-	return w.execute(snapshot, current, SubnetIPAMReleaseOperation, action)
+func (w *subnetSideEffectWriter) ReleaseIPAM(snapshot SubnetWriteSnapshot, action SubnetSideEffectAction) error {
+	return w.execute(snapshot, SubnetIPAMReleaseOperation, action)
 }
 
-func (w *subnetSideEffectWriter) execute(snapshot SubnetWriteSnapshot, current *kubeovnv1.Subnet, operation SubnetWriteOperation, action SubnetSideEffectAction) error {
+func (w *subnetSideEffectWriter) execute(snapshot SubnetWriteSnapshot, operation SubnetWriteOperation, action SubnetSideEffectAction) error {
 	if action == nil {
 		return errors.New("subnet side effect action is not configured")
 	}
-	return w.Execute(snapshot, current, operation, SubnetSideEffectPlan{
+	return w.Execute(snapshot, operation, SubnetSideEffectPlan{
 		Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
 			return nil, action(ctx)
 		},
 	})
 }
 
-// Execute runs one gated side-effect plan. Only a failed apply with a receipt
-// and a live writer context can attempt conditional compensation. Cancellation
-// never authorizes rollback; the recovered owner must resolve pending work.
+// Execute reads live Subnet state after recovery for each side-effect plan.
+// Only a failed apply with a receipt and a live writer context can attempt
+// conditional compensation. Cancellation never authorizes rollback; the
+// recovered owner must resolve pending work.
 // There are no internal retries or deduplication across Execute calls.
-func (w *subnetSideEffectWriter) Execute(snapshot SubnetWriteSnapshot, current *kubeovnv1.Subnet, operation SubnetWriteOperation, plan SubnetSideEffectPlan) error {
+func (w *subnetSideEffectWriter) Execute(snapshot SubnetWriteSnapshot, operation SubnetWriteOperation, plan SubnetSideEffectPlan) error {
 	switch operation {
 	case SubnetOVNAllocateOperation, SubnetOVNCleanupOperation, SubnetIPAMAllocateOperation, SubnetIPAMReleaseOperation:
 	default:
@@ -81,7 +87,17 @@ func (w *subnetSideEffectWriter) Execute(snapshot SubnetWriteSnapshot, current *
 	if plan.Apply == nil {
 		return errors.New("subnet side effect action is not configured")
 	}
-	if err := w.gate.Validate(w.ctx, snapshot, current, operation); err != nil {
+	if err := w.gate.WaitForRecovery(w.ctx); err != nil {
+		return err
+	}
+	if w.reader == nil {
+		return errors.New("subnet side effect API reader is not configured")
+	}
+	current, err := getSubnet(w.ctx, w.reader, snapshot.Name, subnetSideEffectReadTimeout)
+	if err != nil {
+		return err
+	}
+	if err := snapshot.Validate(current, operation); err != nil {
 		return err
 	}
 	if err := w.ctx.Err(); err != nil {

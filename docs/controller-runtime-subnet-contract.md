@@ -63,7 +63,20 @@ metadata writes after an uncertain response. `subnet_side_effect_writer.go` adds
 the unwired OVN/IPAM side-effect boundary: each allocate or cleanup/release
 callback is executed only after the matching snapshot operation and recovery
 gate pass, and callback or context failures fail closed without retrying the
-side effect in the contract. `SubnetSideEffectPlan` accepts only those four
+side effect in the contract. Each invocation waits for recovery and performs
+a fresh Subnet GET with a five-second deadline before checking the immutable
+snapshot and operation gate. The writer requires an uncached API reader (the
+manager's `GetAPIReader()`); a missing reader, missing object, API error,
+timeout, cancellation, or changed identity/spec/resource-version/deletion state
+prevents the action from running. Callers cannot supply a previously read
+`current` object as authorization. State changed during recovery or between
+invocations is therefore checked against the API again.
+
+This read does not make the API check and OVN/IPAM mutation atomic. Changes
+after the GET still require backend identity/ownership fencing and recovery;
+the reader alone does not provide those guarantees.
+
+`SubnetSideEffectPlan` accepts only those four
 OVN/IPAM operations. A failed apply can be compensated only when the adapter
 returns a receipt for a confirmed mutation owned by this attempt. No-op,
 uncommitted, and uncertain outcomes return no receipt; uncertainty must be
