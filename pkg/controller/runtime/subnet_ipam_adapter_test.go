@@ -52,6 +52,24 @@ func TestSubnetIPAMAdapterExistingAllocationIsScopedToNIC(t *testing.T) {
 	require.NotEqual(t, firstV4, secondV4)
 }
 
+func TestSubnetIPAMAdapterMacOnlyAllocationIsNoOp(t *testing.T) {
+	adapter, snapshot := newSubnetIPAMAdapterTest(t)
+	macOnlyIPAM := ipam.NewIPAM()
+	require.NoError(t, macOnlyIPAM.AddOrUpdateSubnet(snapshot.Name, "", "", nil))
+	adapter.ipam = macOnlyIPAM
+
+	_, v6, mac, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
+	require.NoError(t, err)
+	require.Empty(t, v6)
+	require.NotEmpty(t, mac)
+	require.NotNil(t, receipt)
+
+	_, _, secondMAC, secondReceipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
+	require.NoError(t, err)
+	require.Equal(t, mac, secondMAC)
+	require.Nil(t, secondReceipt, "existing MAC-only allocation must not create a second receipt")
+}
+
 func TestSubnetIPAMAdapterConcurrentSameKeyHasOneOwner(t *testing.T) {
 	adapter, snapshot := newSubnetIPAMAdapterTest(t)
 	type result struct {

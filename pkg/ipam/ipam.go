@@ -518,7 +518,7 @@ func (ipam *IPAM) GetPodAddressByNic(podName, nicName, subnetName string) (strin
 			v6 = v6IP.String()
 		}
 	}
-	return v4, v6, mac, v4 != "" || v6 != ""
+	return v4, v6, mac, v4 != "" || v6 != "" || mac != ""
 }
 
 func (ipam *IPAM) ContainAddress(address string) bool {
