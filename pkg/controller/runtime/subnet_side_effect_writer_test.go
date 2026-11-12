@@ -3,7 +3,10 @@ package controllerruntime
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -147,4 +150,212 @@ func TestSubnetSideEffectWriterReturnsCancellationAfterAction(t *testing.T) {
 	})
 	require.ErrorIs(t, err, context.Canceled)
 	require.Equal(t, 1, calls)
+}
+
+// sideEffectReceiptFunc models the adapter receipt in tests.
+type sideEffectReceiptFunc func(context.Context) error
+
+func (f sideEffectReceiptFunc) Compensate(ctx context.Context) error { return f(ctx) }
+
+func TestSubnetSideEffectWriterCompensatesConfirmedMutation(t *testing.T) {
+	for _, compensationFails := range []bool{false, true} {
+		t.Run(strconv.FormatBool(compensationFails), func(t *testing.T) {
+			w, subnet, snapshot := newSubnetSideEffectWriter(t)
+			applyErr := errors.New("apply failed after confirmed mutation")
+			compensateErr := errors.New("compensation failed")
+			applyCalls, compensateCalls := 0, 0
+			err := w.Execute(snapshot, subnet, SubnetOVNAllocateOperation, SubnetSideEffectPlan{
+				Apply: func(context.Context) (SubnetSideEffectReceipt, error) {
+					applyCalls++
+					return sideEffectReceiptFunc(func(ctx context.Context) error {
+						compensateCalls++
+						deadline, ok := ctx.Deadline()
+						require.True(t, ok)
+						require.InDelta(t, subnetSideEffectCompensationTimeout.Seconds(), time.Until(deadline).Seconds(), 1)
+						if compensationFails {
+							return compensateErr
+						}
+						return nil
+					}), applyErr
+				},
+			})
+			require.ErrorIs(t, err, applyErr)
+			if compensationFails {
+				require.ErrorIs(t, err, compensateErr)
+			}
+			require.Equal(t, 1, applyCalls)
+			require.Equal(t, 1, compensateCalls)
+		})
+	}
+}
+
+func TestSubnetSideEffectWriterCancellationNeverAuthorizesCompensation(t *testing.T) {
+	for _, applyErr := range []error{nil, errors.New("apply failed")} {
+		t.Run(fmt.Sprint(applyErr), func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			w, subnet, snapshot := newSubnetSideEffectWriter(t)
+			w.ctx = ctx
+			compensateCalls := 0
+			err := w.Execute(snapshot, subnet, SubnetIPAMAllocateOperation, SubnetSideEffectPlan{
+				Apply: func(context.Context) (SubnetSideEffectReceipt, error) {
+					cancel()
+					return sideEffectReceiptFunc(func(context.Context) error { compensateCalls++; return nil }), applyErr
+				},
+			})
+			require.ErrorIs(t, err, context.Canceled)
+			if applyErr != nil {
+				require.ErrorIs(t, err, applyErr)
+			}
+			require.Zero(t, compensateCalls)
+		})
+	}
+}
+
+func TestSubnetSideEffectWriterGateFailureSkipsPlan(t *testing.T) {
+	w, subnet, snapshot := newSubnetSideEffectWriter(t)
+	snapshot.AllocationAllowed = false
+	calls := 0
+	err := w.Execute(snapshot, subnet, SubnetIPAMAllocateOperation, SubnetSideEffectPlan{
+		Apply: func(context.Context) (SubnetSideEffectReceipt, error) { calls++; return nil, nil },
+	})
+	require.Error(t, err)
+	require.Zero(t, calls)
+}
+
+func TestSubnetSideEffectWriterRejectsUnrelatedOperations(t *testing.T) {
+	for _, operation := range []SubnetWriteOperation{SubnetStatusWriteOperation, SubnetFinalizerAddOperation, SubnetFinalizerRemoveOperation, "unknown"} {
+		t.Run(string(operation), func(t *testing.T) {
+			w, subnet, snapshot := newSubnetSideEffectWriter(t)
+			snapshot.AllocationAllowed = false
+			calls := 0
+			err := w.Execute(snapshot, subnet, operation, SubnetSideEffectPlan{
+				Apply: func(context.Context) (SubnetSideEffectReceipt, error) { calls++; return nil, nil },
+			})
+			require.ErrorContains(t, err, "unsupported Subnet side effect operation")
+			require.Zero(t, calls)
+		})
+	}
+}
+
+func TestSubnetSideEffectWriterReportsCompensationTimeout(t *testing.T) {
+	w, subnet, snapshot := newSubnetSideEffectWriter(t)
+	applyErr := errors.New("apply failed")
+	err := w.Execute(snapshot, subnet, SubnetOVNAllocateOperation, SubnetSideEffectPlan{
+		Apply: func(context.Context) (SubnetSideEffectReceipt, error) {
+			return sideEffectReceiptFunc(func(ctx context.Context) error { <-ctx.Done(); return nil }), applyErr
+		},
+	})
+	require.ErrorIs(t, err, applyErr)
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+}
+
+func TestSubnetSideEffectWriterSuccessfulApplySkipsCompensation(t *testing.T) {
+	w, subnet, snapshot := newSubnetSideEffectWriter(t)
+	applyCalls, compensateCalls := 0, 0
+	require.NoError(t, w.Execute(snapshot, subnet, SubnetOVNAllocateOperation, SubnetSideEffectPlan{
+		Apply: func(context.Context) (SubnetSideEffectReceipt, error) {
+			applyCalls++
+			return sideEffectReceiptFunc(func(context.Context) error { compensateCalls++; return nil }), nil
+		},
+	}))
+	require.Equal(t, 1, applyCalls)
+	require.Zero(t, compensateCalls)
+}
+
+func TestSubnetSideEffectWriterPreservesUnconfirmedOrExistingState(t *testing.T) {
+	for _, outcome := range []string{"uncommitted", "existing", "uncertain commit"} {
+		t.Run(outcome, func(t *testing.T) {
+			w, subnet, snapshot := newSubnetSideEffectWriter(t)
+			backend := "existing resource"
+			want := backend
+			applyErr := errors.New("apply outcome requires reconciliation")
+			err := w.Execute(snapshot, subnet, SubnetOVNAllocateOperation, SubnetSideEffectPlan{
+				Apply: func(context.Context) (SubnetSideEffectReceipt, error) {
+					if outcome == "uncertain commit" {
+						backend = "possibly committed resource"
+						want = backend
+					}
+					if outcome == "existing" {
+						return nil, nil
+					}
+					return nil, applyErr
+				},
+			})
+			if outcome == "existing" {
+				require.NoError(t, err)
+			} else {
+				require.Same(t, applyErr, err)
+			}
+			require.Equal(t, want, backend)
+		})
+	}
+}
+
+func TestSubnetSideEffectWriterReceiptConditionallyRestoresOnlyOwnedMutation(t *testing.T) {
+	// A real adapter must implement this comparison atomically in its backend.
+	// The single-threaded fake models that compare-and-swap operation.
+	type state struct {
+		uid      string
+		epoch    int
+		revision int
+		exists   bool
+	}
+	for _, operation := range []SubnetWriteOperation{SubnetOVNAllocateOperation, SubnetIPAMAllocateOperation, SubnetOVNCleanupOperation, SubnetIPAMReleaseOperation} {
+		for _, change := range []string{"unchanged", "new revision", "new leader", "replacement"} {
+			t.Run(string(operation)+"/"+change, func(t *testing.T) {
+				w, subnet, snapshot := newSubnetSideEffectWriter(t)
+				removing := operation == SubnetOVNCleanupOperation || operation == SubnetIPAMReleaseOperation
+				if removing {
+					subnet.DeletionTimestamp = new(metav1.Now())
+					var err error
+					snapshot, err = NewSubnetWriteSnapshot(subnet, false)
+					require.NoError(t, err)
+				}
+				before := state{uid: string(subnet.UID), epoch: 1, revision: 1, exists: removing}
+				backend := before
+				var receipt SubnetSideEffectReceipt
+				applyErr := errors.New("failure after a confirmed mutation")
+				err := w.Execute(snapshot, subnet, operation, SubnetSideEffectPlan{
+					Apply: func(context.Context) (SubnetSideEffectReceipt, error) {
+						backend.revision++
+						backend.exists = !removing
+						owned := backend
+						receipt = sideEffectReceiptFunc(func(ctx context.Context) error {
+							if err := ctx.Err(); err != nil {
+								return err
+							}
+							if backend == before {
+								return nil
+							}
+							if backend != owned {
+								return subnetWriteConflict(subnet.Name, "backend mutation ownership changed")
+							}
+							backend = before
+							return nil
+						})
+						switch change {
+						case "new revision":
+							backend.revision++
+						case "new leader":
+							backend.epoch++
+						case "replacement":
+							backend.uid = "replacement"
+						}
+						return receipt, applyErr
+					},
+				})
+				require.ErrorIs(t, err, applyErr)
+				if change == "unchanged" {
+					require.Equal(t, before, backend)
+					require.NoError(t, receipt.Compensate(t.Context()), "receipt replay must settle")
+				} else {
+					require.True(t, apierrors.IsConflict(err), err)
+					current := backend
+					require.Error(t, receipt.Compensate(t.Context()))
+					require.Equal(t, current, backend, "stale compensation must preserve later state")
+				}
+			})
+		}
+	}
 }

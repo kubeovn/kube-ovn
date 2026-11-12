@@ -63,7 +63,18 @@ metadata writes after an uncertain response. `subnet_side_effect_writer.go` adds
 the unwired OVN/IPAM side-effect boundary: each allocate or cleanup/release
 callback is executed only after the matching snapshot operation and recovery
 gate pass, and callback or context failures fail closed without retrying the
-side effect in the contract.
+side effect in the contract. `SubnetSideEffectPlan` accepts only those four
+OVN/IPAM operations. A failed apply can be compensated only when the adapter
+returns a receipt for a confirmed mutation owned by this attempt. No-op,
+uncommitted, and uncertain outcomes return no receipt; uncertainty must be
+resolved by backend readback or recovery. A receipt must bind the Subnet UID,
+mutation revision, and writer ownership epoch, and atomically check them in
+the backend before conditionally reverting only its own change. An idempotent
+delete by name alone is insufficient. Cancellation never authorizes rollback,
+even after a successful apply; the recovered owner resolves pending work.
+Compensation inherits writer cancellation and has a five-second deadline;
+adapters must honor that context. Compensation errors and deadline expiry are
+joined with the apply error. There is no deduplication across plan executions.
 
 ## Readiness and deletion gates
 
@@ -91,3 +102,7 @@ steps. IP is last because Pod, VM, LSP and `syncIPCR` paths depend on it.
 Subnet status, finalizer, and OVN/IPAM side-effect writers remain legacy-owned
 in every currently supported mode. Wiring side effects requires concrete OVN
 and IPAM adapters, durable recovery, and an explicit rollback/ownership gate.
+The plan compensation contract is also unwired and does not itself provide
+durable backend rollback or a fencing mechanism. Concrete adapters must
+implement atomic receipt checks, idempotency, uncertain-commit confirmation,
+and ownership fencing before this contract can be used in production.
