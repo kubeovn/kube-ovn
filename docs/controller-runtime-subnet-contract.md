@@ -59,7 +59,11 @@ unwired contract until the legacy Subnet writer has an explicit replacement and
 rollback path. `subnet_finalizer_writer.go` adds the matching unwired metadata
 contract: it migrates the deprecated finalizer on active objects, removes both
 owned finalizers during termination, preserves foreign finalizers, and confirms
-metadata writes after an uncertain response.
+metadata writes after an uncertain response. `subnet_side_effect_writer.go` adds
+the unwired OVN/IPAM side-effect boundary: each allocate or cleanup/release
+callback is executed only after the matching snapshot operation and recovery
+gate pass, and callback or context failures fail closed without retrying the
+side effect in the contract.
 
 ## Readiness and deletion gates
 
@@ -84,5 +88,6 @@ is implemented as an unwired contract. The next production increment is opt-in
 legacy backend and its count-pool activation protocol. Further Subnet business
 handler extraction and conflict-safe finalizer/OVN/IPAM writes remain separate
 steps. IP is last because Pod, VM, LSP and `syncIPCR` paths depend on it.
-Subnet status and finalizer writers remain legacy-owned in every currently
-supported mode.
+Subnet status, finalizer, and OVN/IPAM side-effect writers remain legacy-owned
+in every currently supported mode. Wiring side effects requires concrete OVN
+and IPAM adapters, durable recovery, and an explicit rollback/ownership gate.
