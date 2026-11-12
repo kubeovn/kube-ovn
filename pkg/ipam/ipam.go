@@ -476,6 +476,51 @@ func (ipam *IPAM) GetPodAddress(podName string) []*SubnetAddress {
 	return addresses
 }
 
+// GetPodAddressByNic returns the addresses owned by one pod/NIC pair on one
+// subnet. The NIC must be listed for the pod; looking up the NIC maps alone
+// could return an address that has since been rebound to another pod.
+func (ipam *IPAM) GetPodAddressByNic(podName, nicName, subnetName string) (string, string, string, bool) {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+
+	subnet, ok := ipam.Subnets[subnetName]
+	if !ok {
+		return "", "", "", false
+	}
+	subnet.Mutex.RLock()
+	defer subnet.Mutex.RUnlock()
+	owned := false
+	for _, listedNIC := range subnet.PodToNicList[podName] {
+		if listedNIC == nicName {
+			owned = true
+			break
+		}
+	}
+	if !owned {
+		return "", "", "", false
+	}
+	v4IP, v6IP, mac, protocol := subnet.GetPodAddress(nicName)
+	var v4, v6 string
+	switch protocol {
+	case kubeovnv1.ProtocolIPv4:
+		if v4IP != nil {
+			v4 = v4IP.String()
+		}
+	case kubeovnv1.ProtocolIPv6:
+		if v6IP != nil {
+			v6 = v6IP.String()
+		}
+	case kubeovnv1.ProtocolDual:
+		if v4IP != nil {
+			v4 = v4IP.String()
+		}
+		if v6IP != nil {
+			v6 = v6IP.String()
+		}
+	}
+	return v4, v6, mac, v4 != "" || v6 != ""
+}
+
 func (ipam *IPAM) ContainAddress(address string) bool {
 	// check if pod is using the address in any subnet of ipam
 	ipam.mutex.RLock()

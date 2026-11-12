@@ -79,38 +79,43 @@ func (w *subnetSideEffectWriter) execute(snapshot SubnetWriteSnapshot, operation
 // recovered owner must resolve pending work.
 // There are no internal retries or deduplication across Execute calls.
 func (w *subnetSideEffectWriter) Execute(snapshot SubnetWriteSnapshot, operation SubnetWriteOperation, plan SubnetSideEffectPlan) error {
+	_, err := w.executePlan(snapshot, operation, plan)
+	return err
+}
+
+func (w *subnetSideEffectWriter) executePlan(snapshot SubnetWriteSnapshot, operation SubnetWriteOperation, plan SubnetSideEffectPlan) (SubnetSideEffectReceipt, error) {
 	switch operation {
 	case SubnetOVNAllocateOperation, SubnetOVNCleanupOperation, SubnetIPAMAllocateOperation, SubnetIPAMReleaseOperation:
 	default:
-		return fmt.Errorf("unsupported Subnet side effect operation %q", operation)
+		return nil, fmt.Errorf("unsupported Subnet side effect operation %q", operation)
 	}
 	if plan.Apply == nil {
-		return errors.New("subnet side effect action is not configured")
+		return nil, errors.New("subnet side effect action is not configured")
 	}
 	if err := w.gate.WaitForRecovery(w.ctx); err != nil {
-		return err
+		return nil, err
 	}
 	if w.reader == nil {
-		return errors.New("subnet side effect API reader is not configured")
+		return nil, errors.New("subnet side effect API reader is not configured")
 	}
 	current, err := getSubnet(w.ctx, w.reader, snapshot.Name, subnetSideEffectReadTimeout)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if err := snapshot.Validate(current, operation); err != nil {
-		return err
+		return nil, err
 	}
 	if err := w.ctx.Err(); err != nil {
-		return err
+		return nil, err
 	}
 	receipt, applyErr := plan.Apply(w.ctx)
 	if err := w.ctx.Err(); err != nil {
-		return errors.Join(applyErr, err)
+		return nil, errors.Join(applyErr, err)
 	}
 	if applyErr != nil {
-		return w.compensate(receipt, applyErr)
+		return nil, w.compensate(receipt, applyErr)
 	}
-	return nil
+	return receipt, nil
 }
 
 func (w *subnetSideEffectWriter) compensate(receipt SubnetSideEffectReceipt, cause error) error {
