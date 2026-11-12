@@ -51,8 +51,12 @@ cleanup, and IPAM release require a terminating object; OVN/IPAM allocation
 requires `AllocationAllowed`. UID, generation, spec, resource-version, and
 deletion-state changes return a Kubernetes conflict. A missing recovery callback
 fails closed, so a restart cannot allocate or mutate OVN state before durable
-recovery completes. The gate is still an unwired contract until the legacy
-Subnet writer has an explicit replacement and rollback path.
+recovery completes. `subnet_status_writer.go` adds the next unwired status-only
+implementation: it performs an uncached snapshot check, uses an optimistic-lock
+status patch, preserves foreign condition types, and confirms a write that may
+have committed before its response was lost. The gate and writer remain an
+unwired contract until the legacy Subnet writer has an explicit replacement and
+rollback path.
 
 ## Readiness and deletion gates
 
@@ -71,9 +75,10 @@ Subnet writer:
 - rollback from a future `subnet-shadow`/`subnet-new` mode to legacy without
   duplicate cleanup or lost IPAM ownership.
 
-The IPAM transaction seam is now available. The next production increment is
-opt-in [IPPool scheduling](controller-runtime-ippool.md), which reuses the recovered
-legacy backend and its count-pool activation protocol. Further business-handler
-extraction and conflict-safe client writes remain separate steps. IP is last
-because Pod, VM, LSP and `syncIPCR` paths depend on it. Subnet writers remain
-legacy-owned in every currently supported mode.
+The IPAM transaction seam is now available, and the status-only Subnet writer
+is implemented as an unwired contract. The next production increment is opt-in
+[IPPool scheduling](controller-runtime-ippool.md), which reuses the recovered
+legacy backend and its count-pool activation protocol. Further Subnet business
+handler extraction and conflict-safe finalizer/OVN/IPAM writes remain separate
+steps. IP is last because Pod, VM, LSP and `syncIPCR` paths depend on it.
+Subnet writers remain legacy-owned in every currently supported mode.
