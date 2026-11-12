@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -100,6 +101,23 @@ func TestSubnetShadowReconcilerFallsBackToSubnetSpecAfterVlanGetFailure(t *testi
 	require.Equal(t, []ctrl.Request{{Name: subnet.Name}},
 		reconciler.requestsForProviderNetworkWithRetry(t.Context(), provider))
 	require.Equal(t, map[string]int{"vlans": 0}, reader.failures)
+}
+
+func TestSubnetShadowReconcilerFallbackHandlerEnqueuesSubnet(t *testing.T) {
+	subnet := testSubnet("vlan-a")
+	provider := testProvider("provider-a", true, "vlan-a")
+	reconciler := &SubnetShadowReconciler{Reader: &transientSubnetMapperReader{
+		Reader:   newRuntimeClient(t, subnet),
+		failures: map[string]int{"vlans": 3},
+	}}
+	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[ctrl.Request]())
+	t.Cleanup(q.ShutDown)
+
+	reconciler.enqueueProviderNetworkStatusRequests(t.Context(), q, provider)
+	require.Equal(t, 1, q.Len())
+	request, _ := q.Get()
+	q.Done(request)
+	require.Equal(t, ctrl.Request{Name: subnet.Name}, request)
 }
 
 func TestSubnetShadowReconcilerRecordsCanceledDependencyMapping(t *testing.T) {
