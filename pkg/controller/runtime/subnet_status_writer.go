@@ -9,7 +9,6 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/types"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -28,13 +27,7 @@ type subnetStatusWriter struct {
 }
 
 func (w *subnetStatusWriter) get(name string) (*kubeovnv1.Subnet, error) {
-	ctx, cancel := context.WithTimeout(w.ctx, subnetStatusWriteTimeout)
-	defer cancel()
-	subnet := &kubeovnv1.Subnet{}
-	if err := w.reader.Get(ctx, types.NamespacedName{Name: name}, subnet); err != nil {
-		return nil, err
-	}
-	return subnet, ctx.Err()
+	return getSubnet(w.ctx, w.reader, name, subnetStatusWriteTimeout)
 }
 
 func sameSubnetSpec(expected, current *kubeovnv1.Subnet) bool {
@@ -128,23 +121,15 @@ func (w *subnetStatusWriter) confirmStatus(subnet *kubeovnv1.Subnet, matches fun
 	if apierrors.IsConflict(writeErr) {
 		return writeErr
 	}
-	current, err := w.get(subnet.Name)
+	current, err := confirmSubnetWrite(w.ctx, w.reader, w.gate, subnet, subnetStatusWriteTimeout, writeErr, func(current *kubeovnv1.Subnet) bool {
+		return current.DeletionTimestamp.IsZero() && matches(current)
+	})
 	if err != nil {
-		return errors.Join(writeErr, err)
+		return err
 	}
-	if err := w.gate.WaitForRecovery(w.ctx); err != nil {
-		return errors.Join(writeErr, err)
+	if err := syncSubnetMetadata(w.ctx, subnet, current); err != nil {
+		return err
 	}
-	if !sameSubnetSpec(subnet, current) || !current.DeletionTimestamp.IsZero() {
-		return writeErr
-	}
-	if !matches(current) {
-		return writeErr
-	}
-	if err := w.ctx.Err(); err != nil {
-		return errors.Join(writeErr, err)
-	}
-	subnet.ObjectMeta = *current.ObjectMeta.DeepCopy()
 	subnet.Status = *current.Status.DeepCopy()
 	return nil
 }

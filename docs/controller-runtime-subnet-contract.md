@@ -56,7 +56,10 @@ implementation: it performs an uncached snapshot check, uses an optimistic-lock
 status patch, preserves foreign condition types, and confirms a write that may
 have committed before its response was lost. The gate and writer remain an
 unwired contract until the legacy Subnet writer has an explicit replacement and
-rollback path.
+rollback path. `subnet_finalizer_writer.go` adds the matching unwired metadata
+contract: it migrates the deprecated finalizer on active objects, removes both
+owned finalizers during termination, preserves foreign finalizers, and confirms
+metadata writes after an uncertain response.
 
 ## Readiness and deletion gates
 
@@ -81,4 +84,5 @@ is implemented as an unwired contract. The next production increment is opt-in
 legacy backend and its count-pool activation protocol. Further Subnet business
 handler extraction and conflict-safe finalizer/OVN/IPAM writes remain separate
 steps. IP is last because Pod, VM, LSP and `syncIPCR` paths depend on it.
-Subnet writers remain legacy-owned in every currently supported mode.
+Subnet status and finalizer writers remain legacy-owned in every currently
+supported mode.
