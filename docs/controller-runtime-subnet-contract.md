@@ -90,8 +90,9 @@ adapters must honor that context. Compensation errors and deadline expiry are
 joined with the apply error. There is no deduplication across plan executions.
 
 `subnet_ipam_adapter.go` is the first concrete IPAM seam, but remains unwired.
-It stages allocation and release through `IPAM.WithTransaction`, so a failed
-allocation leaves no committed address and a retry can allocate again. An
+It stages allocation and release through `IPAM.WithTransactionContext`, whose
+atomic commit is provided by `IPAM.WithTransaction`, so a failed allocation
+leaves no committed address and a retry can allocate again. An
 existing pod/NIC/subnet allocation is an explicit no-op and returns no receipt;
 transaction failures likewise return no receipt. Successful allocations carry
 a process-local owner token, Subnet UID, and the allocated address tuple. A
