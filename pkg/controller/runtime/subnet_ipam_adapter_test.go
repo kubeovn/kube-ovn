@@ -133,6 +133,31 @@ func TestSubnetIPAMAdapterTransactionFailureDoesNotReturnReceipt(t *testing.T) {
 	require.NotNil(t, retryReceipt, "failed transaction must leave the address available")
 }
 
+func TestSubnetIPAMAdapterCancellationDoesNotAllocate(t *testing.T) {
+	adapter, snapshot := newSubnetIPAMAdapterTest(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	adapter.writer.ctx = ctx
+
+	_, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
+	require.ErrorIs(t, err, context.Canceled)
+	require.Nil(t, receipt)
+	_, _, _, allocated := adapter.ipam.GetPodAddressByNic("pod", "nic", snapshot.Name)
+	require.False(t, allocated)
+}
+
+func TestSubnetIPAMReceiptCancellationPreservesAllocation(t *testing.T) {
+	adapter, snapshot := newSubnetIPAMAdapterTest(t)
+	_, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	require.ErrorIs(t, receipt.Compensate(ctx), context.Canceled)
+	_, _, _, allocated := adapter.ipam.GetPodAddressByNic("pod", "nic", snapshot.Name)
+	require.True(t, allocated)
+}
+
 func TestSubnetIPAMAdapterRejectsInvalidDependencies(t *testing.T) {
 	writer, _, _, _ := newSubnetSideEffectWriterAPI(t, false)
 	_, err := newSubnetIPAMAdapter(nil, ipam.NewIPAM())

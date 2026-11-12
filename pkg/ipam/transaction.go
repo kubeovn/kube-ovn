@@ -1,6 +1,7 @@
 package ipam
 
 import (
+	"context"
 	"errors"
 	"maps"
 	"net"
@@ -43,6 +44,21 @@ func (ipam *IPAM) WithTransaction(action func(*Transaction) error) error {
 	}
 	tx.commit()
 	return nil
+}
+
+// WithTransactionContext runs an atomic transaction with cancellation checks
+// before and after the action. Cancellation cannot interrupt a transaction
+// while it owns the IPAM mutex; when it is observed after the action, the
+// transaction has already committed or rolled back and the returned error
+// reports that outcome as uncertain to the caller.
+func (ipam *IPAM) WithTransactionContext(ctx context.Context, action func(*Transaction) error) error {
+	if ctx == nil {
+		return errors.New("ipam transaction context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return errors.Join(ipam.WithTransaction(action), ctx.Err())
 }
 
 // GetRandomAddress stages a random allocation on the transaction's subnet.

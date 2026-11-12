@@ -57,11 +57,11 @@ func (a *subnetIPAMAdapter) AllocateRandom(snapshot SubnetWriteSnapshot, podName
 	key := subnetIPAMKey{subnet: snapshot.Name, pod: podName, nic: nicName}
 	allocation := subnetIPAMAllocation{key: key, uid: string(snapshot.UID)}
 	var noOp bool
-	plan := SubnetSideEffectPlan{Apply: func(context.Context) (SubnetSideEffectReceipt, error) {
+	plan := SubnetSideEffectPlan{Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
 		if allocation.v4, allocation.v6, allocation.mac, noOp = existingIPAMAllocation(a.ipam, snapshot.Name, podName, nicName); noOp {
 			return nil, nil
 		}
-		if err := a.ipam.WithTransaction(func(tx *ipam.Transaction) error {
+		if err := a.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
 			var err error
 			allocation.v4, allocation.v6, allocation.mac, err = tx.GetRandomAddress(podName, nicName, nil, snapshot.Name, poolName, nil, true)
 			return err
@@ -104,7 +104,7 @@ func (r *subnetIPAMReceipt) Compensate(ctx context.Context) error {
 	if !ok || v4 != r.allocation.v4 || v6 != r.allocation.v6 || mac != r.allocation.mac {
 		return errors.New("IPAM allocation receipt no longer matches the owned address")
 	}
-	if err := r.adapter.ipam.WithTransaction(func(tx *ipam.Transaction) error {
+	if err := r.adapter.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
 		return tx.ReleaseAddressByNic(r.allocation.key.pod, r.allocation.key.nic, r.allocation.key.subnet)
 	}); err != nil {
 		return err

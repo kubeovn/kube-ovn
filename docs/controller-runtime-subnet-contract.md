@@ -99,7 +99,15 @@ receipt compensates only while that token and tuple still match the adapter's
 current owner, and refuses replay or a later owner. This check is process-local
 and cannot provide durable fencing or cross-process ownership; production wiring
 still needs a durable owner/revision protocol, uncertain-commit readback, and
-an OVN adapter.
+an OVN adapter. `IPAM.WithTransactionContext` checks cancellation before and
+after the atomic transaction, but cannot interrupt the IPAM mutex while a
+transaction is running. Cancellation observed after the action can therefore
+report an uncertain result even though the transaction has already committed;
+the adapter returns no receipt for an allocation in that state, and callers
+preserve the uncertainty for recovery rather than guessing whether to retry or
+compensate. A cancellation observed before receipt compensation starts leaves
+the allocation untouched; cancellation during the transaction still requires
+readback because the atomic release may already have committed.
 
 ## Readiness and deletion gates
 

@@ -1,6 +1,7 @@
 package ipam
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -161,6 +162,56 @@ func TestWithTransactionSerializesConcurrentAllocation(t *testing.T) {
 func TestWithTransactionRejectsNilAction(t *testing.T) {
 	ipam := NewIPAM()
 	require.ErrorIs(t, ipam.WithTransaction(nil), ErrTransactionNilAction)
+	require.EqualError(t, ipam.WithTransactionContext(nil, nil), "ipam transaction context is nil")
+}
+
+func TestWithTransactionContextRejectsCancellationBeforeAction(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	called := false
+	require.ErrorIs(t, ipam.WithTransactionContext(ctx, func(*Transaction) error {
+		called = true
+		return nil
+	}), context.Canceled)
+	require.False(t, called)
+
+	address, _, _, err := ipam.GetRandomAddress("retry", "retry-nic", nil, "subnet", "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", address)
+}
+
+func TestWithTransactionContextRollsBackActionCancellation(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	require.ErrorIs(t, ipam.WithTransactionContext(ctx, func(tx *Transaction) error {
+		_, _, _, err := tx.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
+		require.NoError(t, err)
+		cancel()
+		return ctx.Err()
+	}), context.Canceled)
+
+	address, _, _, err := ipam.GetRandomAddress("retry", "retry-nic", nil, "subnet", "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.1", address)
+}
+
+func TestWithTransactionContextReportsCancellationAfterCommit(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	ctx, cancel := context.WithCancel(t.Context())
+
+	require.ErrorIs(t, ipam.WithTransactionContext(ctx, func(tx *Transaction) error {
+		_, _, _, err := tx.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
+		require.NoError(t, err)
+		cancel()
+		return nil
+	}), context.Canceled)
+
+	address, _, _, err := ipam.GetRandomAddress("retry", "retry-nic", nil, "subnet", "", nil, true)
+	require.NoError(t, err)
+	require.Equal(t, "10.0.0.2", address, "cancellation after the action reports an uncertain committed result")
 }
 
 func newTransactionIPAM(t *testing.T) *IPAM {
