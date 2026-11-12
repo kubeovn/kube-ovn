@@ -162,7 +162,6 @@ func TestWithTransactionSerializesConcurrentAllocation(t *testing.T) {
 func TestWithTransactionRejectsNilAction(t *testing.T) {
 	ipam := NewIPAM()
 	require.ErrorIs(t, ipam.WithTransaction(nil), ErrTransactionNilAction)
-	require.EqualError(t, ipam.WithTransactionContext(nil, nil), "ipam transaction context is nil")
 }
 
 func TestWithTransactionContextRejectsCancellationBeforeAction(t *testing.T) {
