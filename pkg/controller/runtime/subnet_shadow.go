@@ -134,7 +134,7 @@ func (r *SubnetShadowReconciler) requestsForProviderNetwork(ctx context.Context,
 }
 
 func (r *SubnetShadowReconciler) requestsForProviderNetworkWithRetry(ctx context.Context, obj client.Object) []ctrl.Request {
-	requests, err := r.retryProviderNetworkStatusRequests(ctx, obj)
+	requests, err := r.providerNetworkStatusRequestsWithFallback(ctx, obj)
 	if err != nil {
 		subnetShadowDependencyMappingFailures.WithLabelValues("provider_network", subnetShadowRetryResult(err)).Inc()
 		log.FromContext(ctx).Error(err, "retry list dependencies for ProviderNetwork shadow event")
@@ -144,7 +144,7 @@ func (r *SubnetShadowReconciler) requestsForProviderNetworkWithRetry(ctx context
 }
 
 func (r *SubnetShadowReconciler) enqueueProviderNetworkStatusRequests(ctx context.Context, q workqueue.TypedRateLimitingInterface[ctrl.Request], objects ...client.Object) {
-	requests, err := r.retryProviderNetworkStatusRequests(ctx, objects...)
+	requests, err := r.providerNetworkStatusRequestsWithFallback(ctx, objects...)
 	if err != nil {
 		subnetShadowDependencyMappingFailures.WithLabelValues("provider_network", subnetShadowRetryResult(err)).Inc()
 		log.FromContext(ctx).Error(err, "retry list dependencies for ProviderNetwork shadow event")
@@ -153,6 +153,14 @@ func (r *SubnetShadowReconciler) enqueueProviderNetworkStatusRequests(ctx contex
 	for _, request := range requests {
 		q.Add(request)
 	}
+}
+
+func (r *SubnetShadowReconciler) providerNetworkStatusRequestsWithFallback(ctx context.Context, objects ...client.Object) ([]ctrl.Request, error) {
+	requests, err := r.retryProviderNetworkStatusRequests(ctx, objects...)
+	if err == nil || ctx.Err() != nil {
+		return requests, err
+	}
+	return r.requestsForProviderNetworkBySubnetSpec(ctx, objects...)
 }
 
 func (r *SubnetShadowReconciler) retryProviderNetworkStatusRequests(ctx context.Context, objects ...client.Object) ([]ctrl.Request, error) {
@@ -176,20 +184,7 @@ func (r *SubnetShadowReconciler) requestsForProviderNetworkWithError(ctx context
 }
 
 func (r *SubnetShadowReconciler) requestsForProviderNetworkStatusWithError(ctx context.Context, objects ...client.Object) ([]ctrl.Request, error) {
-	var providerName string
-	vlans := make(map[string]struct{})
-	for _, obj := range objects {
-		provider, ok := obj.(*kubeovnv1.ProviderNetwork)
-		if !ok || provider == nil {
-			continue
-		}
-		providerName = provider.Name
-		for _, vlan := range provider.Status.Vlans {
-			if vlan != "" {
-				vlans[vlan] = struct{}{}
-			}
-		}
-	}
+	providerName, vlans := providerNetworkVlanNames(objects...)
 	if providerName == "" || len(vlans) == 0 {
 		return nil, nil
 	}
@@ -206,6 +201,42 @@ func (r *SubnetShadowReconciler) requestsForProviderNetworkStatusWithError(ctx c
 		}
 	}
 	return subnetRequestsForNames(names), nil
+}
+
+func (r *SubnetShadowReconciler) requestsForProviderNetworkBySubnetSpec(ctx context.Context, objects ...client.Object) ([]ctrl.Request, error) {
+	_, vlans := providerNetworkVlanNames(objects...)
+	if len(vlans) == 0 {
+		return nil, nil
+	}
+	var subnets kubeovnv1.SubnetList
+	if err := r.List(ctx, &subnets); err != nil {
+		return nil, fmt.Errorf("list Subnets for ProviderNetwork fallback: %w", err)
+	}
+	names := make(map[string]struct{})
+	for _, subnet := range subnets.Items {
+		if _, ok := vlans[subnet.Spec.Vlan]; ok {
+			names[subnet.Name] = struct{}{}
+		}
+	}
+	return subnetRequestsForNames(names), nil
+}
+
+func providerNetworkVlanNames(objects ...client.Object) (string, map[string]struct{}) {
+	var providerName string
+	vlans := make(map[string]struct{})
+	for _, obj := range objects {
+		provider, ok := obj.(*kubeovnv1.ProviderNetwork)
+		if !ok || provider == nil {
+			continue
+		}
+		providerName = provider.Name
+		for _, vlan := range provider.Status.Vlans {
+			if vlan != "" {
+				vlans[vlan] = struct{}{}
+			}
+		}
+	}
+	return providerName, vlans
 }
 
 type subnetDependencyMapper func(context.Context, client.Object) ([]ctrl.Request, error)

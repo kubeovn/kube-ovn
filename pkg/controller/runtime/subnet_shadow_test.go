@@ -8,6 +8,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -77,13 +78,61 @@ func TestSubnetShadowReconcilerRecordsDependencyMappingFailure(t *testing.T) {
 	vlan.Status.Subnets = []string{subnet.Name}
 	reader := &transientSubnetMapperReader{
 		Reader:   newRuntimeClient(t, subnet, vlan),
-		failures: map[string]int{"vlans": 3},
+		failures: map[string]int{"vlans": 3, "subnets": 3},
 	}
 	before := testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("provider_network", "exhausted"))
 	reconciler := &SubnetShadowReconciler{Reader: reader}
 
 	require.Empty(t, reconciler.requestsForProviderNetworkWithRetry(t.Context(), testProvider("provider-a", true, "vlan-a")))
 	require.Equal(t, before+1, testutil.ToFloat64(subnetShadowDependencyMappingFailures.WithLabelValues("provider_network", "exhausted")))
+}
+
+func TestSubnetShadowReconcilerFallsBackToSubnetSpecAfterVlanGetFailure(t *testing.T) {
+	subnet := testSubnet("vlan-a")
+	vlan := testVlan("vlan-a", "provider-a")
+	vlan.Status.Subnets = []string{subnet.Name}
+	provider := testProvider("provider-a", true, "vlan-a")
+	reader := &transientSubnetMapperReader{
+		Reader:   newRuntimeClient(t, subnet, vlan, provider),
+		failures: map[string]int{"vlans": 3},
+	}
+	reconciler := &SubnetShadowReconciler{Reader: reader}
+
+	require.Equal(t, []ctrl.Request{{Name: subnet.Name}},
+		reconciler.requestsForProviderNetworkWithRetry(t.Context(), provider))
+	require.Equal(t, map[string]int{"vlans": 0}, reader.failures)
+}
+
+func TestSubnetShadowReconcilerFallbackHandlerEnqueuesSubnet(t *testing.T) {
+	subnet := testSubnet("vlan-a")
+	provider := testProvider("provider-a", true, "vlan-a")
+	reconciler := &SubnetShadowReconciler{Reader: &transientSubnetMapperReader{
+		Reader:   newRuntimeClient(t, subnet),
+		failures: map[string]int{"vlans": 3},
+	}}
+	q := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[ctrl.Request]())
+	t.Cleanup(q.ShutDown)
+
+	reconciler.enqueueProviderNetworkStatusRequests(t.Context(), q, provider)
+	require.Equal(t, 1, q.Len())
+	request, _ := q.Get()
+	q.Done(request)
+	require.Equal(t, ctrl.Request{Name: subnet.Name}, request)
+}
+
+func TestSubnetShadowReconcilerFallbackUsesProviderNetworkUpdateUnion(t *testing.T) {
+	oldProvider := testProvider("provider-a", true, "vlan-old")
+	newProvider := testProvider("provider-a", true, "vlan-new")
+	oldSubnet := &kubeovnv1.Subnet{Name: "subnet-old", Spec: kubeovnv1.SubnetSpec{Vlan: "vlan-old"}}
+	newSubnet := &kubeovnv1.Subnet{Name: "subnet-new", Spec: kubeovnv1.SubnetSpec{Vlan: "vlan-new"}}
+	reconciler := &SubnetShadowReconciler{Reader: &transientSubnetMapperReader{
+		Reader:   newRuntimeClient(t, oldSubnet, newSubnet),
+		failures: map[string]int{"vlans": 3},
+	}}
+
+	requests, err := reconciler.providerNetworkStatusRequestsWithFallback(t.Context(), oldProvider, newProvider)
+	require.NoError(t, err)
+	require.Equal(t, []ctrl.Request{{Name: "subnet-new"}, {Name: "subnet-old"}}, requests)
 }
 
 func TestSubnetShadowReconcilerRecordsCanceledDependencyMapping(t *testing.T) {
@@ -143,6 +192,10 @@ func (r canceledSubnetMapperReader) Get(ctx context.Context, _ client.ObjectKey,
 	return ctx.Err()
 }
 
+func (r canceledSubnetMapperReader) List(ctx context.Context, _ client.ObjectList, _ ...client.ListOption) error {
+	return ctx.Err()
+}
+
 func (r *transientSubnetMapperReader) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
 	resource := ""
 	if _, ok := obj.(*kubeovnv1.Vlan); ok {
@@ -153,6 +206,18 @@ func (r *transientSubnetMapperReader) Get(ctx context.Context, key client.Object
 		return errors.New("injected transient get failure")
 	}
 	return r.Reader.Get(ctx, key, obj, opts...)
+}
+
+func (r *transientSubnetMapperReader) List(ctx context.Context, list client.ObjectList, opts ...client.ListOption) error {
+	resource := ""
+	if _, ok := list.(*kubeovnv1.SubnetList); ok {
+		resource = "subnets"
+	}
+	if r.failures[resource] > 0 {
+		r.failures[resource]--
+		return errors.New("injected transient list failure")
+	}
+	return r.Reader.List(ctx, list, opts...)
 }
 
 func TestSubnetShadowReconcilerMapsIPDependenciesAcrossUpdates(t *testing.T) {
