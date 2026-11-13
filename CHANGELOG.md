@@ -1,5 +1,26 @@
 # Changelog
 
+## v1.17.1 (2026-11-13)
+
+ * [a1a7c812b](https://github.com/kubeovn/kube-ovn/commit/a1a7c812b70c1ad2402750f7edb3c6b55a1fb65d) release v1.17.1
+ * [4eff2b4f3](https://github.com/kubeovn/kube-ovn/commit/4eff2b4f3d0f3bb9e683de1a23e6c8e6cf782341) chore(deps): update module golang.org/x/crypto to v0.59.0 (#7965)
+ * [f66fcd13c](https://github.com/kubeovn/kube-ovn/commit/f66fcd13c19bd920fc5b8d50df5f532ab1387493) chore(deps): update dependency go to v1.27.4 (#7945)
+ * [1300baa55](https://github.com/kubeovn/kube-ovn/commit/1300baa552501323278ebc85f6d93f947b1c3e8c) [release-1.17] security: remove unused SYS_ADMIN from OVS (#7950)
+ * [6c257d96e](https://github.com/kubeovn/kube-ovn/commit/6c257d96e96e9676a2f655d865b84b2a072bf7d8) fix(rbac): grant CSR signing permissions only when IPsec is enabled (#7954)
+ * [7130e891c](https://github.com/kubeovn/kube-ovn/commit/7130e891c9ec61c0dc2edccb94e663304108bf43) ci: align release-1.17 E2E Go version (#7956)
+ * [8a11edd51](https://github.com/kubeovn/kube-ovn/commit/8a11edd5191f657de607393351573afa42347ac1) fix: disable LSP conntrack skip by default (#7932)
+ * [c0b9efb32](https://github.com/kubeovn/kube-ovn/commit/c0b9efb32361650687824dfb3df055fdf2d0d5ef) fix(deps): update golang (release-1.17) (#7924)
+ * [09b3027a3](https://github.com/kubeovn/kube-ovn/commit/09b3027a3404ea2add908c974e91ac1786b7497a) [release-1.17] fix(ipsec): let cleanup finish on hardware offload nodes without IPsec state (#7914)
+ * [902dfce93](https://github.com/kubeovn/kube-ovn/commit/902dfce930df0ae9171e495308657a9a91fc0f33) fix: clean up pod policies when EIP/SNAT annotations are removed (#7904)
+ * [7700518d8](https://github.com/kubeovn/kube-ovn/commit/7700518d8f7f317c7eaed54731750636c2059ed7) chore: remove release branch e2e suites (#7899)
+ * [5bbfba2ce](https://github.com/kubeovn/kube-ovn/commit/5bbfba2ce4ebfee2ae93f936393ed4b4edb42e06) prepare for next release
+
+### Contributors
+
+ * renovate[bot]
+ * zhangzujian
+ * 张祖建
+
 ## v1.17.0 (2026-11-07)
 
  * [3a5a5d231](https://github.com/kubeovn/kube-ovn/commit/3a5a5d231398241717464612f64948c161b50acb) Update module github.com/spf13/pflag to v1.1.0 (#7893)
@@ -821,6 +842,23 @@
  * zhaoxuan
  * 张祖建
 
+## v1.16.19 (2026-11-13)
+
+ * [547f61442](https://github.com/kubeovn/kube-ovn/commit/547f61442ad0f6ac8c1ad7fc20d43bcbf1323ffd) release v1.16.19
+ * [a6cb83ff6](https://github.com/kubeovn/kube-ovn/commit/a6cb83ff669736c6393e919f5feeb00cca0b5e27) fix(ovn): gate ACL default re-allow by highest tier (#7960)
+ * [da47f4495](https://github.com/kubeovn/kube-ovn/commit/da47f4495d55d17f255fc9c8f1be2dc3f1d797bb) chore(deps): update module golang.org/x/crypto to v0.59.0 (#7966)
+ * [73993145f](https://github.com/kubeovn/kube-ovn/commit/73993145fb62f89bf21b074c5a5e36f0da9f3f6c) chore(deps): update dependency go to v1.27.4 (#7946)
+ * [3fbef7faa](https://github.com/kubeovn/kube-ovn/commit/3fbef7faaea266cb16fec0bf2a6d7f12204c29ab) fix(deps): update golang (#7925)
+ * [731f6c53f](https://github.com/kubeovn/kube-ovn/commit/731f6c53fbf2863ffcc6b88b3e3753d4e826ef63) [release-1.16] fix: clean up pod policies when EIP/SNAT annotations are removed (#7905)
+ * [9e993e95a](https://github.com/kubeovn/kube-ovn/commit/9e993e95a9d68f66b55b7713d50a7447753a852c) prepare for next release
+
+### Contributors
+
+ * renovate[bot]
+ * zbb88888
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.18 (2026-11-07)
 
  * [1580749fb](https://github.com/kubeovn/kube-ovn/commit/1580749fb39fe3704fc0849804dd9d81ce9d5b8f) release v1.16.18
@@ -1620,6 +1658,20 @@
  * jskrill
  * renovate[bot]
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.15.34 (2026-11-13)
+
+ * [ff87750b8](https://github.com/kubeovn/kube-ovn/commit/ff87750b86bc89b08588563a5044a87bad77b343) release v1.15.34
+ * [e1e8dc206](https://github.com/kubeovn/kube-ovn/commit/e1e8dc206e2812aa06e05e02cba373a5fd1109c2) [release-1.15] make Geneve TX offload configurable (#7972)
+ * [48c246448](https://github.com/kubeovn/kube-ovn/commit/48c246448f29d7303cdf4cb21cdf2a72fc77d5f9) fix(deps): update Go and golang.org/x modules (#7953)
+ * [2a7d75caf](https://github.com/kubeovn/kube-ovn/commit/2a7d75cafa2cf7a390503709c8a0ec4759e1018d) fix(deps): update golang.org/x/crypto (#7840)
+ * [89a8925e8](https://github.com/kubeovn/kube-ovn/commit/89a8925e8eec025a5d15877bdd5b3a248bcccaae) fix(ci): install Trivy directly from GitHub releases (#7857)
+ * [b72a9c7e8](https://github.com/kubeovn/kube-ovn/commit/b72a9c7e8052a9d74599c353d5b9112baf605ab6) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 
