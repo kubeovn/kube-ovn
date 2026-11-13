@@ -143,7 +143,7 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 		return errors.New("IPPool runtime mode requires an initialized controller backend")
 	}
 	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeSubnetStatus && backend == nil {
-		return errors.New("Subnet status runtime mode requires an initialized controller backend")
+		return errors.New("subnet status runtime mode requires an initialized controller backend")
 	}
 	var recoveryGate func(context.Context) error
 	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeIPPool {

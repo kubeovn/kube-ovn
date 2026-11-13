@@ -3,15 +3,15 @@ package controllerruntime
 import (
 	"testing"
 
-	"github.com/stretchr/testify/require"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/internal"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewSubnetStatusCalculatorProjectorReconstructsObservedStatus(t *testing.T) {
 	snapshot, err := NewSubnetWriteSnapshot(&kubeovnv1.Subnet{
 		Name: "subnet-a", ResourceVersion: "7",
-		Spec:       kubeovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/29", Protocol: kubeovnv1.ProtocolIPv4},
+		Spec: kubeovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/29", Protocol: kubeovnv1.ProtocolIPv4},
 	}, true)
 	require.NoError(t, err)
 	observation := SubnetShadowObservation{Status: SubnetStatusObservation{

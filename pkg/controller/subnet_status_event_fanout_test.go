@@ -32,7 +32,8 @@ func TestSubnetStatusEventFanoutReplaysCoalescedPendingEvents(t *testing.T) {
 func TestSubnetStatusEventFanoutNilContextRequiresExplicitUnsubscribe(t *testing.T) {
 	fanout := newSubnetStatusEventFanout()
 	events := make(chan subnetStatusEvent, 1)
-	unsubscribe := fanout.subscribe(nil, func(name, sourceKind string) {
+	var nilContext context.Context
+	unsubscribe := fanout.subscribe(nilContext, func(name, sourceKind string) {
 		events <- subnetStatusEvent{name: name, sourceKind: sourceKind}
 	})
 

@@ -2,6 +2,7 @@ package controllerruntime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -30,7 +31,7 @@ func NewSubnetStatusCalculatorProjector(calculator SubnetStatusCalculator) Subne
 			return SubnetStatusProjection{}, err
 		}
 		if projected == nil {
-			return SubnetStatusProjection{}, fmt.Errorf("subnet status calculator returned nil")
+			return SubnetStatusProjection{}, errors.New("subnet status calculator returned nil")
 		}
 		return NewSubnetStatusProjection(snapshot, &projected.Status)
 	})
@@ -63,8 +64,8 @@ func subnetFromStatusObservation(snapshot SubnetWriteSnapshot, observation Subne
 		UID:             snapshot.UID,
 		Generation:      snapshot.Generation,
 		ResourceVersion: snapshot.ResourceVersion,
-		Spec:   *snapshot.Spec.DeepCopy(),
-		Status: status,
+		Spec:            *snapshot.Spec.DeepCopy(),
+		Status:          status,
 	}, nil
 }
 
