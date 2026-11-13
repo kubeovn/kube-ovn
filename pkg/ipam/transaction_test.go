@@ -284,6 +284,37 @@ func TestTransactionGetPodAddressByNicReadsSnapshot(t *testing.T) {
 	}))
 }
 
+func TestTransactionReleaseAddressByNicIfMatchesReleasesMatchingTuple(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	_, _, _, err := ipam.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
+	require.NoError(t, err)
+	v4, v6, mac, found := ipam.GetPodAddressByNic("pod", "nic", "subnet")
+	require.True(t, found)
+
+	require.NoError(t, ipam.WithTransaction(func(tx *Transaction) error {
+		return tx.ReleaseAddressByNicIfMatches("pod", "nic", "subnet", v4, v6, mac)
+	}))
+	_, _, _, found = ipam.GetPodAddressByNic("pod", "nic", "subnet")
+	require.False(t, found)
+}
+
+func TestTransactionReleaseAddressByNicIfMatchesRejectsChangedTuple(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	_, _, _, err := ipam.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
+	require.NoError(t, err)
+	v4, v6, mac, found := ipam.GetPodAddressByNic("pod", "nic", "subnet")
+	require.True(t, found)
+
+	require.ErrorIs(t, ipam.WithTransaction(func(tx *Transaction) error {
+		return tx.ReleaseAddressByNicIfMatches("pod", "nic", "subnet", "10.0.0.2", v6, mac)
+	}), ErrAddressOwnershipChanged)
+	currentV4, currentV6, currentMAC, found := ipam.GetPodAddressByNic("pod", "nic", "subnet")
+	require.True(t, found)
+	require.Equal(t, v4, currentV4)
+	require.Equal(t, v6, currentV6)
+	require.Equal(t, mac, currentMAC)
+}
+
 func newTransactionIPAM(t *testing.T) *IPAM {
 	t.Helper()
 	return newTransactionIPAMWithCIDR(t, "10.0.0.0/29")

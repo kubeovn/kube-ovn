@@ -146,6 +146,23 @@ func (tx *Transaction) ReleaseAddressByNic(podName, nicName, subnetName string) 
 	return nil
 }
 
+// ReleaseAddressByNicIfMatches stages release only when the current
+// allocation still matches the expected address tuple. The lookup and
+// release happen on the same transaction snapshot.
+func (tx *Transaction) ReleaseAddressByNicIfMatches(podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC string) error {
+	if err := tx.ensureOpen(); err != nil {
+		return err
+	}
+	v4, v6, mac, found, err := tx.GetPodAddressByNic(podName, nicName, subnetName)
+	if err != nil {
+		return err
+	}
+	if !found || v4 != expectedV4 || v6 != expectedV6 || mac != expectedMAC {
+		return ErrAddressOwnershipChanged
+	}
+	return tx.ReleaseAddressByNic(podName, nicName, subnetName)
+}
+
 func (tx *Transaction) ensureOpen() error {
 	if tx.closed {
 		return ErrTransactionClosed

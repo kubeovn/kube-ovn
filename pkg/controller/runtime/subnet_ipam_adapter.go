@@ -61,14 +61,7 @@ func (b *transactionalSubnetIPAMBackend) AllocateRandom(ctx context.Context, pod
 
 func (b *transactionalSubnetIPAMBackend) ReleaseIfMatches(ctx context.Context, podName, nicName, subnetName string, expected subnetIPAMAddress) error {
 	return b.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
-		v4, v6, mac, found, err := tx.GetPodAddressByNic(podName, nicName, subnetName)
-		if err != nil {
-			return err
-		}
-		if !found || v4 != expected.v4 || v6 != expected.v6 || mac != expected.mac {
-			return ipam.ErrAddressOwnershipChanged
-		}
-		return tx.ReleaseAddressByNic(podName, nicName, subnetName)
+		return tx.ReleaseAddressByNicIfMatches(podName, nicName, subnetName, expected.v4, expected.v6, expected.mac)
 	})
 }
 
