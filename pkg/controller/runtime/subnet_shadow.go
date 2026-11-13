@@ -29,8 +29,32 @@ var subnetShadowDependencyMappingFailures = prometheus.NewCounterVec(
 	}, []string{"source", "result"},
 )
 
+var subnetShadowReconciliations = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "kube_ovn_subnet_shadow_reconciliations_total",
+		Help: "Number of Subnet shadow reconciliations by outcome.",
+	}, []string{"result"},
+)
+
+var subnetShadowReconcileDuration = prometheus.NewHistogram(
+	prometheus.HistogramOpts{
+		Name: "kube_ovn_subnet_shadow_reconcile_duration_seconds",
+		Help: "Duration of Subnet shadow reconciliations in seconds.",
+	},
+)
+
 func init() {
-	metrics.Registry.MustRegister(subnetShadowDependencyMappingFailures)
+	registerSubnetShadowMetric(subnetShadowDependencyMappingFailures)
+	registerSubnetShadowMetric(subnetShadowReconciliations)
+	registerSubnetShadowMetric(subnetShadowReconcileDuration)
+}
+
+func registerSubnetShadowMetric(collector prometheus.Collector) {
+	if err := metrics.Registry.Register(collector); err != nil {
+		if _, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); !ok {
+			panic(err)
+		}
+	}
 }
 
 // SubnetShadowReconciler observes Subnet readiness without taking ownership of
@@ -43,7 +67,14 @@ type SubnetShadowReconciler struct {
 
 // Reconcile performs a read-only Subnet observation. Missing objects converge
 // as a no-op, while dependency and API failures remain retryable errors.
-func (r *SubnetShadowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *SubnetShadowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reconcileErr error) {
+	started := time.Now()
+	defer func() {
+		outcome := subnetShadowReconcileOutcome(reconcileErr)
+		subnetShadowReconciliations.WithLabelValues(outcome).Inc()
+		subnetShadowReconcileDuration.Observe(time.Since(started).Seconds())
+	}()
+
 	if _, err := ObserveSubnet(ctx, r.Reader, req.Name); err != nil {
 		if apierrors.IsNotFound(err) {
 			return ctrl.Result{}, nil
@@ -51,6 +82,16 @@ func (r *SubnetShadowReconciler) Reconcile(ctx context.Context, req ctrl.Request
 		return ctrl.Result{}, err
 	}
 	return ctrl.Result{}, nil
+}
+
+func subnetShadowReconcileOutcome(err error) string {
+	if err == nil {
+		return "success"
+	}
+	if apierrors.IsNotFound(err) {
+		return "not_found"
+	}
+	return "error"
 }
 
 // SetupWithManager describes the future read-only dependency watches. Callers
