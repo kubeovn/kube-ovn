@@ -3,6 +3,7 @@ package controllerruntime
 import (
 	"context"
 	"errors"
+	"sync"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -14,6 +15,7 @@ import (
 
 var (
 	ErrSubnetWriterAdapterMissing  = errors.New("subnet writer adapter is not configured")
+	ErrSubnetWriterManagerMissing  = errors.New("subnet writer manager is not configured")
 	ErrSubnetWriterRecoveryMissing = errors.New("subnet writer recovery gate is not configured")
 )
 
@@ -21,6 +23,7 @@ var (
 // reconciler only supplies an immutable snapshot and cached dependency
 // observation; it never becomes a second legacy Subnet writer by itself.
 type SubnetWriterAdapter interface {
+	RecoverSubnet(context.Context, SubnetWriteSnapshot) error
 	ReconcileSubnet(context.Context, SubnetWriteSnapshot, SubnetShadowObservation) error
 }
 
@@ -31,6 +34,13 @@ type SubnetReconciler struct {
 	Reader       client.Reader
 	RecoveryGate func(context.Context) error
 	Adapter      SubnetWriterAdapter
+	recoveryMu   sync.Mutex
+	recovered    map[subnetRecoveryKey]struct{}
+}
+
+type subnetRecoveryKey struct {
+	name string
+	uid  types.UID
 }
 
 // SetupSubnetReconciler is the explicit manager wiring entry point. Callers
@@ -46,6 +56,9 @@ func (r *SubnetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	}
 	if r.Adapter == nil {
 		return ErrSubnetWriterAdapterMissing
+	}
+	if mgr == nil {
+		return ErrSubnetWriterManagerMissing
 	}
 	if r.Reader == nil {
 		r.Reader = mgr.GetAPIReader()
@@ -84,5 +97,25 @@ func (r *SubnetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	if err := r.recoverSubnet(ctx, snapshot); err != nil {
+		return ctrl.Result{}, err
+	}
 	return ctrl.Result{}, r.Adapter.ReconcileSubnet(ctx, snapshot, observation)
+}
+
+func (r *SubnetReconciler) recoverSubnet(ctx context.Context, snapshot SubnetWriteSnapshot) error {
+	key := subnetRecoveryKey{name: snapshot.Name, uid: snapshot.UID}
+	r.recoveryMu.Lock()
+	defer r.recoveryMu.Unlock()
+	if r.recovered == nil {
+		r.recovered = make(map[subnetRecoveryKey]struct{})
+	}
+	if _, ok := r.recovered[key]; ok {
+		return nil
+	}
+	if err := r.Adapter.RecoverSubnet(ctx, snapshot); err != nil {
+		return err
+	}
+	r.recovered[key] = struct{}{}
+	return nil
 }

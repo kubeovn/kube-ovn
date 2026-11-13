@@ -177,6 +177,8 @@ func (a *subnetIPAMAdapter) Recover(ctx context.Context, snapshot SubnetWriteSna
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	a.allocMu.Lock()
+	defer a.allocMu.Unlock()
 	allocations, err := a.backend.Recover(ctx, snapshot)
 	if err != nil {
 		return err
