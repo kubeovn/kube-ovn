@@ -209,6 +209,22 @@ func TestSubnetIPAMAdapterLookupErrorDoesNotAllocate(t *testing.T) {
 	require.False(t, backend.allocated)
 }
 
+func TestSubnetIPAMReceiptReleaseErrorPreservesOwnerForRetry(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	backend := &fakeSubnetIPAMBackend{releaseErr: errors.New("backend release failed")}
+	adapter, err := newSubnetIPAMAdapterWithBackend(writer, backend)
+	require.NoError(t, err)
+
+	_, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
+	require.NoError(t, err)
+	require.ErrorIs(t, receipt.Compensate(context.Background()), backend.releaseErr)
+	require.True(t, backend.allocated)
+
+	backend.releaseErr = nil
+	require.NoError(t, receipt.Compensate(context.Background()), "a recovered owner must be able to retry release")
+	require.False(t, backend.allocated)
+}
+
 func TestSubnetIPAMAdapterRejectsInvalidDependencies(t *testing.T) {
 	writer, _, _, _ := newSubnetSideEffectWriterAPI(t, false)
 	_, err := newSubnetIPAMAdapter(nil, ipam.NewIPAM())
@@ -235,6 +251,7 @@ type fakeSubnetIPAMBackend struct {
 	lookupErr       error
 	poolName        string
 	releaseCalls    int
+	releaseErr      error
 	releaseExpected subnetIPAMAddress
 }
 
@@ -264,6 +281,9 @@ func (b *fakeSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nic
 func (b *fakeSubnetIPAMBackend) ReleaseIfMatches(_ context.Context, _ string, _ string, _ string, expected subnetIPAMAddress) error {
 	b.releaseCalls++
 	b.releaseExpected = expected
+	if b.releaseErr != nil {
+		return b.releaseErr
+	}
 	if !b.allocated || expected != (subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"}) {
 		return ipam.ErrAddressOwnershipChanged
 	}

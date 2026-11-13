@@ -110,6 +110,10 @@ compensate. A cancellation observed before receipt compensation starts leaves
 the allocation untouched; cancellation during the transaction still requires
 readback because the atomic release may already have committed.
 
+If conditional release returns a backend error before ownership is cleared, the
+receipt remains available for recovery to retry; the adapter does not discard
+ownership after an unsuccessful release.
+
 The adapter now consumes a narrow backend interface for exact allocation
 lookup, transactional allocation, and conditional release. Lookup receives
 the writer context and returns errors separately from the no-op result, so a
