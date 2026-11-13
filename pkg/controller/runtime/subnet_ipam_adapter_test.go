@@ -161,6 +161,9 @@ func TestSubnetIPAMReceiptCancellationPreservesAllocation(t *testing.T) {
 	require.ErrorIs(t, receipt.Compensate(ctx), context.Canceled)
 	_, _, _, allocated := adapterIPAM(t, adapter).GetPodAddressByNic("pod", "nic", snapshot.Name)
 	require.True(t, allocated)
+	require.NoError(t, receipt.Compensate(context.Background()), "a recovered owner must be able to retry after cancellation")
+	_, _, _, allocated = adapterIPAM(t, adapter).GetPodAddressByNic("pod", "nic", snapshot.Name)
+	require.False(t, allocated)
 }
 
 func TestSubnetIPAMAdapterUsesBackendSeam(t *testing.T) {
