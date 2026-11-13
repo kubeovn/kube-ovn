@@ -228,6 +228,28 @@ func TestSubnetIPAMReceiptReleaseErrorPreservesOwnerForRetry(t *testing.T) {
 	require.False(t, backend.allocated)
 }
 
+func TestSubnetIPAMReceiptReleaseCancellationPreservesOwnerForRetry(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	backend := &fakeSubnetIPAMBackend{releaseStarted: make(chan struct{})}
+	adapter, err := newSubnetIPAMAdapterWithBackend(writer, backend)
+	require.NoError(t, err)
+
+	_, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- receipt.Compensate(ctx) }()
+	<-backend.releaseStarted
+	cancel()
+	require.ErrorIs(t, <-done, context.Canceled)
+	require.True(t, backend.allocated, "canceled release must preserve ownership for recovery")
+
+	backend.releaseStarted = nil
+	require.NoError(t, receipt.Compensate(context.Background()))
+	require.False(t, backend.allocated)
+}
+
 func TestSubnetIPAMAdapterRejectsInvalidDependencies(t *testing.T) {
 	writer, _, _, _ := newSubnetSideEffectWriterAPI(t, false)
 	_, err := newSubnetIPAMAdapter(nil, ipam.NewIPAM())
@@ -256,6 +278,7 @@ type fakeSubnetIPAMBackend struct {
 	releaseCalls    int
 	releaseErr      error
 	releaseExpected subnetIPAMAddress
+	releaseStarted  chan struct{}
 }
 
 func (b *fakeSubnetIPAMBackend) ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (subnetIPAMAddress, bool, error) {
@@ -281,9 +304,14 @@ func (b *fakeSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nic
 	return subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"}, nil
 }
 
-func (b *fakeSubnetIPAMBackend) ReleaseIfMatches(_ context.Context, _ string, _ string, _ string, expected subnetIPAMAddress) error {
+func (b *fakeSubnetIPAMBackend) ReleaseIfMatches(ctx context.Context, _ string, _ string, _ string, expected subnetIPAMAddress) error {
 	b.releaseCalls++
 	b.releaseExpected = expected
+	if b.releaseStarted != nil {
+		close(b.releaseStarted)
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	if b.releaseErr != nil {
 		return b.releaseErr
 	}
