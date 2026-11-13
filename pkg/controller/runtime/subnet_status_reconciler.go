@@ -1,0 +1,148 @@
+package controllerruntime
+
+import (
+	"context"
+	"errors"
+	"fmt"
+
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/client-go/util/workqueue"
+	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	runtimecontroller "sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/source"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+)
+
+var (
+	ErrSubnetStatusEventNameMissing   = errors.New("subnet status event name is not configured")
+	ErrSubnetStatusEventNotStatus     = errors.New("subnet status event is not status-only")
+	ErrSubnetStatusEventSourceMissing = errors.New("subnet status event source is not configured")
+	ErrSubnetStatusProjectorMissing   = errors.New("subnet status projector is not configured")
+	ErrSubnetStatusReaderMissing      = errors.New("subnet status API reader is not configured")
+	ErrSubnetStatusManagerMissing     = errors.New("subnet status manager is not configured")
+)
+
+// SubnetStatusEvent is the explicit ingress contract for status-only events.
+// Producers may report the original source kind, but the runtime queue keeps
+// only the Subnet name so concurrent IP, Pod, VIP, and EIP events coalesce.
+type SubnetStatusEvent struct {
+	Name       string
+	SourceKind string
+	StatusOnly bool
+}
+
+// SubnetStatusRequest is the deduplicated runtime queue key. It intentionally
+// carries no source object or status snapshot; Reconcile reads the current API
+// object before invoking the pure projector.
+type SubnetStatusRequest struct {
+	Name string
+}
+
+// NewSubnetStatusRequest validates and normalizes one event into its queue
+// key. Non-status events are rejected before they can enter the status path.
+func NewSubnetStatusRequest(event SubnetStatusEvent) (SubnetStatusRequest, error) {
+	if event.Name == "" {
+		return SubnetStatusRequest{}, ErrSubnetStatusEventNameMissing
+	}
+	if ClassifySubnetDependencyEvent(SubnetDependencyEvent{SourceKind: event.SourceKind, StatusOnly: event.StatusOnly}) != SubnetStatusObservePath {
+		return SubnetStatusRequest{}, fmt.Errorf("%w: source %q", ErrSubnetStatusEventNotStatus, event.SourceKind)
+	}
+	return SubnetStatusRequest{Name: event.Name}, nil
+}
+
+// SubnetStatusEventSource is an explicit ingress owned by a future producer.
+// It is deliberately separate from the legacy status queue so migration code
+// cannot steal events from the current writer.
+type SubnetStatusEventSource interface {
+	StartSubnetStatusEventBridge(context.Context, func(SubnetStatusEvent))
+}
+
+// SubnetStatusReconciler reads the current Subnet and produces a status
+// projection for a normalized status event. It never writes Kubernetes status
+// or invokes finalizer, OVN, or IPAM operations.
+type SubnetStatusReconciler struct {
+	Reader    client.Reader
+	Events    SubnetStatusEventSource
+	Projector SubnetStatusProjector
+}
+
+// SetupWithManager registers the status-only queue and explicit event source.
+// No production mode calls this during the migration; callers must opt in.
+func (r *SubnetStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	if mgr == nil {
+		return ErrSubnetStatusManagerMissing
+	}
+	if r.Events == nil {
+		return ErrSubnetStatusEventSourceMissing
+	}
+	if r.Projector == nil {
+		return ErrSubnetStatusProjectorMissing
+	}
+	if r.Reader == nil {
+		r.Reader = mgr.GetAPIReader()
+	}
+	c, err := runtimecontroller.NewTyped("kube-ovn-subnet-status", mgr, runtimecontroller.TypedOptions[SubnetStatusRequest]{
+		Reconciler:              r,
+		MaxConcurrentReconciles: 1,
+		RateLimiter:             workqueue.DefaultTypedControllerRateLimiter[SubnetStatusRequest](),
+	})
+	if err != nil {
+		return fmt.Errorf("create Subnet status controller: %w", err)
+	}
+	return c.Watch(r.eventSource())
+}
+
+func (r *SubnetStatusReconciler) eventSource() source.TypedSource[SubnetStatusRequest] {
+	return source.TypedFunc[SubnetStatusRequest](func(ctx context.Context, q workqueue.TypedRateLimitingInterface[SubnetStatusRequest]) error {
+		r.Events.StartSubnetStatusEventBridge(ctx, func(event SubnetStatusEvent) {
+			request, err := NewSubnetStatusRequest(event)
+			if err == nil {
+				q.Add(request)
+			}
+		})
+		return nil
+	})
+}
+
+// Reconcile consumes one normalized queue key. A deleted Subnet is already
+// converged for this read-only path and therefore does not retry.
+func (r *SubnetStatusReconciler) Reconcile(ctx context.Context, request SubnetStatusRequest) (ctrl.Result, error) {
+	_, err := r.ProjectStatus(ctx, request)
+	if apierrors.IsNotFound(err) {
+		return ctrl.Result{}, nil
+	}
+	return ctrl.Result{}, err
+}
+
+// ProjectStatus reads one current Subnet and invokes the injected projector.
+// The returned projection is intentionally handed to the caller; this seam
+// does not own the subsequent API write.
+func (r *SubnetStatusReconciler) ProjectStatus(ctx context.Context, request SubnetStatusRequest) (SubnetStatusProjection, error) {
+	if request.Name == "" {
+		return SubnetStatusProjection{}, ErrSubnetStatusEventNameMissing
+	}
+	if r.Reader == nil {
+		return SubnetStatusProjection{}, ErrSubnetStatusReaderMissing
+	}
+	if r.Projector == nil {
+		return SubnetStatusProjection{}, ErrSubnetStatusProjectorMissing
+	}
+	var subnet kubeovnv1.Subnet
+	if err := r.Reader.Get(ctx, client.ObjectKey{Name: request.Name}, &subnet); err != nil {
+		if apierrors.IsNotFound(err) {
+			return SubnetStatusProjection{}, err
+		}
+		return SubnetStatusProjection{}, fmt.Errorf("get subnet %s: %w", request.Name, err)
+	}
+	observation, err := observeSubnet(ctx, r.Reader, &subnet)
+	if err != nil {
+		return SubnetStatusProjection{}, err
+	}
+	snapshot, err := NewSubnetWriteSnapshot(&subnet, observation.AllocationAllowed)
+	if err != nil {
+		return SubnetStatusProjection{}, err
+	}
+	return r.Projector.ProjectSubnetStatus(ctx, snapshot, observation)
+}

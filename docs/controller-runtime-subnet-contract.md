@@ -26,6 +26,17 @@ it performs no API write and does not suppress legacy status handling. An
 explicit `subnet-status` mode will be added only after this projection source
 and its conflict/readback tests are complete.
 
+The next seam accepts status-only `SubnetStatusEvent` inputs through an
+explicit `SubnetStatusEventSource`. Events are normalized to a
+`SubnetStatusRequest` keyed only by Subnet name, so concurrent IP, Pod, VIP,
+EIP, and NAT notifications coalesce before the runtime reconciler reads the
+current object and invokes the projector. The source is intentionally separate
+from the legacy `updateSubnetStatusQueue`; no existing producer is consumed or
+rewired by this step. Deleted Subnets converge as no-ops, and invalid
+spec/dependency events are rejected before entering the status queue. The
+reconciler returns the projection to its caller and still owns no API write,
+finalizer, OVN, or IPAM operation.
+
 ## Single-writer matrix
 
 | Surface | Current writer | Future shadow may do | Future writer gate |
