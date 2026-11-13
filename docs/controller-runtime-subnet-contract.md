@@ -110,6 +110,13 @@ compensate. A cancellation observed before receipt compensation starts leaves
 the allocation untouched; cancellation during the transaction still requires
 readback because the atomic release may already have committed.
 
+The adapter now consumes a narrow backend interface for exact allocation
+lookup, transactional allocation, and conditional release. The current
+implementation wraps the in-memory IPAM transaction API; a future durable
+backend can implement the same seam only after preserving the receipt,
+ownership, and uncertain-commit guarantees. This interface is testable in
+isolation and remains unwired from the production manager.
+
 ## Readiness and deletion gates
 
 The following cases remain legacy-owned and must be covered before enabling a
