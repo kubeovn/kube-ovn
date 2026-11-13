@@ -229,27 +229,27 @@ type fakeSubnetIPAMBackend struct {
 	releaseCalls int
 }
 
-func (b *fakeSubnetIPAMBackend) ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (string, string, string, bool, error) {
+func (b *fakeSubnetIPAMBackend) ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (subnetIPAMAddress, bool, error) {
 	b.lookupCtx = ctx
 	b.key = subnetIPAMKey{subnet: subnetName, pod: podName, nic: nicName}
 	if b.lookupErr != nil {
-		return "", "", "", false, b.lookupErr
+		return subnetIPAMAddress{}, false, b.lookupErr
 	}
 	if !b.allocated {
-		return "", "", "", false, nil
+		return subnetIPAMAddress{}, false, nil
 	}
-	return "192.0.2.1", "", "00:00:5e:00:53:01", true, nil
+	return subnetIPAMAddress{v4: "192.0.2.1", mac: "00:00:5e:00:53:01"}, true, nil
 }
 
-func (b *fakeSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nicName, subnetName, poolName string) (string, string, string, error) {
+func (b *fakeSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nicName, subnetName, poolName string) (subnetIPAMAddress, error) {
 	b.ctx = ctx
 	b.key = subnetIPAMKey{subnet: subnetName, pod: podName, nic: nicName}
 	b.poolName = poolName
 	if b.allocateErr != nil {
-		return "", "", "", b.allocateErr
+		return subnetIPAMAddress{}, b.allocateErr
 	}
 	b.allocated = true
-	return "192.0.2.1", "", "00:00:5e:00:53:01", nil
+	return subnetIPAMAddress{v4: "192.0.2.1", mac: "00:00:5e:00:53:01"}, nil
 }
 
 func (b *fakeSubnetIPAMBackend) ReleaseByNic(context.Context, string, string, string) error {
