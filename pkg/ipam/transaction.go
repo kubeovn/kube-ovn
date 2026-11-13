@@ -1,6 +1,7 @@
 package ipam
 
 import (
+	"context"
 	"errors"
 	"maps"
 	"net"
@@ -35,7 +36,10 @@ func (ipam *IPAM) WithTransaction(action func(*Transaction) error) error {
 
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
+	return ipam.withTransactionLocked(action)
+}
 
+func (ipam *IPAM) withTransactionLocked(action func(*Transaction) error) error {
 	tx := &Transaction{ipam: ipam, subnets: make(map[string]*Subnet)}
 	defer func() { tx.closed = true }()
 	if err := action(tx); err != nil {
@@ -43,6 +47,30 @@ func (ipam *IPAM) WithTransaction(action func(*Transaction) error) error {
 	}
 	tx.commit()
 	return nil
+}
+
+// WithTransactionContext runs an atomic transaction with cancellation checks
+// before and after the action. Cancellation cannot interrupt a transaction
+// while it owns the IPAM mutex; when it is observed after the action, the
+// transaction has already committed or rolled back and the returned error
+// reports that outcome as uncertain to the caller.
+func (ipam *IPAM) WithTransactionContext(ctx context.Context, action func(*Transaction) error) error {
+	if ctx == nil {
+		return errors.New("ipam transaction context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if action == nil {
+		return ErrTransactionNilAction
+	}
+
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return errors.Join(ipam.withTransactionLocked(action), ctx.Err())
 }
 
 // GetRandomAddress stages a random allocation on the transaction's subnet.
