@@ -33,6 +33,13 @@ type SubnetReconciler struct {
 	Adapter      SubnetWriterAdapter
 }
 
+// SetupSubnetReconciler is the explicit manager wiring entry point. Callers
+// must provide both the recovery gate and the domain adapter; the default
+// manager path deliberately does not call this function during migration.
+func SetupSubnetReconciler(mgr ctrl.Manager, reader client.Reader, recoveryGate func(context.Context) error, adapter SubnetWriterAdapter) error {
+	return (&SubnetReconciler{Reader: reader, RecoveryGate: recoveryGate, Adapter: adapter}).SetupWithManager(mgr)
+}
+
 func (r *SubnetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if r.RecoveryGate == nil {
 		return ErrSubnetWriterRecoveryMissing

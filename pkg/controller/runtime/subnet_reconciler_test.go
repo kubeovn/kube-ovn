@@ -18,6 +18,11 @@ func TestSubnetReconcilerFailsClosedWithoutDependencies(t *testing.T) {
 	require.ErrorIs(t, err, ErrSubnetWriterAdapterMissing)
 }
 
+func TestSetupSubnetReconcilerFailsClosedBeforeManagerRegistration(t *testing.T) {
+	require.ErrorIs(t, SetupSubnetReconciler(nil, nil, nil, nil), ErrSubnetWriterRecoveryMissing)
+	require.ErrorIs(t, SetupSubnetReconciler(nil, nil, func(context.Context) error { return nil }, nil), ErrSubnetWriterAdapterMissing)
+}
+
 func TestSubnetReconcilerDelegatesImmutableSnapshot(t *testing.T) {
 	subnet := testSubnet("")
 	reader := newRuntimeClient(t, subnet)
