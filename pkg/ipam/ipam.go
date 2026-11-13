@@ -17,12 +17,13 @@ import (
 )
 
 var (
-	ErrOutOfRange      = errors.New("AddressOutOfRange")
-	ErrConflict        = errors.New("AddressConflict")
-	ErrNoAvailable     = errors.New("NoAvailableAddress")
-	ErrNoSubnet        = errors.New("NoSubnet")
-	ErrInvalidCIDR     = errors.New("CIDRInvalid")
-	ErrInvalidIPFamily = errors.New("InvalidIPFamily")
+	ErrOutOfRange              = errors.New("AddressOutOfRange")
+	ErrConflict                = errors.New("AddressConflict")
+	ErrNoAvailable             = errors.New("NoAvailableAddress")
+	ErrNoSubnet                = errors.New("NoSubnet")
+	ErrInvalidCIDR             = errors.New("CIDRInvalid")
+	ErrInvalidIPFamily         = errors.New("InvalidIPFamily")
+	ErrAddressOwnershipChanged = errors.New("AddressOwnershipChanged")
 	// ErrSelectionChanged rejects committing an ippool selection that is no longer
 	// reproducible, see Subnet.ActivateIPPoolIPs
 	ErrSelectionChanged = errors.New("SelectionChanged")
@@ -490,10 +491,14 @@ func (ipam *IPAM) GetPodAddressByNic(podName, nicName, subnetName string) (strin
 	}
 	subnet.Mutex.RLock()
 	defer subnet.Mutex.RUnlock()
-	if !slices.Contains(subnet.PodToNicList[podName], nicName) {
+	return subnet.getPodAddressByNic(podName, nicName)
+}
+
+func (s *Subnet) getPodAddressByNic(podName, nicName string) (string, string, string, bool) {
+	if !slices.Contains(s.PodToNicList[podName], nicName) {
 		return "", "", "", false
 	}
-	v4IP, v6IP, mac, protocol := subnet.GetPodAddress(nicName)
+	v4IP, v6IP, mac, protocol := s.GetPodAddress(nicName)
 	var v4, v6 string
 	switch protocol {
 	case kubeovnv1.ProtocolIPv4:

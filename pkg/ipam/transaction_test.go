@@ -252,20 +252,149 @@ func TestWithTransactionContextRollsBackActionCancellation(t *testing.T) {
 	require.Equal(t, "10.0.0.1", address)
 }
 
+func TestWithTransactionContextPreservesActionAndCancellationErrors(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	want := errors.New("action failed")
+
+	err := ipam.WithTransactionContext(ctx, func(*Transaction) error {
+		cancel()
+		return want
+	})
+	require.ErrorIs(t, err, want)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestWithTransactionContextReportsCancellationAfterCommit(t *testing.T) {
 	ipam := newTransactionIPAM(t)
 	ctx, cancel := context.WithCancel(t.Context())
 
-	require.ErrorIs(t, ipam.WithTransactionContext(ctx, func(tx *Transaction) error {
+	err := ipam.WithTransactionContext(ctx, func(tx *Transaction) error {
 		_, _, _, err := tx.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
 		require.NoError(t, err)
 		cancel()
 		return nil
-	}), context.Canceled)
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, ErrTransactionCommittedUncertain)
 
 	address, _, _, err := ipam.GetRandomAddress("retry", "retry-nic", nil, "subnet", "", nil, true)
 	require.NoError(t, err)
 	require.Equal(t, "10.0.0.2", address, "cancellation after the action reports an uncertain committed result")
+}
+
+func TestTransactionGetPodAddressByNicReadsSnapshot(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	_, _, _, err := ipam.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
+	require.NoError(t, err)
+
+	require.NoError(t, ipam.WithTransaction(func(tx *Transaction) error {
+		v4, v6, mac, found, err := tx.GetPodAddressByNic("pod", "nic", "subnet")
+		require.NoError(t, err)
+		require.True(t, found)
+		require.Equal(t, "10.0.0.1", v4)
+		require.Empty(t, v6)
+		require.NotEmpty(t, mac)
+		return nil
+	}))
+}
+
+func TestTransactionReleaseAddressByNicIfMatchesReleasesMatchingTuple(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	_, _, _, err := ipam.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
+	require.NoError(t, err)
+	v4, v6, mac, found := ipam.GetPodAddressByNic("pod", "nic", "subnet")
+	require.True(t, found)
+
+	require.NoError(t, ipam.WithTransaction(func(tx *Transaction) error {
+		return tx.ReleaseAddressByNicIfMatches("pod", "nic", "subnet", v4, v6, mac)
+	}))
+	_, _, _, found = ipam.GetPodAddressByNic("pod", "nic", "subnet")
+	require.False(t, found)
+}
+
+func TestTransactionReleaseAddressByNicIfMatchesRejectsChangedTuple(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	_, _, _, err := ipam.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
+	require.NoError(t, err)
+	v4, v6, mac, found := ipam.GetPodAddressByNic("pod", "nic", "subnet")
+	require.True(t, found)
+
+	require.ErrorIs(t, ipam.WithTransaction(func(tx *Transaction) error {
+		return tx.ReleaseAddressByNicIfMatches("pod", "nic", "subnet", "10.0.0.2", v6, mac)
+	}), ErrAddressOwnershipChanged)
+	currentV4, currentV6, currentMAC, found := ipam.GetPodAddressByNic("pod", "nic", "subnet")
+	require.True(t, found)
+	require.Equal(t, v4, currentV4)
+	require.Equal(t, v6, currentV6)
+	require.Equal(t, mac, currentMAC)
+}
+
+func TestTransactionReleaseAddressByNicIfMatchesRejectsDualStackTupleChanges(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		expected func(string, string, string) (string, string, string)
+	}{
+		{
+			name: "v6",
+			expected: func(v4, _, mac string) (string, string, string) {
+				return v4, "fd00::2", mac
+			},
+		},
+		{
+			name: "mac",
+			expected: func(v4, v6, _ string) (string, string, string) {
+				return v4, v6, "00:00:5e:00:53:ff"
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ipam := newTransactionIPAMWithCIDR(t, "10.0.0.0/29,fd00::/125")
+			v4, v6, mac, err := ipam.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
+			require.NoError(t, err)
+			require.NotEmpty(t, v4)
+			require.NotEmpty(t, v6)
+			require.NotEmpty(t, mac)
+			expectedV4, expectedV6, expectedMAC := test.expected(v4, v6, mac)
+
+			require.ErrorIs(t, ipam.WithTransaction(func(tx *Transaction) error {
+				return tx.ReleaseAddressByNicIfMatches("pod", "nic", "subnet", expectedV4, expectedV6, expectedMAC)
+			}), ErrAddressOwnershipChanged)
+			currentV4, currentV6, currentMAC, found := ipam.GetPodAddressByNic("pod", "nic", "subnet")
+			require.True(t, found)
+			require.Equal(t, v4, currentV4)
+			require.Equal(t, v6, currentV6)
+			require.Equal(t, mac, currentMAC)
+		})
+	}
+}
+
+func TestTransactionReleaseAddressByNicIfMatchesRollsBackActionError(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	v4, v6, mac, err := ipam.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
+	require.NoError(t, err)
+	failure := errors.New("persist release")
+
+	require.ErrorIs(t, ipam.WithTransaction(func(tx *Transaction) error {
+		require.NoError(t, tx.ReleaseAddressByNicIfMatches("pod", "nic", "subnet", v4, v6, mac))
+		return failure
+	}), failure)
+	currentV4, currentV6, currentMAC, found := ipam.GetPodAddressByNic("pod", "nic", "subnet")
+	require.True(t, found)
+	require.Equal(t, v4, currentV4)
+	require.Equal(t, v6, currentV6)
+	require.Equal(t, mac, currentMAC)
+}
+
+func TestTransactionReleaseAddressByNicIfMatchesRejectsClosedTransaction(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	var tx *Transaction
+	require.NoError(t, ipam.WithTransaction(func(current *Transaction) error {
+		tx = current
+		return nil
+	}))
+
+	require.ErrorIs(t, tx.ReleaseAddressByNicIfMatches("pod", "nic", "subnet", "", "", ""), ErrTransactionClosed)
 }
 
 func newTransactionIPAM(t *testing.T) *IPAM {

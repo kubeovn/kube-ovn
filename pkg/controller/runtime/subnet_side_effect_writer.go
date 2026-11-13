@@ -24,9 +24,12 @@ type SubnetSideEffectReceipt interface {
 }
 
 // SubnetSideEffectPlan describes one gated backend mutation. Apply may return
-// a receipt only for a confirmed mutation that it owns. No-op, uncommitted,
-// and uncertain outcomes return a nil receipt; uncertain outcomes require
-// adapter readback or recovery rather than speculative compensation.
+// a receipt only for a confirmed mutation that it owns. No-op and uncommitted
+// outcomes return a nil receipt. If cancellation races with a committed
+// mutation, an adapter may perform bounded readback and return a receipt with
+// the cancellation error so the caller preserves the owner for recovery. When
+// readback cannot confirm the mutation, recovery must resolve it; cancellation
+// never authorizes speculative compensation.
 type SubnetSideEffectPlan struct {
 	Apply func(context.Context) (SubnetSideEffectReceipt, error)
 }
@@ -110,7 +113,10 @@ func (w *subnetSideEffectWriter) executePlan(snapshot SubnetWriteSnapshot, opera
 	}
 	receipt, applyErr := plan.Apply(w.ctx)
 	if err := w.ctx.Err(); err != nil {
-		return nil, errors.Join(applyErr, err)
+		// Preserve a confirmed receipt when cancellation races with a
+		// committed backend operation. The caller must retain the owner for
+		// recovery; cancellation never authorizes speculative compensation.
+		return receipt, errors.Join(applyErr, err)
 	}
 	if applyErr != nil {
 		return nil, w.compensate(receipt, applyErr)

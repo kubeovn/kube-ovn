@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	ErrTransactionClosed    = errors.New("IPAM transaction is closed")
-	ErrTransactionNilAction = errors.New("IPAM transaction action is nil")
+	ErrTransactionClosed             = errors.New("IPAM transaction is closed")
+	ErrTransactionNilAction          = errors.New("IPAM transaction action is nil")
+	ErrTransactionCommittedUncertain = errors.New("IPAM transaction committed before cancellation")
 )
 
 // Transaction stages IPAM allocation and release changes on private subnet
@@ -70,12 +71,32 @@ func (ipam *IPAM) WithTransactionContext(ctx context.Context, action func(*Trans
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return errors.Join(ipam.withTransactionLocked(action), ctx.Err())
+	if err := ipam.withTransactionLocked(action); err != nil {
+		return errors.Join(err, ctx.Err())
+	}
+	if err := ctx.Err(); err != nil {
+		return errors.Join(ErrTransactionCommittedUncertain, err)
+	}
+	return nil
 }
 
 // GetRandomAddress stages a random allocation on the transaction's subnet.
 func (tx *Transaction) GetRandomAddress(podName, nicName string, mac *string, subnetName, poolName string, skippedAddrs []string, checkConflict bool) (string, string, string, error) {
 	return tx.GetRandomAddressWithFamily(podName, nicName, mac, subnetName, poolName, "", skippedAddrs, checkConflict)
+}
+
+// GetPodAddressByNic reads one pod/NIC allocation from the transaction's
+// snapshot so a caller can conditionally release the exact address it owns.
+func (tx *Transaction) GetPodAddressByNic(podName, nicName, subnetName string) (string, string, string, bool, error) {
+	if err := tx.ensureOpen(); err != nil {
+		return "", "", "", false, err
+	}
+	subnet, err := tx.subnet(subnetName)
+	if err != nil {
+		return "", "", "", false, err
+	}
+	v4, v6, mac, found := subnet.getPodAddressByNic(podName, nicName)
+	return v4, v6, mac, found, nil
 }
 
 // GetRandomAddressWithFamily stages a family-specific random allocation.
@@ -130,6 +151,23 @@ func (tx *Transaction) ReleaseAddressByNic(podName, nicName, subnetName string) 
 	}
 	releaseAddressByNic(tx.subnets, podName, nicName, subnetName)
 	return nil
+}
+
+// ReleaseAddressByNicIfMatches stages release only when the current
+// allocation still matches the expected address tuple. The lookup and
+// release happen on the same transaction snapshot.
+func (tx *Transaction) ReleaseAddressByNicIfMatches(podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC string) error {
+	if err := tx.ensureOpen(); err != nil {
+		return err
+	}
+	v4, v6, mac, found, err := tx.GetPodAddressByNic(podName, nicName, subnetName)
+	if err != nil {
+		return err
+	}
+	if !found || v4 != expectedV4 || v6 != expectedV6 || mac != expectedMAC {
+		return ErrAddressOwnershipChanged
+	}
+	return tx.ReleaseAddressByNic(podName, nicName, subnetName)
 }
 
 func (tx *Transaction) ensureOpen() error {

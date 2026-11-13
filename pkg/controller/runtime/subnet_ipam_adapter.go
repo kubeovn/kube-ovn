@@ -10,16 +10,132 @@ import (
 )
 
 // subnetIPAMAdapter is an unwired adapter for one IPAM allocation operation.
-// It uses IPAM transactions for atomic staging and keeps a process-local owner
-// token so a receipt cannot release an allocation claimed by a later owner.
-// Durable fencing still belongs to the future production adapter.
+// Receipt ownership is delegated to a store so fencing survives adapter
+// recreation when a durable store is wired in. The default store is
+// process-local and is not durable.
 type subnetIPAMAdapter struct {
 	writer  *subnetSideEffectWriter
-	ipam    *ipam.IPAM
+	backend subnetIPAMBackend
+	store   subnetIPAMReceiptStore
 	allocMu sync.Mutex
-	mu      sync.Mutex
 	next    atomic.Uint64
-	owners  map[subnetIPAMKey]subnetIPAMAllocation
+}
+
+var (
+	ErrSubnetIPAMRecoveryUnavailable = errors.New("subnet IPAM durable recovery is not configured")
+	ErrSubnetIPAMRecoveryUnsafe      = errors.New("subnet IPAM durable recovery identity is unsafe")
+	ErrSubnetIPAMReceiptStale        = errors.New("IPAM allocation receipt is stale or owned by another writer")
+	ErrSubnetIPAMReceiptChanged      = errors.New("IPAM allocation owner changed during compensation")
+)
+
+// subnetIPAMReceiptStore persists allocation identity for receipt fencing.
+// Production wiring must provide a durable implementation; the in-memory
+// implementation below only preserves the existing process-local behavior.
+type subnetIPAMReceiptStore interface {
+	Remember(ctx context.Context, allocation subnetIPAMAllocation) error
+	Lookup(ctx context.Context, key subnetIPAMKey) (subnetIPAMAllocation, bool, error)
+	Delete(ctx context.Context, allocation subnetIPAMAllocation) error
+}
+
+type memorySubnetIPAMReceiptStore struct {
+	mu          sync.Mutex
+	allocations map[subnetIPAMKey]subnetIPAMAllocation
+}
+
+func newMemorySubnetIPAMReceiptStore() *memorySubnetIPAMReceiptStore {
+	return &memorySubnetIPAMReceiptStore{allocations: make(map[subnetIPAMKey]subnetIPAMAllocation)}
+}
+
+func (s *memorySubnetIPAMReceiptStore) Remember(ctx context.Context, allocation subnetIPAMAllocation) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if current, ok := s.allocations[allocation.key]; ok && current != allocation {
+		return ErrSubnetIPAMReceiptStale
+	}
+	s.allocations[allocation.key] = allocation
+	return nil
+}
+
+func (s *memorySubnetIPAMReceiptStore) Lookup(ctx context.Context, key subnetIPAMKey) (subnetIPAMAllocation, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return subnetIPAMAllocation{}, false, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	allocation, ok := s.allocations[key]
+	return allocation, ok, nil
+}
+
+func (s *memorySubnetIPAMReceiptStore) Delete(ctx context.Context, allocation subnetIPAMAllocation) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.allocations[allocation.key]
+	if !ok || current != allocation {
+		return ErrSubnetIPAMReceiptChanged
+	}
+	delete(s.allocations, allocation.key)
+	return nil
+}
+
+// subnetIPAMBackend is the narrow IPAM seam consumed by the future Subnet
+// writer. A production implementation must preserve the same no-op,
+// transaction and uncertain-commit semantics before it can be wired in.
+type subnetIPAMBackend interface {
+	ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (subnetIPAMAddress, bool, error)
+	AllocateRandom(ctx context.Context, podName, nicName, subnetName, poolName string) (subnetIPAMAddress, error)
+	// Recover returns durable allocations for the Subnet snapshot. A backend
+	// that cannot provide durable recovery must fail closed rather than allow a
+	// new adapter instance to mutate IPAM without fencing old receipts.
+	Recover(ctx context.Context, snapshot SubnetWriteSnapshot) ([]subnetIPAMAllocation, error)
+	// ReleaseIfMatches receives the complete allocation identity so a durable
+	// backend can fence by key, Subnet UID, and ownership token in addition to
+	// the address tuple.
+	ReleaseIfMatches(ctx context.Context, allocation subnetIPAMAllocation) error
+}
+
+type subnetIPAMAddress struct {
+	v4  string
+	v6  string
+	mac string
+}
+
+type transactionalSubnetIPAMBackend struct {
+	ipam *ipam.IPAM
+}
+
+func (b *transactionalSubnetIPAMBackend) Recover(context.Context, SubnetWriteSnapshot) ([]subnetIPAMAllocation, error) {
+	return nil, ErrSubnetIPAMRecoveryUnavailable
+}
+
+func (b *transactionalSubnetIPAMBackend) ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (subnetIPAMAddress, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return subnetIPAMAddress{}, false, err
+	}
+	v4, v6, mac, found := b.ipam.GetPodAddressByNic(podName, nicName, subnetName)
+	return subnetIPAMAddress{v4: v4, v6: v6, mac: mac}, found, nil
+}
+
+func (b *transactionalSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nicName, subnetName, poolName string) (subnetIPAMAddress, error) {
+	var address subnetIPAMAddress
+	err := b.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		var err error
+		address.v4, address.v6, address.mac, err = tx.GetRandomAddress(podName, nicName, nil, subnetName, poolName, nil, true)
+		return err
+	})
+	return address, err
+}
+
+func (b *transactionalSubnetIPAMBackend) ReleaseIfMatches(ctx context.Context, allocation subnetIPAMAllocation) error {
+	return b.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		return tx.ReleaseAddressByNicIfMatches(allocation.key.pod, allocation.key.nic, allocation.key.subnet,
+			allocation.address.v4, allocation.address.v6, allocation.address.mac)
+	})
 }
 
 type subnetIPAMKey struct {
@@ -29,19 +145,91 @@ type subnetIPAMKey struct {
 }
 
 type subnetIPAMAllocation struct {
-	key   subnetIPAMKey
-	token uint64
-	uid   string
-	v4    string
-	v6    string
-	mac   string
+	key     subnetIPAMKey
+	token   uint64
+	uid     string
+	address subnetIPAMAddress
+}
+
+func subnetIPAMRecoveryContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), subnetSideEffectCompensationTimeout)
 }
 
 func newSubnetIPAMAdapter(writer *subnetSideEffectWriter, allocation *ipam.IPAM) (*subnetIPAMAdapter, error) {
-	if writer == nil || allocation == nil {
-		return nil, errors.New("subnet IPAM adapter requires a writer and IPAM")
+	if allocation == nil {
+		return nil, errors.New("subnet IPAM adapter requires an IPAM")
 	}
-	return &subnetIPAMAdapter{writer: writer, ipam: allocation, owners: make(map[subnetIPAMKey]subnetIPAMAllocation)}, nil
+	return newSubnetIPAMAdapterWithBackend(writer, &transactionalSubnetIPAMBackend{ipam: allocation})
+}
+
+func newSubnetIPAMAdapterWithBackend(writer *subnetSideEffectWriter, backend subnetIPAMBackend) (*subnetIPAMAdapter, error) {
+	return newSubnetIPAMAdapterWithBackendAndStore(writer, backend, newMemorySubnetIPAMReceiptStore())
+}
+
+func newSubnetIPAMAdapterWithBackendAndStore(writer *subnetSideEffectWriter, backend subnetIPAMBackend, store subnetIPAMReceiptStore) (*subnetIPAMAdapter, error) {
+	if writer == nil || backend == nil || store == nil {
+		return nil, errors.New("subnet IPAM adapter requires a writer and backend")
+	}
+	return &subnetIPAMAdapter{writer: writer, backend: backend, store: store}, nil
+}
+
+// Recover restores receipt ownership after a process restart. The backend is
+// responsible for reading a durable record; this adapter validates every
+// identity before publishing any owner so stale or replacement Subnets fail
+// closed without partially restoring receipts.
+func (a *subnetIPAMAdapter) Recover(ctx context.Context, snapshot SubnetWriteSnapshot) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	a.allocMu.Lock()
+	defer a.allocMu.Unlock()
+	allocations, err := a.backend.Recover(ctx, snapshot)
+	if err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	for _, allocation := range allocations {
+		if allocation.key.subnet != snapshot.Name || allocation.key.pod == "" || allocation.key.nic == "" ||
+			allocation.uid != string(snapshot.UID) || allocation.token == 0 ||
+			(allocation.address.v4 == "" && allocation.address.v6 == "" && allocation.address.mac == "") {
+			return ErrSubnetIPAMRecoveryUnsafe
+		}
+	}
+	existing := make(map[subnetIPAMKey]bool, len(allocations))
+	seen := make(map[subnetIPAMKey]subnetIPAMAllocation, len(allocations))
+	for _, allocation := range allocations {
+		if previous, ok := seen[allocation.key]; ok && previous != allocation {
+			return ErrSubnetIPAMRecoveryUnsafe
+		}
+		seen[allocation.key] = allocation
+		current, ok, err := a.store.Lookup(ctx, allocation.key)
+		if err != nil {
+			return err
+		}
+		if ok && current != allocation {
+			return ErrSubnetIPAMRecoveryUnsafe
+		}
+		existing[allocation.key] = ok
+	}
+	remembered := make([]subnetIPAMAllocation, 0, len(allocations))
+	for _, allocation := range allocations {
+		if err := a.store.Remember(ctx, allocation); err != nil {
+			rollbackCtx, cancel := subnetIPAMRecoveryContext(ctx)
+			for _, candidate := range append(remembered, allocation) {
+				if !existing[candidate.key] {
+					_ = a.store.Delete(rollbackCtx, candidate)
+				}
+			}
+			cancel()
+			return err
+		}
+		if !existing[allocation.key] {
+			remembered = append(remembered, allocation)
+		}
+	}
+	return nil
 }
 
 // AllocateRandom allocates one IPAM address through an atomic IPAM
@@ -58,30 +246,68 @@ func (a *subnetIPAMAdapter) AllocateRandom(snapshot SubnetWriteSnapshot, podName
 	allocation := subnetIPAMAllocation{key: key, uid: string(snapshot.UID)}
 	var noOp bool
 	plan := SubnetSideEffectPlan{Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
-		if allocation.v4, allocation.v6, allocation.mac, noOp = existingIPAMAllocation(a.ipam, snapshot.Name, podName, nicName); noOp {
-			return nil, nil
-		}
-		if err := a.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
-			var err error
-			allocation.v4, allocation.v6, allocation.mac, err = tx.GetRandomAddress(podName, nicName, nil, snapshot.Name, poolName, nil, true)
-			return err
-		}); err != nil {
+		var err error
+		allocation.address, noOp, err = a.backend.ExistingAllocation(ctx, snapshot.Name, podName, nicName)
+		if err != nil {
 			return nil, err
 		}
+		if noOp {
+			return nil, nil
+		}
+		allocation.address, err = a.backend.AllocateRandom(ctx, podName, nicName, snapshot.Name, poolName)
+		if err != nil {
+			if !errors.Is(err, ipam.ErrTransactionCommittedUncertain) {
+				return nil, err
+			}
+			uncertainErr := err
+			// The transaction may have committed before observing cancellation.
+			// Read back without the canceled context before publishing a receipt;
+			// otherwise the committed address would have no owner to recover.
+			readCtx, cancel := subnetIPAMRecoveryContext(ctx)
+			defer cancel()
+			var found bool
+			allocation.address, found, err = a.backend.ExistingAllocation(readCtx, snapshot.Name, podName, nicName)
+			if err != nil {
+				return nil, errors.Join(uncertainErr, err)
+			}
+			if !found {
+				return nil, uncertainErr
+			}
+			allocation.token = a.next.Add(1)
+			receipt := &subnetIPAMReceipt{adapter: a, allocation: allocation}
+			if err := a.store.Remember(readCtx, allocation); err != nil {
+				releaseErr := a.backend.ReleaseIfMatches(readCtx, allocation)
+				if releaseErr == nil {
+					releaseErr = a.store.Delete(readCtx, allocation)
+				}
+				return nil, errors.Join(uncertainErr, err, releaseErr)
+			}
+			return receipt, uncertainErr
+		}
 		allocation.token = a.next.Add(1)
-		return &subnetIPAMReceipt{adapter: a, allocation: allocation}, nil
+		receipt := &subnetIPAMReceipt{adapter: a, allocation: allocation}
+		if err := a.store.Remember(ctx, allocation); err != nil {
+			rollbackCtx, cancel := subnetIPAMRecoveryContext(ctx)
+			defer cancel()
+			releaseErr := a.backend.ReleaseIfMatches(rollbackCtx, allocation)
+			if releaseErr == nil {
+				releaseErr = a.store.Delete(rollbackCtx, allocation)
+			}
+			return nil, errors.Join(err, releaseErr)
+		}
+		return receipt, nil
 	}}
 	receipt, err := a.writer.executePlan(snapshot, SubnetIPAMAllocateOperation, plan)
 	if err != nil {
+		if receipt != nil {
+			return allocation.address.v4, allocation.address.v6, allocation.address.mac, receipt, err
+		}
 		return "", "", "", nil, err
 	}
 	if receipt == nil || noOp {
-		return allocation.v4, allocation.v6, allocation.mac, nil, nil
+		return allocation.address.v4, allocation.address.v6, allocation.address.mac, nil, nil
 	}
-	a.mu.Lock()
-	a.owners[key] = allocation
-	a.mu.Unlock()
-	return allocation.v4, allocation.v6, allocation.mac, receipt, nil
+	return allocation.address.v4, allocation.address.v6, allocation.address.mac, receipt, nil
 }
 
 type subnetIPAMReceipt struct {
@@ -93,31 +319,30 @@ func (r *subnetIPAMReceipt) Compensate(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	r.adapter.mu.Lock()
-	current, ok := r.adapter.owners[r.allocation.key]
-	if !ok || current != r.allocation {
-		r.adapter.mu.Unlock()
-		return errors.New("IPAM allocation receipt is stale or owned by another writer")
-	}
-	r.adapter.mu.Unlock()
-	v4, v6, mac, ok := existingIPAMAllocation(r.adapter.ipam, r.allocation.key.subnet, r.allocation.key.pod, r.allocation.key.nic)
-	if !ok || v4 != r.allocation.v4 || v6 != r.allocation.v6 || mac != r.allocation.mac {
-		return errors.New("IPAM allocation receipt no longer matches the owned address")
-	}
-	if err := r.adapter.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
-		return tx.ReleaseAddressByNic(r.allocation.key.pod, r.allocation.key.nic, r.allocation.key.subnet)
-	}); err != nil {
+	r.adapter.allocMu.Lock()
+	defer r.adapter.allocMu.Unlock()
+	current, ok, err := r.adapter.store.Lookup(ctx, r.allocation.key)
+	if err != nil {
 		return err
 	}
-	r.adapter.mu.Lock()
-	defer r.adapter.mu.Unlock()
-	if current, ok := r.adapter.owners[r.allocation.key]; !ok || current != r.allocation {
-		return errors.New("IPAM allocation owner changed during compensation")
+	if !ok || current != r.allocation {
+		return ErrSubnetIPAMReceiptStale
 	}
-	delete(r.adapter.owners, r.allocation.key)
+	if err := r.adapter.backend.ReleaseIfMatches(ctx, r.allocation); err != nil {
+		if !errors.Is(err, ipam.ErrAddressOwnershipChanged) {
+			return err
+		}
+		_, found, lookupErr := r.adapter.backend.ExistingAllocation(ctx, r.allocation.key.subnet, r.allocation.key.pod, r.allocation.key.nic)
+		if lookupErr != nil {
+			return errors.Join(err, lookupErr)
+		}
+		if found {
+			return err
+		}
+		return r.adapter.store.Delete(ctx, r.allocation)
+	}
+	if err := r.adapter.store.Delete(ctx, r.allocation); err != nil {
+		return err
+	}
 	return nil
-}
-
-func existingIPAMAllocation(allocation *ipam.IPAM, subnetName, podName, nicName string) (string, string, string, bool) {
-	return allocation.GetPodAddressByNic(podName, nicName, subnetName)
 }
