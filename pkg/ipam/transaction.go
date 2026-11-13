@@ -72,7 +72,7 @@ func (ipam *IPAM) WithTransactionContext(ctx context.Context, action func(*Trans
 		return err
 	}
 	if err := ipam.withTransactionLocked(action); err != nil {
-		return err
+		return errors.Join(err, ctx.Err())
 	}
 	if err := ctx.Err(); err != nil {
 		return errors.Join(ErrTransactionCommittedUncertain, err)

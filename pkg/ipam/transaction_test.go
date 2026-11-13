@@ -252,6 +252,19 @@ func TestWithTransactionContextRollsBackActionCancellation(t *testing.T) {
 	require.Equal(t, "10.0.0.1", address)
 }
 
+func TestWithTransactionContextPreservesActionAndCancellationErrors(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	want := errors.New("action failed")
+
+	err := ipam.WithTransactionContext(ctx, func(*Transaction) error {
+		cancel()
+		return want
+	})
+	require.ErrorIs(t, err, want)
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestWithTransactionContextReportsCancellationAfterCommit(t *testing.T) {
 	ipam := newTransactionIPAM(t)
 	ctx, cancel := context.WithCancel(t.Context())
