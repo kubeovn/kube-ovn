@@ -164,9 +164,11 @@ func TestSubnetIPAMAdapterUsesBackendSeam(t *testing.T) {
 	adapter, err := newSubnetIPAMAdapterWithBackend(writer, backend)
 	require.NoError(t, err)
 
-	v4, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "pool")
+	v4, v6, mac, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "pool")
 	require.NoError(t, err)
 	require.Equal(t, "192.0.2.1", v4)
+	require.Equal(t, "2001:db8::1", v6)
+	require.Equal(t, "00:00:5e:00:53:01", mac)
 	require.NotNil(t, receipt)
 	require.Equal(t, subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"}, backend.key)
 	require.Equal(t, "pool", backend.poolName)
@@ -238,7 +240,7 @@ func (b *fakeSubnetIPAMBackend) ExistingAllocation(ctx context.Context, subnetNa
 	if !b.allocated {
 		return subnetIPAMAddress{}, false, nil
 	}
-	return subnetIPAMAddress{v4: "192.0.2.1", mac: "00:00:5e:00:53:01"}, true, nil
+	return subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"}, true, nil
 }
 
 func (b *fakeSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nicName, subnetName, poolName string) (subnetIPAMAddress, error) {
@@ -249,7 +251,7 @@ func (b *fakeSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nic
 		return subnetIPAMAddress{}, b.allocateErr
 	}
 	b.allocated = true
-	return subnetIPAMAddress{v4: "192.0.2.1", mac: "00:00:5e:00:53:01"}, nil
+	return subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"}, nil
 }
 
 func (b *fakeSubnetIPAMBackend) ReleaseByNic(context.Context, string, string, string) error {
