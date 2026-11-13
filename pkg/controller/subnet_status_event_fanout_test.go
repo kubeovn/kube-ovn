@@ -1,0 +1,78 @@
+package controller
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+func TestSubnetStatusEventFanoutReplaysCoalescedPendingEvents(t *testing.T) {
+	fanout := newSubnetStatusEventFanout()
+	fanout.publish("subnet-a", "IP")
+	fanout.publish("subnet-a", "Pod")
+	fanout.publish("subnet-b", "VIP")
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	events := make(chan subnetStatusEvent, 2)
+	unsubscribe := fanout.subscribe(ctx, func(name, sourceKind string) {
+		events <- subnetStatusEvent{name: name, sourceKind: sourceKind}
+	})
+	defer unsubscribe()
+
+	got := []subnetStatusEvent{<-events, <-events}
+	require.ElementsMatch(t, []subnetStatusEvent{
+		{name: "subnet-a", sourceKind: "Pod"},
+		{name: "subnet-b", sourceKind: "VIP"},
+	}, got)
+}
+
+func TestEnqueueSubnetStatusPreservesLegacyQueueAndFansOut(t *testing.T) {
+	c := &Controller{
+		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
+		subnetStatusEvents:      newSubnetStatusEventFanout(),
+	}
+	t.Cleanup(c.updateSubnetStatusQueue.ShutDown)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	events := make(chan subnetStatusEvent, 1)
+	unsubscribe := c.SubscribeSubnetStatusEvents(ctx, func(name, sourceKind string) {
+		events <- subnetStatusEvent{name: name, sourceKind: sourceKind}
+	})
+	defer unsubscribe()
+
+	c.enqueueSubnetStatus("subnet-a", "EIP")
+	item, shutdown := c.updateSubnetStatusQueue.Get()
+	require.False(t, shutdown)
+	require.Equal(t, "subnet-a", item)
+	c.updateSubnetStatusQueue.Done(item)
+	c.updateSubnetStatusQueue.Forget(item)
+	require.Equal(t, subnetStatusEvent{name: "subnet-a", sourceKind: "EIP"}, <-events)
+}
+
+func TestEnqueueSubnetStatusAfterDelaysFanout(t *testing.T) {
+	c := &Controller{
+		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
+		subnetStatusEvents:      newSubnetStatusEventFanout(),
+	}
+	t.Cleanup(c.updateSubnetStatusQueue.ShutDown)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	events := make(chan subnetStatusEvent, 1)
+	unsubscribe := c.SubscribeSubnetStatusEvents(ctx, func(name, sourceKind string) {
+		events <- subnetStatusEvent{name: name, sourceKind: sourceKind}
+	})
+	defer unsubscribe()
+
+	c.enqueueSubnetStatusAfter("subnet-a", "VIP", 10*time.Millisecond)
+	select {
+	case event := <-events:
+		require.Equal(t, subnetStatusEvent{name: "subnet-a", sourceKind: "VIP"}, event)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for delayed status fan-out")
+	}
+}

@@ -184,7 +184,7 @@ func (c *Controller) handleAddVirtualIP(key string) error {
 
 	// Trigger subnet status update after IPAM allocation and VIP persistence.
 	// Parent reconciliation is queued above and runs independently.
-	c.updateSubnetStatusQueue.Add(subnet.Name)
+	c.enqueueSubnetStatus(subnet.Name, "VIP")
 	return nil
 }
 
@@ -377,7 +377,7 @@ func (c *Controller) handleDelVirtualIP(vip *kubeovnv1.Vip) error {
 				return err
 			}
 		}
-		c.updateSubnetStatusQueue.Add(vip.Spec.Subnet)
+		c.enqueueSubnetStatus(vip.Spec.Subnet, "VIP")
 	}
 
 	return nil
@@ -776,7 +776,7 @@ func (c *Controller) createOrUpdateVipCR(key, ns, subnet, v4ip, v6ip, mac string
 		}
 	}
 	// Trigger subnet status update after CR creation or update
-	c.updateSubnetStatusQueue.AddAfter(subnet, 300*time.Millisecond)
+	c.enqueueSubnetStatusAfter(subnet, "VIP", 300*time.Millisecond)
 	return nil
 }
 
@@ -812,7 +812,7 @@ func (c *Controller) handleAddOrUpdateVipFinalizer(key string) error {
 	// Trigger subnet status update after finalizer is processed as a fallback
 	// This handles cases where finalizer was not added during creation
 	// AddFinalizer is idempotent, so this is safe even if finalizer already exists
-	c.updateSubnetStatusQueue.Add(cachedVip.Spec.Subnet)
+	c.enqueueSubnetStatus(cachedVip.Spec.Subnet, "VIP")
 	return nil
 }
 
@@ -848,7 +848,7 @@ func (c *Controller) handleDelVipFinalizer(key string) error {
 	// Trigger subnet status update after finalizer is removed
 	// This ensures subnet status reflects the IP release
 	// Add delay to ensure API server completes the finalizer removal
-	c.updateSubnetStatusQueue.AddAfter(cachedVip.Spec.Subnet, 300*time.Millisecond)
+	c.enqueueSubnetStatusAfter(cachedVip.Spec.Subnet, "VIP", 300*time.Millisecond)
 	return nil
 }
 

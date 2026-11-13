@@ -37,6 +37,25 @@ spec/dependency events are rejected before entering the status queue. The
 reconciler returns the projection to its caller and still owns no API write,
 finalizer, OVN, or IPAM operation.
 
+The opt-in `subnet-status` runtime mode now installs a bounded migration
+bridge beside the legacy producers. The legacy status queue remains connected
+to its existing worker; each IP, Pod, VIP, EIP, and NAT enqueue is also
+published to the runtime fan-out. Pending notifications are coalesced by
+Subnet name until the runtime subscriber is ready, and delayed legacy
+notifications preserve their delay before fan-out. The runtime calculator
+reuses the legacy read-only IP/status calculation and returns a snapshot-bound
+projection without patching the API. All other runtime modes leave this bridge
+disabled.
+
+The opt-in `subnet-status` runtime mode now installs a callback fan-out beside
+the legacy `updateSubnetStatusQueue`. IP, Pod, VIP, EIP, and NAT producers keep
+adding to the legacy queue and worker; the fan-out mirrors those notifications
+to the runtime source without consuming the queue. Events are coalesced while
+the manager starts, and delayed legacy notifications retain their delay before
+being mirrored. The mode starts the legacy controller and runtime manager
+together, reusing the legacy read-only status calculator as the projector while
+leaving the legacy status patch as the only API writer.
+
 ## Single-writer matrix
 
 | Surface | Current writer | Future shadow may do | Future writer gate |

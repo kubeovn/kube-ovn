@@ -59,6 +59,42 @@ type SubnetStatusEventSource interface {
 	StartSubnetStatusEventBridge(context.Context, func(SubnetStatusEvent))
 }
 
+// LegacySubnetStatusEventSource is the dependency-free callback shape exposed
+// by the legacy controller. Keeping this interface on primitive arguments
+// avoids an import cycle between the legacy controller and runtime package.
+type LegacySubnetStatusEventSource interface {
+	SubscribeSubnetStatusEvents(context.Context, func(string, string)) func()
+}
+
+type legacySubnetStatusEventSource struct {
+	source LegacySubnetStatusEventSource
+}
+
+// NewLegacySubnetStatusEventSource adapts the legacy producer fan-out to the
+// runtime event vocabulary. It does not consume the legacy status queue.
+func NewLegacySubnetStatusEventSource(source LegacySubnetStatusEventSource) SubnetStatusEventSource {
+	if source == nil {
+		return nil
+	}
+	return legacySubnetStatusEventSource{source: source}
+}
+
+func (s legacySubnetStatusEventSource) StartSubnetStatusEventBridge(ctx context.Context, enqueue func(SubnetStatusEvent)) {
+	if s.source == nil || enqueue == nil {
+		return
+	}
+	unsubscribe := s.source.SubscribeSubnetStatusEvents(ctx, func(name, sourceKind string) {
+		enqueue(SubnetStatusEvent{Name: name, SourceKind: sourceKind})
+	})
+	if unsubscribe == nil || ctx == nil {
+		return
+	}
+	go func() {
+		<-ctx.Done()
+		unsubscribe()
+	}()
+}
+
 // SubnetStatusReconciler reads the current Subnet and produces a status
 // projection for a normalized status event. It never writes Kubernetes status
 // or invokes finalizer, OVN, or IPAM operations.

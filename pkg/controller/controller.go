@@ -184,6 +184,7 @@ type Controller struct {
 	addOrUpdateSubnetQueue  workqueue.TypedRateLimitingInterface[string]
 	deleteSubnetQueue       workqueue.TypedRateLimitingInterface[*kubeovnv1.Subnet]
 	updateSubnetStatusQueue workqueue.TypedRateLimitingInterface[string]
+	subnetStatusEvents      *subnetStatusEventFanout
 	syncVirtualPortsQueue   workqueue.TypedRateLimitingInterface[string]
 	subnetKeyMutex          keymutex.KeyMutex
 
@@ -613,6 +614,7 @@ func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter
 		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddSubnet", nil),
 		deleteSubnetQueue:       newTypedRateLimitingQueue[*kubeovnv1.Subnet]("DeleteSubnet", nil),
 		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
+		subnetStatusEvents:      newSubnetStatusEventFanoutForConfig(config),
 		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
 		subnetKeyMutex:          keymutex.NewHashed(numKeyLocks),
 

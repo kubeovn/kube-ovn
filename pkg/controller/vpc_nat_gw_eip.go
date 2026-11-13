@@ -181,7 +181,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 
 	// Trigger subnet status update after all operations complete
 	// At this point: IPAM allocated, IptablesEIP CR created with labels+status+finalizer
-	c.updateSubnetStatusQueue.Add(subnet.Name)
+	c.enqueueSubnetStatus(subnet.Name, "NAT")
 	return nil
 }
 
@@ -399,7 +399,7 @@ func (c *Controller) handleDelIptablesEip(eip *kubeovnv1.IptablesEIP) error {
 	// we need to ensure subnet status is updated as a safety net.
 	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
 	if externalNetwork != "" {
-		c.updateSubnetStatusQueue.Add(externalNetwork)
+		c.enqueueSubnetStatus(externalNetwork, "NAT")
 	}
 
 	return nil
@@ -882,7 +882,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 		}
 	}
 	// Trigger subnet status update after all operations complete
-	c.updateSubnetStatusQueue.AddAfter(externalNet, 300*time.Millisecond)
+	c.enqueueSubnetStatusAfter(externalNet, "NAT", 300*time.Millisecond)
 	return nil
 }
 
@@ -930,7 +930,7 @@ func (c *Controller) handleAddIptablesEipFinalizer(key string) error {
 	// This handles cases where finalizer was not added during creation
 	// AddFinalizer is idempotent, so this is safe even if finalizer already exists
 	externalNetwork := util.GetExternalNetwork(cachedIptablesEip.Spec.ExternalSubnet)
-	c.updateSubnetStatusQueue.Add(externalNetwork)
+	c.enqueueSubnetStatus(externalNetwork, "NAT")
 	return nil
 }
 
@@ -967,7 +967,7 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 	// This ensures subnet status reflects the IP release
 	// Add delay to ensure API server completes the finalizer removal
 	externalNetwork := util.GetExternalNetwork(cachedIptablesEip.Spec.ExternalSubnet)
-	c.updateSubnetStatusQueue.AddAfter(externalNetwork, 300*time.Millisecond)
+	c.enqueueSubnetStatusAfter(externalNetwork, "NAT", 300*time.Millisecond)
 	return nil
 }
 
