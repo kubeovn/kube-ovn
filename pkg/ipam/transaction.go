@@ -78,6 +78,20 @@ func (tx *Transaction) GetRandomAddress(podName, nicName string, mac *string, su
 	return tx.GetRandomAddressWithFamily(podName, nicName, mac, subnetName, poolName, "", skippedAddrs, checkConflict)
 }
 
+// GetPodAddressByNic reads one pod/NIC allocation from the transaction's
+// snapshot so a caller can conditionally release the exact address it owns.
+func (tx *Transaction) GetPodAddressByNic(podName, nicName, subnetName string) (string, string, string, bool, error) {
+	if err := tx.ensureOpen(); err != nil {
+		return "", "", "", false, err
+	}
+	subnet, err := tx.subnet(subnetName)
+	if err != nil {
+		return "", "", "", false, err
+	}
+	v4, v6, mac, found := subnet.getPodAddressByNic(podName, nicName)
+	return v4, v6, mac, found, nil
+}
+
 // GetRandomAddressWithFamily stages a family-specific random allocation.
 func (tx *Transaction) GetRandomAddressWithFamily(podName, nicName string, mac *string, subnetName, poolName, ipFamily string, skippedAddrs []string, checkConflict bool) (string, string, string, error) {
 	if err := tx.ensureOpen(); err != nil {

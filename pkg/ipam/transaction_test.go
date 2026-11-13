@@ -268,6 +268,22 @@ func TestWithTransactionContextReportsCancellationAfterCommit(t *testing.T) {
 	require.Equal(t, "10.0.0.2", address, "cancellation after the action reports an uncertain committed result")
 }
 
+func TestTransactionGetPodAddressByNicReadsSnapshot(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	_, _, _, err := ipam.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
+	require.NoError(t, err)
+
+	require.NoError(t, ipam.WithTransaction(func(tx *Transaction) error {
+		v4, v6, mac, found, err := tx.GetPodAddressByNic("pod", "nic", "subnet")
+		require.NoError(t, err)
+		require.True(t, found)
+		require.Equal(t, "10.0.0.1", v4)
+		require.Empty(t, v6)
+		require.NotEmpty(t, mac)
+		return nil
+	}))
+}
+
 func newTransactionIPAM(t *testing.T) *IPAM {
 	t.Helper()
 	return newTransactionIPAMWithCIDR(t, "10.0.0.0/29")

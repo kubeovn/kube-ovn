@@ -28,7 +28,7 @@ type subnetIPAMAdapter struct {
 type subnetIPAMBackend interface {
 	ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (subnetIPAMAddress, bool, error)
 	AllocateRandom(ctx context.Context, podName, nicName, subnetName, poolName string) (subnetIPAMAddress, error)
-	ReleaseByNic(ctx context.Context, podName, nicName, subnetName string) error
+	ReleaseIfMatches(ctx context.Context, podName, nicName, subnetName string, expected subnetIPAMAddress) error
 }
 
 type subnetIPAMAddress struct {
@@ -59,8 +59,15 @@ func (b *transactionalSubnetIPAMBackend) AllocateRandom(ctx context.Context, pod
 	return address, err
 }
 
-func (b *transactionalSubnetIPAMBackend) ReleaseByNic(ctx context.Context, podName, nicName, subnetName string) error {
+func (b *transactionalSubnetIPAMBackend) ReleaseIfMatches(ctx context.Context, podName, nicName, subnetName string, expected subnetIPAMAddress) error {
 	return b.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		v4, v6, mac, found, err := tx.GetPodAddressByNic(podName, nicName, subnetName)
+		if err != nil {
+			return err
+		}
+		if !found || v4 != expected.v4 || v6 != expected.v6 || mac != expected.mac {
+			return ipam.ErrAddressOwnershipChanged
+		}
 		return tx.ReleaseAddressByNic(podName, nicName, subnetName)
 	})
 }
@@ -150,14 +157,7 @@ func (r *subnetIPAMReceipt) Compensate(ctx context.Context) error {
 		return errors.New("IPAM allocation receipt is stale or owned by another writer")
 	}
 	r.adapter.mu.Unlock()
-	address, ok, err := r.adapter.backend.ExistingAllocation(ctx, r.allocation.key.subnet, r.allocation.key.pod, r.allocation.key.nic)
-	if err != nil {
-		return err
-	}
-	if !ok || address != r.allocation.address {
-		return errors.New("IPAM allocation receipt no longer matches the owned address")
-	}
-	if err := r.adapter.backend.ReleaseByNic(ctx, r.allocation.key.pod, r.allocation.key.nic, r.allocation.key.subnet); err != nil {
+	if err := r.adapter.backend.ReleaseIfMatches(ctx, r.allocation.key.pod, r.allocation.key.nic, r.allocation.key.subnet, r.allocation.address); err != nil {
 		return err
 	}
 	r.adapter.mu.Lock()

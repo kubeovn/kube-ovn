@@ -114,11 +114,14 @@ The adapter now consumes a narrow backend interface for exact allocation
 lookup, transactional allocation, and conditional release. Lookup receives
 the writer context and returns errors separately from the no-op result, so a
 durable backend read failure fails closed without attempting allocation or
-compensation. The current implementation wraps the in-memory IPAM transaction
-API; a future durable backend can implement the same seam only after
-preserving the receipt, ownership, and uncertain-commit guarantees. This
-interface is testable in isolation and remains unwired from the production
-manager.
+compensation. Receipt release passes the expected address tuple into the
+backend, which validates ownership and releases it in one IPAM transaction;
+this closes the lookup/release race for the current backend. A future durable
+backend must replace this with an atomic fencing check. The current
+implementation wraps the in-memory IPAM transaction API; a future durable
+backend can implement the same seam only after preserving the receipt,
+ownership, and uncertain-commit guarantees. This interface is testable in
+isolation and remains unwired from the production manager.
 
 ## Readiness and deletion gates
 
