@@ -7,6 +7,8 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -31,6 +33,39 @@ func TestSubnetShadowReconcilerIsReadOnly(t *testing.T) {
 	require.NoError(t, reader.Get(t.Context(), types.NamespacedName{Name: subnet.Name}, current))
 	require.Equal(t, subnet.Generation, current.Generation)
 	require.Equal(t, subnet.Spec, current.Spec)
+}
+
+func TestSubnetShadowReconcileOutcome(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "success", want: "success"},
+		{name: "not found", err: apierrors.NewNotFound(schema.GroupResource{Resource: "subnets"}, "missing"), want: "not_found"},
+		{name: "error", err: errors.New("read failed"), want: "error"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, subnetShadowReconcileOutcome(tt.err))
+		})
+	}
+}
+
+func TestSubnetShadowReconcileRecordsOutcome(t *testing.T) {
+	before := testutil.ToFloat64(subnetShadowReconciliations.WithLabelValues("success"))
+	reconciler := &SubnetShadowReconciler{Reader: newRuntimeClient(t, testSubnet(""))}
+	_, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: "subnet-a"})
+	require.NoError(t, err)
+	require.Equal(t, before+1, testutil.ToFloat64(subnetShadowReconciliations.WithLabelValues("success")))
+}
+
+func TestSubnetShadowReconcileRecordsNotFoundOutcome(t *testing.T) {
+	before := testutil.ToFloat64(subnetShadowReconciliations.WithLabelValues("not_found"))
+	reconciler := &SubnetShadowReconciler{Reader: newRuntimeClient(t)}
+	_, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: "missing-subnet"})
+	require.NoError(t, err)
+	require.Equal(t, before+1, testutil.ToFloat64(subnetShadowReconciliations.WithLabelValues("not_found")))
 }
 
 func TestSubnetShadowReconcilerMapsDependencies(t *testing.T) {

@@ -69,14 +69,19 @@ type SubnetShadowReconciler struct {
 // as a no-op, while dependency and API failures remain retryable errors.
 func (r *SubnetShadowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reconcileErr error) {
 	started := time.Now()
+	reconcileOutcome := "success"
 	defer func() {
 		outcome := subnetShadowReconcileOutcome(reconcileErr)
+		if reconcileErr == nil {
+			outcome = reconcileOutcome
+		}
 		subnetShadowReconciliations.WithLabelValues(outcome).Inc()
 		subnetShadowReconcileDuration.Observe(time.Since(started).Seconds())
 	}()
 
 	if _, err := ObserveSubnet(ctx, r.Reader, req.Name); err != nil {
 		if apierrors.IsNotFound(err) {
+			reconcileOutcome = "not_found"
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
