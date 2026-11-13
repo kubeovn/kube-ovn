@@ -3,6 +3,7 @@ package ipam
 import (
 	"context"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -180,37 +181,57 @@ func TestWithTransactionContextRejectsCancellationBeforeAction(t *testing.T) {
 	require.Equal(t, "10.0.0.1", address)
 }
 
-func TestWithTransactionContextChecksCancellationAfterWaitingForLock(t *testing.T) {
+func TestWithTransactionContextChecksCancellationAfterLockAcquisition(t *testing.T) {
 	ipam := newTransactionIPAM(t)
-	ipam.mutex.Lock()
-	locked := true
-	defer func() {
-		if locked {
-			ipam.mutex.Unlock()
-		}
-	}()
 
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	started := make(chan struct{})
+	ctx := &firstErrContext{
+		Context:      context.Background(),
+		firstErr:     make(chan struct{}),
+		secondErr:    make(chan struct{}),
+		releaseCheck: make(chan struct{}),
+	}
 	called := make(chan struct{})
 	done := make(chan error, 1)
 	go func() {
-		close(started)
 		done <- ipam.WithTransactionContext(ctx, func(*Transaction) error {
 			close(called)
 			return nil
 		})
 	}()
-	<-started
-	cancel()
-	ipam.mutex.Unlock()
-	locked = false
+	<-ctx.firstErr
+	select {
+	case <-ctx.secondErr:
+	case <-time.After(time.Second):
+		t.Fatal("transaction did not perform the lock-acquired context check")
+	}
+	close(ctx.releaseCheck)
 	require.ErrorIs(t, <-done, context.Canceled)
 	select {
 	case <-called:
 		t.Fatal("transaction action ran after cancellation while waiting for the IPAM lock")
 	default:
+	}
+}
+
+type firstErrContext struct {
+	context.Context
+	firstErr     chan struct{}
+	secondErr    chan struct{}
+	releaseCheck chan struct{}
+	calls        atomic.Uint32
+}
+
+func (c *firstErrContext) Err() error {
+	switch c.calls.Add(1) {
+	case 1:
+		close(c.firstErr)
+		return nil
+	case 2:
+		close(c.secondErr)
+		<-c.releaseCheck
+		return context.Canceled
+	default:
+		return context.Canceled
 	}
 }
 
