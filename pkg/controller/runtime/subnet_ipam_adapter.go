@@ -280,6 +280,8 @@ func (r *subnetIPAMReceipt) Compensate(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	r.adapter.allocMu.Lock()
+	defer r.adapter.allocMu.Unlock()
 	current, ok, err := r.adapter.store.Lookup(ctx, r.allocation.key)
 	if err != nil {
 		return err
@@ -288,7 +290,17 @@ func (r *subnetIPAMReceipt) Compensate(ctx context.Context) error {
 		return ErrSubnetIPAMReceiptStale
 	}
 	if err := r.adapter.backend.ReleaseIfMatches(ctx, r.allocation); err != nil {
-		return err
+		if !errors.Is(err, ipam.ErrAddressOwnershipChanged) {
+			return err
+		}
+		_, found, lookupErr := r.adapter.backend.ExistingAllocation(ctx, r.allocation.key.subnet, r.allocation.key.pod, r.allocation.key.nic)
+		if lookupErr != nil {
+			return errors.Join(err, lookupErr)
+		}
+		if found {
+			return err
+		}
+		return r.adapter.store.Delete(ctx, r.allocation)
 	}
 	if err := r.adapter.store.Delete(ctx, r.allocation); err != nil {
 		return err

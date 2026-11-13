@@ -327,6 +327,8 @@ type fakeDurableSubnetIPAMReceiptStore struct {
 	rememberErr   error
 	rememberAfter int
 	rememberCalls int
+	deleteErr     error
+	deleteCalls   int
 }
 
 func (s *fakeDurableSubnetIPAMReceiptStore) Remember(ctx context.Context, allocation subnetIPAMAllocation) error {
@@ -335,6 +337,14 @@ func (s *fakeDurableSubnetIPAMReceiptStore) Remember(ctx context.Context, alloca
 		return s.rememberErr
 	}
 	return s.memorySubnetIPAMReceiptStore.Remember(ctx, allocation)
+}
+
+func (s *fakeDurableSubnetIPAMReceiptStore) Delete(ctx context.Context, allocation subnetIPAMAllocation) error {
+	s.deleteCalls++
+	if s.deleteErr != nil && s.deleteCalls == 1 {
+		return s.deleteErr
+	}
+	return s.memorySubnetIPAMReceiptStore.Delete(ctx, allocation)
 }
 
 func TestSubnetIPAMAdapterFailsClosedWithoutDurableRecovery(t *testing.T) {
@@ -402,6 +412,26 @@ func TestSubnetIPAMReceiptReleaseCancellationPreservesOwnerForRetry(t *testing.T
 	backend.releaseStarted = nil
 	require.NoError(t, receipt.Compensate(context.Background()))
 	require.False(t, backend.allocated)
+}
+
+func TestSubnetIPAMReceiptRetriesStoreDeleteAfterBackendRelease(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	backend := &fakeSubnetIPAMBackend{}
+	store := &fakeDurableSubnetIPAMReceiptStore{
+		memorySubnetIPAMReceiptStore: newMemorySubnetIPAMReceiptStore(),
+		deleteErr:                    errors.New("receipt store delete failed"),
+	}
+	adapter, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
+	require.NoError(t, err)
+
+	_, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
+	require.NoError(t, err)
+	require.ErrorIs(t, receipt.Compensate(context.Background()), store.deleteErr)
+	require.False(t, backend.allocated, "backend release committed before store delete failed")
+	require.NoError(t, receipt.Compensate(context.Background()), "retry should confirm release and delete the durable record")
+	_, found, err := store.Lookup(context.Background(), receipt.(*subnetIPAMReceipt).allocation.key)
+	require.NoError(t, err)
+	require.False(t, found)
 }
 
 func TestSubnetIPAMAdapterRejectsInvalidDependencies(t *testing.T) {
