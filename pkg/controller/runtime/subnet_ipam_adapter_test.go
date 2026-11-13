@@ -114,9 +114,14 @@ func TestSubnetIPAMAdapterReceiptRejectsReplacedAddress(t *testing.T) {
 	}))
 	_, _, _, err = allocation.GetRandomAddress("other-pod", "other-nic", nil, snapshot.Name, "", nil, true)
 	require.NoError(t, err)
-	_, _, _, err = allocation.GetRandomAddress("pod", "nic", nil, snapshot.Name, "", nil, true)
+	replacementV4, replacementV6, replacementMAC, err := allocation.GetRandomAddress("pod", "nic", nil, snapshot.Name, "", nil, true)
 	require.NoError(t, err)
-	require.Error(t, receipt.Compensate(context.Background()), "receipt must not release an address replaced outside its owner")
+	require.ErrorIs(t, receipt.Compensate(context.Background()), ipam.ErrAddressOwnershipChanged)
+	v4, v6, mac, found := allocation.GetPodAddressByNic("pod", "nic", snapshot.Name)
+	require.True(t, found, "ownership mismatch must preserve the replacement allocation")
+	require.Equal(t, replacementV4, v4)
+	require.Equal(t, replacementV6, v6)
+	require.Equal(t, replacementMAC, mac)
 }
 
 func TestSubnetIPAMAdapterTransactionFailureDoesNotReturnReceipt(t *testing.T) {
