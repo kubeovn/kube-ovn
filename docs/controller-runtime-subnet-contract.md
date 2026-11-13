@@ -111,11 +111,14 @@ the allocation untouched; cancellation during the transaction still requires
 readback because the atomic release may already have committed.
 
 The adapter now consumes a narrow backend interface for exact allocation
-lookup, transactional allocation, and conditional release. The current
-implementation wraps the in-memory IPAM transaction API; a future durable
-backend can implement the same seam only after preserving the receipt,
-ownership, and uncertain-commit guarantees. This interface is testable in
-isolation and remains unwired from the production manager.
+lookup, transactional allocation, and conditional release. Lookup receives
+the writer context and returns errors separately from the no-op result, so a
+durable backend read failure fails closed without attempting allocation or
+compensation. The current implementation wraps the in-memory IPAM transaction
+API; a future durable backend can implement the same seam only after
+preserving the receipt, ownership, and uncertain-commit guarantees. This
+interface is testable in isolation and remains unwired from the production
+manager.
 
 ## Readiness and deletion gates
 

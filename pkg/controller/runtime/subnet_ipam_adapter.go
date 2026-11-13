@@ -26,7 +26,7 @@ type subnetIPAMAdapter struct {
 // writer. A production implementation must preserve the same no-op,
 // transaction and uncertain-commit semantics before it can be wired in.
 type subnetIPAMBackend interface {
-	ExistingAllocation(subnetName, podName, nicName string) (string, string, string, bool)
+	ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (string, string, string, bool, error)
 	AllocateRandom(ctx context.Context, podName, nicName, subnetName, poolName string) (string, string, string, error)
 	ReleaseByNic(ctx context.Context, podName, nicName, subnetName string) error
 }
@@ -35,8 +35,12 @@ type transactionalSubnetIPAMBackend struct {
 	ipam *ipam.IPAM
 }
 
-func (b *transactionalSubnetIPAMBackend) ExistingAllocation(subnetName, podName, nicName string) (string, string, string, bool) {
-	return b.ipam.GetPodAddressByNic(podName, nicName, subnetName)
+func (b *transactionalSubnetIPAMBackend) ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (string, string, string, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return "", "", "", false, err
+	}
+	v4, v6, mac, found := b.ipam.GetPodAddressByNic(podName, nicName, subnetName)
+	return v4, v6, mac, found, nil
 }
 
 func (b *transactionalSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nicName, subnetName, poolName string) (string, string, string, error) {
@@ -98,10 +102,14 @@ func (a *subnetIPAMAdapter) AllocateRandom(snapshot SubnetWriteSnapshot, podName
 	allocation := subnetIPAMAllocation{key: key, uid: string(snapshot.UID)}
 	var noOp bool
 	plan := SubnetSideEffectPlan{Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
-		if allocation.v4, allocation.v6, allocation.mac, noOp = a.backend.ExistingAllocation(snapshot.Name, podName, nicName); noOp {
+		var err error
+		allocation.v4, allocation.v6, allocation.mac, noOp, err = a.backend.ExistingAllocation(ctx, snapshot.Name, podName, nicName)
+		if err != nil {
+			return nil, err
+		}
+		if noOp {
 			return nil, nil
 		}
-		var err error
 		allocation.v4, allocation.v6, allocation.mac, err = a.backend.AllocateRandom(ctx, podName, nicName, snapshot.Name, poolName)
 		if err != nil {
 			return nil, err
@@ -138,7 +146,10 @@ func (r *subnetIPAMReceipt) Compensate(ctx context.Context) error {
 		return errors.New("IPAM allocation receipt is stale or owned by another writer")
 	}
 	r.adapter.mu.Unlock()
-	v4, v6, mac, ok := r.adapter.backend.ExistingAllocation(r.allocation.key.subnet, r.allocation.key.pod, r.allocation.key.nic)
+	v4, v6, mac, ok, err := r.adapter.backend.ExistingAllocation(ctx, r.allocation.key.subnet, r.allocation.key.pod, r.allocation.key.nic)
+	if err != nil {
+		return err
+	}
 	if !ok || v4 != r.allocation.v4 || v6 != r.allocation.v6 || mac != r.allocation.mac {
 		return errors.New("IPAM allocation receipt no longer matches the owned address")
 	}

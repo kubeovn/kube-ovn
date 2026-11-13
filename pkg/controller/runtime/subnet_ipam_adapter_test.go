@@ -171,6 +171,7 @@ func TestSubnetIPAMAdapterUsesBackendSeam(t *testing.T) {
 	require.Equal(t, subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"}, backend.key)
 	require.Equal(t, "pool", backend.poolName)
 	require.NotNil(t, backend.ctx)
+	require.NotNil(t, backend.lookupCtx)
 	require.NoError(t, receipt.Compensate(context.Background()))
 	require.Equal(t, 1, backend.releaseCalls)
 	require.False(t, backend.allocated)
@@ -184,6 +185,18 @@ func TestSubnetIPAMAdapterBackendErrorDoesNotReturnReceipt(t *testing.T) {
 
 	_, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
 	require.EqualError(t, err, "backend allocation failed")
+	require.Nil(t, receipt)
+	require.False(t, backend.allocated)
+}
+
+func TestSubnetIPAMAdapterLookupErrorDoesNotAllocate(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	backend := &fakeSubnetIPAMBackend{lookupErr: errors.New("backend lookup failed")}
+	adapter, err := newSubnetIPAMAdapterWithBackend(writer, backend)
+	require.NoError(t, err)
+
+	_, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
+	require.EqualError(t, err, "backend lookup failed")
 	require.Nil(t, receipt)
 	require.False(t, backend.allocated)
 }
@@ -210,16 +223,22 @@ type fakeSubnetIPAMBackend struct {
 	allocated    bool
 	ctx          context.Context
 	key          subnetIPAMKey
+	lookupCtx    context.Context
+	lookupErr    error
 	poolName     string
 	releaseCalls int
 }
 
-func (b *fakeSubnetIPAMBackend) ExistingAllocation(subnetName, podName, nicName string) (string, string, string, bool) {
+func (b *fakeSubnetIPAMBackend) ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (string, string, string, bool, error) {
+	b.lookupCtx = ctx
 	b.key = subnetIPAMKey{subnet: subnetName, pod: podName, nic: nicName}
-	if !b.allocated {
-		return "", "", "", false
+	if b.lookupErr != nil {
+		return "", "", "", false, b.lookupErr
 	}
-	return "192.0.2.1", "", "00:00:5e:00:53:01", true
+	if !b.allocated {
+		return "", "", "", false, nil
+	}
+	return "192.0.2.1", "", "00:00:5e:00:53:01", true, nil
 }
 
 func (b *fakeSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nicName, subnetName, poolName string) (string, string, string, error) {
