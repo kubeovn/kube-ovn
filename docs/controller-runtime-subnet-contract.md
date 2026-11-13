@@ -113,6 +113,9 @@ readback because the atomic release may already have committed.
 If conditional release returns a backend error before ownership is cleared, the
 receipt remains available for recovery to retry; the adapter does not discard
 ownership after an unsuccessful release.
+The same rule applies when the release context is canceled while the backend
+operation is in progress: recovery must retry with a fresh context and resolve
+the resulting ownership state.
 
 The adapter now consumes a narrow backend interface for exact allocation
 lookup, transactional allocation, and conditional release. Lookup receives
