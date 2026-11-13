@@ -256,12 +256,14 @@ func TestWithTransactionContextReportsCancellationAfterCommit(t *testing.T) {
 	ipam := newTransactionIPAM(t)
 	ctx, cancel := context.WithCancel(t.Context())
 
-	require.ErrorIs(t, ipam.WithTransactionContext(ctx, func(tx *Transaction) error {
+	err := ipam.WithTransactionContext(ctx, func(tx *Transaction) error {
 		_, _, _, err := tx.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
 		require.NoError(t, err)
 		cancel()
 		return nil
-	}), context.Canceled)
+	})
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, ErrTransactionCommittedUncertain)
 
 	address, _, _, err := ipam.GetRandomAddress("retry", "retry-nic", nil, "subnet", "", nil, true)
 	require.NoError(t, err)

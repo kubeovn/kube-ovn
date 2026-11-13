@@ -151,6 +151,48 @@ func TestSubnetIPAMAdapterCancellationDoesNotAllocate(t *testing.T) {
 	require.False(t, allocated)
 }
 
+func TestSubnetIPAMAdapterRecoversReceiptAfterCommittedCancellation(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	writer.ctx = ctx
+	backend := &fakeSubnetIPAMBackend{allocateCancel: cancel, committedCancellation: true}
+	adapter, err := newSubnetIPAMAdapterWithBackend(writer, backend)
+	require.NoError(t, err)
+
+	v4, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
+	require.ErrorIs(t, err, context.Canceled)
+	require.ErrorIs(t, err, ipam.ErrTransactionCommittedUncertain)
+	require.Equal(t, "192.0.2.1", v4)
+	require.NotNil(t, receipt, "a committed allocation must return its recovery receipt")
+	require.True(t, backend.allocated)
+
+	require.NoError(t, receipt.Compensate(context.Background()))
+	require.False(t, backend.allocated)
+}
+
+func TestSubnetIPAMAdapterPreservesReceiptWhenCanceledAfterRemember(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	writer.ctx = ctx
+	store := &cancelAfterRememberStore{
+		memorySubnetIPAMReceiptStore: newMemorySubnetIPAMReceiptStore(),
+		cancel:                       cancel,
+	}
+	backend := &fakeSubnetIPAMBackend{}
+	adapter, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
+	require.NoError(t, err)
+
+	_, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
+	require.ErrorIs(t, err, context.Canceled)
+	require.NotNil(t, receipt, "the writer must preserve a receipt published before cancellation")
+	require.True(t, backend.allocated)
+
+	require.NoError(t, receipt.Compensate(context.Background()))
+	require.False(t, backend.allocated)
+}
+
 func TestSubnetIPAMReceiptCancellationPreservesAllocation(t *testing.T) {
 	adapter, snapshot := newSubnetIPAMAdapterTest(t)
 	_, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
@@ -452,18 +494,20 @@ func adapterIPAM(t *testing.T, adapter *subnetIPAMAdapter) *ipam.IPAM {
 }
 
 type fakeSubnetIPAMBackend struct {
-	allocateErr        error
-	allocated          bool
-	ctx                context.Context
-	key                subnetIPAMKey
-	lookupCtx          context.Context
-	lookupErr          error
-	poolName           string
-	releaseCalls       int
-	releaseErr         error
-	releaseAllocation  subnetIPAMAllocation
-	releaseStarted     chan struct{}
-	recoverAllocations []subnetIPAMAllocation
+	allocateErr           error
+	allocateCancel        context.CancelFunc
+	committedCancellation bool
+	allocated             bool
+	ctx                   context.Context
+	key                   subnetIPAMKey
+	lookupCtx             context.Context
+	lookupErr             error
+	poolName              string
+	releaseCalls          int
+	releaseErr            error
+	releaseAllocation     subnetIPAMAllocation
+	releaseStarted        chan struct{}
+	recoverAllocations    []subnetIPAMAllocation
 }
 
 func (b *fakeSubnetIPAMBackend) ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (subnetIPAMAddress, bool, error) {
@@ -486,11 +530,28 @@ func (b *fakeSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nic
 		return subnetIPAMAddress{}, b.allocateErr
 	}
 	b.allocated = true
+	if b.committedCancellation {
+		b.allocateCancel()
+		return subnetIPAMAddress{}, errors.Join(ipam.ErrTransactionCommittedUncertain, context.Canceled)
+	}
 	return subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"}, nil
 }
 
 func (b *fakeSubnetIPAMBackend) Recover(context.Context, SubnetWriteSnapshot) ([]subnetIPAMAllocation, error) {
 	return b.recoverAllocations, nil
+}
+
+type cancelAfterRememberStore struct {
+	*memorySubnetIPAMReceiptStore
+	cancel context.CancelFunc
+}
+
+func (s *cancelAfterRememberStore) Remember(ctx context.Context, allocation subnetIPAMAllocation) error {
+	if err := s.memorySubnetIPAMReceiptStore.Remember(ctx, allocation); err != nil {
+		return err
+	}
+	s.cancel()
+	return nil
 }
 
 func (b *fakeSubnetIPAMBackend) ReleaseIfMatches(ctx context.Context, allocation subnetIPAMAllocation) error {

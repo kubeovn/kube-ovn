@@ -9,8 +9,9 @@ import (
 )
 
 var (
-	ErrTransactionClosed    = errors.New("IPAM transaction is closed")
-	ErrTransactionNilAction = errors.New("IPAM transaction action is nil")
+	ErrTransactionClosed             = errors.New("IPAM transaction is closed")
+	ErrTransactionNilAction          = errors.New("IPAM transaction action is nil")
+	ErrTransactionCommittedUncertain = errors.New("IPAM transaction committed before cancellation")
 )
 
 // Transaction stages IPAM allocation and release changes on private subnet
@@ -70,7 +71,13 @@ func (ipam *IPAM) WithTransactionContext(ctx context.Context, action func(*Trans
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	return errors.Join(ipam.withTransactionLocked(action), ctx.Err())
+	if err := ipam.withTransactionLocked(action); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return errors.Join(ErrTransactionCommittedUncertain, err)
+	}
+	return nil
 }
 
 // GetRandomAddress stages a random allocation on the transaction's subnet.

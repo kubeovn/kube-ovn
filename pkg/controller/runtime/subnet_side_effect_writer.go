@@ -110,7 +110,10 @@ func (w *subnetSideEffectWriter) executePlan(snapshot SubnetWriteSnapshot, opera
 	}
 	receipt, applyErr := plan.Apply(w.ctx)
 	if err := w.ctx.Err(); err != nil {
-		return nil, errors.Join(applyErr, err)
+		// Preserve a confirmed receipt when cancellation races with a
+		// committed backend operation. The caller must retain the owner for
+		// recovery; cancellation never authorizes speculative compensation.
+		return receipt, errors.Join(applyErr, err)
 	}
 	if applyErr != nil {
 		return nil, w.compensate(receipt, applyErr)
