@@ -59,6 +59,7 @@ func TestSubnetReconcilerDelegatesImmutableSnapshot(t *testing.T) {
 
 func TestSubnetReconcilerRecoversBeforeReconcileAndOnlyOncePerUID(t *testing.T) {
 	subnet := testSubnet("")
+	subnet.UID = types.UID("subnet-uid-1")
 	reader := newRuntimeClient(t, subnet)
 	var calls []string
 	adapter := &recordingSubnetWriterAdapter{
