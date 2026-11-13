@@ -3,7 +3,7 @@
 .PHONY: ut
 ut:
 	$(GINKGO) --show-node-events --poll-progress-after=60s $(GINKGO_OUTPUT_OPT) -v test/unittest
-	go test -coverprofile=profile.cov $$(go list ./pkg/... | grep -vw '^github.com/kubeovn/kube-ovn/pkg/client')
+	go test -coverprofile=profile.cov $$(go list ./cmd/... ./pkg/... | grep -vw '^github.com/kubeovn/kube-ovn/pkg/client')
 	bash dist/images/vpcnatgateway/nat_gateway_qos_test.sh
 	bash dist/images/vpcnatgateway/nat_gateway_vip_test.sh
 
