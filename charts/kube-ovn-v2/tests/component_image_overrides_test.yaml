@@ -34,7 +34,7 @@ tests:
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: docker.io/kubeovn/kube-ovn:v1.17.0
+          value: docker.io/kubeovn/kube-ovn:v1.17.1
 
   - it: uses the Kubernetes capability name without the CAP_ prefix
     template: agent/agent-daemonset.yaml
