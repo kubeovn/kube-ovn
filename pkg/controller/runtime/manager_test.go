@@ -43,6 +43,16 @@ func TestNewManagerBuildsWithoutStartingBusinessControllers(t *testing.T) {
 	require.NotNil(t, mgr)
 }
 
+func TestSetupSubnetShadowReconciler(t *testing.T) {
+	require.EqualError(t, setupSubnetShadowReconciler(nil), "controller-runtime manager is nil")
+
+	mgr, err := NewManager(&controller.Configuration{
+		KubeRestConfig: &rest.Config{Host: "https://127.0.0.1"},
+	})
+	require.NoError(t, err)
+	require.NoError(t, setupSubnetShadowReconciler(mgr))
+}
+
 func TestTrimCacheObjectUsesControllerTransforms(t *testing.T) {
 	pod := &corev1.Pod{Spec: corev1.PodSpec{Volumes: []corev1.Volume{{Name: "cache"}}}}
 	pod.ManagedFields = []metav1.ManagedFieldsEntry{{Manager: "controller"}}
