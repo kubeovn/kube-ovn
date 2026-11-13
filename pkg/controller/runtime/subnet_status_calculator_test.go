@@ -3,9 +3,10 @@ package controllerruntime
 import (
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/internal"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNewSubnetStatusCalculatorProjectorReconstructsObservedStatus(t *testing.T) {
