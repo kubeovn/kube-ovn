@@ -151,6 +151,10 @@ type subnetIPAMAllocation struct {
 	address subnetIPAMAddress
 }
 
+func subnetIPAMRecoveryContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), subnetSideEffectCompensationTimeout)
+}
+
 func newSubnetIPAMAdapter(writer *subnetSideEffectWriter, allocation *ipam.IPAM) (*subnetIPAMAdapter, error) {
 	if allocation == nil {
 		return nil, errors.New("subnet IPAM adapter requires an IPAM")
@@ -212,11 +216,13 @@ func (a *subnetIPAMAdapter) Recover(ctx context.Context, snapshot SubnetWriteSna
 	remembered := make([]subnetIPAMAllocation, 0, len(allocations))
 	for _, allocation := range allocations {
 		if err := a.store.Remember(ctx, allocation); err != nil {
+			rollbackCtx, cancel := subnetIPAMRecoveryContext(ctx)
 			for _, candidate := range append(remembered, allocation) {
 				if !existing[candidate.key] {
-					_ = a.store.Delete(context.WithoutCancel(ctx), candidate)
+					_ = a.store.Delete(rollbackCtx, candidate)
 				}
 			}
+			cancel()
 			return err
 		}
 		if !existing[allocation.key] {
@@ -257,7 +263,8 @@ func (a *subnetIPAMAdapter) AllocateRandom(snapshot SubnetWriteSnapshot, podName
 			// The transaction may have committed before observing cancellation.
 			// Read back without the canceled context before publishing a receipt;
 			// otherwise the committed address would have no owner to recover.
-			readCtx := context.WithoutCancel(ctx)
+			readCtx, cancel := subnetIPAMRecoveryContext(ctx)
+			defer cancel()
 			var found bool
 			allocation.address, found, err = a.backend.ExistingAllocation(readCtx, snapshot.Name, podName, nicName)
 			if err != nil {
@@ -271,7 +278,7 @@ func (a *subnetIPAMAdapter) AllocateRandom(snapshot SubnetWriteSnapshot, podName
 			if err := a.store.Remember(readCtx, allocation); err != nil {
 				releaseErr := a.backend.ReleaseIfMatches(readCtx, allocation)
 				if releaseErr == nil {
-					releaseErr = a.store.Delete(context.WithoutCancel(readCtx), allocation)
+					releaseErr = a.store.Delete(readCtx, allocation)
 				}
 				return nil, errors.Join(uncertainErr, err, releaseErr)
 			}
@@ -280,9 +287,11 @@ func (a *subnetIPAMAdapter) AllocateRandom(snapshot SubnetWriteSnapshot, podName
 		allocation.token = a.next.Add(1)
 		receipt := &subnetIPAMReceipt{adapter: a, allocation: allocation}
 		if err := a.store.Remember(ctx, allocation); err != nil {
-			releaseErr := a.backend.ReleaseIfMatches(ctx, allocation)
+			rollbackCtx, cancel := subnetIPAMRecoveryContext(ctx)
+			defer cancel()
+			releaseErr := a.backend.ReleaseIfMatches(rollbackCtx, allocation)
 			if releaseErr == nil {
-				releaseErr = a.store.Delete(context.WithoutCancel(ctx), allocation)
+				releaseErr = a.store.Delete(rollbackCtx, allocation)
 			}
 			return nil, errors.Join(err, releaseErr)
 		}

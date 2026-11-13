@@ -78,9 +78,13 @@ the reader alone does not provide those guarantees.
 
 `SubnetSideEffectPlan` accepts only those four
 OVN/IPAM operations. A failed apply can be compensated only when the adapter
-returns a receipt for a confirmed mutation owned by this attempt. No-op,
-uncommitted, and uncertain outcomes return no receipt; uncertainty must be
-resolved by backend readback or recovery. A receipt must bind the Subnet UID,
+returns a receipt for a confirmed mutation owned by this attempt. No-op and
+uncommitted outcomes return no receipt. A committed-but-canceled outcome is
+resolved by bounded backend readback; when the address is confirmed, the
+adapter persists and returns a receipt together with the cancellation error so
+the caller can retain the owner for recovery. If readback cannot confirm the
+commit, the adapter fails closed and leaves the uncertainty for recovery. A
+receipt must bind the Subnet UID,
 mutation revision, and writer ownership epoch, and atomically check them in
 the backend before conditionally reverting only its own change. An idempotent
 delete by name alone is insufficient. Cancellation never authorizes rollback,
@@ -99,14 +103,14 @@ a process-local owner token, Subnet UID, and the allocated address tuple. A
 receipt compensates only while that token and tuple still match the adapter's
 current owner, and refuses replay or a later owner. This check is process-local
 and cannot provide durable fencing or cross-process ownership; production wiring
-still needs a durable owner/revision protocol, uncertain-commit readback, and
-an OVN adapter. `IPAM.WithTransactionContext` checks cancellation before and
-after the atomic transaction, but cannot interrupt the IPAM mutex while a
-transaction is running. Cancellation observed after the action can therefore
-report an uncertain result even though the transaction has already committed;
-the adapter returns no receipt for an allocation in that state, and callers
-preserve the uncertainty for recovery rather than guessing whether to retry or
-compensate. A cancellation observed before receipt compensation starts leaves
+still needs a durable owner/revision protocol and an OVN adapter.
+`IPAM.WithTransactionContext` checks cancellation before and after the atomic
+transaction, but cannot interrupt the IPAM mutex while a transaction is
+running. Cancellation observed after the action can therefore report an
+uncertain result even though the transaction has already committed; the adapter
+uses a bounded context without the canceled signal to read back and persist the
+owner before returning the cancellation error. A cancellation observed before
+receipt compensation starts leaves
 the allocation untouched; cancellation during the transaction still requires
 readback because the atomic release may already have committed.
 
