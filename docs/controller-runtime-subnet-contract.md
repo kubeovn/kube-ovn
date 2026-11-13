@@ -8,7 +8,10 @@ contract is deliberately separate from production wiring: the current
 The explicit `subnet-shadow` mode now wires only the read-only
 `SubnetShadowReconciler`; it observes Subnet dependencies without owning status,
 finalizers, OVN, or IPAM. All other modes leave that shadow unwired, and no mode
-enables the Subnet writer yet.
+enables the Subnet writer yet. The shadow exposes
+`kube_ovn_subnet_shadow_reconciliations_total{result}` and
+`kube_ovn_subnet_shadow_reconcile_duration_seconds` for reconcile outcome and
+latency observability; these metrics do not change its read-only ownership.
 
 ## Single-writer matrix
 
