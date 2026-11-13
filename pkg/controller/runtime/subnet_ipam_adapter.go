@@ -28,7 +28,10 @@ type subnetIPAMAdapter struct {
 type subnetIPAMBackend interface {
 	ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (subnetIPAMAddress, bool, error)
 	AllocateRandom(ctx context.Context, podName, nicName, subnetName, poolName string) (subnetIPAMAddress, error)
-	ReleaseIfMatches(ctx context.Context, podName, nicName, subnetName string, expected subnetIPAMAddress) error
+	// ReleaseIfMatches receives the complete allocation identity so a durable
+	// backend can fence by key, Subnet UID, and ownership token in addition to
+	// the address tuple.
+	ReleaseIfMatches(ctx context.Context, allocation subnetIPAMAllocation) error
 }
 
 type subnetIPAMAddress struct {
@@ -59,9 +62,10 @@ func (b *transactionalSubnetIPAMBackend) AllocateRandom(ctx context.Context, pod
 	return address, err
 }
 
-func (b *transactionalSubnetIPAMBackend) ReleaseIfMatches(ctx context.Context, podName, nicName, subnetName string, expected subnetIPAMAddress) error {
+func (b *transactionalSubnetIPAMBackend) ReleaseIfMatches(ctx context.Context, allocation subnetIPAMAllocation) error {
 	return b.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
-		return tx.ReleaseAddressByNicIfMatches(podName, nicName, subnetName, expected.v4, expected.v6, expected.mac)
+		return tx.ReleaseAddressByNicIfMatches(allocation.key.pod, allocation.key.nic, allocation.key.subnet,
+			allocation.address.v4, allocation.address.v6, allocation.address.mac)
 	})
 }
 
@@ -150,7 +154,7 @@ func (r *subnetIPAMReceipt) Compensate(ctx context.Context) error {
 		return errors.New("IPAM allocation receipt is stale or owned by another writer")
 	}
 	r.adapter.mu.Unlock()
-	if err := r.adapter.backend.ReleaseIfMatches(ctx, r.allocation.key.pod, r.allocation.key.nic, r.allocation.key.subnet, r.allocation.address); err != nil {
+	if err := r.adapter.backend.ReleaseIfMatches(ctx, r.allocation); err != nil {
 		return err
 	}
 	r.adapter.mu.Lock()

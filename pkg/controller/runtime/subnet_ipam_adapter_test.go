@@ -184,7 +184,10 @@ func TestSubnetIPAMAdapterUsesBackendSeam(t *testing.T) {
 	require.NotNil(t, backend.lookupCtx)
 	require.NoError(t, receipt.Compensate(context.Background()))
 	require.Equal(t, 1, backend.releaseCalls)
-	require.Equal(t, subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"}, backend.releaseExpected)
+	require.Equal(t, subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"}, backend.releaseAllocation.address)
+	require.Equal(t, subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"}, backend.releaseAllocation.key)
+	require.NotZero(t, backend.releaseAllocation.token)
+	require.Equal(t, string(snapshot.UID), backend.releaseAllocation.uid)
 	require.False(t, backend.allocated)
 }
 
@@ -268,17 +271,17 @@ func adapterIPAM(t *testing.T, adapter *subnetIPAMAdapter) *ipam.IPAM {
 }
 
 type fakeSubnetIPAMBackend struct {
-	allocateErr     error
-	allocated       bool
-	ctx             context.Context
-	key             subnetIPAMKey
-	lookupCtx       context.Context
-	lookupErr       error
-	poolName        string
-	releaseCalls    int
-	releaseErr      error
-	releaseExpected subnetIPAMAddress
-	releaseStarted  chan struct{}
+	allocateErr       error
+	allocated         bool
+	ctx               context.Context
+	key               subnetIPAMKey
+	lookupCtx         context.Context
+	lookupErr         error
+	poolName          string
+	releaseCalls      int
+	releaseErr        error
+	releaseAllocation subnetIPAMAllocation
+	releaseStarted    chan struct{}
 }
 
 func (b *fakeSubnetIPAMBackend) ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (subnetIPAMAddress, bool, error) {
@@ -304,9 +307,9 @@ func (b *fakeSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nic
 	return subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"}, nil
 }
 
-func (b *fakeSubnetIPAMBackend) ReleaseIfMatches(ctx context.Context, _ string, _ string, _ string, expected subnetIPAMAddress) error {
+func (b *fakeSubnetIPAMBackend) ReleaseIfMatches(ctx context.Context, allocation subnetIPAMAllocation) error {
 	b.releaseCalls++
-	b.releaseExpected = expected
+	b.releaseAllocation = allocation
 	if b.releaseStarted != nil {
 		close(b.releaseStarted)
 		<-ctx.Done()
@@ -315,7 +318,7 @@ func (b *fakeSubnetIPAMBackend) ReleaseIfMatches(ctx context.Context, _ string, 
 	if b.releaseErr != nil {
 		return b.releaseErr
 	}
-	if !b.allocated || expected != (subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"}) {
+	if !b.allocated || allocation.address != (subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"}) {
 		return ipam.ErrAddressOwnershipChanged
 	}
 	b.allocated = false
