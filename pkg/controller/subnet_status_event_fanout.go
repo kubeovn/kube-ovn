@@ -88,10 +88,12 @@ func (f *subnetStatusEventFanout) subscribe(ctx context.Context, subscriber func
 			f.mu.Unlock()
 		})
 	}
-	go func() {
-		<-ctx.Done()
-		unsubscribe()
-	}()
+	if ctx.Done() != nil {
+		go func() {
+			<-ctx.Done()
+			unsubscribe()
+		}()
+	}
 	return unsubscribe
 }
 

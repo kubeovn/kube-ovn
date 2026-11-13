@@ -29,6 +29,24 @@ func TestSubnetStatusEventFanoutReplaysCoalescedPendingEvents(t *testing.T) {
 	}, got)
 }
 
+func TestSubnetStatusEventFanoutNilContextRequiresExplicitUnsubscribe(t *testing.T) {
+	fanout := newSubnetStatusEventFanout()
+	events := make(chan subnetStatusEvent, 1)
+	unsubscribe := fanout.subscribe(nil, func(name, sourceKind string) {
+		events <- subnetStatusEvent{name: name, sourceKind: sourceKind}
+	})
+
+	fanout.publish("subnet-a", "IP")
+	require.Equal(t, subnetStatusEvent{name: "subnet-a", sourceKind: "IP"}, <-events)
+	unsubscribe()
+	fanout.publish("subnet-b", "IP")
+	select {
+	case event := <-events:
+		t.Fatalf("received event after explicit unsubscribe: %+v", event)
+	case <-time.After(20 * time.Millisecond):
+	}
+}
+
 func TestEnqueueSubnetStatusPreservesLegacyQueueAndFansOut(t *testing.T) {
 	c := &Controller{
 		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
