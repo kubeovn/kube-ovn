@@ -32,27 +32,27 @@ func ProjectSubnetStatusIP(subnet *kubeovnv1.Subnet, input SubnetStatusIPProject
 	if err := util.CheckCidrs(subnet.Spec.CIDRBlock); err != nil {
 		return nil, err
 	}
+	cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
+	parsedCIDRs, err := validateSubnetStatusProjectionCIDRs(cidrBlocks, subnet.Spec.Protocol)
+	if err != nil {
+		return nil, err
+	}
 
 	v4AvailableIPs, v6AvailableIPs := internal.BigInt{}, internal.BigInt{}
 	switch subnet.Spec.Protocol {
 	case kubeovnv1.ProtocolDual:
 		v4ExcludeIPs, v6ExcludeIPs := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
-		cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
-		if len(cidrBlocks) != 2 {
-			return nil, errors.New("dual-stack subnet status projection requires two CIDRs")
-		}
 		v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIPs, cidrBlocks[0])
 		v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIPs, cidrBlocks[1])
-		_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
-		_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
+		v4CIDR, v6CIDR := parsedCIDRs[0], parsedCIDRs[1]
 		v4AvailableIPs = util.AddressCountBigInt(v4CIDR).Sub(util.CountIPNumsBigInt(v4toSubIPs)).Sub(input.UsingIPs)
 		v6AvailableIPs = util.AddressCountBigInt(v6CIDR).Sub(util.CountIPNumsBigInt(v6toSubIPs)).Sub(input.UsingIPs)
 	case kubeovnv1.ProtocolIPv4:
-		_, cidr, _ := net.ParseCIDR(subnet.Spec.CIDRBlock)
+		cidr := parsedCIDRs[0]
 		toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
 		v4AvailableIPs = util.AddressCountBigInt(cidr).Sub(util.CountIPNumsBigInt(toSubIPs)).Sub(input.UsingIPs)
 	case kubeovnv1.ProtocolIPv6:
-		_, cidr, _ := net.ParseCIDR(subnet.Spec.CIDRBlock)
+		cidr := parsedCIDRs[0]
 		toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
 		v6AvailableIPs = util.AddressCountBigInt(cidr).Sub(util.CountIPNumsBigInt(toSubIPs)).Sub(input.UsingIPs)
 	}
@@ -82,4 +82,34 @@ func ProjectSubnetStatusIP(subnet *kubeovnv1.Subnet, input SubnetStatusIPProject
 	projected.Status.V4AvailableIPRange = input.V4AvailableIPRange
 	projected.Status.V6AvailableIPRange = input.V6AvailableIPRange
 	return projected, nil
+}
+
+func validateSubnetStatusProjectionCIDRs(cidrBlocks []string, protocol string) ([]*net.IPNet, error) {
+	expected := 0
+	switch protocol {
+	case kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6:
+		expected = 1
+	case kubeovnv1.ProtocolDual:
+		expected = 2
+	default:
+		return nil, nil
+	}
+	if len(cidrBlocks) != expected {
+		return nil, errors.New("subnet status projection CIDR count does not match protocol")
+	}
+
+	parsed := make([]*net.IPNet, len(cidrBlocks))
+	for i, cidrBlock := range cidrBlocks {
+		ip, cidr, err := net.ParseCIDR(cidrBlock)
+		if err != nil {
+			return nil, err
+		}
+		if (protocol == kubeovnv1.ProtocolIPv4 && ip.To4() == nil) ||
+			(protocol == kubeovnv1.ProtocolIPv6 && ip.To4() != nil) ||
+			(protocol == kubeovnv1.ProtocolDual && ((i == 0 && ip.To4() == nil) || (i == 1 && ip.To4() != nil))) {
+			return nil, errors.New("subnet status projection CIDR family does not match protocol")
+		}
+		parsed[i] = cidr
+	}
+	return parsed, nil
 }

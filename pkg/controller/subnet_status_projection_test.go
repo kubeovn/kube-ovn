@@ -121,5 +121,42 @@ func TestProjectSubnetStatusIPRejectsIncompleteDualStackCIDRs(t *testing.T) {
 		CIDRBlock: "10.0.0.0/29",
 		Protocol:  kubeovnv1.ProtocolDual,
 	}}, SubnetStatusIPProjectionInput{})
-	require.EqualError(t, err, "dual-stack subnet status projection requires two CIDRs")
+	require.EqualError(t, err, "subnet status projection CIDR count does not match protocol")
+}
+
+func TestProjectSubnetStatusIPRejectsCIDRShapeMismatches(t *testing.T) {
+	tests := []struct {
+		name     string
+		protocol string
+		cidr     string
+		message  string
+	}{
+		{
+			name:     "ipv4 multiple CIDRs",
+			protocol: kubeovnv1.ProtocolIPv4,
+			cidr:     "10.0.0.0/29,10.0.1.0/29",
+			message:  "subnet status projection CIDR count does not match protocol",
+		},
+		{
+			name:     "ipv6 multiple CIDRs",
+			protocol: kubeovnv1.ProtocolIPv6,
+			cidr:     "2001:db8::/125,2001:db8:1::/125",
+			message:  "subnet status projection CIDR count does not match protocol",
+		},
+		{
+			name:     "dual wrong family order",
+			protocol: kubeovnv1.ProtocolDual,
+			cidr:     "2001:db8::/125,10.0.0.0/29",
+			message:  "subnet status projection CIDR family does not match protocol",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := ProjectSubnetStatusIP(&kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{
+				CIDRBlock: tt.cidr,
+				Protocol:  tt.protocol,
+			}}, SubnetStatusIPProjectionInput{})
+			require.EqualError(t, err, tt.message)
+		})
+	}
 }
