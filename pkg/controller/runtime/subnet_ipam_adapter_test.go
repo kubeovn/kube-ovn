@@ -191,6 +191,157 @@ func TestSubnetIPAMAdapterUsesBackendSeam(t *testing.T) {
 	require.False(t, backend.allocated)
 }
 
+func TestSubnetIPAMAdapterRecoversDurableReceipt(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	backend := &fakeSubnetIPAMBackend{allocated: true, recoverAllocations: []subnetIPAMAllocation{{
+		key:     subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"},
+		token:   7,
+		uid:     string(snapshot.UID),
+		address: subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"},
+	}}}
+	adapter, err := newSubnetIPAMAdapterWithBackend(writer, backend)
+	require.NoError(t, err)
+
+	require.NoError(t, adapter.Recover(t.Context(), snapshot))
+	receipt := &subnetIPAMReceipt{adapter: adapter, allocation: backend.recoverAllocations[0]}
+	require.NoError(t, receipt.Compensate(t.Context()))
+	require.False(t, backend.allocated)
+}
+
+func TestSubnetIPAMAdapterRejectsStaleDurableReceipt(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	backend := &fakeSubnetIPAMBackend{recoverAllocations: []subnetIPAMAllocation{{
+		key:     subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"},
+		token:   7,
+		uid:     "replaced-subnet",
+		address: subnetIPAMAddress{v4: "192.0.2.1"},
+	}}}
+	adapter, err := newSubnetIPAMAdapterWithBackend(writer, backend)
+	require.NoError(t, err)
+
+	require.ErrorIs(t, adapter.Recover(t.Context(), snapshot), ErrSubnetIPAMRecoveryUnsafe)
+	store := adapter.store.(*memorySubnetIPAMReceiptStore)
+	require.Empty(t, store.allocations, "unsafe recovery must not publish partial ownership")
+}
+
+func TestSubnetIPAMAdapterRejectsStaleDurableToken(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	current := subnetIPAMAllocation{
+		key:     subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"},
+		token:   7,
+		uid:     string(snapshot.UID),
+		address: subnetIPAMAddress{v4: "192.0.2.1"},
+	}
+	backend := &fakeSubnetIPAMBackend{recoverAllocations: []subnetIPAMAllocation{{
+		key:     current.key,
+		token:   8,
+		uid:     current.uid,
+		address: current.address,
+	}}}
+	store := &fakeDurableSubnetIPAMReceiptStore{memorySubnetIPAMReceiptStore: newMemorySubnetIPAMReceiptStore()}
+	require.NoError(t, store.Remember(t.Context(), current))
+	adapter, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
+	require.NoError(t, err)
+
+	require.ErrorIs(t, adapter.Recover(t.Context(), snapshot), ErrSubnetIPAMRecoveryUnsafe)
+}
+
+func TestSubnetIPAMAdapterRejectsInvalidDurableReceiptIdentity(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	for name, allocation := range map[string]subnetIPAMAllocation{
+		"missing pod":     {key: subnetIPAMKey{subnet: snapshot.Name, nic: "nic"}, uid: string(snapshot.UID), token: 1, address: subnetIPAMAddress{v4: "192.0.2.1"}},
+		"missing nic":     {key: subnetIPAMKey{subnet: snapshot.Name, pod: "pod"}, uid: string(snapshot.UID), token: 1, address: subnetIPAMAddress{v4: "192.0.2.1"}},
+		"missing token":   {key: subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"}, uid: string(snapshot.UID), address: subnetIPAMAddress{v4: "192.0.2.1"}},
+		"missing address": {key: subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"}, uid: string(snapshot.UID), token: 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			backend := &fakeSubnetIPAMBackend{recoverAllocations: []subnetIPAMAllocation{allocation}}
+			adapter, err := newSubnetIPAMAdapterWithBackend(writer, backend)
+			require.NoError(t, err)
+			require.ErrorIs(t, adapter.Recover(t.Context(), snapshot), ErrSubnetIPAMRecoveryUnsafe)
+			store := adapter.store.(*memorySubnetIPAMReceiptStore)
+			require.Empty(t, store.allocations)
+		})
+	}
+}
+
+func TestSubnetIPAMAdapterReceiptStoreSurvivesAdapterRecreation(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	allocation := subnetIPAMAllocation{
+		key:     subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"},
+		token:   7,
+		uid:     string(snapshot.UID),
+		address: subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"},
+	}
+	backend := &fakeSubnetIPAMBackend{allocated: true, recoverAllocations: []subnetIPAMAllocation{allocation}}
+	store := &fakeDurableSubnetIPAMReceiptStore{memorySubnetIPAMReceiptStore: newMemorySubnetIPAMReceiptStore()}
+	adapter, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
+	require.NoError(t, err)
+	require.NoError(t, adapter.Recover(t.Context(), snapshot))
+
+	restarted, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
+	require.NoError(t, err)
+	require.NoError(t, restarted.Recover(t.Context(), snapshot))
+	receipt := &subnetIPAMReceipt{adapter: restarted, allocation: allocation}
+	require.NoError(t, receipt.Compensate(t.Context()))
+	require.False(t, backend.allocated)
+}
+
+func TestSubnetIPAMAdapterStoreFailureReleasesAllocation(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	backend := &fakeSubnetIPAMBackend{}
+	store := &fakeDurableSubnetIPAMReceiptStore{
+		memorySubnetIPAMReceiptStore: newMemorySubnetIPAMReceiptStore(),
+		rememberErr:                  errors.New("receipt store unavailable"),
+	}
+	adapter, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
+	require.NoError(t, err)
+
+	_, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
+	require.ErrorIs(t, err, store.rememberErr)
+	require.Nil(t, receipt)
+	require.False(t, backend.allocated)
+}
+
+func TestSubnetIPAMAdapterRecoveryStoreFailureRollsBackNewRecords(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	allocations := []subnetIPAMAllocation{
+		{key: subnetIPAMKey{subnet: snapshot.Name, pod: "pod-a", nic: "nic"}, token: 1, uid: string(snapshot.UID), address: subnetIPAMAddress{v4: "192.0.2.1"}},
+		{key: subnetIPAMKey{subnet: snapshot.Name, pod: "pod-b", nic: "nic"}, token: 2, uid: string(snapshot.UID), address: subnetIPAMAddress{v4: "192.0.2.2"}},
+	}
+	backend := &fakeSubnetIPAMBackend{recoverAllocations: allocations}
+	store := &fakeDurableSubnetIPAMReceiptStore{memorySubnetIPAMReceiptStore: newMemorySubnetIPAMReceiptStore(), rememberAfter: 2, rememberErr: errors.New("receipt store unavailable")}
+	adapter, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
+	require.NoError(t, err)
+
+	require.ErrorIs(t, adapter.Recover(t.Context(), snapshot), store.rememberErr)
+	_, found, err := store.Lookup(t.Context(), allocations[0].key)
+	require.NoError(t, err)
+	require.False(t, found)
+}
+
+// fakeDurableSubnetIPAMReceiptStore keeps state outside an adapter instance to
+// model the persistence boundary used by a production API-backed store.
+type fakeDurableSubnetIPAMReceiptStore struct {
+	*memorySubnetIPAMReceiptStore
+	rememberErr   error
+	rememberAfter int
+	rememberCalls int
+}
+
+func (s *fakeDurableSubnetIPAMReceiptStore) Remember(ctx context.Context, allocation subnetIPAMAllocation) error {
+	s.rememberCalls++
+	if s.rememberErr != nil && (s.rememberAfter == 0 || s.rememberCalls >= s.rememberAfter) {
+		return s.rememberErr
+	}
+	return s.memorySubnetIPAMReceiptStore.Remember(ctx, allocation)
+}
+
+func TestSubnetIPAMAdapterFailsClosedWithoutDurableRecovery(t *testing.T) {
+	adapter, snapshot := newSubnetIPAMAdapterTest(t)
+	require.ErrorIs(t, adapter.Recover(t.Context(), snapshot), ErrSubnetIPAMRecoveryUnavailable)
+}
+
 func TestSubnetIPAMAdapterBackendErrorDoesNotReturnReceipt(t *testing.T) {
 	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
 	backend := &fakeSubnetIPAMBackend{allocateErr: errors.New("backend allocation failed")}
@@ -271,17 +422,18 @@ func adapterIPAM(t *testing.T, adapter *subnetIPAMAdapter) *ipam.IPAM {
 }
 
 type fakeSubnetIPAMBackend struct {
-	allocateErr       error
-	allocated         bool
-	ctx               context.Context
-	key               subnetIPAMKey
-	lookupCtx         context.Context
-	lookupErr         error
-	poolName          string
-	releaseCalls      int
-	releaseErr        error
-	releaseAllocation subnetIPAMAllocation
-	releaseStarted    chan struct{}
+	allocateErr        error
+	allocated          bool
+	ctx                context.Context
+	key                subnetIPAMKey
+	lookupCtx          context.Context
+	lookupErr          error
+	poolName           string
+	releaseCalls       int
+	releaseErr         error
+	releaseAllocation  subnetIPAMAllocation
+	releaseStarted     chan struct{}
+	recoverAllocations []subnetIPAMAllocation
 }
 
 func (b *fakeSubnetIPAMBackend) ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (subnetIPAMAddress, bool, error) {
@@ -305,6 +457,10 @@ func (b *fakeSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nic
 	}
 	b.allocated = true
 	return subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"}, nil
+}
+
+func (b *fakeSubnetIPAMBackend) Recover(context.Context, SubnetWriteSnapshot) ([]subnetIPAMAllocation, error) {
+	return b.recoverAllocations, nil
 }
 
 func (b *fakeSubnetIPAMBackend) ReleaseIfMatches(ctx context.Context, allocation subnetIPAMAllocation) error {
