@@ -315,6 +315,73 @@ func TestTransactionReleaseAddressByNicIfMatchesRejectsChangedTuple(t *testing.T
 	require.Equal(t, mac, currentMAC)
 }
 
+func TestTransactionReleaseAddressByNicIfMatchesRejectsDualStackTupleChanges(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		expected func(string, string, string) (string, string, string)
+	}{
+		{
+			name: "v6",
+			expected: func(v4, _, mac string) (string, string, string) {
+				return v4, "fd00::2", mac
+			},
+		},
+		{
+			name: "mac",
+			expected: func(v4, v6, _ string) (string, string, string) {
+				return v4, v6, "00:00:5e:00:53:ff"
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ipam := newTransactionIPAMWithCIDR(t, "10.0.0.0/29,fd00::/125")
+			v4, v6, mac, err := ipam.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
+			require.NoError(t, err)
+			require.NotEmpty(t, v4)
+			require.NotEmpty(t, v6)
+			require.NotEmpty(t, mac)
+			expectedV4, expectedV6, expectedMAC := test.expected(v4, v6, mac)
+
+			require.ErrorIs(t, ipam.WithTransaction(func(tx *Transaction) error {
+				return tx.ReleaseAddressByNicIfMatches("pod", "nic", "subnet", expectedV4, expectedV6, expectedMAC)
+			}), ErrAddressOwnershipChanged)
+			currentV4, currentV6, currentMAC, found := ipam.GetPodAddressByNic("pod", "nic", "subnet")
+			require.True(t, found)
+			require.Equal(t, v4, currentV4)
+			require.Equal(t, v6, currentV6)
+			require.Equal(t, mac, currentMAC)
+		})
+	}
+}
+
+func TestTransactionReleaseAddressByNicIfMatchesRollsBackActionError(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	v4, v6, mac, err := ipam.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
+	require.NoError(t, err)
+	failure := errors.New("persist release")
+
+	require.ErrorIs(t, ipam.WithTransaction(func(tx *Transaction) error {
+		require.NoError(t, tx.ReleaseAddressByNicIfMatches("pod", "nic", "subnet", v4, v6, mac))
+		return failure
+	}), failure)
+	currentV4, currentV6, currentMAC, found := ipam.GetPodAddressByNic("pod", "nic", "subnet")
+	require.True(t, found)
+	require.Equal(t, v4, currentV4)
+	require.Equal(t, v6, currentV6)
+	require.Equal(t, mac, currentMAC)
+}
+
+func TestTransactionReleaseAddressByNicIfMatchesRejectsClosedTransaction(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	var tx *Transaction
+	require.NoError(t, ipam.WithTransaction(func(current *Transaction) error {
+		tx = current
+		return nil
+	}))
+
+	require.ErrorIs(t, tx.ReleaseAddressByNicIfMatches("pod", "nic", "subnet", "", "", ""), ErrTransactionClosed)
+}
+
 func newTransactionIPAM(t *testing.T) *IPAM {
 	t.Helper()
 	return newTransactionIPAMWithCIDR(t, "10.0.0.0/29")
