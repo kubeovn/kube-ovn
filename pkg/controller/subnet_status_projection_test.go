@@ -115,3 +115,11 @@ func TestProjectSubnetStatusIPRejectsInvalidInput(t *testing.T) {
 	_, err = ProjectSubnetStatusIP(&kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{CIDRBlock: "invalid"}}, SubnetStatusIPProjectionInput{})
 	require.Error(t, err)
 }
+
+func TestProjectSubnetStatusIPRejectsIncompleteDualStackCIDRs(t *testing.T) {
+	_, err := ProjectSubnetStatusIP(&kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{
+		CIDRBlock: "10.0.0.0/29",
+		Protocol:  kubeovnv1.ProtocolDual,
+	}}, SubnetStatusIPProjectionInput{})
+	require.EqualError(t, err, "dual-stack subnet status projection requires two CIDRs")
+}

@@ -38,6 +38,9 @@ func ProjectSubnetStatusIP(subnet *kubeovnv1.Subnet, input SubnetStatusIPProject
 	case kubeovnv1.ProtocolDual:
 		v4ExcludeIPs, v6ExcludeIPs := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
 		cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
+		if len(cidrBlocks) != 2 {
+			return nil, errors.New("dual-stack subnet status projection requires two CIDRs")
+		}
 		v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIPs, cidrBlocks[0])
 		v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIPs, cidrBlocks[1])
 		_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
