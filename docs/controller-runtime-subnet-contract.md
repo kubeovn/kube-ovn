@@ -18,6 +18,14 @@ ProviderNetwork, and IP caches before shadow workers can run. It exposes
 `kube_ovn_subnet_shadow_cache_sync_duration_seconds`; cancellation or a failed
 sync keeps readiness closed and fails manager startup.
 
+The status migration starts with a pure projection seam. The legacy controller
+continues to collect IP, Pod, VIP, and EIP inputs, calculate the IP-related
+status projection, and remain the only status writer. Runtime code can now
+carry a snapshot-bound `SubnetStatusProjection` through an injected projector;
+it performs no API write and does not suppress legacy status handling. An
+explicit `subnet-status` mode will be added only after this projection source
+and its conflict/readback tests are complete.
+
 ## Single-writer matrix
 
 | Surface | Current writer | Future shadow may do | Future writer gate |
