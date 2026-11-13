@@ -143,6 +143,9 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 		if err := setupSubnetShadowReconciler(mgr); err != nil {
 			return err
 		}
+		if err := setupSubnetShadowCacheReadiness(mgr); err != nil {
+			return err
+		}
 	}
 	return mgr.Start(ctx)
 }

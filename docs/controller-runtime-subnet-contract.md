@@ -11,7 +11,12 @@ finalizers, OVN, or IPAM. All other modes leave that shadow unwired, and no mode
 enables the Subnet writer yet. The shadow exposes
 `kube_ovn_subnet_shadow_reconciliations_total{result}` and
 `kube_ovn_subnet_shadow_reconcile_duration_seconds` for reconcile outcome and
-latency observability; these metrics do not change its read-only ownership.
+latency observability; these metrics do not change its read-only ownership. The
+mode also registers a readiness runnable that waits for the Subnet, Vlan,
+ProviderNetwork, and IP caches before shadow workers can run. It exposes
+`kube_ovn_subnet_shadow_cache_ready{resource}` and
+`kube_ovn_subnet_shadow_cache_sync_duration_seconds`; cancellation or a failed
+sync keeps readiness closed and fails manager startup.
 
 ## Single-writer matrix
 
