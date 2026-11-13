@@ -59,8 +59,8 @@ func registerSubnetShadowMetric(collector prometheus.Collector) {
 
 // SubnetShadowReconciler observes Subnet readiness without taking ownership of
 // any API status, finalizer, queue, OVN, or IPAM operation. It is intentionally
-// unwired from the production manager until the Subnet writer contract is
-// complete.
+// unwired by default; the explicit subnet-shadow mode may register it while
+// the Subnet writer contract remains unwired.
 type SubnetShadowReconciler struct {
 	client.Reader
 }
@@ -99,9 +99,9 @@ func subnetShadowReconcileOutcome(err error) string {
 	return "error"
 }
 
-// SetupWithManager describes the future read-only dependency watches. Callers
-// must opt in explicitly; constructing or testing this reconciler has no
-// production effect.
+// SetupWithManager registers the read-only dependency watches. Callers must
+// opt in explicitly through the subnet-shadow mode; constructing or testing
+// this reconciler alone has no production effect.
 func (r *SubnetShadowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("kube-ovn-subnet-shadow").
