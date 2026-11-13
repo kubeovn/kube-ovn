@@ -105,6 +105,13 @@ func RunWithIPPool(ctx context.Context, config *controller.Configuration, backen
 	return run(ctx, config, backend)
 }
 
+func setupSubnetShadowReconciler(mgr ctrl.Manager) error {
+	if mgr == nil {
+		return errors.New("controller-runtime manager is nil")
+	}
+	return (&SubnetShadowReconciler{Reader: mgr.GetAPIReader()}).SetupWithManager(mgr)
+}
+
 func run(ctx context.Context, config *controller.Configuration, backend *controller.Controller) error {
 	mgr, err := NewManager(config)
 	if err != nil {
@@ -129,6 +136,14 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 		}
 		r := &IPPoolReconciler{Events: backend, Adapter: backend}
 		if err := r.SetupWithManager(mgr); err != nil {
+			return err
+		}
+	}
+	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeSubnetShadow {
+		if err := setupSubnetShadowReconciler(mgr); err != nil {
+			return err
+		}
+		if err := setupSubnetShadowCacheReadiness(mgr); err != nil {
 			return err
 		}
 	}

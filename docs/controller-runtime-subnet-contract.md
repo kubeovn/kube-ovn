@@ -5,6 +5,18 @@ VLAN and ProviderNetwork pilot. It describes the current legacy ownership and
 the read-only contract that a future Subnet reconciler must satisfy. The
 contract is deliberately separate from production wiring: the current
 `CONTROLLER_RUNTIME_MODE` leaves the Subnet writer in the legacy controller.
+The explicit `subnet-shadow` mode now wires only the read-only
+`SubnetShadowReconciler`; it observes Subnet dependencies without owning status,
+finalizers, OVN, or IPAM. All other modes leave that shadow unwired, and no mode
+enables the Subnet writer yet. The shadow exposes
+`kube_ovn_subnet_shadow_reconciliations_total{result}` and
+`kube_ovn_subnet_shadow_reconcile_duration_seconds` for reconcile outcome and
+latency observability; these metrics do not change its read-only ownership. The
+mode also registers a readiness runnable that waits for the Subnet, Vlan,
+ProviderNetwork, and IP caches before shadow workers can run. It exposes
+`kube_ovn_subnet_shadow_cache_ready{resource}` and
+`kube_ovn_subnet_shadow_cache_sync_duration_seconds`; cancellation or a failed
+sync keeps readiness closed and fails manager startup.
 
 ## Single-writer matrix
 
@@ -152,7 +164,9 @@ Subnet writer:
   duplicate cleanup or lost IPAM ownership.
 
 The IPAM transaction seam is now available, and the status-only Subnet writer
-is implemented as an unwired contract. The next production increment is opt-in
+is implemented as an unwired contract. The opt-in `subnet-shadow` mode provides
+read-only dependency observation without changing ownership. The next
+production increment is opt-in
 [IPPool scheduling](controller-runtime-ippool.md), which reuses the recovered
 legacy backend and its count-pool activation protocol. Further Subnet business
 handler extraction and conflict-safe finalizer/OVN/IPAM writes remain separate

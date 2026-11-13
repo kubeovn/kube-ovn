@@ -29,23 +29,59 @@ var subnetShadowDependencyMappingFailures = prometheus.NewCounterVec(
 	}, []string{"source", "result"},
 )
 
+var subnetShadowReconciliations = prometheus.NewCounterVec(
+	prometheus.CounterOpts{
+		Name: "kube_ovn_subnet_shadow_reconciliations_total",
+		Help: "Number of Subnet shadow reconciliations by outcome.",
+	}, []string{"result"},
+)
+
+var subnetShadowReconcileDuration = prometheus.NewHistogram(
+	prometheus.HistogramOpts{
+		Name: "kube_ovn_subnet_shadow_reconcile_duration_seconds",
+		Help: "Duration of Subnet shadow reconciliations in seconds.",
+	},
+)
+
 func init() {
-	metrics.Registry.MustRegister(subnetShadowDependencyMappingFailures)
+	registerSubnetShadowMetric(subnetShadowDependencyMappingFailures)
+	registerSubnetShadowMetric(subnetShadowReconciliations)
+	registerSubnetShadowMetric(subnetShadowReconcileDuration)
+}
+
+func registerSubnetShadowMetric(collector prometheus.Collector) {
+	if err := metrics.Registry.Register(collector); err != nil {
+		if _, ok := errors.AsType[prometheus.AlreadyRegisteredError](err); !ok {
+			panic(err)
+		}
+	}
 }
 
 // SubnetShadowReconciler observes Subnet readiness without taking ownership of
 // any API status, finalizer, queue, OVN, or IPAM operation. It is intentionally
-// unwired from the production manager until the Subnet writer contract is
-// complete.
+// unwired by default; the explicit subnet-shadow mode may register it while
+// the Subnet writer contract remains unwired.
 type SubnetShadowReconciler struct {
 	client.Reader
 }
 
 // Reconcile performs a read-only Subnet observation. Missing objects converge
 // as a no-op, while dependency and API failures remain retryable errors.
-func (r *SubnetShadowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *SubnetShadowReconciler) Reconcile(ctx context.Context, req ctrl.Request) (result ctrl.Result, reconcileErr error) {
+	started := time.Now()
+	reconcileOutcome := "success"
+	defer func() {
+		outcome := subnetShadowReconcileOutcome(reconcileErr)
+		if reconcileErr == nil {
+			outcome = reconcileOutcome
+		}
+		subnetShadowReconciliations.WithLabelValues(outcome).Inc()
+		subnetShadowReconcileDuration.Observe(time.Since(started).Seconds())
+	}()
+
 	if _, err := ObserveSubnet(ctx, r.Reader, req.Name); err != nil {
 		if apierrors.IsNotFound(err) {
+			reconcileOutcome = "not_found"
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -53,9 +89,19 @@ func (r *SubnetShadowReconciler) Reconcile(ctx context.Context, req ctrl.Request
 	return ctrl.Result{}, nil
 }
 
-// SetupWithManager describes the future read-only dependency watches. Callers
-// must opt in explicitly; constructing or testing this reconciler has no
-// production effect.
+func subnetShadowReconcileOutcome(err error) string {
+	if err == nil {
+		return "success"
+	}
+	if apierrors.IsNotFound(err) {
+		return "not_found"
+	}
+	return "error"
+}
+
+// SetupWithManager registers the read-only dependency watches. Callers must
+// opt in explicitly through the subnet-shadow mode; constructing or testing
+// this reconciler alone has no production effect.
 func (r *SubnetShadowReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		Named("kube-ovn-subnet-shadow").
