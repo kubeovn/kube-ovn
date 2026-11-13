@@ -76,7 +76,7 @@ func (r *SubnetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		}
 		return ctrl.Result{}, err
 	}
-	observation, err := ObserveSubnet(ctx, r.Reader, req.Name)
+	observation, err := observeSubnet(ctx, r.Reader, &subnet)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

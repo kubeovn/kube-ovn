@@ -6,7 +6,11 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func TestSubnetReconcilerFailsClosedWithoutDependencies(t *testing.T) {
@@ -25,7 +29,7 @@ func TestSetupSubnetReconcilerFailsClosedBeforeManagerRegistration(t *testing.T)
 
 func TestSubnetReconcilerDelegatesImmutableSnapshot(t *testing.T) {
 	subnet := testSubnet("")
-	reader := newRuntimeClient(t, subnet)
+	reader := &countingSubnetReader{Reader: newRuntimeClient(t, subnet)}
 	var gotSnapshot SubnetWriteSnapshot
 	var gotObservation SubnetShadowObservation
 	called := false
@@ -48,6 +52,8 @@ func TestSubnetReconcilerDelegatesImmutableSnapshot(t *testing.T) {
 	require.Equal(t, subnet.UID, gotSnapshot.UID)
 	require.Equal(t, subnet.Spec, gotSnapshot.Spec)
 	require.Equal(t, subnet.Name, gotObservation.Name)
+	require.Equal(t, gotSnapshot.Generation, gotObservation.Generation)
+	require.Equal(t, 1, reader.subnetGets, "reconcile must reuse the snapshot Subnet read")
 }
 
 func TestSubnetReconcilerPropagatesRecoveryError(t *testing.T) {
@@ -71,3 +77,15 @@ func (f subnetWriterAdapterFunc) ReconcileSubnet(ctx context.Context, snapshot S
 }
 
 var _ SubnetWriterAdapter = subnetWriterAdapterFunc(nil)
+
+type countingSubnetReader struct {
+	client.Reader
+	subnetGets int
+}
+
+func (r *countingSubnetReader) Get(ctx context.Context, key types.NamespacedName, obj client.Object, opts ...client.GetOption) error {
+	if _, ok := obj.(*kubeovnv1.Subnet); ok {
+		r.subnetGets++
+	}
+	return r.Reader.Get(ctx, key, obj, opts...)
+}

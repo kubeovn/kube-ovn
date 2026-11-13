@@ -2,6 +2,7 @@ package controllerruntime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -98,6 +99,16 @@ func ObserveSubnet(ctx context.Context, reader client.Reader, name string) (Subn
 	if err := reader.Get(ctx, types.NamespacedName{Name: name}, &subnet); err != nil {
 		return SubnetShadowObservation{}, fmt.Errorf("get subnet %s: %w", name, err)
 	}
+	return observeSubnet(ctx, reader, &subnet)
+}
+
+// observeSubnet derives the dependency observation from an already-read
+// Subnet. Reconciler callers use this helper to keep the write snapshot and
+// observation tied to the same API read.
+func observeSubnet(ctx context.Context, reader client.Reader, subnet *kubeovnv1.Subnet) (SubnetShadowObservation, error) {
+	if subnet == nil {
+		return SubnetShadowObservation{}, errors.New("subnet observation requires a Subnet")
+	}
 	observation := SubnetShadowObservation{
 		Name:                   subnet.Name,
 		Generation:             subnet.Generation,
@@ -128,7 +139,7 @@ func ObserveSubnet(ctx context.Context, reader client.Reader, name string) (Subn
 		if apierrors.IsNotFound(err) {
 			return observation, nil
 		}
-		return SubnetShadowObservation{}, fmt.Errorf("get vlan %s for subnet %s: %w", subnet.Spec.Vlan, name, err)
+		return SubnetShadowObservation{}, fmt.Errorf("get vlan %s for subnet %s: %w", subnet.Spec.Vlan, subnet.Name, err)
 	}
 	observation.VlanFound = true
 	observation.VlanConflict = vlan.Status.Conflict
@@ -138,7 +149,7 @@ func ObserveSubnet(ctx context.Context, reader client.Reader, name string) (Subn
 		if apierrors.IsNotFound(err) {
 			return observation, nil
 		}
-		return SubnetShadowObservation{}, fmt.Errorf("get provider network %s for subnet %s: %w", vlan.Spec.Provider, name, err)
+		return SubnetShadowObservation{}, fmt.Errorf("get provider network %s for subnet %s: %w", vlan.Spec.Provider, subnet.Name, err)
 	}
 	observation.ProviderFound = true
 	observation.ProviderReady = provider.Status.Ready
