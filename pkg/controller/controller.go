@@ -297,11 +297,6 @@ type Controller struct {
 	svcKeyMutex        keymutex.KeyMutex
 
 	addOrUpdateGwNftableLbSvcQueue workqueue.TypedRateLimitingInterface[string]
-	// nftableLbVipSnapshot remembers the gateway VIP state each Service last programmed, keyed by
-	// gateway and then by Service (namespace/name). It is the floor of the gateway-wide desired
-	// state while the informer has not observed a Service's records yet; see
-	// desiredNatGwVipStateForService. Only the single-threaded worker above touches it.
-	nftableLbVipSnapshot map[string]map[string]nftableLbSvcVips
 
 	endpointSlicesLister          discoveryv1.EndpointSliceLister
 	endpointSlicesSynced          cache.InformerSynced
@@ -707,7 +702,6 @@ func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter
 		svcKeyMutex:        keymutex.NewHashed(numKeyLocks),
 
 		addOrUpdateGwNftableLbSvcQueue: newTypedRateLimitingQueue[string]("AddOrUpdateGwNftableLbSvc", nil),
-		nftableLbVipSnapshot:           make(map[string]map[string]nftableLbSvcVips),
 
 		endpointSlicesLister:          endpointSliceInformer.Lister(),
 		endpointSlicesSynced:          endpointSliceInformer.Informer().HasSynced,

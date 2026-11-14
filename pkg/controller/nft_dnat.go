@@ -189,129 +189,89 @@ func nftableLbSvcVipsOf(records map[string]*kubeovnv1.IptablesDnatRule, eipIP st
 	return state
 }
 
-// rememberNatGwVipState records what a Service just programmed on a gateway, and forgetNatGwVipState
-// drops it once the Service released that gateway. The snapshot is the floor of
-// desiredNatGwVipStateForService: see the staleness note there for why it exists.
-//
-// The map is only touched by the gateway nftable LB Service worker, which is single-threaded, so it
-// needs no lock.
-func (c *Controller) rememberNatGwVipState(gwName, owner string, state nftableLbSvcVips) {
-	if c.nftableLbVipSnapshot == nil {
-		c.nftableLbVipSnapshot = make(map[string]map[string]nftableLbSvcVips)
+// nftableLbExistingClusterIPs is the durable ledger of this Service's old loopback addresses.
+func nftableLbExistingClusterIPs(records []*kubeovnv1.IptablesDnatRule) []string {
+	ips := set.New[string]()
+	for _, record := range records {
+		if util.CheckProtocol(record.Spec.ClusterIP) == kubeovnv1.ProtocolIPv4 {
+			ips.Insert(record.Spec.ClusterIP)
+		}
 	}
-	if c.nftableLbVipSnapshot[gwName] == nil {
-		c.nftableLbVipSnapshot[gwName] = make(map[string]nftableLbSvcVips)
-	}
-	c.nftableLbVipSnapshot[gwName][owner] = state
+	return ips.SortedList()
 }
 
-func (c *Controller) forgetNatGwVipState(gwName, owner string) {
-	delete(c.nftableLbVipSnapshot[gwName], owner)
-	if len(c.nftableLbVipSnapshot[gwName]) == 0 {
-		delete(c.nftableLbVipSnapshot, gwName)
+// syncNftableLbSvcClusterIPs changes only this Service's addresses, never a gateway-wide set.
+func (c *Controller) syncNftableLbSvcClusterIPs(pods []*corev1.Pod, desired, existing []string) error {
+	if len(desired) != 0 {
+		if err := c.execNatGwRulesInPods(pods, natGwVipAddrAdd, desired); err != nil {
+			return err
+		}
 	}
+	stale := set.New(existing...).Difference(set.New(desired...)).SortedList()
+	if len(stale) != 0 {
+		return c.execNatGwRulesInPods(pods, natGwVipAddrDel, stale)
+	}
+	return nil
 }
 
-// desiredNatGwVipStateForService returns the VIPs the given gateway has to route, keyed by policy
-// route match, and the ClusterIPs among them, which it also has to hold on lo. Both are
-// gateway-wide sets: the caller overwrites the whole gateway state with them, so a VIP missing
-// here is a VIP removed from the data plane.
-//
-// Every Service accounting record contributes the addresses it serves, so a record that is gone
-// simply stops contributing and the state converges to what the live records ask for.
-//
-// owner is the Service being reconciled: its cached records are replaced by the desired records it
-// is programming right now, because the informer cannot have observed them yet.
-//
-// The same cache lag applies to the *other* Services of the gateway, and there it cannot be fixed
-// by the caller: a Service whose records were just created through the API is invisible to this
-// List, and dropping its VIPs here would tear down a data plane that nothing re-enqueues (the
-// informers run without resync). The snapshot of what each Service last programmed is therefore
-// used as a floor for every owner the lister cannot see at all. An owner the lister sees with at
-// least one live record is authoritative and gets no floor; terminating records alone do not make
-// it authoritative, because a record deleted from outside stays terminating while its Service keeps
-// the identity programmed.
-func (c *Controller) desiredNatGwVipStateForService(gwName, owner string,
-	desired map[string]*kubeovnv1.IptablesDnatRule, eipIP string,
-) (map[string]string, []string, error) {
-	rules, err := c.iptablesDnatRulesLister.List(labels.SelectorFromSet(labels.Set{util.VpcNatGatewayNameLabel: gwName}))
+// natGwVipRoutesForService scopes route reconciliation to this Service's desired and previous
+// VIPs. Other Services contribute only retention of a shared EIP, through their stable intent.
+func (c *Controller) natGwVipRoutesForService(gwName, owner string, state nftableLbSvcVips,
+	clusterIPs []string, eips []nftableLbEipIdentityRef,
+) (map[string]string, set.Set[string], error) {
+	desired := make(map[string]string)
+	managed := set.New[string]()
+	for _, ip := range clusterIPs {
+		managed.Insert(natGwVipRouteMatch(ip))
+	}
+	for _, ip := range state.clusterIPs {
+		match := natGwVipRouteMatch(ip)
+		desired[match] = ip
+		managed.Insert(match)
+	}
+	if state.eipIP != "" {
+		match := natGwVipRouteMatch(state.eipIP)
+		desired[match] = state.eipIP
+		managed.Insert(match)
+	}
+	eipMatches := set.New[string]()
+	for _, ref := range eips {
+		if util.CheckProtocol(ref.eipIP) == kubeovnv1.ProtocolIPv4 {
+			match := natGwVipRouteMatch(ref.eipIP)
+			managed.Insert(match)
+			eipMatches.Insert(match)
+		}
+	}
+	if eipMatches.Len() == 0 || c.svcIndexer == nil {
+		return desired, managed, nil
+	}
+	svcs, err := c.svcIndexer.ByIndex(IndexGwNftableLbServiceByGateway, gwName)
 	if err != nil {
 		return nil, nil, err
 	}
-
-	vips := make(map[string]string)
-	clusterIPs := set.New[string]()
-	eipIPs := make(map[string]string)
-	observed := set.New[string]()
-	for _, rule := range rules {
-		// Only Service accounting records contribute share VIP state. A manually created share CR
-		// has no forwarding semantics even if admission is bypassed.
-		if rule.Spec.Type != kubeovnv1.DnatRuleTypeShare || !util.IsNftableLbSvcRecord(rule.Labels) {
+	for _, obj := range svcs {
+		svc, ok := obj.(*corev1.Service)
+		if !ok {
 			continue
 		}
-		ruleOwner := util.NftableLbSvcOwnerKey(rule.Labels)
-		if ruleOwner == owner {
-			// Replaced by the desired records below.
+		serveEIP, _ := c.nftableLbSvcQualifies(svc)
+		if !serveEIP || svc.Namespace+"/"+svc.Name == owner || !svc.DeletionTimestamp.IsZero() ||
+			len(nftableLbSvcIdentities(svc, svc.Annotations[util.EipAnnotation])) == 0 {
 			continue
 		}
-		if !rule.DeletionTimestamp.IsZero() {
-			// A terminating record is releasing its addresses, and says nothing about its owner's
-			// state: a record deleted from outside stays terminating while its Service keeps the
-			// identity programmed. Leave that owner unobserved so its floor still speaks for it; an
-			// owner that is really leaving dropped its floor first (forgetNatGwVipState).
+		eip, err := c.iptablesEipsLister.Get(svc.Annotations[util.EipAnnotation])
+		if k8serrors.IsNotFound(err) {
 			continue
 		}
-		// A live record of another owner: its state is known here, so the floor must not speak for it.
-		observed.Insert(ruleOwner)
-		// The internal VIP of a rule is held on lo and routed to the gateway.
-		if clusterIP := rule.Spec.ClusterIP; util.CheckProtocol(clusterIP) == kubeovnv1.ProtocolIPv4 {
-			vips[natGwVipRouteMatch(clusterIP)] = clusterIP
-			clusterIPs.Insert(clusterIP)
+		if err != nil {
+			return nil, nil, err
 		}
-		// The public VIP of a rule is the address of the EIP it serves. Resolving it here (instead
-		// of at creation) keeps the two addresses of one rule in one place.
-		if rule.Spec.EIP == "" {
-			continue
-		}
-		ip, resolved := eipIPs[rule.Spec.EIP]
-		if !resolved {
-			// The lister is read directly: an EIP that exists but has no address yet contributes no
-			// route (its own update re-triggers this sync), while a lister failure must not silently
-			// narrow the desired set and delete a route that is still wanted.
-			eip, err := c.iptablesEipsLister.Get(rule.Spec.EIP)
-			switch {
-			case err == nil:
-				ip = eip.Status.IP
-			case k8serrors.IsNotFound(err):
-				klog.Infof("nat gw %s: eip %s of dnat %s is gone, dropping its vip route", gwName, rule.Spec.EIP, rule.Name)
-			default:
-				return nil, nil, fmt.Errorf("nat gw %s: failed to resolve eip %s of dnat %s for its vip route: %w", gwName, rule.Spec.EIP, rule.Name, err)
-			}
-			eipIPs[rule.Spec.EIP] = ip
-		}
-		if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv4 {
-			vips[natGwVipRouteMatch(ip)] = ip
+		match := natGwVipRouteMatch(eip.Status.IP)
+		if eipMatches.Has(match) && (eip.Spec.NatGwDp == "" || eip.Spec.NatGwDp == gwName) {
+			desired[match] = eip.Status.IP
 		}
 	}
-
-	addState := func(state nftableLbSvcVips) {
-		if state.eipIP != "" {
-			vips[natGwVipRouteMatch(state.eipIP)] = state.eipIP
-		}
-		for _, clusterIP := range state.clusterIPs {
-			vips[natGwVipRouteMatch(clusterIP)] = clusterIP
-			clusterIPs.Insert(clusterIP)
-		}
-	}
-	addState(nftableLbSvcVipsOf(desired, eipIP))
-	for other, state := range c.nftableLbVipSnapshot[gwName] {
-		if other == owner || observed.Has(other) {
-			continue
-		}
-		klog.V(3).Infof("nat gw %s: service %s is not in the dnat cache yet, keeping the vips it last programmed", gwName, other)
-		addState(state)
-	}
-	return vips, clusterIPs.SortedList(), nil
+	return desired, managed, nil
 }
 
 // natGwVipRouteNextHops returns the sorted LAN addresses of the gateway instances that can serve
@@ -347,21 +307,10 @@ func natGwVipRouteNextHops(gw *kubeovnv1.VpcNatGateway, pods []*corev1.Pod) ([]s
 	return nextHops, nil
 }
 
-// syncNatGwVipStateForService reconciles the VPC policy routes that send traffic destined for a
-// share DNAT VIP to the gateway, so a Service handled by the nftable LB service feature is
-// reachable from inside the VPC through both its EIP and its ClusterIP, not only through the
-// external network. The ClusterIPs the instances hold on lo are the in-pod half of the same state;
-// they come from the same desired set and are applied by the caller, which already execs into the
-// gateway.
-//
-// The desired set is gateway-wide (see desiredNatGwVipStateForService): reconciling by set rather
-// than by reference counting each teardown is what makes the state converge, so a route that was
-// missed once is removed by the next sync of its gateway.
-//
-// This runs even while the feature gates are off: the disabled-mode drain calls the cleanup paths
-// to drop the routes of leftovers, so the feature's own gate must not short-circuit route cleanup.
-func (c *Controller) syncNatGwVipStateForService(gwName, owner string,
-	records map[string]*kubeovnv1.IptablesDnatRule, eipIP string,
+// syncNatGwVipStateForService reconciles only this Service's VIP routes, including cleanup while
+// the feature gates are off. The gateway's existing external IDs remain compatible with upgrades.
+func (c *Controller) syncNatGwVipStateForService(gwName, owner string, state nftableLbSvcVips,
+	clusterIPs []string, eips []nftableLbEipIdentityRef,
 ) error {
 	gw, err := c.vpcNatGatewayLister.Get(gwName)
 	if err != nil {
@@ -372,7 +321,7 @@ func (c *Controller) syncNatGwVipStateForService(gwName, owner string,
 		return err
 	}
 
-	desired, _, err := c.desiredNatGwVipStateForService(gwName, owner, records, eipIP)
+	desired, managed, err := c.natGwVipRoutesForService(gwName, owner, state, clusterIPs, eips)
 	if err != nil {
 		return err
 	}
@@ -396,6 +345,9 @@ func (c *Controller) syncNatGwVipStateForService(gwName, owner string,
 		return fmt.Errorf("failed to list vip routes of nat gw %s: %w", gwName, err)
 	}
 	for _, policy := range existing {
+		if !managed.Has(policy.Match) {
+			continue
+		}
 		if _, wanted := desired[policy.Match]; !wanted {
 			if err = c.OVNNbClient.DeleteLogicalRouterPolicyByUUID(gw.Spec.Vpc, policy.UUID); err != nil {
 				return fmt.Errorf("failed to delete vip route %s of nat gw %s: %w", policy.Match, gwName, err)

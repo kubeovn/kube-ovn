@@ -75,7 +75,8 @@ function show_help() {
     echo "  subnet-route-del         - Delete VPC internal routes"
     echo "  eip-add                  - Add external IP"
     echo "  eip-del                  - Delete external IP"
-    echo "  vip-addr-sync            - Hold exactly the given share-DNAT VIPs (Service ClusterIPs) on lo"
+    echo "  vip-addr-add             - Hold the given Service ClusterIPs on lo"
+    echo "  vip-addr-del             - Release only the given Service ClusterIPs from lo"
     echo "  vip-hairpin-add          - Add a per-identity hairpin SNAT rule for a VIP"
     echo "  vip-hairpin-del          - Delete a per-identity hairpin SNAT rule for a VIP"
     echo "  floating-ip-add          - Add floating IP mapping"
@@ -366,36 +367,43 @@ function local_vpc_ipv4() {
     echo "$ip"
 }
 
-# The label scopes the addresses this feature owns on lo, so the sync can release the ones no
-# service needs any more without touching anything else the gateway holds there.
+# Keep the existing label so upgrades can release addresses programmed by an older controller.
 VIP_ADDR_LABEL="lo:ko-vip"
 
-function vip_addr_sync() {
+function vip_addr_update() {
     check_inited
-    local want=" $* "
-    local vip addr ip
+    local operation=$1
+    shift
+    local vip octet
+    local -a octets
     for vip in "$@"
     do
         if ! [[ "$vip" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}$ ]]; then
-            echo "Error: invalid vip in vip-addr-sync: $vip" >&2
+            echo "Error: invalid vip in vip-addr-$operation: $vip" >&2
             exit 1
         fi
+        IFS='.' read -r -a octets <<< "$vip"
+        for octet in "${octets[@]}"; do
+            if (( 10#$octet > 255 )); then
+                echo "Error: invalid vip in vip-addr-$operation: $vip" >&2
+                exit 1
+            fi
+        done
     done
-    # Release what the controller no longer asks for. This is the only path that removes these
-    # addresses, so a VIP whose service is gone cannot outlive the next sync of its gateway.
-    for addr in $(ip -4 addr show dev lo label "$VIP_ADDR_LABEL" | awk '/inet /{print $2}')
-    do
-        ip=${addr%/*}
-        if [[ "$want" != *" $ip "* ]]; then
-            exec_cmd "ip addr del $addr dev lo"
-        fi
-    done
+    local addresses
+    addresses=$(ip -4 addr show dev lo label "$VIP_ADDR_LABEL") || exit 1
     for vip in "$@"
     do
-        # /32 on lo keeps the VIP from claiming a whole ClusterIP range on the VPC interface.
-        if ! ip -4 addr show dev lo label "$VIP_ADDR_LABEL" | grep -qw "$vip/32"; then
+        if echo "$addresses" | grep -Fqw "$vip/32"; then
+            if [ "$operation" = "del" ]; then
+                exec_cmd "ip addr del $vip/32 dev lo"
+            fi
+        elif [ "$operation" = "add" ]; then
+            # /32 keeps the VIP from claiming a whole ClusterIP range on the VPC interface.
             exec_cmd "ip addr add $vip/32 dev lo label $VIP_ADDR_LABEL"
         fi
+        # Refresh after each operation so duplicate arguments remain idempotent.
+        addresses=$(ip -4 addr show dev lo label "$VIP_ADDR_LABEL") || exit 1
     done
 }
 
@@ -719,7 +727,7 @@ function del_dnat() {
 #       └── Rule: numgen random mod N dnat to ip addr . port map { backends }
 #
 # The vip is the address a Service is served through: the address of the EIP a LoadBalancer
-# Service publishes, or the ClusterIP the gateway holds on lo (see vip_addr_sync). Both are the
+# Service publishes, or the ClusterIP the gateway holds on lo (see vip_addr_update). Both are the
 # same identity shape and are programmed by the same commands; the $eip variable names below are
 # historical.
 #
@@ -2055,9 +2063,13 @@ case $opt in
         echo "eip-del $*"
         del_eip "$@"
         ;;
-    vip-addr-sync)
-        echo "vip-addr-sync $*"
-        vip_addr_sync "$@"
+    vip-addr-add)
+        echo "vip-addr-add $*"
+        vip_addr_update add "$@"
+        ;;
+    vip-addr-del)
+        echo "vip-addr-del $*"
+        vip_addr_update del "$@"
         ;;
     vip-hairpin-add)
         echo "vip-hairpin-add $*"

@@ -97,6 +97,11 @@ kubectl ko nbctl lr-policy-list <vpc>
   changed; delete and recreate it instead. Clearing the annotations is allowed and is the
   supported way to leave the mode: the controller releases the identities, the lo addresses, the
   VIP routes, the records and finally the Service finalizer (`kubeovn.io/kube-ovn-controller`).
+- **ClusterIP resources are Service-scoped.** Reconciliation adds or removes only that Service's
+  loopback addresses and VIP routes, using its spec and previous accounting records. It does not
+  replace the gateway-wide VIP set, so a peer's delayed records cannot remove its resources.
+  A shared EIP route is retained while another live Service on the gateway still declares it;
+  this check uses Service intent rather than the accounting-record cache.
 - **An EIP in use cannot be deleted.** The accounting records keep the EIP in use; delete the
   Service first. The two controllers are otherwise independent: an EIP event never reconciles a
   Service.

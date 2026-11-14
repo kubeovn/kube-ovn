@@ -60,7 +60,8 @@ const (
 
 	// Share DNAT VIP state of a Service handled by the nftable LB service feature: the ClusterIPs
 	// held on lo and the per-identity hairpin SNAT rules (see nft_dnat.go).
-	natGwVipAddrSync   = "vip-addr-sync"
+	natGwVipAddrAdd    = "vip-addr-add"
+	natGwVipAddrDel    = "vip-addr-del"
 	natGwVipHairpinAdd = "vip-hairpin-add"
 	natGwVipHairpinDel = "vip-hairpin-del"
 
