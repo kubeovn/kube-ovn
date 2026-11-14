@@ -849,6 +849,9 @@ func (c *Controller) RecoverSubnetRuntime(ctx context.Context, subnet *kubeovnv1
 				mac = new(lrp.MAC)
 			}
 		}
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
 		u2oName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 		u2oNicName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 		if _, _, _, err := c.ipam.GetStaticAddress(u2oName, u2oNicName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, true); err != nil {
