@@ -2191,11 +2191,12 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 			return "", "", "", err
 		}
 		allocated = !hadAllocation
-	} else if subnet.Spec.U2OInterconnectionIP != "" && subnet.Status.U2OInterconnectionIP != subnet.Spec.U2OInterconnectionIP {
+	} else if subnet.Spec.U2OInterconnectionIP != "" &&
+		(subnet.Status.U2OInterconnectionIP != subnet.Spec.U2OInterconnectionIP || subnet.Status.U2OInterconnectionMAC == "") {
 		_, _, _, hadAllocation := c.ipam.GetPodAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
 		if subnet.Status.U2OInterconnectionIP != "" {
 			klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
-			c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
+			c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
 			hadAllocation = false
 		}
 		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP, nil)
@@ -2208,7 +2209,7 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 	if v4ip != "" || v6ip != "" {
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
+				c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
 			}
 			return "", "", "", err
 		}
@@ -2223,7 +2224,7 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 		}
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
+				c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
 			}
 			subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionMAC, subnet.Status.U2OInterconnectionVPC = oldIP, oldMAC, oldVPC
 			return "", "", "", err
@@ -2231,7 +2232,7 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 		err = c.createOrUpdateIPCRWithContext(ctx, "", u2oInterconnName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, metav1.NamespaceDefault, "", "")
 		if err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
+				c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
 			}
 			subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionMAC, subnet.Status.U2OInterconnectionVPC = oldIP, oldMAC, oldVPC
 			klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)

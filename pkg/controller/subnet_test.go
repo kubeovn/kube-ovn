@@ -23,6 +23,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	"github.com/kubeovn/kube-ovn/pkg/internal"
+	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -66,6 +67,61 @@ func TestSubnetRuntimeHelpersHonorCanceledContext(t *testing.T) {
 	fenced := &Controller{subnetRuntimeFence: func(context.Context) error { return fenceErr }}
 	err = fenced.reconcileOvnDefaultVpcRouteWithContext(context.Background(), subnet)
 	require.ErrorIs(t, err, fenceErr)
+}
+
+func TestAcquireU2OIPWithContextPreservesExistingAndOtherNICAllocations(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		existing bool
+	}{
+		{name: "new allocation is compensated", existing: false},
+		{name: "existing allocation is retained", existing: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			const (
+				subnetName = "subnet-a"
+				podName    = "u2o"
+				nicName    = "vpc-subnet-a"
+				otherNIC   = "other-nic"
+			)
+			controller := &Controller{ipam: ovnipam.NewIPAM()}
+			require.NoError(t, controller.ipam.AddOrUpdateSubnet(subnetName, "10.0.0.0/24", "10.0.0.1", nil))
+			if tc.existing {
+				_, _, _, err := controller.ipam.GetStaticAddress(podName, nicName, "10.0.0.2", nil, subnetName, true)
+				require.NoError(t, err)
+			}
+			_, _, _, err := controller.ipam.GetStaticAddress(podName, otherNIC, "10.0.0.3", nil, subnetName, true)
+			require.NoError(t, err)
+
+			fenceErr := errors.New("subnet fence lost")
+			checks := 0
+			controller.subnetRuntimeFence = func(context.Context) error {
+				checks++
+				if checks >= 2 {
+					return fenceErr
+				}
+				return nil
+			}
+			subnet := &kubeovnv1.Subnet{
+				Name: subnetName,
+				Spec: kubeovnv1.SubnetSpec{
+					Protocol:             kubeovnv1.ProtocolIPv4,
+					U2OInterconnectionIP: "10.0.0.2",
+					U2OInterconnection:   true,
+				},
+			}
+			_, _, _, err = controller.acquireU2OIPWithContext(context.Background(), subnet, podName, nicName)
+			require.ErrorIs(t, err, fenceErr)
+
+			_, _, _, targetFound := controller.ipam.GetPodAddressByNic(podName, nicName, subnetName)
+			require.Equal(t, tc.existing, targetFound)
+			_, _, _, otherFound := controller.ipam.GetPodAddressByNic(podName, otherNIC, subnetName)
+			require.True(t, otherFound)
+		})
+	}
 }
 
 func TestValidateSubnetRuntimeDeleteTarget(t *testing.T) {
