@@ -47,10 +47,10 @@ func (c *Controller) enqueueAddIP(obj any) {
 		return
 	}
 	klog.V(3).Infof("enqueue update status subnet %s", ipObj.Spec.Subnet)
-	c.updateSubnetStatusQueue.Add(ipObj.Spec.Subnet)
+	c.enqueueSubnetStatus(ipObj.Spec.Subnet, "IP")
 	for _, as := range ipObj.Spec.AttachSubnets {
 		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
-		c.updateSubnetStatusQueue.Add(as)
+		c.enqueueSubnetStatus(as, "IP")
 	}
 
 	key := cache.MetaObjectToName(ipObj).String()
@@ -66,8 +66,8 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 		err := fmt.Errorf("ip %s subnet changed from %s to %s", newIP.Name, oldIP.Spec.Subnet, newIP.Spec.Subnet)
 		klog.Warning(err)
 		c.recordIPError(newIP, reasonUpdateIPFailed, err)
-		c.updateSubnetStatusQueue.Add(oldIP.Spec.Subnet)
-		c.updateSubnetStatusQueue.Add(newIP.Spec.Subnet)
+		c.enqueueSubnetStatus(oldIP.Spec.Subnet, "IP")
+		c.enqueueSubnetStatus(newIP.Spec.Subnet, "IP")
 		return
 	}
 	if oldIP.Spec.Namespace != "" && newIP.Spec.Namespace != oldIP.Spec.Namespace {
@@ -127,7 +127,7 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 		klog.V(3).Infof("enqueue update status subnet %s", newIP.Spec.Subnet)
 		for _, as := range newIP.Spec.AttachSubnets {
 			klog.V(3).Infof("enqueue update status for attach subnet %s", as)
-			c.updateSubnetStatusQueue.Add(as)
+			c.enqueueSubnetStatus(as, "IP")
 		}
 	}
 }
@@ -343,17 +343,17 @@ func (c *Controller) handleUpdateIP(key string) (err error) {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
 			return err
 		}
-		c.updateSubnetStatusQueue.Add(cachedIP.Spec.Subnet)
+		c.enqueueSubnetStatus(cachedIP.Spec.Subnet, "IP")
 	}
 	return nil
 }
 
 func (c *Controller) handleDelIP(ip *kubeovnv1.IP) error {
 	klog.Infof("deleting ip %s enqueue update status subnet %s", ip.Name, ip.Spec.Subnet)
-	c.updateSubnetStatusQueue.Add(ip.Spec.Subnet)
+	c.enqueueSubnetStatus(ip.Spec.Subnet, "IP")
 	for _, as := range ip.Spec.AttachSubnets {
 		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
-		c.updateSubnetStatusQueue.Add(as)
+		c.enqueueSubnetStatus(as, "IP")
 	}
 	return nil
 }

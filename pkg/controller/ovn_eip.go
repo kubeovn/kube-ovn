@@ -153,7 +153,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 
 	// Trigger subnet status update after all operations complete
 	// At this point: IPAM allocated, OvnEip CR created with labels+status+finalizer
-	c.updateSubnetStatusQueue.Add(subnet.Name)
+	c.enqueueSubnetStatus(subnet.Name, "EIP")
 	return nil
 }
 
@@ -306,7 +306,7 @@ func (c *Controller) handleDelOvnEip(eip *kubeovnv1.OvnEip) error {
 
 	// Ensure subnet status is updated
 	if eip.Spec.ExternalSubnet != "" {
-		c.updateSubnetStatusQueue.Add(eip.Spec.ExternalSubnet)
+		c.enqueueSubnetStatus(eip.Spec.ExternalSubnet, "EIP")
 	}
 
 	return nil
@@ -425,7 +425,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 		}
 	}
 	// Trigger subnet status update after CR creation or update
-	c.updateSubnetStatusQueue.AddAfter(subnet, 300*time.Millisecond)
+	c.enqueueSubnetStatusAfter(subnet, "EIP", 300*time.Millisecond)
 	return nil
 }
 
@@ -569,7 +569,7 @@ func (c *Controller) handleAddOrUpdateOvnEipFinalizer(cachedEip *kubeovnv1.OvnEi
 	// Trigger subnet status update after finalizer is processed as a fallback
 	// This handles cases where finalizer was not added during creation
 	// AddFinalizer is idempotent, so this is safe even if finalizer already exists
-	c.updateSubnetStatusQueue.Add(cachedEip.Spec.ExternalSubnet)
+	c.enqueueSubnetStatus(cachedEip.Spec.ExternalSubnet, "EIP")
 	return nil
 }
 
@@ -609,7 +609,7 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 	// Trigger subnet status update after finalizer is removed
 	// This ensures subnet status reflects the IP release
 	// Add delay to ensure API server completes the finalizer removal
-	c.updateSubnetStatusQueue.AddAfter(cachedEip.Spec.ExternalSubnet, 300*time.Millisecond)
+	c.enqueueSubnetStatusAfter(cachedEip.Spec.ExternalSubnet, "EIP", 300*time.Millisecond)
 	return nil
 }
 

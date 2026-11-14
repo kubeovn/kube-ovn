@@ -1547,7 +1547,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 							changed = true
 							released = append(released, fmt.Sprintf("ipam=%s subnet=%s", port.Name, subnetName))
 						}
-						c.updateSubnetStatusQueue.Add(subnetName)
+						c.enqueueSubnetStatus(subnetName, "Pod")
 					}
 				}
 			case hasAliveVMSibling:
@@ -1661,7 +1661,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				}
 				// Trigger subnet status update after IPAM release
 				// This is needed when IP CR is deleted without finalizer (race condition)
-				c.updateSubnetStatusQueue.Add(podNet.Subnet.Name)
+				c.enqueueSubnetStatus(podNet.Subnet.Name, "Pod")
 			}
 		}
 	}
@@ -3300,7 +3300,7 @@ func (c *Controller) cleanStaleVMAttachmentIPs(pod *v1.Pod, podName string) {
 			}
 			if subnetName := ipCR.Spec.Subnet; subnetName != "" {
 				c.ipam.ReleaseAddressByNic(podKey, port.Name, subnetName)
-				c.updateSubnetStatusQueue.Add(subnetName)
+				c.enqueueSubnetStatus(subnetName, "Pod")
 			}
 		}
 	}

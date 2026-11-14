@@ -53,6 +53,16 @@ func TestSetupSubnetShadowReconciler(t *testing.T) {
 	require.NoError(t, setupSubnetShadowReconciler(mgr))
 }
 
+func TestSetupSubnetStatusReconcilerRequiresBackend(t *testing.T) {
+	require.EqualError(t, setupSubnetStatusReconciler(nil, nil), "controller-runtime manager is nil")
+
+	mgr, err := NewManager(&controller.Configuration{
+		KubeRestConfig: &rest.Config{Host: "https://127.0.0.1"},
+	})
+	require.NoError(t, err)
+	require.EqualError(t, setupSubnetStatusReconciler(mgr, nil), "subnet status runtime backend is nil")
+}
+
 func TestTrimCacheObjectUsesControllerTransforms(t *testing.T) {
 	pod := &corev1.Pod{Spec: corev1.PodSpec{Volumes: []corev1.Volume{{Name: "cache"}}}}
 	pod.ManagedFields = []metav1.ManagedFieldsEntry{{Manager: "controller"}}

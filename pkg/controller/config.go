@@ -38,6 +38,7 @@ const (
 	ControllerRuntimeModeVlan         = "vlan"
 	ControllerRuntimeModeIPPool       = "ippool"
 	ControllerRuntimeModeSubnetShadow = "subnet-shadow"
+	ControllerRuntimeModeSubnetStatus = "subnet-status"
 )
 
 // LeaderElectionConfiguration contains the timing configuration for controller leader election.
@@ -253,7 +254,7 @@ func ParseFlags() (*Configuration, error) {
 		argClusterSctpSessionLoadBalancer = pflag.String("cluster-sctp-session-loadbalancer", "cluster-sctp-session-loadbalancer", "The name for cluster sctp session loadbalancer")
 
 		argWorkerNum             = pflag.Int("worker-num", 3, "The parallelism of each worker")
-		argControllerRuntimeMode = pflag.String("controller-runtime-mode", ControllerRuntimeModeDisabled, "Controller-runtime migration mode: disabled, manager, vlan, ippool, or subnet-shadow")
+		argControllerRuntimeMode = pflag.String("controller-runtime-mode", ControllerRuntimeModeDisabled, "Controller-runtime migration mode: disabled, manager, vlan, ippool, subnet-shadow, or subnet-status")
 		argEnablePprof           = pflag.Bool("enable-pprof", false, "Enable pprof")
 		argPprofPort             = pflag.Int32("pprof-port", 10660, "The port to get profiling data")
 		argSecureServing         = pflag.Bool("secure-serving", false, "Enable secure serving")
@@ -506,10 +507,10 @@ func ParseFlags() (*Configuration, error) {
 
 func validateControllerRuntimeMode(mode string) error {
 	switch mode {
-	case ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool, ControllerRuntimeModeSubnetShadow:
+	case ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool, ControllerRuntimeModeSubnetShadow, ControllerRuntimeModeSubnetStatus:
 		return nil
 	default:
-		return fmt.Errorf("--controller-runtime-mode must be %q, %q, %q, %q, or %q, got %q", ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool, ControllerRuntimeModeSubnetShadow, mode)
+		return fmt.Errorf("--controller-runtime-mode must be %q, %q, %q, %q, %q, or %q, got %q", ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool, ControllerRuntimeModeSubnetShadow, ControllerRuntimeModeSubnetStatus, mode)
 	}
 }
 
@@ -523,6 +524,10 @@ func controllerRuntimeIPPoolEnabled(config *Configuration) bool {
 
 func controllerRuntimeSubnetShadowEnabled(config *Configuration) bool {
 	return config != nil && config.ControllerRuntimeMode == ControllerRuntimeModeSubnetShadow
+}
+
+func controllerRuntimeSubnetStatusEnabled(config *Configuration) bool {
+	return config != nil && config.ControllerRuntimeMode == ControllerRuntimeModeSubnetStatus
 }
 
 // validateServiceFeatureGates rejects direct conflicts between the Service data plane

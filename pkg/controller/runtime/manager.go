@@ -105,11 +105,33 @@ func RunWithIPPool(ctx context.Context, config *controller.Configuration, backen
 	return run(ctx, config, backend)
 }
 
+// RunWithSubnetStatus starts the opt-in status-only runtime alongside the
+// legacy controller. Legacy producers remain the status writer; this manager
+// only receives their fan-out events and computes projections.
+func RunWithSubnetStatus(ctx context.Context, config *controller.Configuration, backend *controller.Controller) error {
+	return run(ctx, config, backend)
+}
+
 func setupSubnetShadowReconciler(mgr ctrl.Manager) error {
 	if mgr == nil {
 		return errors.New("controller-runtime manager is nil")
 	}
 	return (&SubnetShadowReconciler{Reader: mgr.GetAPIReader()}).SetupWithManager(mgr)
+}
+
+func setupSubnetStatusReconciler(mgr ctrl.Manager, backend *controller.Controller) error {
+	if mgr == nil {
+		return errors.New("controller-runtime manager is nil")
+	}
+	if backend == nil {
+		return errors.New("subnet status runtime backend is nil")
+	}
+	reconciler := &SubnetStatusReconciler{
+		Reader:    mgr.GetAPIReader(),
+		Events:    NewLegacySubnetStatusEventSource(backend),
+		Projector: NewSubnetStatusCalculatorProjector(backend.CalculateSubnetStatusIP),
+	}
+	return reconciler.SetupWithManager(mgr)
 }
 
 func run(ctx context.Context, config *controller.Configuration, backend *controller.Controller) error {
@@ -119,6 +141,9 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 	}
 	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeIPPool && backend == nil {
 		return errors.New("IPPool runtime mode requires an initialized controller backend")
+	}
+	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeSubnetStatus && backend == nil {
+		return errors.New("subnet status runtime mode requires an initialized controller backend")
 	}
 	var recoveryGate func(context.Context) error
 	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeIPPool {
@@ -144,6 +169,11 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 			return err
 		}
 		if err := setupSubnetShadowCacheReadiness(mgr); err != nil {
+			return err
+		}
+	}
+	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeSubnetStatus {
+		if err := setupSubnetStatusReconciler(mgr, backend); err != nil {
 			return err
 		}
 	}
