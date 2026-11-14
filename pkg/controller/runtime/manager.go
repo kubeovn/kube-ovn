@@ -151,8 +151,12 @@ func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controlle
 	}
 	adapter := &SubnetControllerWriterAdapter{
 		Backend: backend,
+		Client:  mgr.GetClient(),
 		Reader:  mgr.GetAPIReader(),
 		Gate:    SubnetWriterGate{Recovery: backend.WaitForSubnetRuntimeRecovery, Fence: fence},
+	}
+	if err := adapter.InstallRuntimeWriters(); err != nil {
+		return err
 	}
 	return (&SubnetReconciler{
 		Reader:       mgr.GetAPIReader(),

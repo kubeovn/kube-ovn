@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"sync"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
@@ -204,7 +205,7 @@ func (r *SubnetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				hasMore := len(r.deletes[req.Name]) > 0
 				r.deleteMu.Unlock()
 				if hasMore {
-					result.Requeue = true
+					result.RequeueAfter = time.Nanosecond
 				}
 				return nil
 			}

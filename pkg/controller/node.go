@@ -782,6 +782,9 @@ func (c *Controller) checkSubnetGateway() {
 }
 
 func (c *Controller) checkSubnetGatewayNode() error {
+	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+		return err
+	}
 	klog.V(3).Infoln("start to check subnet gateway node")
 	subnetList, err := c.subnetsLister.List(labels.Everything())
 	if err != nil {
@@ -850,6 +853,9 @@ func (c *Controller) checkSubnetGatewayNode() error {
 					}
 
 					err = func() error {
+						if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+							return err
+						}
 						c.subnetKeyMutex.LockKey(subnet.Name)
 						defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
 
@@ -874,6 +880,9 @@ func (c *Controller) checkSubnetGatewayNode() error {
 									nextHops.Remove(ip)
 									delete(nameIPMap, node.Name)
 									klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+									if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+										return err
+									}
 									if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
 										klog.Errorf("failed to delete ecmp policy route for subnet %s on node %s, %v", subnet.Name, node.Name, err)
 										return err
@@ -886,6 +895,9 @@ func (c *Controller) checkSubnetGatewayNode() error {
 								}
 								nameIPMap[node.Name] = ip
 								klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+								if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+									return err
+								}
 								if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
 									klog.Errorf("failed to add ecmp policy route for subnet %s on node %s, %v", subnet.Name, node.Name, err)
 									return err
@@ -896,6 +908,9 @@ func (c *Controller) checkSubnetGatewayNode() error {
 							nextHops.Remove(ip)
 							delete(nameIPMap, node.Name)
 							klog.Infof("update policy route for centralized subnet %s, nextHops %s", subnet.Name, nextHops)
+							if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+								return err
+							}
 							if err = c.updatePolicyRouteForCentralizedSubnet(subnet.Name, cidrBlock, nextHops.List(), nameIPMap); err != nil {
 								klog.Errorf("failed to delete ecmp policy route for subnet %s on node %s, %v", subnet.Name, node.Name, err)
 								return err

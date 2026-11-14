@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sort"
@@ -21,6 +22,13 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnsb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestCheckSubnetGatewayNodeStopsWhenRuntimeFenceIsLost(t *testing.T) {
+	ctrl := newFakeController(t).fakeController
+	fenceErr := errors.New("subnet writer fence lost")
+	ctrl.subnetRuntimeFence = func(context.Context) error { return fenceErr }
+	require.ErrorIs(t, ctrl.checkSubnetGatewayNode(), fenceErr)
+}
 
 func TestKubeOvnAnnotationsChanged(t *testing.T) {
 	tests := []struct {

@@ -123,27 +123,36 @@ cleanup, and IPAM release require a terminating object; OVN/IPAM allocation
 requires `AllocationAllowed`. UID, generation, spec, resource-version, and
 deletion-state changes return a Kubernetes conflict. A missing recovery callback
 fails closed, so a restart cannot allocate or mutate OVN state before durable
-recovery completes. `subnet_status_writer.go` remains an isolated status-only implementation for a
-future split backend: it performs an uncached snapshot check, uses an
+recovery completes. `subnet_status_writer.go` is the explicit status writer
+installed by `subnet-writer`. It performs an uncached snapshot check, uses an
 optimistic-lock status patch, preserves foreign condition types, and confirms a
-write that may have committed before its response was lost. The opt-in
-`subnet-writer` mode currently reaches status through the Controller facade,
-which is the production owner while the legacy Subnet workers are disabled.
-`subnet_finalizer_writer.go` provides the matching isolated metadata contract;
-the production mode delegates finalizer changes to the Controller facade. It
-migrates the deprecated finalizer on active objects, removes both owned
-finalizers during termination, preserves foreign finalizers, and confirms
-metadata writes after an uncertain response. `subnet_side_effect_writer.go`
-provides the isolated OVN/IPAM side-effect boundary for a future split backend;
-the production mode delegates those operations to the Controller facade behind
-the durable Lease. Each isolated invocation waits for recovery and performs a
-fresh Subnet GET with a five-second deadline before checking the immutable
-snapshot and operation gate. The writer requires an uncached API reader (the
-manager's `GetAPIReader()`); a missing reader, missing object, API error,
-timeout, cancellation, or changed identity/spec/resource-version/deletion state
-prevents the action from running. Callers cannot supply a previously read
-`current` object as authorization. State changed during recovery or between
-invocations is therefore checked against the API again.
+write that may have committed before its response was lost. The same
+implementation remains an isolated seam for a future split backend. The
+opt-in `subnet-writer` mode reaches status through this writer while the legacy
+Subnet workers are disabled. `subnet_finalizer_writer.go` provides the matching
+metadata writer and is installed at the finalizer patch boundary. It migrates
+the deprecated finalizer on active objects, removes both owned finalizers during
+termination, preserves foreign finalizers, and confirms metadata writes after
+an uncertain response. `subnet_side_effect_writer.go` is installed around the
+OVN/IPAM domain phases and gives them the same recovery, identity, and durable
+Lease gate. The production callback still delegates the complete phase to the
+Controller facade; concrete per-mutation receipts and backend ownership checks
+remain a follow-up step. The queued virtual-port parent worker is also wired
+through a runtime hook: it reads the Subnet with the uncached API reader,
+revalidates UID, generation, spec, resource version, and deletion state, and
+only then invokes the OVN backend. Legacy mode keeps the informer-backed
+worker.
+
+Each isolated invocation waits for recovery and performs a fresh Subnet GET
+with a five-second deadline before checking the immutable snapshot and
+operation gate. The writer requires an uncached API reader (the manager's
+`GetAPIReader()`); a missing reader, API error, timeout, cancellation, or
+changed identity/spec/resource-version/deletion state prevents the action from
+running. A terminating tombstone is the one missing-object exception: after
+the reconciler confirms that no same-name replacement exists, cleanup may use
+the immutable delete snapshot and continue. Callers cannot supply a previously
+read `current` object as authorization. State changed during recovery or
+between invocations is therefore checked against the API again.
 
 The ownership lease is process-local and epoch-bound: legacy and runtime claims
 are mutually exclusive, stale or wrong-owner releases fail closed, and an

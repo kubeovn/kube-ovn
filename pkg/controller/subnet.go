@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	v1 "k8s.io/api/core/v1"
@@ -399,6 +400,13 @@ func (c *Controller) handleSubnetFinalizerWithContext(ctx context.Context, subne
 			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)
 			return newSubnet, false, err
 		}
+		if c.subnetRuntimeFinalizerWriter != nil {
+			patchedSubnet, err := c.subnetRuntimeFinalizerWriter(ctx, subnet, false)
+			if err != nil {
+				return patchedSubnet, false, err
+			}
+			return patchedSubnet, false, nil
+		}
 		patchSubnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnet.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			klog.Errorf("failed to add finalizer to subnet %s, %v", subnet.Name, err)
@@ -446,6 +454,10 @@ func (c *Controller) handleSubnetFinalizerWithContext(ctx context.Context, subne
 		if err != nil {
 			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)
 			return newSubnet, false, err
+		}
+		if c.subnetRuntimeFinalizerWriter != nil {
+			patchedSubnet, err := c.subnetRuntimeFinalizerWriter(ctx, subnet, true)
+			return patchedSubnet, err == nil, err
 		}
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnet.Name,
 			types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
@@ -670,6 +682,13 @@ func (c *Controller) updateSubnetDHCPOption(ctx context.Context, subnet *kubeovn
 			klog.Error(err)
 			return err
 		}
+		if c.subnetRuntimeStatusWriter != nil {
+			if err := c.subnetRuntimeStatusWriter(ctx, subnet); err != nil {
+				klog.Errorf("patch subnet %s dhcp options through runtime writer failed: %v", subnet.Name, err)
+				return err
+			}
+			return nil
+		}
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 			klog.Errorf("patch subnet %s dhcp options failed: %v", subnet.Name, err)
 			return err
@@ -722,40 +741,79 @@ func (c *Controller) ReconcileSubnetRuntimeWithGate(ctx context.Context, subnet 
 		return ErrSubnetRuntimeAllocationNotAllowed
 	}
 	if !subnet.DeletionTimestamp.IsZero() {
-		preflightLive, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(ctx, subnet.Name, metav1.GetOptions{})
-		if err == nil {
-			if err := validateSubnetRuntimeDeleteTarget(subnet, preflightLive); err != nil {
+		return c.runSubnetRuntimeDomainWriters(ctx, subnet, func(ctx context.Context) error {
+			preflightLive, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(ctx, subnet.Name, metav1.GetOptions{})
+			if err == nil {
+				if err := validateSubnetRuntimeDeleteTarget(subnet, preflightLive); err != nil {
+					return err
+				}
+			} else if !k8serrors.IsNotFound(err) {
 				return err
 			}
-		} else if !k8serrors.IsNotFound(err) {
+			if err := c.handleDeleteSubnetWithContext(ctx, subnet); err != nil {
+				return err
+			}
+			if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+				return err
+			}
+			// The legacy delete queue and the add/update path normally converge on
+			// handleSubnetFinalizer independently. Runtime mode has no such second
+			// worker, so the fenced writer must perform the finalizer gate itself
+			// after data-plane cleanup has completed.
+			live, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(ctx, subnet.Name, metav1.GetOptions{})
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if err := validateSubnetRuntimeDeleteTarget(subnet, live); err != nil {
+				return err
+			}
+			_, _, err = c.handleSubnetFinalizerWithContext(ctx, live)
 			return err
-		}
-		if err := c.handleDeleteSubnetWithContext(ctx, subnet); err != nil {
-			return err
-		}
-		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
-			return err
-		}
-		// The legacy delete queue and the add/update path normally converge on
-		// handleSubnetFinalizer independently. Runtime mode has no such second
-		// worker, so the fenced writer must perform the finalizer gate itself
-		// after data-plane cleanup has completed.
-		live, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(ctx, subnet.Name, metav1.GetOptions{})
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		if err := validateSubnetRuntimeDeleteTarget(subnet, live); err != nil {
-			return err
-		}
-		_, _, err = c.handleSubnetFinalizerWithContext(ctx, live)
-		return err
+		})
 	}
-	c.subnetKeyMutex.LockKey(subnet.Name)
-	defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
-	return c.reconcileSubnetObject(ctx, subnet)
+	return c.runSubnetRuntimeDomainWriters(ctx, subnet, func(ctx context.Context) error {
+		c.subnetKeyMutex.LockKey(subnet.Name)
+		defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
+		return c.reconcileSubnetObject(ctx, subnet)
+	})
+}
+
+// runSubnetRuntimeDomainWriters gives the explicit runtime OVN and IPAM
+// writers one fenced boundary around the existing domain calculation. The
+// calculation remains shared with legacy mode, while runtime mode supplies
+// uncached identity checks and durable receipts before any backend mutation.
+func (c *Controller) runSubnetRuntimeDomainWriters(ctx context.Context, subnet *kubeovnv1.Subnet, operation func(context.Context) error) error {
+	if operation == nil {
+		return errors.New("subnet runtime domain operation is nil")
+	}
+	if c.subnetRuntimeOVNWriter == nil && c.subnetRuntimeIPAMWriter == nil {
+		return operation(ctx)
+	}
+	operationKind := SubnetRuntimeOVNAllocateOperation
+	if !subnet.DeletionTimestamp.IsZero() {
+		operationKind = SubnetRuntimeOVNCleanupOperation
+	}
+	wrapped := operation
+	if c.subnetRuntimeIPAMWriter != nil {
+		ipamKind := SubnetRuntimeIPAMAllocateOperation
+		if !subnet.DeletionTimestamp.IsZero() {
+			ipamKind = SubnetRuntimeIPAMReleaseOperation
+		}
+		previous := wrapped
+		wrapped = func(ctx context.Context) error {
+			return c.subnetRuntimeIPAMWriter(ctx, subnet, ipamKind, previous)
+		}
+	}
+	if c.subnetRuntimeOVNWriter != nil {
+		previous := wrapped
+		wrapped = func(ctx context.Context) error {
+			return c.subnetRuntimeOVNWriter(ctx, subnet, operationKind, previous)
+		}
+	}
+	return wrapped(ctx)
 }
 
 // validateSubnetRuntimeDeleteTarget prevents a stale deletion snapshot from
@@ -808,6 +866,80 @@ func (c *Controller) SetSubnetRuntimeFence(check func(context.Context) error) er
 		return errors.New("subnet runtime fence is already configured")
 	}
 	c.subnetRuntimeFence = check
+	return nil
+}
+
+// SubnetRuntimeStatusWriter persists a complete status projection for the
+// runtime-owned Subnet writer. The callback receives the same context and
+// object that the legacy domain path is about to mutate.
+type SubnetRuntimeStatusWriter func(context.Context, *kubeovnv1.Subnet) error
+
+// SubnetRuntimeGatewayMACWriter persists the gateway MAC status field for the
+// runtime-owned Subnet writer.
+type SubnetRuntimeGatewayMACWriter func(context.Context, *kubeovnv1.Subnet, string) error
+
+// SubnetRuntimeIPStatusWriter persists only the IP usage and range fields of a
+// runtime-owned Subnet status, preserving fields updated by other handlers.
+type SubnetRuntimeIPStatusWriter func(context.Context, *kubeovnv1.Subnet) error
+
+// SubnetRuntimeFinalizerWriter applies one runtime-owned finalizer transition.
+// The bool is true when the finalizer must be removed; the returned object is
+// the API-confirmed copy used by the remaining domain path.
+type SubnetRuntimeFinalizerWriter func(context.Context, *kubeovnv1.Subnet, bool) (*kubeovnv1.Subnet, error)
+
+// SubnetRuntimeDomainWriter wraps one complete Subnet domain operation. The
+// operation callback contains the legacy domain calculation while the
+// installed writer supplies the uncached identity check and durable fence
+// immediately before OVN or IPAM side effects.
+type SubnetRuntimeDomainWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeDomainOperation, func(context.Context) error) error
+
+// SubnetRuntimeVirtualPortWriter owns the fresh-snapshot admission for queued
+// virtual-port parent updates. The runtime mode installs it so the legacy
+// queue cannot write OVN from an informer-only object.
+type SubnetRuntimeVirtualPortWriter func(context.Context, string) error
+
+// SubnetRuntimeDomainOperation identifies the backend side-effect class being
+// fenced. A single reconcile may contain multiple concrete OVN/IPAM calls, so
+// the wrapper surrounds the complete domain phase and preserves one owner for
+// the whole operation.
+type SubnetRuntimeDomainOperation string
+
+const (
+	SubnetRuntimeOVNAllocateOperation  SubnetRuntimeDomainOperation = "ovn-allocate"
+	SubnetRuntimeOVNCleanupOperation   SubnetRuntimeDomainOperation = "ovn-cleanup"
+	SubnetRuntimeIPAMAllocateOperation SubnetRuntimeDomainOperation = "ipam-allocate"
+	SubnetRuntimeIPAMReleaseOperation  SubnetRuntimeDomainOperation = "ipam-release"
+)
+
+// SetSubnetRuntimeWriters installs the explicit API status and finalizer
+// and OVN/IPAM domain writers used by subnet-writer mode. Legacy mode leaves
+// these hooks unset.
+func (c *Controller) SetSubnetRuntimeWriters(statusWriter SubnetRuntimeStatusWriter, ipStatusWriter SubnetRuntimeIPStatusWriter, gatewayMACWriter SubnetRuntimeGatewayMACWriter, finalizerWriter SubnetRuntimeFinalizerWriter, ovnWriter, ipamWriter SubnetRuntimeDomainWriter) error {
+	if c == nil || statusWriter == nil || ipStatusWriter == nil || gatewayMACWriter == nil || finalizerWriter == nil || ovnWriter == nil || ipamWriter == nil {
+		return errors.New("subnet runtime writers are not configured")
+	}
+	if c.subnetRuntimeStatusWriter != nil || c.subnetRuntimeIPStatusWriter != nil || c.subnetRuntimeGatewayMACWriter != nil || c.subnetRuntimeFinalizerWriter != nil || c.subnetRuntimeOVNWriter != nil || c.subnetRuntimeIPAMWriter != nil {
+		return errors.New("subnet runtime writers are already configured")
+	}
+	c.subnetRuntimeStatusWriter = statusWriter
+	c.subnetRuntimeIPStatusWriter = ipStatusWriter
+	c.subnetRuntimeGatewayMACWriter = gatewayMACWriter
+	c.subnetRuntimeFinalizerWriter = finalizerWriter
+	c.subnetRuntimeOVNWriter = ovnWriter
+	c.subnetRuntimeIPAMWriter = ipamWriter
+	return nil
+}
+
+// SetSubnetRuntimeVirtualPortWriter installs the runtime admission hook for
+// the dedicated virtual-port worker. Legacy mode leaves it unset.
+func (c *Controller) SetSubnetRuntimeVirtualPortWriter(writer SubnetRuntimeVirtualPortWriter) error {
+	if c == nil || writer == nil {
+		return errors.New("subnet runtime virtual-port writer is not configured")
+	}
+	if c.subnetRuntimeVirtualPortWriter != nil {
+		return errors.New("subnet runtime virtual-port writer is already configured")
+	}
+	c.subnetRuntimeVirtualPortWriter = writer
 	return nil
 }
 
@@ -1495,6 +1627,12 @@ func (c *Controller) reconcileSubnetWithContext(ctx context.Context, subnet *kub
 }
 
 func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
+	// VIP virtual-port reconciliation is an OVN write phase of the runtime
+	// Subnet writer. Keep direct callers fenced as well as the enclosing domain
+	// wrapper so a lost Lease cannot start a new OVN read/write sequence.
+	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+		return err
+	}
 	/* get all virtual port belongs to this logical switch */
 	lsps, err := c.OVNNbClient.ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name}, func(lsp *ovnnb.LogicalSwitchPort) bool {
 		return lsp.Type == "virtual"
@@ -1533,6 +1671,9 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 
 	// delete old virtual ports
 	for _, lspName := range existVips {
+		if err = c.checkSubnetRuntimeFence(context.Background()); err != nil {
+			return err
+		}
 		if err = c.OVNNbClient.DeleteLogicalSwitchPort(lspName); err != nil {
 			klog.Errorf("delete virtual port %s lspName from logical switch %s: %v", lspName, subnet.Name, err)
 			return err
@@ -1540,6 +1681,9 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 	}
 
 	// add new virtual port
+	if err = c.checkSubnetRuntimeFence(context.Background()); err != nil {
+		return err
+	}
 	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPorts(subnet.Name, newVips...); err != nil {
 		klog.Errorf("create virtual port with vips %v from logical switch %s: %v", newVips, subnet.Name, err)
 		return err
@@ -1550,6 +1694,17 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) syncVirtualPort(key string) error {
+	// syncVirtualPort runs on a dedicated worker because VIP parent updates can
+	// arrive after the Subnet reconcile has queued them. In subnet-writer mode
+	// the runtime installer replaces the lister path with a fresh API snapshot
+	// before it reaches this backend operation.
+	ctx := context.Background()
+	if c.subnetRuntimeVirtualPortWriter != nil {
+		return c.subnetRuntimeVirtualPortWriter(ctx, key)
+	}
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	subnet, err := c.subnetsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -1558,6 +1713,63 @@ func (c *Controller) syncVirtualPort(key string) error {
 		klog.Errorf("failed to get subnet %s, %v", key, err)
 		return err
 	}
+	return c.syncVirtualPortForSubnet(ctx, subnet)
+}
+
+// SyncSubnetVirtualPort applies the queued virtual-port parent update after
+// the runtime writer has authorized a fresh API snapshot. It is the only
+// backend entry used by the runtime virtual-port hook.
+func (c *Controller) SyncSubnetVirtualPort(ctx context.Context, subnet *kubeovnv1.Subnet) error {
+	if ctx == nil {
+		return errors.New("subnet virtual-port context is nil")
+	}
+	if subnet == nil {
+		return errors.New("subnet virtual-port Subnet is nil")
+	}
+	if err := c.waitForSubnetRuntimeRecovery(ctx); err != nil {
+		return err
+	}
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
+	if c.config == nil || c.config.KubeOvnClient == nil {
+		return errors.New("subnet runtime API client is not configured")
+	}
+	readCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	live, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(readCtx, subnet.Name, metav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := validateSubnetRuntimeVirtualPortSnapshot(subnet, live); err != nil {
+		return err
+	}
+	if !live.DeletionTimestamp.IsZero() {
+		return nil
+	}
+	return c.syncVirtualPortForSubnet(readCtx, live)
+}
+
+func validateSubnetRuntimeVirtualPortSnapshot(expected, current *kubeovnv1.Subnet) error {
+	if expected == nil || current == nil {
+		return errors.New("subnet virtual-port snapshot is nil")
+	}
+	if expected.Name != current.Name || expected.UID != current.UID || expected.Generation != current.Generation ||
+		expected.ResourceVersion != current.ResourceVersion || !reflect.DeepEqual(expected.Spec, current.Spec) ||
+		(!expected.DeletionTimestamp.IsZero()) != (!current.DeletionTimestamp.IsZero()) {
+		return k8serrors.NewConflict(
+			schema.GroupResource{Group: kubeovnv1.SchemeGroupVersion.Group, Resource: "subnets"},
+			expected.Name,
+			errors.New("subnet changed since the virtual-port snapshot"),
+		)
+	}
+	return nil
+}
+
+func (c *Controller) syncVirtualPortForSubnet(ctx context.Context, subnet *kubeovnv1.Subnet) error {
 	if len(subnet.Spec.Vips) == 0 {
 		return nil
 	}
@@ -1596,6 +1808,9 @@ func (c *Controller) syncVirtualPort(key string) error {
 			continue
 		}
 
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
 		if err = c.OVNNbClient.SetLogicalSwitchPortVirtualParents(subnet.Name, strings.Join(virtualParents, ","), vip); err != nil {
 			klog.Errorf("set vip %s virtual parents %v: %v", vip, virtualParents, err)
 			return err
@@ -2718,6 +2933,9 @@ func (c *Controller) createPortGroupForDistributedSubnet(node *v1.Node, subnet *
 }
 
 func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr string, nextHops []string, nameIPMap map[string]string) error {
+	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+		return err
+	}
 	ipSuffix := getIPSuffix(util.CheckProtocol(cidr))
 	match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
 	action := kubeovnv1.PolicyRouteActionReroute
@@ -2767,7 +2985,13 @@ func (c *Controller) addPolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Subnet
 }
 
 func (c *Controller) deletePolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Subnet) error {
+	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+		return err
+	}
 	for cidr := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+		if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+			return err
+		}
 		ipSuffix := getIPSuffix(util.CheckProtocol(cidr))
 		match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
 		klog.Infof("delete policy route for router: %s, priority: %d, match %s", c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match)
@@ -2837,6 +3061,9 @@ func (c *Controller) deletePolicyRouteForDistributedSubnet(subnet *kubeovnv1.Sub
 }
 
 func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, gatewayType string, isDelete bool) error {
+	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+		return err
+	}
 	if isDelete && subnet.Spec.Vpc == c.config.ClusterRouter {
 		for _, owner := range []string{"isServiceProxyFallbackDropPolicy", "isServiceProxyFallbackReroutePolicy"} {
 			if err := c.deleteServiceProxyFallbackPolicies(subnet, owner); err != nil {

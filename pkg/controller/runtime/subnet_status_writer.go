@@ -17,9 +17,9 @@ import (
 const subnetStatusWriteTimeout = 5 * time.Second
 
 // subnetStatusWriter persists only status and uses uncached reads immediately
-// before every write. It remains an isolated API seam; subnet-writer mode
-// delegates the complete domain sequence to the Controller facade so status,
-// finalizer, IPAM, and OVN mutations share one owner.
+// before every write. Subnet-writer mode installs it into the legacy domain
+// sequence so status patches share the runtime fence and optimistic identity
+// checks with finalizer and data-plane work.
 type subnetStatusWriter struct {
 	ctx    context.Context
 	client client.Client
