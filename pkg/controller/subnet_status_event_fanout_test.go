@@ -100,24 +100,29 @@ func TestSubnetWriterStatusEventsSkipLegacyQueue(t *testing.T) {
 	c := &Controller{
 		config:                  &Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetWriter},
 		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
-		subnetStatusEvents:      newSubnetStatusEventFanout(),
+		subnetRuntimeEvents:     newSubnetRuntimeEventFanout(),
 	}
 	t.Cleanup(c.updateSubnetStatusQueue.ShutDown)
 
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	events := make(chan subnetStatusEvent, 1)
-	unsubscribe := c.SubscribeSubnetStatusEvents(ctx, func(name, sourceKind string) {
-		events <- subnetStatusEvent{name: name, sourceKind: sourceKind}
+	events := make(chan string, 1)
+	unsubscribe := c.SubscribeSubnetRuntimeEvents(ctx, func(name string) {
+		events <- name
 	})
 	defer unsubscribe()
 
 	c.enqueueSubnetStatus("subnet-a", "IP")
 	select {
 	case event := <-events:
-		require.Equal(t, subnetStatusEvent{name: "subnet-a", sourceKind: "IP"}, event)
+		require.Equal(t, "subnet-a", event)
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for writer status fan-out")
+		t.Fatal("timed out waiting for writer runtime fan-out")
 	}
 	require.Equal(t, 0, c.updateSubnetStatusQueue.Len())
+}
+
+func TestSubnetStatusEventFanoutIsDisabledForSubnetWriter(t *testing.T) {
+	config := &Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetWriter}
+	require.Nil(t, newSubnetStatusEventFanoutForConfig(config))
 }

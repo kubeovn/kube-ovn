@@ -142,7 +142,7 @@ func setupSubnetStatusReconciler(mgr ctrl.Manager, backend *controller.Controlle
 	return reconciler.SetupWithManager(mgr)
 }
 
-func setupSubnetWriterReconciler(ctx context.Context, mgr ctrl.Manager, backend *controller.Controller, lease SubnetWriterLease, fence SubnetWriterFence) error {
+func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controller, lease SubnetWriterLease, fence SubnetWriterFence) error {
 	if mgr == nil {
 		return errors.New("controller-runtime manager is nil")
 	}
@@ -153,20 +153,6 @@ func setupSubnetWriterReconciler(ctx context.Context, mgr ctrl.Manager, backend 
 		Backend: backend,
 		Reader:  mgr.GetAPIReader(),
 		Gate:    SubnetWriterGate{Recovery: fence.Check},
-	}
-	status := &SubnetStatusReconciler{
-		Reader:    mgr.GetAPIReader(),
-		Events:    NewLegacySubnetStatusEventSource(backend),
-		Projector: NewSubnetStatusCalculatorProjector(backend.CalculateSubnetStatusIP),
-		Writer: &subnetStatusWriter{
-			ctx:    ctx,
-			client: mgr.GetClient(),
-			reader: mgr.GetAPIReader(),
-			gate:   SubnetWriterGate{Recovery: fence.Check},
-		},
-	}
-	if err := status.SetupWithManager(mgr); err != nil {
-		return err
 	}
 	return (&SubnetReconciler{
 		Reader:       mgr.GetAPIReader(),
@@ -257,7 +243,7 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 			return err
 		}
 		defer func() { _ = lease.Release(context.WithoutCancel(ctx)) }()
-		if err := setupSubnetWriterReconciler(ctx, mgr, backend, lease, fence); err != nil {
+		if err := setupSubnetWriterReconciler(mgr, backend, lease, fence); err != nil {
 			return err
 		}
 	}

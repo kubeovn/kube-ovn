@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -31,6 +32,28 @@ func TestEnqueueSubnetReconcileRoutesWriterEvents(t *testing.T) {
 	c.enqueueSubnetReconcile("subnet-a")
 	require.Equal(t, "subnet-a", <-events)
 	require.Equal(t, 0, c.addOrUpdateSubnetQueue.Len())
+}
+
+func TestEnqueueSubnetStatusAfterRoutesWriterEvents(t *testing.T) {
+	c := &Controller{
+		config:              &Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetWriter},
+		subnetRuntimeEvents: newSubnetRuntimeEventFanout(),
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	events := make(chan string, 1)
+	unsubscribe := c.SubscribeSubnetRuntimeEvents(ctx, func(name string) {
+		events <- name
+	})
+	defer unsubscribe()
+
+	c.enqueueSubnetStatusAfter("subnet-a", "VIP", 10*time.Millisecond)
+	select {
+	case event := <-events:
+		require.Equal(t, "subnet-a", event)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for delayed writer runtime fan-out")
+	}
 }
 
 func TestSubnetRuntimeEventFanoutUnsubscribeStopsEvents(t *testing.T) {
