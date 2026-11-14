@@ -1108,6 +1108,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	}
 	go wait.Until(c.loopEncapIPCheck, 3*time.Second, stopCh)
 	go wait.Until(c.ovnMetricsUpdate, 3*time.Second, stopCh)
+	go wait.Until(c.loopExternalLBInterfaces, 3*time.Second, stopCh)
 	go wait.Until(func() {
 		if err := c.reconcileRouters(nil); err != nil {
 			klog.Errorf("failed to reconcile %s routes: %v", util.NodeNic, err)

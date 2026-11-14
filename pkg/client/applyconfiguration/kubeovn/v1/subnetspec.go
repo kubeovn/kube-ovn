@@ -103,6 +103,10 @@ type SubnetSpecApplyConfiguration struct {
 	EnableMulticastSnoop *bool `json:"enableMulticastSnoop,omitempty"`
 	// Enable external LB address support.
 	EnableExternalLBAddress *bool `json:"enableExternalLBAddress,omitempty"`
+	// ExternalLBInterface creates an addressless, ARP-only internal interface on
+	// eligible nodes for external L2 LoadBalancer speakers. Requires an IPv4
+	// underlay subnet with enableExternalLBAddress and no logical gateway.
+	ExternalLBInterface *string `json:"externalLBInterface,omitempty"`
 	// Route table associated with the subnet.
 	RouteTable *string `json:"routeTable,omitempty"`
 	// Namespace label selectors to associate with this subnet.
@@ -449,6 +453,14 @@ func (b *SubnetSpecApplyConfiguration) WithEnableMulticastSnoop(value bool) *Sub
 // If called multiple times, the EnableExternalLBAddress field is set to the value of the last call.
 func (b *SubnetSpecApplyConfiguration) WithEnableExternalLBAddress(value bool) *SubnetSpecApplyConfiguration {
 	b.EnableExternalLBAddress = &value
+	return b
+}
+
+// WithExternalLBInterface sets the ExternalLBInterface field in the declarative configuration to the given value
+// and returns the receiver, so that objects can be built by chaining "With" function invocations.
+// If called multiple times, the ExternalLBInterface field is set to the value of the last call.
+func (b *SubnetSpecApplyConfiguration) WithExternalLBInterface(value string) *SubnetSpecApplyConfiguration {
+	b.ExternalLBInterface = &value
 	return b
 }
 
