@@ -88,9 +88,39 @@ func TestEnqueueDeleteSubnetRuntimeWriterOwnership(t *testing.T) {
 			}
 			t.Cleanup(controller.deleteSubnetQueue.ShutDown)
 
-			controller.enqueueDeleteSubnet(&kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"}})
+			controller.enqueueDeleteSubnet(&kubeovnv1.Subnet{Name: "subnet-a"})
 			require.Equal(t, tc.queued, controller.deleteSubnetQueue.Len())
 		})
+	}
+}
+
+func TestReconcileSubnetRuntimeInvalidatesPolicySelectorCache(t *testing.T) {
+	t.Parallel()
+
+	controller := &Controller{}
+	before := controller.policySelectorCacheGeneration()
+	err := controller.ReconcileSubnetRuntime(t.Context(), nil)
+	require.Error(t, err)
+	require.Equal(t, before+1, controller.policySelectorCacheGeneration())
+}
+
+func TestEnqueueDeleteSubnetRuntimeWriterPublishesRuntimeEvent(t *testing.T) {
+	t.Parallel()
+
+	controller := &Controller{
+		config:              &Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetWriter},
+		subnetRuntimeEvents: newSubnetRuntimeEventFanout(),
+	}
+	events := make(chan string, 1)
+	unsubscribe := controller.SubscribeSubnetRuntimeEvents(t.Context(), func(name string) { events <- name })
+	t.Cleanup(unsubscribe)
+
+	controller.enqueueDeleteSubnet(&kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"}})
+	select {
+	case name := <-events:
+		require.Equal(t, "subnet-a", name)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for runtime subnet delete event")
 	}
 }
 

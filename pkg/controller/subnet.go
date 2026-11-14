@@ -57,6 +57,7 @@ func (c *Controller) enqueueDeleteSubnet(obj any) {
 
 	if controllerRuntimeSubnetWriterEnabled(c.config) {
 		klog.V(3).Infof("skip legacy delete queue for subnet %s in runtime writer mode", subnet.Name)
+		c.enqueueSubnetReconcile(subnet.Name)
 		return
 	}
 	klog.V(3).Infof("enqueue delete subnet %s", subnet.Name)
@@ -686,6 +687,9 @@ func (c *Controller) ReconcileSubnetRuntime(ctx context.Context, subnet *kubeovn
 	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
 	}
+	// Invalidate selector-derived policy state at the writer ingress for every
+	// object event, including reconciles triggered by direct runtime watches.
+	c.invalidatePolicySelectorCache()
 	if subnet == nil {
 		return errors.New("runtime Subnet reconcile requires a Subnet")
 	}

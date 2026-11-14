@@ -1067,14 +1067,12 @@ func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter
 		util.LogFatalAndExit(err, "failed to add vpc egress gateway event handler")
 	}
 
-	if !controllerRuntimeSubnetWriterEnabled(config) {
-		if _, err = subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    controller.enqueueAddSubnet,
-			UpdateFunc: controller.enqueueUpdateSubnet,
-			DeleteFunc: controller.enqueueDeleteSubnet,
-		}); err != nil {
-			util.LogFatalAndExit(err, "failed to add subnet event handler")
-		}
+	if _, err = subnetInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    controller.enqueueAddSubnet,
+		UpdateFunc: controller.enqueueUpdateSubnet,
+		DeleteFunc: controller.enqueueDeleteSubnet,
+	}); err != nil {
+		util.LogFatalAndExit(err, "failed to add subnet event handler")
 	}
 
 	if _, err = ippoolInformer.Informer().AddEventHandler(controller.ipPoolEventHandler()); err != nil {
