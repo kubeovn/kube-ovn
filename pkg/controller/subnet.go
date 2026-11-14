@@ -16,6 +16,7 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -121,6 +122,13 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 }
 
 func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
+	return c.formatSubnetWithContext(context.Background(), subnet)
+}
+
+func (c *Controller) formatSubnetWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return nil, err
+	}
 	newSubnet := subnet.DeepCopy()
 	if err := formatAddress(newSubnet); err != nil {
 		klog.Error(err)
@@ -166,7 +174,10 @@ func (c *Controller) formatSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, 
 	changed := !reflect.DeepEqual(subnet, newSubnet)
 	klog.Infof("format subnet %v, changed %v", subnet.Name, changed)
 	if changed {
-		ret, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(context.Background(), newSubnet, metav1.UpdateOptions{})
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return nil, err
+		}
+		ret, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Update(ctx, newSubnet, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("failed to update subnet %s, %v", subnet.Name, err)
 			return nil, err
@@ -682,12 +693,54 @@ func (c *Controller) ReconcileSubnetRuntime(ctx context.Context, subnet *kubeovn
 		if err != nil {
 			return err
 		}
+		if err := validateSubnetRuntimeDeleteTarget(subnet, live); err != nil {
+			return err
+		}
 		_, _, err = c.handleSubnetFinalizerWithContext(ctx, live)
 		return err
 	}
 	c.subnetKeyMutex.LockKey(subnet.Name)
 	defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
 	return c.reconcileSubnetObject(ctx, subnet)
+}
+
+// validateSubnetRuntimeDeleteTarget prevents a stale deletion snapshot from
+// removing the finalizer from a replacement Subnet with the same name. The
+// resource version may advance while cleanup releases dependent objects, so
+// UID and generation are the stable identity checks for this hand-off.
+func validateSubnetRuntimeDeleteTarget(snapshot, live *kubeovnv1.Subnet) error {
+	if snapshot == nil || live == nil {
+		return errors.New("subnet runtime deletion target is nil")
+	}
+	if snapshot.Name != live.Name {
+		return k8serrors.NewConflict(
+			schema.GroupResource{Group: kubeovnv1.SchemeGroupVersion.Group, Resource: "subnets"},
+			snapshot.Name,
+			fmt.Errorf("live subnet name %q differs from snapshot %q", live.Name, snapshot.Name),
+		)
+	}
+	if snapshot.UID != "" && live.UID != snapshot.UID {
+		return k8serrors.NewConflict(
+			schema.GroupResource{Group: kubeovnv1.SchemeGroupVersion.Group, Resource: "subnets"},
+			snapshot.Name,
+			fmt.Errorf("live subnet UID %q differs from snapshot UID %q", live.UID, snapshot.UID),
+		)
+	}
+	if snapshot.Generation != 0 && live.Generation != snapshot.Generation {
+		return k8serrors.NewConflict(
+			schema.GroupResource{Group: kubeovnv1.SchemeGroupVersion.Group, Resource: "subnets"},
+			snapshot.Name,
+			fmt.Errorf("live subnet generation %d differs from snapshot generation %d", live.Generation, snapshot.Generation),
+		)
+	}
+	if snapshot.DeletionTimestamp.IsZero() != live.DeletionTimestamp.IsZero() {
+		return k8serrors.NewConflict(
+			schema.GroupResource{Group: kubeovnv1.SchemeGroupVersion.Group, Resource: "subnets"},
+			snapshot.Name,
+			errors.New("live subnet terminating state differs from snapshot"),
+		)
+	}
+	return nil
 }
 
 // SetSubnetRuntimeFence installs the durable check used by the opt-in runtime
@@ -736,7 +789,7 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		return err
 	}
 	klog.V(3).Infof("handle add or update subnet %s", cachedSubnet.Name)
-	subnet, err := c.formatSubnet(cachedSubnet)
+	subnet, err := c.formatSubnetWithContext(ctx, cachedSubnet)
 	if err != nil {
 		err := fmt.Errorf("failed to format subnet %s, %w", cachedSubnet.Name, err)
 		klog.Error(err)
@@ -1014,11 +1067,6 @@ func (c *Controller) finishOvnSubnetReconcile(ctx context.Context, subnet *kubeo
 	return nil
 }
 
-// reconcileSubnetBaseACLs applies routed, private, or cleared base ACLs on the subnet LS.
-func (c *Controller) reconcileSubnetBaseACLs(subnet *kubeovnv1.Subnet, router string) error {
-	return c.reconcileSubnetBaseACLsWithContext(context.Background(), subnet, router)
-}
-
 func (c *Controller) reconcileSubnetBaseACLsWithContext(ctx context.Context, subnet *kubeovnv1.Subnet, router string) error {
 	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
@@ -1273,10 +1321,6 @@ func (c *Controller) updateVlanStatusForSubnetDeletion(vlan *kubeovnv1.Vlan, sub
 	}
 
 	return nil
-}
-
-func (c *Controller) reconcileSubnet(subnet *kubeovnv1.Subnet) error {
-	return c.reconcileSubnetWithContext(context.Background(), subnet)
 }
 
 func (c *Controller) reconcileSubnetWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) error {
@@ -1719,10 +1763,6 @@ func (c *Controller) reconcileDefaultCentralizedSubnetRouteInDefaultVpcWithConte
 		return err
 	}
 	return nil
-}
-
-func (c *Controller) reconcileEcmpCentralizedSubnetRouteInDefaultVpc(subnet *kubeovnv1.Subnet) error {
-	return c.reconcileEcmpCentralizedSubnetRouteInDefaultVpcWithContext(context.Background(), subnet)
 }
 
 func (c *Controller) reconcileEcmpCentralizedSubnetRouteInDefaultVpcWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) error {

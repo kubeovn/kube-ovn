@@ -15,6 +15,7 @@ import (
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ktesting "k8s.io/client-go/testing"
@@ -51,6 +52,46 @@ func TestSubnetRuntimeHelpersHonorCanceledContext(t *testing.T) {
 	fenced := &Controller{subnetRuntimeFence: func(context.Context) error { return fenceErr }}
 	err = fenced.reconcileOvnDefaultVpcRouteWithContext(context.Background(), subnet)
 	require.ErrorIs(t, err, fenceErr)
+}
+
+func TestValidateSubnetRuntimeDeleteTarget(t *testing.T) {
+	t.Parallel()
+
+	deleting := metav1.Now()
+	snapshot := &kubeovnv1.Subnet{Name: "subnet-a", UID: "uid-a", Generation: 2, DeletionTimestamp: &deleting}
+	tests := []struct {
+		name string
+		live *kubeovnv1.Subnet
+		want bool
+	}{
+		{
+			name: "same identity",
+			live: snapshot.DeepCopy(),
+			want: true,
+		},
+		{
+			name: "replacement uid",
+			live: &kubeovnv1.Subnet{Name: snapshot.Name, UID: "uid-b", Generation: snapshot.Generation},
+		},
+		{
+			name: "updated generation",
+			live: &kubeovnv1.Subnet{Name: snapshot.Name, UID: snapshot.UID, Generation: 3},
+		},
+		{
+			name: "replacement is not terminating",
+			live: &kubeovnv1.Subnet{Name: snapshot.Name, UID: snapshot.UID, Generation: snapshot.Generation},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSubnetRuntimeDeleteTarget(snapshot, tc.live)
+			if tc.want {
+				require.NoError(t, err)
+				return
+			}
+			require.True(t, k8serrors.IsConflict(err))
+		})
+	}
 }
 
 func TestHandleDeleteLogicalSwitchResources(t *testing.T) {
@@ -1044,6 +1085,25 @@ func Test_formatSubnet(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestFormatSubnetWithContextStopsBeforeUpdateWhenCanceled(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	subnet := &kubeovnv1.Subnet{
+		Name: "canceled-format",
+		Spec: kubeovnv1.SubnetSpec{CIDRBlock: "192.168.0.1/24"},
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	client := fakeController.fakeController.config.KubeOvnClient.(*kubeovnfake.Clientset)
+	actionsBefore := len(client.Actions())
+
+	_, err := ctrl.formatSubnetWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, client.Actions()[actionsBefore:])
 }
 
 func Test_handleAddOrUpdateSubnet_vlanValidationError(t *testing.T) {

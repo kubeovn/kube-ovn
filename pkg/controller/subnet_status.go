@@ -45,10 +45,6 @@ func (c *Controller) updateNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet
 	return nil
 }
 
-func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr string) error {
-	return c.patchSubnetStatusWithContext(context.Background(), subnet, reason, errStr)
-}
-
 func (c *Controller) patchSubnetStatusWithContext(ctx context.Context, subnet *kubeovnv1.Subnet, reason, errStr string) error {
 	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
@@ -85,13 +81,6 @@ func (c *Controller) patchSubnetStatusWithContext(ctx context.Context, subnet *k
 		c.recordResourceEvent(subnet, v1.EventTypeNormal, reason, fmt.Sprintf("Subnet %s status updated successfully", subnet.Name))
 	}
 	return nil
-}
-
-// patchSubnetGatewayMAC persists the subnet's gateway mac to status on its own, independent
-// of the wider patchSubnetStatus flow, since it must be visible to the validating webhook
-// (which only reads the Subnet CR) as soon as prepareOvnSubnet records it in ipam.
-func (c *Controller) patchSubnetGatewayMAC(subnetName, gatewayMAC string) error {
-	return c.patchSubnetGatewayMACWithContext(context.Background(), subnetName, gatewayMAC)
 }
 
 func (c *Controller) patchSubnetGatewayMACWithContext(ctx context.Context, subnetName, gatewayMAC string) error {
