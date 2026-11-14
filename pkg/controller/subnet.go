@@ -808,6 +808,9 @@ func (c *Controller) checkSubnetRuntimeFence(ctx context.Context) error {
 // are initialized before the runtime manager starts; a missing backend fails
 // closed instead of allowing a partial writer to mutate API state.
 func (c *Controller) RecoverSubnetRuntime(ctx context.Context, _ *kubeovnv1.Subnet) error {
+	if err := c.waitForSubnetRuntimeRecovery(ctx); err != nil {
+		return err
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}

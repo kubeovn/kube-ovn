@@ -206,6 +206,10 @@ type Controller struct {
 	// prerequisite syncs complete.
 	ipPoolRecoveryReady chan struct{}
 	ipPoolRecoveryOnce  sync.Once
+	// subnetRuntimeRecoveryReady keeps the native Subnet writer behind the
+	// same startup recovery boundary as the legacy domain initialization.
+	subnetRuntimeRecoveryReady chan struct{}
+	subnetRuntimeRecoveryOnce  sync.Once
 
 	ipsLister     kubeovnlister.IPLister
 	ipSynced      cache.InformerSynced
@@ -1341,10 +1345,15 @@ func (c *Controller) run(ctx context.Context, startRuntime RuntimeStarter) {
 	// hold reconcile requests behind the shared IPAM recovery gate. This makes
 	// the handoff atomic: no native event can observe partially restored state,
 	// and the legacy delete snapshot remains the only recovery backstop.
-	runtimeStartedBeforeRecovery := controllerRuntimeIPPoolEnabled(c.config) && startRuntime != nil
+	runtimeStartedBeforeRecovery := (controllerRuntimeIPPoolEnabled(c.config) || controllerRuntimeSubnetWriterEnabled(c.config)) && startRuntime != nil
 	var runtimeDone <-chan struct{}
 	if runtimeStartedBeforeRecovery {
-		c.beginIPPoolRuntimeRecovery()
+		if controllerRuntimeIPPoolEnabled(c.config) {
+			c.beginIPPoolRuntimeRecovery()
+		}
+		if controllerRuntimeSubnetWriterEnabled(c.config) {
+			c.beginSubnetRuntimeRecovery()
+		}
 		runtimeDone = startControllerRuntime(ctx, c, startRuntime)
 	}
 
@@ -1366,7 +1375,12 @@ func (c *Controller) run(ctx context.Context, startRuntime RuntimeStarter) {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
 	}
 	if runtimeStartedBeforeRecovery {
-		c.finishIPPoolRuntimeRecovery()
+		if controllerRuntimeIPPoolEnabled(c.config) {
+			c.finishIPPoolRuntimeRecovery()
+		}
+		if controllerRuntimeSubnetWriterEnabled(c.config) {
+			c.finishSubnetRuntimeRecovery()
+		}
 	}
 
 	// Recovery above is the allocation barrier for the IPPool runtime backend.
