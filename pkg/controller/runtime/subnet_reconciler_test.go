@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
@@ -23,6 +24,43 @@ func TestSubnetReconcilerIgnoresStatusOnlyUpdates(t *testing.T) {
 
 	newSubnet.Generation++
 	require.True(t, subnetSpecOrLifecycleChanged(event.UpdateEvent{ObjectOld: oldSubnet, ObjectNew: newSubnet}))
+}
+
+func TestSubnetReconcilerFansOutProviderNetworkEvents(t *testing.T) {
+	vlan := testVlan("vlan-a", "provider-a")
+	vlan.Status.Subnets = []string{"subnet-a"}
+	provider := testProvider("provider-a", false, "vlan-a")
+	reconciler := &SubnetReconciler{Reader: newRuntimeClient(t, vlan, provider)}
+	queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[ctrl.Request]())
+	t.Cleanup(queue.ShutDown)
+
+	reconciler.enqueueProviderNetworkRequests(t.Context(), queue, provider)
+	require.Equal(t, 1, queue.Len())
+	request, _ := queue.Get()
+	queue.Done(request)
+	require.Equal(t, ctrl.Request{Name: "subnet-a"}, request)
+}
+
+func TestSubnetReconcilerFansOutProviderNetworkUpdateUnion(t *testing.T) {
+	oldProvider := testProvider("provider-a", false, "vlan-old")
+	newProvider := testProvider("provider-a", true, "vlan-new")
+	oldVlan := testVlan("vlan-old", "provider-a")
+	oldVlan.Status.Subnets = []string{"subnet-old"}
+	newVlan := testVlan("vlan-new", "provider-a")
+	newVlan.Status.Subnets = []string{"subnet-new"}
+	reconciler := &SubnetReconciler{Reader: newRuntimeClient(t, oldVlan, newVlan, newProvider)}
+	queue := workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[ctrl.Request]())
+	t.Cleanup(queue.ShutDown)
+
+	reconciler.enqueueProviderNetworkRequests(t.Context(), queue, oldProvider, newProvider)
+	require.Equal(t, 2, queue.Len())
+	requests := make([]ctrl.Request, 0, queue.Len())
+	for queue.Len() > 0 {
+		request, _ := queue.Get()
+		queue.Done(request)
+		requests = append(requests, request)
+	}
+	require.Equal(t, []ctrl.Request{{Name: "subnet-new"}, {Name: "subnet-old"}}, requests)
 }
 
 func TestSubnetReconcilerFailsClosedWithoutDependencies(t *testing.T) {

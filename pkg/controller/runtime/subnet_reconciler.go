@@ -13,6 +13,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
@@ -111,7 +112,18 @@ func (r *SubnetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		}
 		builder := ctrl.NewControllerManagedBy(mgr).
 			Named("kube-ovn-subnet").
-			For(&kubeovnv1.Subnet{}, builder.WithPredicates(updates))
+			For(&kubeovnv1.Subnet{}, builder.WithPredicates(updates)).
+			Watches(&kubeovnv1.ProviderNetwork{}, handler.Funcs{
+				CreateFunc: func(ctx context.Context, e event.CreateEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+					r.enqueueProviderNetworkRequests(ctx, q, e.Object)
+				},
+				UpdateFunc: func(ctx context.Context, e event.UpdateEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+					r.enqueueProviderNetworkRequests(ctx, q, e.ObjectOld, e.ObjectNew)
+				},
+				DeleteFunc: func(ctx context.Context, e event.DeleteEvent, q workqueue.TypedRateLimitingInterface[ctrl.Request]) {
+					r.enqueueProviderNetworkRequests(ctx, q, e.Object)
+				},
+			})
 		if r.Events != nil {
 			builder.WatchesRawSource(source.TypedFunc[ctrl.Request](func(ctx context.Context, q workqueue.TypedRateLimitingInterface[ctrl.Request]) error {
 				unsubscribe := r.Events.SubscribeSubnetRuntimeEvents(ctx, func(name string) {
@@ -146,6 +158,11 @@ func (r *SubnetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		}
 		return builder.Complete(r)
 	})
+}
+
+func (r *SubnetReconciler) enqueueProviderNetworkRequests(ctx context.Context, q workqueue.TypedRateLimitingInterface[ctrl.Request], objects ...client.Object) {
+	shadow := &SubnetShadowReconciler{Reader: r.Reader}
+	shadow.enqueueProviderNetworkStatusRequests(ctx, q, objects...)
 }
 
 func (r *SubnetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {

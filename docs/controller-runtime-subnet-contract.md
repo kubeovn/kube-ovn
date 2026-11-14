@@ -29,7 +29,9 @@ are rejected before entering the status queue.
 The explicit `subnet-writer` mode is opt-in production wiring: it acquires a
 dedicated Kubernetes Lease for durable fencing, disables legacy Subnet workers
 and startup Subnet syncs, and routes one runtime reconcile through the
-Controller's status, finalizer, IPAM, and OVN domain path.
+Controller's status, finalizer, IPAM, and OVN domain path. Its manager-owned
+Subnet queue also watches ProviderNetwork changes and fans them out through the
+VLAN-to-Subnet dependency map so readiness recovery causes an immediate retry.
 
 The event source returns an idempotent bridge handle. A controller-runtime
 source start reuses one active legacy subscription for the same context, while
