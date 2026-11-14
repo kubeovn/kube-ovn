@@ -258,6 +258,13 @@ func (c *Controller) projectSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1
 }
 
 func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
+	return c.calcSubnetStatusIPWithContext(context.Background(), subnet)
+}
+
+func (c *Controller) calcSubnetStatusIPWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return nil, err
+	}
 	projected, err := c.projectSubnetStatusIP(subnet)
 	if err != nil {
 		return nil, err
@@ -309,7 +316,10 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		klog.Error(err)
 		return nil, err
 	}
-	return c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return nil, err
+	}
+	return c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 }
 
 // CalculateSubnetStatusIP exposes the legacy read-only status calculator to

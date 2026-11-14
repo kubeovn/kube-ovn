@@ -334,10 +334,17 @@ func (c *Controller) syncSubnetFinalizer(cl client.Client) error {
 }
 
 func (c *Controller) deleteSubnetHealthCheckVip(subnet *kubeovnv1.Subnet) error {
+	return c.deleteSubnetHealthCheckVipWithContext(context.Background(), subnet)
+}
+
+func (c *Controller) deleteSubnetHealthCheckVipWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) error {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	if c.config == nil || c.config.KubeOvnClient == nil {
 		return nil
 	}
-	vip, err := c.config.KubeOvnClient.KubeovnV1().Vips().Get(context.Background(), subnet.Name, metav1.GetOptions{})
+	vip, err := c.config.KubeOvnClient.KubeovnV1().Vips().Get(ctx, subnet.Name, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -347,7 +354,10 @@ func (c *Controller) deleteSubnetHealthCheckVip(subnet *kubeovnv1.Subnet) error 
 	if vip.Spec.Subnet != subnet.Name {
 		return nil
 	}
-	if err := c.config.KubeOvnClient.KubeovnV1().Vips().Delete(context.Background(), subnet.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
+	if err := c.config.KubeOvnClient.KubeovnV1().Vips().Delete(ctx, subnet.Name, metav1.DeleteOptions{}); err != nil && !k8serrors.IsNotFound(err) {
 		return fmt.Errorf("delete health check vip %s: %w", subnet.Name, err)
 	}
 	return nil
@@ -390,14 +400,14 @@ func (c *Controller) handleSubnetFinalizerWithContext(ctx context.Context, subne
 			if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 				return subnet, false, err
 			}
-			if _, err := c.releaseMcastQuerierIP(subnet); err != nil {
+			if _, err := c.releaseMcastQuerierIPWithContext(ctx, subnet); err != nil {
 				return subnet, false, err
 			}
 		}
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			return subnet, false, err
 		}
-		if err := c.deleteSubnetHealthCheckVip(subnet); err != nil {
+		if err := c.deleteSubnetHealthCheckVipWithContext(ctx, subnet); err != nil {
 			return subnet, false, err
 		}
 	}
@@ -837,7 +847,7 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		}
 
 		// availableIPStr valued from ipam, so leave update subnet.status after ipam process
-		updatedSubnet, err := c.calcSubnetStatusIP(subnet)
+		updatedSubnet, err := c.calcSubnetStatusIPWithContext(ctx, subnet)
 		if err != nil {
 			klog.Errorf("calculate subnet %s used ip failed, %v", cachedSubnet.Name, err)
 			return c.recordResourceError(subnet, "CalculateStatusFailed", err)
@@ -908,7 +918,7 @@ func (c *Controller) prepareOvnSubnet(ctx context.Context, subnet *kubeovnv1.Sub
 		klog.Errorf("failed to get subnet's vpc '%s', %v", subnet.Spec.Vpc, err)
 		return nil, c.recordResourceError(subnet, "ValidateVpcFailed", err)
 	}
-	_, isMcastQuerierChanged, err := c.reconcileSubnetSpecialIPs(subnet)
+	_, isMcastQuerierChanged, err := c.reconcileSubnetSpecialIPsWithContext(ctx, subnet)
 	if err != nil {
 		klog.Errorf("failed to reconcile subnet %s Custom IPs %v", subnet.Name, err)
 		return nil, c.recordResourceError(subnet, "ReconcileSpecialIPsFailed", err)
@@ -1296,7 +1306,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 		if err = checkFence(); err != nil {
 			return err
 		}
-		if err = c.updateVlanStatusForSubnetDeletion(vlan, subnet.Name); err != nil {
+		if err = c.updateVlanStatusForSubnetDeletionWithContext(ctx, vlan, subnet.Name); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -1307,14 +1317,17 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 	return nil
 }
 
-func (c *Controller) updateVlanStatusForSubnetDeletion(vlan *kubeovnv1.Vlan, subnet string) error {
+func (c *Controller) updateVlanStatusForSubnetDeletionWithContext(ctx context.Context, vlan *kubeovnv1.Vlan, subnet string) error {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	if !slices.Contains(vlan.Status.Subnets, subnet) {
 		return nil
 	}
 
 	newVlan := vlan.DeepCopy()
 	newVlan.Status.Subnets = util.RemoveString(newVlan.Status.Subnets, subnet)
-	_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), newVlan, metav1.UpdateOptions{})
+	_, err := c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(ctx, newVlan, metav1.UpdateOptions{})
 	if err != nil {
 		klog.Errorf("failed to update status of vlan %s: %v", vlan.Name, err)
 		return err
@@ -1354,7 +1367,7 @@ func (c *Controller) reconcileSubnetWithContext(ctx context.Context, subnet *kub
 		}
 	}
 
-	if err := c.reconcileVlan(subnet); err != nil {
+	if err := c.reconcileVlanWithContext(ctx, subnet); err != nil {
 		klog.Errorf("reconcile vlan for subnet %s failed, %v", subnet.Name, err)
 		return err
 	}
@@ -2052,7 +2065,10 @@ func (c *Controller) deleteStaticRoute(ip, router, routeTable string) error {
 	return nil
 }
 
-func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
+func (c *Controller) reconcileVlanWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) error {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	if subnet.Spec.Vlan == "" {
 		return nil
 	}
@@ -2070,15 +2086,21 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	}
 
 	localnetPort := ovs.GetLocalnetName(subnet.Name)
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	if err := c.OVNNbClient.CreateLocalnetLogicalSwitchPort(subnet.Name, localnetPort, vlan.Spec.Provider, subnet.Spec.CIDRBlock, vlan.Spec.ID); err != nil {
 		klog.Errorf("create localnet port for subnet %s: %v", subnet.Name, err)
 		return err
 	}
 
 	if !slices.Contains(vlan.Status.Subnets, subnet.Name) {
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
 		newVlan := vlan.DeepCopy()
 		newVlan.Status.Subnets = append(newVlan.Status.Subnets, subnet.Name)
-		_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(context.Background(), newVlan, metav1.UpdateOptions{})
+		_, err = c.config.KubeOvnClient.KubeovnV1().Vlans().UpdateStatus(ctx, newVlan, metav1.UpdateOptions{})
 		if err != nil {
 			klog.Errorf("failed to update status of vlan %s: %v", vlan.Name, err)
 			return err
@@ -2088,7 +2110,10 @@ func (c *Controller) reconcileVlan(subnet *kubeovnv1.Subnet) error {
 	return nil
 }
 
-func (c *Controller) reconcileSubnetSpecialIPs(subnet *kubeovnv1.Subnet) (bool, bool, error) {
+func (c *Controller) reconcileSubnetSpecialIPsWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) (bool, bool, error) {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return false, false, err
+	}
 	isU2OIPChanged := false
 	isMcastQuerierIPChanged := false
 	var err error
@@ -2099,7 +2124,7 @@ func (c *Controller) reconcileSubnetSpecialIPs(subnet *kubeovnv1.Subnet) (bool, 
 		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 		var v4ip, v6ip string
 		if subnet.Spec.U2OInterconnection {
-			v4ip, v6ip, _, err = c.acquireU2OIP(subnet, u2oInterconnName, u2oInterconnLrpName)
+			v4ip, v6ip, _, err = c.acquireU2OIPWithContext(ctx, subnet, u2oInterconnName, u2oInterconnLrpName)
 			if err != nil {
 				return isU2OIPChanged, isMcastQuerierIPChanged, err
 			}
@@ -2108,7 +2133,7 @@ func (c *Controller) reconcileSubnetSpecialIPs(subnet *kubeovnv1.Subnet) (bool, 
 				isU2OIPChanged = true
 			}
 		} else if subnet.Status.U2OInterconnectionIP != "" {
-			err = c.releaseU2OIP(subnet, u2oInterconnName)
+			err = c.releaseU2OIPWithContext(ctx, subnet, u2oInterconnName)
 			if err != nil {
 				return isU2OIPChanged, isMcastQuerierIPChanged, err
 			}
@@ -2123,12 +2148,12 @@ func (c *Controller) reconcileSubnetSpecialIPs(subnet *kubeovnv1.Subnet) (bool, 
 
 	// reconcile mcast querier IP
 	if subnet.Spec.EnableMulticastSnoop {
-		isMcastQuerierIPChanged, err = c.acquireMcastQuerierIP(subnet)
+		isMcastQuerierIPChanged, err = c.acquireMcastQuerierIPWithContext(ctx, subnet)
 		if err != nil {
 			return isU2OIPChanged, isMcastQuerierIPChanged, err
 		}
 	} else {
-		isMcastQuerierIPChanged, err = c.releaseMcastQuerierIP(subnet)
+		isMcastQuerierIPChanged, err = c.releaseMcastQuerierIPWithContext(ctx, subnet)
 		if err != nil {
 			return isU2OIPChanged, isMcastQuerierIPChanged, err
 		}
@@ -2136,7 +2161,7 @@ func (c *Controller) reconcileSubnetSpecialIPs(subnet *kubeovnv1.Subnet) (bool, 
 
 	// calculate subnet status
 	if (isU2OIPChanged || isMcastQuerierIPChanged) && subnet.Spec.CIDRBlock != "" {
-		if _, err := c.calcSubnetStatusIP(subnet); err != nil {
+		if _, err := c.calcSubnetStatusIPWithContext(ctx, subnet); err != nil {
 			klog.Error(err)
 			return isU2OIPChanged, isMcastQuerierIPChanged, err
 		}
@@ -2145,7 +2170,10 @@ func (c *Controller) reconcileSubnetSpecialIPs(subnet *kubeovnv1.Subnet) (bool, 
 	return isU2OIPChanged, isMcastQuerierIPChanged, nil
 }
 
-func (c *Controller) acquireU2OIP(subnet *kubeovnv1.Subnet, u2oInterconnName, u2oInterconnLrpName string) (string, string, string, error) {
+func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeovnv1.Subnet, u2oInterconnName, u2oInterconnLrpName string) (string, string, string, error) {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return "", "", "", err
+	}
 	var v4ip, v6ip, mac string
 	var err error
 	if subnet.Spec.U2OInterconnectionIP == "" && (subnet.Status.U2OInterconnectionIP == "" || subnet.Status.U2OInterconnectionMAC == "") {
@@ -2174,7 +2202,7 @@ func (c *Controller) acquireU2OIP(subnet *kubeovnv1.Subnet, u2oInterconnName, u2
 		case kubeovnv1.ProtocolDual:
 			subnet.Status.U2OInterconnectionIP = fmt.Sprintf("%s,%s", v4ip, v6ip)
 		}
-		err = c.createOrUpdateIPCR("", u2oInterconnName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, metav1.NamespaceDefault, "", "")
+		err = c.createOrUpdateIPCRWithContext(ctx, "", u2oInterconnName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, metav1.NamespaceDefault, "", "")
 		if err != nil {
 			klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)
 			return "", "", "", err
@@ -2184,14 +2212,20 @@ func (c *Controller) acquireU2OIP(subnet *kubeovnv1.Subnet, u2oInterconnName, u2
 	return v4ip, v6ip, mac, nil
 }
 
-func (c *Controller) releaseU2OIP(subnet *kubeovnv1.Subnet, u2oInterconnName string) error {
+func (c *Controller) releaseU2OIPWithContext(ctx context.Context, subnet *kubeovnv1.Subnet, u2oInterconnName string) error {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
 	c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
 	subnet.Status.U2OInterconnectionIP = ""
 	subnet.Status.U2OInterconnectionMAC = ""
 	subnet.Status.U2OInterconnectionVPC = ""
 
-	err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), u2oInterconnName, metav1.DeleteOptions{})
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
+	err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(ctx, u2oInterconnName, metav1.DeleteOptions{})
 	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to delete ip %s, %v", u2oInterconnName, err)
 		return err
@@ -2200,7 +2234,10 @@ func (c *Controller) releaseU2OIP(subnet *kubeovnv1.Subnet, u2oInterconnName str
 	return nil
 }
 
-func (c *Controller) acquireMcastQuerierIP(subnet *kubeovnv1.Subnet) (bool, error) {
+func (c *Controller) acquireMcastQuerierIPWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) (bool, error) {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return false, err
+	}
 	isMcastQuerierChanged := false
 	mcastQuerierLspName := fmt.Sprintf(util.McastQuerierName, subnet.Name)
 	var v4ip, v6ip, mac string
@@ -2224,7 +2261,7 @@ func (c *Controller) acquireMcastQuerierIP(subnet *kubeovnv1.Subnet) (bool, erro
 			subnet.Status.McastQuerierIP = fmt.Sprintf("%s,%s", v4ip, v6ip)
 		}
 
-		err := c.createOrUpdateIPCR("", mcastQuerierLspName, subnet.Status.McastQuerierIP, mac, subnet.Name, metav1.NamespaceDefault, "", "")
+		err := c.createOrUpdateIPCRWithContext(ctx, "", mcastQuerierLspName, subnet.Status.McastQuerierIP, mac, subnet.Name, metav1.NamespaceDefault, "", "")
 		if err != nil {
 			klog.Errorf("failed to create or update IPs of %s : %v", mcastQuerierLspName, err)
 			return isMcastQuerierChanged, err
@@ -2239,7 +2276,10 @@ func (c *Controller) acquireMcastQuerierIP(subnet *kubeovnv1.Subnet) (bool, erro
 	return isMcastQuerierChanged, nil
 }
 
-func (c *Controller) releaseMcastQuerierIP(subnet *kubeovnv1.Subnet) (bool, error) {
+func (c *Controller) releaseMcastQuerierIPWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) (bool, error) {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return false, err
+	}
 	isMcastQuerierChanged := false
 	if subnet.Status.McastQuerierIP != "" {
 		mcastQuerierLspName := fmt.Sprintf(util.McastQuerierName, subnet.Name)
@@ -2248,7 +2288,10 @@ func (c *Controller) releaseMcastQuerierIP(subnet *kubeovnv1.Subnet) (bool, erro
 		subnet.Status.McastQuerierIP = ""
 		subnet.Status.McastQuerierMAC = ""
 
-		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), mcastQuerierLspName, metav1.DeleteOptions{}); err != nil {
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return isMcastQuerierChanged, err
+		}
+		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(ctx, mcastQuerierLspName, metav1.DeleteOptions{}); err != nil {
 			if !k8serrors.IsNotFound(err) {
 				klog.Errorf("failed to delete ip %s, %v", mcastQuerierLspName, err)
 				return isMcastQuerierChanged, err

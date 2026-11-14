@@ -44,6 +44,20 @@ func TestSubnetRuntimeHelpersHonorCanceledContext(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	err = controller.patchSubnetStatusWithContext(ctx, subnet, "Canceled", "")
 	require.ErrorIs(t, err, context.Canceled)
+	_, err = controller.calcSubnetStatusIPWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.deleteSubnetHealthCheckVipWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	_, err = controller.acquireMcastQuerierIPWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.updateVlanStatusForSubnetDeletionWithContext(ctx, nil, subnet.Name)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.reconcileVlanWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.releaseU2OIPWithContext(ctx, subnet, "u2o")
+	require.ErrorIs(t, err, context.Canceled)
+	_, err = controller.releaseMcastQuerierIPWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
 	err = controller.checkSubnetConflictWithContext(ctx, subnet)
 	require.ErrorIs(t, err, context.Canceled)
 	err = controller.reconcileOvnDefaultVpcRouteWithContext(ctx, subnet)
@@ -1102,6 +1116,25 @@ func TestFormatSubnetWithContextStopsBeforeUpdateWhenCanceled(t *testing.T) {
 	actionsBefore := len(client.Actions())
 
 	_, err := ctrl.formatSubnetWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, client.Actions()[actionsBefore:])
+}
+
+func TestCalcSubnetStatusIPWithContextStopsBeforePatchWhenCanceled(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	subnet := &kubeovnv1.Subnet{
+		Name: "canceled-status",
+		Spec: kubeovnv1.SubnetSpec{CIDRBlock: "192.168.0.0/24"},
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	client := fakeController.fakeController.config.KubeOvnClient.(*kubeovnfake.Clientset)
+	actionsBefore := len(client.Actions())
+
+	_, err := ctrl.calcSubnetStatusIPWithContext(ctx, subnet)
 	require.ErrorIs(t, err, context.Canceled)
 	require.Empty(t, client.Actions()[actionsBefore:])
 }

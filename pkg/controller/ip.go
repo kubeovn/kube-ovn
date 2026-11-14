@@ -441,6 +441,13 @@ func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string
 }
 
 func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string) error {
+	return c.createOrUpdateIPCRWithContext(context.Background(), ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType)
+}
+
+func (c *Controller) createOrUpdateIPCRWithContext(ctx context.Context, ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string) error {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	// `ipCRName`: pod or vm IP name must set ip CR name when creating ip CR
 	var key, ipName string
 	var owner *metav1.OwnerReference
@@ -532,7 +539,10 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		if owner != nil {
 			ipCR.OwnerReferences = []metav1.OwnerReference{*owner}
 		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), ipCR, metav1.CreateOptions{}); err != nil {
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(ctx, ipCR, metav1.CreateOptions{}); err != nil {
 			errMsg := fmt.Errorf("failed to create ip CR %s: %w", ipName, err)
 			klog.Error(errMsg)
 			return errMsg
@@ -578,7 +588,10 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		}
 		controllerutil.AddFinalizer(newIPCR, util.KubeOVNControllerFinalizer)
 
-		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{}); err != nil {
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(ctx, newIPCR, metav1.UpdateOptions{}); err != nil {
 			err := fmt.Errorf("failed to update ip CR %s: %w", ipName, err)
 			klog.Error(err)
 			return err
