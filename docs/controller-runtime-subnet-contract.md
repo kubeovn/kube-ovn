@@ -39,7 +39,9 @@ five-second deadline.
 
 The comparison covers only the IP calculator's eight IPv4/IPv6 used/available
 counter and range fields. Counters are compared as arbitrary-precision integers,
-so large IPv6 values retain their precision. Conditions, gateway MAC, U2O state,
+so large IPv6 values retain their precision. Status and projection deep copies
+own independent integer backing storage, so later counter mutations cannot
+change a captured snapshot. Conditions, gateway MAC, U2O state,
 and other status fields are excluded. The observer exposes
 `kube_ovn_subnet_status_observations_total{result}` with the bounded results
 `match`, `drift`, `conflict`, `not_found`, `terminating`, and `error`, plus
