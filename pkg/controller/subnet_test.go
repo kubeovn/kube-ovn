@@ -43,6 +43,8 @@ func TestSubnetRuntimeHelpersHonorCanceledContext(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	err = controller.patchSubnetStatusWithContext(ctx, subnet, "Canceled", "")
 	require.ErrorIs(t, err, context.Canceled)
+	err = controller.checkSubnetConflictWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
 }
 
 func TestHandleDeleteLogicalSwitchResources(t *testing.T) {
