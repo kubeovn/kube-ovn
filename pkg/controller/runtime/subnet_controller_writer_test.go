@@ -26,7 +26,11 @@ func (b *recordingSubnetDataPlaneBackend) RecoverSubnetRuntime(context.Context, 
 	return nil
 }
 
-func (b *recordingSubnetDataPlaneBackend) ReconcileSubnetRuntime(_ context.Context, subnet *kubeovnv1.Subnet, allocationAllowed bool) error {
+func (b *recordingSubnetDataPlaneBackend) ReconcileSubnetRuntime(ctx context.Context, subnet *kubeovnv1.Subnet) error {
+	return b.ReconcileSubnetRuntimeWithGate(ctx, subnet, true)
+}
+
+func (b *recordingSubnetDataPlaneBackend) ReconcileSubnetRuntimeWithGate(_ context.Context, subnet *kubeovnv1.Subnet, allocationAllowed bool) error {
 	b.reconcile++
 	b.allowed = allocationAllowed
 	b.last = subnet.DeepCopy()

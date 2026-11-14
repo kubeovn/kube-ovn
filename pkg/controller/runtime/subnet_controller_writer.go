@@ -24,10 +24,14 @@ var (
 // touch IPAM and OVN; the legacy Subnet workers are disabled by the mode gate.
 type SubnetDataPlaneBackend interface {
 	RecoverSubnetRuntime(context.Context, *kubeovnv1.Subnet) error
-	// allocationAllowed is the dependency readiness grant captured by the
-	// runtime writer. The backend must reject active writes when it is false;
-	// delete snapshots may carry false because they only release state.
-	ReconcileSubnetRuntime(context.Context, *kubeovnv1.Subnet, bool) error
+	ReconcileSubnetRuntime(context.Context, *kubeovnv1.Subnet) error
+}
+
+// SubnetGatedDataPlaneBackend is implemented by the real runtime backend. The
+// optional seam keeps the pre-existing backend interface source-compatible
+// while allowing the runtime writer to pass its dependency readiness grant.
+type SubnetGatedDataPlaneBackend interface {
+	ReconcileSubnetRuntimeWithGate(context.Context, *kubeovnv1.Subnet, bool) error
 }
 
 // SubnetControllerWriterAdapter wires the real Controller domain path into
@@ -85,7 +89,7 @@ func (a *SubnetControllerWriterAdapter) ReconcileSubnet(ctx context.Context, sna
 			return fmt.Errorf("%w: subnet %s", ErrSubnetRuntimeAllocationNotAllowed, snapshot.Name)
 		}
 	}
-	return a.Backend.ReconcileSubnetRuntime(ctx, subnetFromSnapshot(snapshot), allocationAllowed)
+	return a.reconcileRuntime(ctx, snapshot, allocationAllowed)
 }
 
 func (a *SubnetControllerWriterAdapter) ReconcileDeletedSubnet(ctx context.Context, snapshot SubnetWriteSnapshot) error {
@@ -109,7 +113,18 @@ func (a *SubnetControllerWriterAdapter) ReconcileDeletedSubnet(ctx context.Conte
 	if err := a.Gate.WaitForRecovery(ctx); err != nil {
 		return err
 	}
-	return a.Backend.ReconcileSubnetRuntime(ctx, subnetFromSnapshot(snapshot), snapshot.AllocationAllowed)
+	return a.reconcileRuntime(ctx, snapshot, snapshot.AllocationAllowed)
+}
+
+func (a *SubnetControllerWriterAdapter) reconcileRuntime(ctx context.Context, snapshot SubnetWriteSnapshot, allocationAllowed bool) error {
+	subnet := subnetFromSnapshot(snapshot)
+	if gated, ok := a.Backend.(SubnetGatedDataPlaneBackend); ok {
+		return gated.ReconcileSubnetRuntimeWithGate(ctx, subnet, allocationAllowed)
+	}
+	// The adapter has already performed active dependency admission. Keep the
+	// old backend interface as a compatibility fallback for external
+	// implementations that predate the gated seam.
+	return a.Backend.ReconcileSubnetRuntime(ctx, subnet)
 }
 
 func subnetFromSnapshot(snapshot SubnetWriteSnapshot) *kubeovnv1.Subnet {
