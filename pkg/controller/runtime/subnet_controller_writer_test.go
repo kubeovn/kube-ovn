@@ -21,6 +21,19 @@ type recordingSubnetDataPlaneBackend struct {
 	last      *kubeovnv1.Subnet
 }
 
+type legacySubnetDataPlaneBackend struct {
+	reconcile int
+}
+
+func (b *legacySubnetDataPlaneBackend) RecoverSubnetRuntime(context.Context, *kubeovnv1.Subnet) error {
+	return nil
+}
+
+func (b *legacySubnetDataPlaneBackend) ReconcileSubnetRuntime(context.Context, *kubeovnv1.Subnet) error {
+	b.reconcile++
+	return nil
+}
+
 func (b *recordingSubnetDataPlaneBackend) RecoverSubnetRuntime(context.Context, *kubeovnv1.Subnet) error {
 	b.recover++
 	return nil
@@ -108,6 +121,22 @@ func TestSubnetControllerWriterAdapterRechecksDependencyGate(t *testing.T) {
 		Gate:    SubnetWriterGate{Recovery: func(context.Context) error { return nil }},
 	}
 	snapshot, err := NewSubnetWriteSnapshot(subnet, true)
+	require.NoError(t, err)
+
+	err = adapter.ReconcileSubnet(t.Context(), snapshot, SubnetShadowObservation{})
+	require.ErrorIs(t, err, ErrSubnetRuntimeAllocationNotAllowed)
+	require.Zero(t, backend.reconcile)
+}
+
+func TestSubnetControllerWriterAdapterLegacyBackendStillFailsClosed(t *testing.T) {
+	backend := &legacySubnetDataPlaneBackend{}
+	subnet := testSubnet("vlan-a")
+	adapter := &SubnetControllerWriterAdapter{
+		Backend: backend,
+		Reader:  newRuntimeClient(t, subnet),
+		Gate:    SubnetWriterGate{Recovery: func(context.Context) error { return nil }},
+	}
+	snapshot, err := NewSubnetWriteSnapshot(subnet, false)
 	require.NoError(t, err)
 
 	err = adapter.ReconcileSubnet(t.Context(), snapshot, SubnetShadowObservation{})
