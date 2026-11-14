@@ -74,7 +74,7 @@ func (c *Controller) enqueueUpdateVlan(oldObj, newObj any) {
 
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == newVlan.Name {
-			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			c.enqueueSubnetReconcile(subnet.Name)
 		}
 	}
 }
@@ -182,7 +182,7 @@ func (c *Controller) handleAddVlan(key string) error {
 		// re-enqueue subnets so they can see the conflict status and reject
 		for _, subnet := range subnets {
 			if subnet.Spec.Vlan == vlan.Name {
-				c.addOrUpdateSubnetQueue.Add(subnet.Name)
+				c.enqueueSubnetReconcile(subnet.Name)
 			}
 		}
 		return err
@@ -202,7 +202,7 @@ func (c *Controller) handleAddVlan(key string) error {
 	// now that the vlan is fully processed
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == vlan.Name {
-			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			c.enqueueSubnetReconcile(subnet.Name)
 		}
 	}
 
@@ -275,7 +275,7 @@ func (c *Controller) handleUpdateVlan(key string) error {
 	}
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == vlan.Name {
-			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			c.enqueueSubnetReconcile(subnet.Name)
 		}
 	}
 	newVlan := vlan.DeepCopy()
@@ -335,7 +335,7 @@ func (c *Controller) handleDelVlan(vlan *kubeovnv1.Vlan) error {
 
 	for _, s := range subnet {
 		if s.Spec.Vlan == key {
-			c.addOrUpdateSubnetQueue.Add(s.Name)
+			c.enqueueSubnetReconcile(s.Name)
 		}
 	}
 

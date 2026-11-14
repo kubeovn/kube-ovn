@@ -728,7 +728,7 @@ func (c *Controller) handleUpdateNode(key string) (err error) {
 		// when node labels change, since the node might have been added or removed
 		// from the gateway list
 		if cachedSubnet.Spec.GatewayNode == "" && len(cachedSubnet.Spec.GatewayNodeSelectors) > 0 {
-			c.addOrUpdateSubnetQueue.Add(cachedSubnet.Name)
+			c.enqueueSubnetReconcile(cachedSubnet.Name)
 			continue
 		}
 

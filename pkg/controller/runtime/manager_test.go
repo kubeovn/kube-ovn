@@ -2,16 +2,36 @@ package controllerruntime
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/controller"
 )
+
+func TestNewSubnetWriterFenceRequiresIdentityAndClient(t *testing.T) {
+	_, err := newSubnetWriterFence(nil)
+	require.EqualError(t, err, "subnet writer fence configuration is incomplete")
+	_, err = newSubnetWriterFence(&controller.Configuration{KubeClient: k8sfake.NewSimpleClientset(), PodNamespace: "kube-system", PodName: "pod"})
+	require.EqualError(t, err, "subnet writer durable fence is not configured")
+}
+
+func TestNewSubnetWriterFenceUsesControllerIdentity(t *testing.T) {
+	fence, err := newSubnetWriterFence(&controller.Configuration{
+		KubeClient:     k8sfake.NewSimpleClientset(),
+		PodNamespace:   "kube-system",
+		PodName:        "pod-a",
+		LeaderElection: controller.LeaderElectionConfiguration{LeaseDuration: time.Minute},
+	})
+	require.NoError(t, err)
+	require.NotNil(t, fence)
+}
 
 func TestNewSchemeRegistersMigrationTypes(t *testing.T) {
 	scheme, err := NewScheme()

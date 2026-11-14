@@ -26,6 +26,8 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+const subnetWriterFenceName = "kube-ovn-subnet-writer"
+
 // NewScheme builds the scheme used by the migration manager. Optional APIs can
 // be registered here even when their CRDs are absent; scheme registration does
 // not perform discovery or start a list/watch request.
@@ -112,6 +114,12 @@ func RunWithSubnetStatus(ctx context.Context, config *controller.Configuration, 
 	return run(ctx, config, backend)
 }
 
+// RunWithSubnetWriter starts the explicit Subnet writer mode. It acquires a
+// dedicated durable Lease before registering any writer reconciler.
+func RunWithSubnetWriter(ctx context.Context, config *controller.Configuration, backend *controller.Controller) error {
+	return run(ctx, config, backend)
+}
+
 func setupSubnetShadowReconciler(mgr ctrl.Manager) error {
 	if mgr == nil {
 		return errors.New("controller-runtime manager is nil")
@@ -134,6 +142,43 @@ func setupSubnetStatusReconciler(mgr ctrl.Manager, backend *controller.Controlle
 	return reconciler.SetupWithManager(mgr)
 }
 
+func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controller, lease SubnetWriterLease, fence SubnetWriterFence) error {
+	if mgr == nil {
+		return errors.New("controller-runtime manager is nil")
+	}
+	if backend == nil {
+		return errors.New("subnet writer runtime backend is nil")
+	}
+	adapter := &SubnetControllerWriterAdapter{
+		Backend: backend,
+		Reader:  mgr.GetAPIReader(),
+		Gate:    SubnetWriterGate{Recovery: fence.Check},
+	}
+	return (&SubnetReconciler{
+		Reader:       mgr.GetAPIReader(),
+		RecoveryGate: fence.Check,
+		Adapter:      adapter,
+		Lease:        lease,
+		Events:       backend,
+		Fence:        fence,
+	}).SetupWithManager(mgr)
+}
+
+// newSubnetWriterFence creates the durable writer fence used by the opt-in
+// Subnet writer. It is intentionally a construction seam: the legacy modes
+// do not acquire this Lease until their runtime writer is explicitly enabled.
+func newSubnetWriterFence(config *controller.Configuration) (*KubernetesSubnetWriterFence, error) {
+	if config == nil || config.KubeClient == nil || config.PodNamespace == "" || config.PodName == "" {
+		return nil, errors.New("subnet writer fence configuration is incomplete")
+	}
+	return NewKubernetesSubnetWriterFence(
+		config.KubeClient.CoordinationV1().Leases(config.PodNamespace),
+		subnetWriterFenceName,
+		config.PodName,
+		config.LeaderElection.LeaseDuration,
+	)
+}
+
 func run(ctx context.Context, config *controller.Configuration, backend *controller.Controller) error {
 	mgr, err := NewManager(config)
 	if err != nil {
@@ -144,6 +189,9 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 	}
 	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeSubnetStatus && backend == nil {
 		return errors.New("subnet status runtime mode requires an initialized controller backend")
+	}
+	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeSubnetWriter && backend == nil {
+		return errors.New("subnet writer runtime mode requires an initialized controller backend")
 	}
 	var recoveryGate func(context.Context) error
 	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeIPPool {
@@ -174,6 +222,28 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 	}
 	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeSubnetStatus {
 		if err := setupSubnetStatusReconciler(mgr, backend); err != nil {
+			return err
+		}
+	}
+	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeSubnetWriter {
+		fence, err := newSubnetWriterFence(config)
+		if err != nil {
+			return err
+		}
+		if err := fence.Start(ctx); err != nil {
+			return err
+		}
+		defer fence.Stop()
+		if err := backend.SetSubnetRuntimeFence(fence.Check); err != nil {
+			return err
+		}
+		ownership := &SubnetWriterOwnership{}
+		lease, err := ownership.ClaimWithFence(ctx, SubnetWriterOwnerRuntime, fence)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = lease.Release(context.WithoutCancel(ctx)) }()
+		if err := setupSubnetWriterReconciler(mgr, backend, lease, fence); err != nil {
 			return err
 		}
 	}

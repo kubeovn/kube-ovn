@@ -70,6 +70,10 @@ const (
 type Controller struct {
 	config *Configuration
 
+	// subnetRuntimeFence is installed only by the explicit subnet-writer mode.
+	// Legacy workers leave it nil and retain their existing ownership path.
+	subnetRuntimeFence func(context.Context) error
+
 	ipam             *ovnipam.IPAM
 	namedPort        *NamedPort
 	anpPrioNameMap   map[int32]string
@@ -185,6 +189,7 @@ type Controller struct {
 	deleteSubnetQueue       workqueue.TypedRateLimitingInterface[*kubeovnv1.Subnet]
 	updateSubnetStatusQueue workqueue.TypedRateLimitingInterface[string]
 	subnetStatusEvents      *subnetStatusEventFanout
+	subnetRuntimeEvents     *subnetRuntimeEventFanout
 	syncVirtualPortsQueue   workqueue.TypedRateLimitingInterface[string]
 	subnetKeyMutex          keymutex.KeyMutex
 
@@ -615,6 +620,7 @@ func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter
 		deleteSubnetQueue:       newTypedRateLimitingQueue[*kubeovnv1.Subnet]("DeleteSubnet", nil),
 		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
 		subnetStatusEvents:      newSubnetStatusEventFanoutForConfig(config),
+		subnetRuntimeEvents:     newSubnetRuntimeEventFanoutForConfig(config),
 		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
 		subnetKeyMutex:          keymutex.NewHashed(numKeyLocks),
 
@@ -1350,8 +1356,10 @@ func (c *Controller) run(ctx context.Context, startRuntime RuntimeStarter) {
 		util.LogFatalAndExit(err, "failed to initialize node routes")
 	}
 
-	if err := c.syncSubnetCR(); err != nil {
-		util.LogFatalAndExit(err, "failed to sync crd subnets")
+	if !controllerRuntimeSubnetWriterEnabled(c.config) {
+		if err := c.syncSubnetCR(); err != nil {
+			util.LogFatalAndExit(err, "failed to sync crd subnets")
+		}
 	}
 
 	if err := c.syncVlanCR(); err != nil {
@@ -1620,9 +1628,12 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("update snat for vpc nat gateway", c.updateVpcSnatQueue, c.handleUpdateVpcSnat), time.Second, ctx.Done())
 	go wait.Until(runWorker("update subnet route for vpc nat gateway", c.updateVpcSubnetQueue, c.handleUpdateNatGwSubnetRoute), time.Second, ctx.Done())
 	go wait.Until(runWorker("add/update csr", c.addOrUpdateCsrQueue, c.handleAddOrUpdateCsr), time.Second, ctx.Done())
-	// add default and join subnet and wait them ready
-	for range c.config.WorkerNum {
-		go wait.Until(runWorker("add/update subnet", c.addOrUpdateSubnetQueue, c.handleAddOrUpdateSubnet), time.Second, ctx.Done())
+	// add default and join subnet and wait them ready. In subnet-writer mode
+	// these queues are owned by the controller-runtime reconciler.
+	if !controllerRuntimeSubnetWriterEnabled(c.config) {
+		for range c.config.WorkerNum {
+			go wait.Until(runWorker("add/update subnet", c.addOrUpdateSubnetQueue, c.handleAddOrUpdateSubnet), time.Second, ctx.Done())
+		}
 	}
 	if !controllerRuntimeIPPoolEnabled(c.config) {
 		go wait.Until(runWorker("add/update ippool", c.addOrUpdateIPPoolQueue, c.handleAddOrUpdateIPPool), time.Second, ctx.Done())
@@ -1631,14 +1642,16 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("add vlan", c.addVlanQueue, c.handleAddVlan), time.Second, ctx.Done())
 	}
 	go wait.Until(runWorker("add namespace", c.addNamespaceQueue, c.handleAddNamespace), time.Second, ctx.Done())
-	err := wait.PollUntilContextCancel(ctx, 3*time.Second, true, func(_ context.Context) (done bool, err error) {
-		subnets := []string{c.config.DefaultLogicalSwitch, c.config.NodeSwitch}
-		klog.Infof("wait for subnets %v ready", subnets)
+	if !controllerRuntimeSubnetWriterEnabled(c.config) {
+		err := wait.PollUntilContextCancel(ctx, 3*time.Second, true, func(_ context.Context) (done bool, err error) {
+			subnets := []string{c.config.DefaultLogicalSwitch, c.config.NodeSwitch}
+			klog.Infof("wait for subnets %v ready", subnets)
 
-		return c.allSubnetReady(subnets...)
-	})
-	if err != nil {
-		klog.Fatalf("wait default and join subnet ready, error: %v", err)
+			return c.allSubnetReady(subnets...)
+		})
+		if err != nil {
+			klog.Fatalf("wait default and join subnet ready, error: %v", err)
+		}
 	}
 
 	go wait.Until(runWorker("add/update security group", c.addOrUpdateSgQueue, func(key string) error { return c.handleAddOrUpdateSg(key, false) }), time.Second, ctx.Done())
@@ -1714,11 +1727,15 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		go wait.Until(runWorker("update pod route", c.updatePodRouteQueue, c.handleUpdatePodRoute), time.Second, ctx.Done())
 		go wait.Until(runWorker("update pod security", c.updatePodSecurityQueue, c.handleUpdatePodSecurity), time.Second, ctx.Done())
 
-		go wait.Until(runWorker("delete subnet", c.deleteSubnetQueue, c.handleDeleteSubnet), time.Second, ctx.Done())
+		if !controllerRuntimeSubnetWriterEnabled(c.config) {
+			go wait.Until(runWorker("delete subnet", c.deleteSubnetQueue, c.handleDeleteSubnet), time.Second, ctx.Done())
+		}
 		if !controllerRuntimeIPPoolEnabled(c.config) {
 			go wait.Until(runWorker("delete ippool", c.deleteIPPoolQueue, c.handleDeleteIPPool), time.Second, ctx.Done())
 		}
-		go wait.Until(runWorker("update status of subnet", c.updateSubnetStatusQueue, c.handleUpdateSubnetStatus), time.Second, ctx.Done())
+		if !controllerRuntimeSubnetWriterEnabled(c.config) {
+			go wait.Until(runWorker("update status of subnet", c.updateSubnetStatusQueue, c.handleUpdateSubnetStatus), time.Second, ctx.Done())
+		}
 		if !controllerRuntimeIPPoolEnabled(c.config) {
 			go wait.Until(runWorker("update status of ippool", c.updateIPPoolStatusQueue, c.handleUpdateIPPoolStatus), time.Second, ctx.Done())
 		}

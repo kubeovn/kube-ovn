@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"k8s.io/client-go/util/workqueue"
@@ -63,6 +64,21 @@ func TestSubnetStatusEventSourceNormalizesAndDeduplicatesNames(t *testing.T) {
 	queue.Done(request)
 	queue.Forget(request)
 	require.Len(t, source.events, 4)
+}
+
+func TestSubnetStatusEventSourceClosesBridgeOnContextCancel(t *testing.T) {
+	queue := workqueue.NewTypedRateLimitingQueue[SubnetStatusRequest](workqueue.DefaultTypedControllerRateLimiter[SubnetStatusRequest]())
+	t.Cleanup(queue.ShutDown)
+	ctx, cancel := context.WithCancel(t.Context())
+	bridge := &recordingSubnetStatusEventBridge{closed: make(chan struct{})}
+	reconciler := &SubnetStatusReconciler{Events: &recordingSubnetStatusEventSource{bridge: bridge}}
+	require.NoError(t, reconciler.eventSource().Start(ctx, queue))
+	cancel()
+	select {
+	case <-bridge.closed:
+	case <-time.After(time.Second):
+		t.Fatal("event bridge did not close after context cancellation")
+	}
 }
 
 func TestSubnetStatusReconcilerProjectsCurrentSubnet(t *testing.T) {
@@ -127,11 +143,30 @@ func TestSubnetStatusReconcilerFailsClosedWithoutProjectionInputs(t *testing.T) 
 
 type recordingSubnetStatusEventSource struct {
 	events []SubnetStatusEvent
+	bridge *recordingSubnetStatusEventBridge
 }
 
-func (s *recordingSubnetStatusEventSource) StartSubnetStatusEventBridge(_ context.Context, enqueue func(SubnetStatusEvent)) {
+func (s *recordingSubnetStatusEventSource) StartSubnetStatusEventBridge(_ context.Context, enqueue func(SubnetStatusEvent)) (SubnetStatusEventBridge, error) {
 	for _, event := range s.events {
 		enqueue(event)
+	}
+	if s.bridge == nil {
+		s.bridge = &recordingSubnetStatusEventBridge{}
+	}
+	return s.bridge, nil
+}
+
+type recordingSubnetStatusEventBridge struct {
+	closed chan struct{}
+}
+
+func (b *recordingSubnetStatusEventBridge) Close() {
+	if b.closed != nil {
+		select {
+		case <-b.closed:
+		default:
+			close(b.closed)
+		}
 	}
 }
 

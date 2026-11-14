@@ -1098,9 +1098,11 @@ func (c *Controller) syncFinalizers() error {
 		klog.Errorf("failed to sync qos policy finalizer: %v", err)
 		return err
 	}
-	if err := c.syncSubnetFinalizer(cl); err != nil {
-		klog.Errorf("failed to sync subnet finalizer: %v", err)
-		return err
+	if !controllerRuntimeSubnetWriterEnabled(c.config) {
+		if err := c.syncSubnetFinalizer(cl); err != nil {
+			klog.Errorf("failed to sync subnet finalizer: %v", err)
+			return err
+		}
 	}
 	if err := c.syncVipFinalizer(cl); err != nil {
 		klog.Errorf("failed to sync vip finalizer: %v", err)
