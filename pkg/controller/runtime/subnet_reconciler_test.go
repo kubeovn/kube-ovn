@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -125,6 +126,97 @@ func TestSubnetReconcilerPropagatesAdapterRecoveryError(t *testing.T) {
 	require.False(t, reconciled)
 }
 
+func TestSubnetReconcilerConsumesDeleteSnapshotWhenAPIObjectIsGone(t *testing.T) {
+	deleted := testSubnet("")
+	deleted.UID = types.UID("deleted-uid")
+	deletionTimestamp := metav1.Now()
+	deleted.DeletionTimestamp = &deletionTimestamp
+	snapshot, err := NewSubnetWriteSnapshot(deleted, false)
+	require.NoError(t, err)
+	called := false
+	adapter := &recordingSubnetWriterAdapter{deleted: func(_ context.Context, got SubnetWriteSnapshot) error {
+		called = true
+		require.Equal(t, snapshot.UID, got.UID)
+		require.True(t, got.Deleting)
+		return nil
+	}}
+	reconciler := &SubnetReconciler{
+		Reader:       newRuntimeClient(t),
+		RecoveryGate: func(context.Context) error { return nil },
+		Adapter:      adapter,
+		Lease:        testSubnetWriterLease(t),
+		deletes:      map[string]SubnetWriteSnapshot{deleted.Name: snapshot},
+	}
+
+	_, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: deleted.Name})
+	require.NoError(t, err)
+	require.True(t, called)
+	require.Empty(t, reconciler.deletes)
+}
+
+func TestSubnetReconcilerRetainsDeleteSnapshotWhenAdapterFails(t *testing.T) {
+	deleted := testSubnet("")
+	deleted.UID = types.UID("deleted-uid")
+	deletionTimestamp := metav1.Now()
+	deleted.DeletionTimestamp = &deletionTimestamp
+	snapshot, err := NewSubnetWriteSnapshot(deleted, false)
+	require.NoError(t, err)
+	adapterErr := errors.New("delete cleanup failed")
+	adapter := &recordingSubnetWriterAdapter{deleted: func(context.Context, SubnetWriteSnapshot) error {
+		return adapterErr
+	}}
+	reconciler := &SubnetReconciler{
+		Reader:       newRuntimeClient(t),
+		RecoveryGate: func(context.Context) error { return nil },
+		Adapter:      adapter,
+		Lease:        testSubnetWriterLease(t),
+		deletes:      map[string]SubnetWriteSnapshot{deleted.Name: snapshot},
+	}
+
+	_, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: deleted.Name})
+	require.ErrorIs(t, err, adapterErr)
+	require.Equal(t, snapshot, reconciler.deletes[deleted.Name])
+
+	called := false
+	adapter.deleted = func(_ context.Context, got SubnetWriteSnapshot) error {
+		called = true
+		require.Equal(t, snapshot.UID, got.UID)
+		return nil
+	}
+	_, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: deleted.Name})
+	require.NoError(t, err)
+	require.True(t, called)
+	require.Empty(t, reconciler.deletes)
+}
+
+func TestSubnetReconcilerDropsDeleteSnapshotForReplacementUID(t *testing.T) {
+	replacement := testSubnet("")
+	replacement.UID = types.UID("replacement-uid")
+	deleted := replacement.DeepCopy()
+	deleted.UID = types.UID("deleted-uid")
+	deletionTimestamp := metav1.Now()
+	deleted.DeletionTimestamp = &deletionTimestamp
+	snapshot, err := NewSubnetWriteSnapshot(deleted, false)
+	require.NoError(t, err)
+	called := false
+	adapter := &recordingSubnetWriterAdapter{deleted: func(context.Context, SubnetWriteSnapshot) error {
+		called = true
+		return nil
+	}}
+	reconciler := &SubnetReconciler{
+		Reader:       newRuntimeClient(t, replacement),
+		RecoveryGate: func(context.Context) error { return nil },
+		Adapter:      adapter,
+		Lease:        testSubnetWriterLease(t),
+		deletes:      map[string]SubnetWriteSnapshot{deleted.Name: snapshot},
+	}
+
+	_, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: replacement.Name})
+	require.NoError(t, err)
+	require.False(t, called)
+	require.Empty(t, reconciler.deletes)
+}
+
 func TestSubnetReconcilerPropagatesRecoveryError(t *testing.T) {
 	recoveryErr := errors.New("recovery pending")
 	reconciler := &SubnetReconciler{
@@ -162,6 +254,7 @@ var _ SubnetWriterAdapter = subnetWriterAdapterFunc(nil)
 type recordingSubnetWriterAdapter struct {
 	recover   func(context.Context, SubnetWriteSnapshot) error
 	reconcile func(context.Context, SubnetWriteSnapshot, SubnetShadowObservation) error
+	deleted   func(context.Context, SubnetWriteSnapshot) error
 }
 
 func (a *recordingSubnetWriterAdapter) RecoverSubnet(ctx context.Context, snapshot SubnetWriteSnapshot) error {
@@ -176,6 +269,13 @@ func (a *recordingSubnetWriterAdapter) ReconcileSubnet(ctx context.Context, snap
 		return nil
 	}
 	return a.reconcile(ctx, snapshot, observation)
+}
+
+func (a *recordingSubnetWriterAdapter) ReconcileDeletedSubnet(ctx context.Context, snapshot SubnetWriteSnapshot) error {
+	if a.deleted == nil {
+		return nil
+	}
+	return a.deleted(ctx, snapshot)
 }
 
 var _ SubnetWriterAdapter = (*recordingSubnetWriterAdapter)(nil)

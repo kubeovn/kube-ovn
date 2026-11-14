@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -55,6 +57,30 @@ func (a *SubnetControllerWriterAdapter) ReconcileSubnet(ctx context.Context, sna
 		operation = SubnetFinalizerRemoveOperation
 	}
 	if err := snapshot.Validate(live, operation); err != nil {
+		return err
+	}
+	return a.Backend.ReconcileSubnetRuntime(ctx, subnetFromSnapshot(snapshot))
+}
+
+func (a *SubnetControllerWriterAdapter) ReconcileDeletedSubnet(ctx context.Context, snapshot SubnetWriteSnapshot) error {
+	if a == nil || a.Backend == nil {
+		return errors.New("subnet controller writer backend is not configured")
+	}
+	if !snapshot.Deleting {
+		return errors.New("subnet delete snapshot is not terminating")
+	}
+	if a.Reader != nil {
+		live := &kubeovnv1.Subnet{}
+		if err := a.Reader.Get(ctx, client.ObjectKey{Name: snapshot.Name}, live); err == nil {
+			if live.UID != snapshot.UID {
+				return apierrors.NewConflict(schema.GroupResource{Group: kubeovnv1.SchemeGroupVersion.Group, Resource: "subnets"}, snapshot.Name, errors.New("replacement subnet has a different UID"))
+			}
+			return errors.New("deleting subnet snapshot still has a live API object")
+		} else if !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
+	if err := a.Gate.WaitForRecovery(ctx); err != nil {
 		return err
 	}
 	return a.Backend.ReconcileSubnetRuntime(ctx, subnetFromSnapshot(snapshot))

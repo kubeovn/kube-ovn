@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func TestSubnetRuntimeEventFanoutReplaysPendingNames(t *testing.T) {
@@ -67,4 +69,34 @@ func TestSubnetRuntimeEventFanoutUnsubscribeStopsEvents(t *testing.T) {
 		t.Fatal("received event after unsubscribe")
 	default:
 	}
+}
+
+func TestSubnetRuntimeDeleteFanoutConsumesDeliveredSnapshot(t *testing.T) {
+	fanout := newSubnetRuntimeEventFanout()
+	events := make(chan string, 1)
+	unsubscribe := fanout.subscribeDelete(t.Context(), func(name string, _ *kubeovnv1.Subnet) {
+		events <- name
+	})
+	defer unsubscribe()
+
+	fanout.publishDelete(&kubeovnv1.Subnet{Name: "subnet-a"})
+	require.Equal(t, "subnet-a", <-events)
+	fanout.mu.Lock()
+	deferred := fanout.deletePending
+	fanout.mu.Unlock()
+	require.Empty(t, deferred)
+}
+
+func TestSubnetRuntimeDeleteFanoutNotifiesGenericSubscriber(t *testing.T) {
+	fanout := newSubnetRuntimeEventFanout()
+	events := make(chan string, 1)
+	unsubscribe := fanout.subscribe(t.Context(), func(name string) { events <- name })
+	defer unsubscribe()
+
+	fanout.publishDelete(&kubeovnv1.Subnet{Name: "subnet-a"})
+	require.Equal(t, "subnet-a", <-events)
+	fanout.mu.Lock()
+	pending := fanout.pending
+	fanout.mu.Unlock()
+	require.Empty(t, pending)
 }
