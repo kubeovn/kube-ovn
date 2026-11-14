@@ -2184,25 +2184,34 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 	var err error
 	allocated := false
 	if subnet.Spec.U2OInterconnectionIP == "" && (subnet.Status.U2OInterconnectionIP == "" || subnet.Status.U2OInterconnectionMAC == "") {
+		_, _, _, hadAllocation := c.ipam.GetPodAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
 		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
 		if err != nil {
 			klog.Errorf("failed to acquire underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
 			return "", "", "", err
 		}
-		allocated = true
+		allocated = !hadAllocation
 	} else if subnet.Spec.U2OInterconnectionIP != "" && subnet.Status.U2OInterconnectionIP != subnet.Spec.U2OInterconnectionIP {
+		_, _, _, hadAllocation := c.ipam.GetPodAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
 		if subnet.Status.U2OInterconnectionIP != "" {
 			klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
 			c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
+			hadAllocation = false
 		}
 		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP, nil)
 		if err != nil {
 			klog.Errorf("failed to acquire static underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
 			return "", "", "", err
 		}
-		allocated = true
+		allocated = !hadAllocation
 	}
 	if v4ip != "" || v6ip != "" {
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			if allocated {
+				c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
+			}
+			return "", "", "", err
+		}
 		oldIP, oldMAC, oldVPC := subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionMAC, subnet.Status.U2OInterconnectionVPC
 		switch subnet.Spec.Protocol {
 		case kubeovnv1.ProtocolIPv4:
@@ -2262,15 +2271,22 @@ func (c *Controller) acquireMcastQuerierIPWithContext(ctx context.Context, subne
 	allocated := false
 
 	if subnet.Status.McastQuerierIP == "" || subnet.Status.McastQuerierMAC == "" {
+		_, _, _, hadAllocation := c.ipam.GetPodAddressByNic(mcastQuerierLspName, mcastQuerierLspName, subnet.Name)
 		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, mcastQuerierLspName, mcastQuerierLspName)
 		if err != nil {
 			klog.Errorf("failed to acquire mcast querier ip address for subnet %s, %v", subnet.Name, err)
 			return isMcastQuerierChanged, err
 		}
-		allocated = true
+		allocated = !hadAllocation
 	}
 
 	if v4ip != "" || v6ip != "" {
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			if allocated {
+				c.ipam.ReleaseAddressByPod(mcastQuerierLspName, subnet.Name)
+			}
+			return false, err
+		}
 		oldIP, oldMAC := subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC
 		switch subnet.Spec.Protocol {
 		case kubeovnv1.ProtocolIPv4:
