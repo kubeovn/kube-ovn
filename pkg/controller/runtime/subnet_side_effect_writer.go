@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// SubnetSideEffectAction is the operation-specific OVN or IPAM mutation that
-// a future Subnet writer wants to perform. The action is deliberately injected
-// so this contract can be tested without wiring a second production writer.
+// SubnetSideEffectAction is the operation-specific OVN or IPAM mutation passed
+// through the runtime writer's phase gate. The action is injected so the gate
+// can be tested without duplicating the legacy domain implementation.
 type SubnetSideEffectAction func(context.Context) error
 
 // SubnetSideEffectReceipt identifies a confirmed mutation made by one apply.
@@ -34,9 +35,10 @@ type SubnetSideEffectPlan struct {
 	Apply func(context.Context) (SubnetSideEffectReceipt, error)
 }
 
-// subnetSideEffectWriter gates OVN and IPAM side effects behind the immutable
-// Subnet snapshot and recovery barrier. It does not own or implement either
-// backend and remains unwired while the legacy controller is the sole writer.
+// subnetSideEffectWriter gates an OVN or IPAM domain phase behind the immutable
+// Subnet snapshot and recovery barrier. Runtime mode installs it around the
+// existing domain callback; concrete per-mutation receipts remain a follow-up
+// seam for the data-plane adapters.
 type subnetSideEffectWriter struct {
 	ctx context.Context
 	// reader must be an uncached APIReader, not a manager cache.
@@ -103,7 +105,14 @@ func (w *subnetSideEffectWriter) executePlan(snapshot SubnetWriteSnapshot, opera
 	}
 	current, err := getSubnet(w.ctx, w.reader, snapshot.Name, subnetSideEffectReadTimeout)
 	if err != nil {
-		return nil, err
+		// A delete tombstone is an authoritative snapshot even after the API
+		// object has disappeared. The reconciler has already checked that no
+		// same-name replacement exists, so cleanup must still reach the backend.
+		if snapshot.Deleting && apierrors.IsNotFound(err) {
+			current = subnetFromSnapshot(snapshot)
+		} else {
+			return nil, err
+		}
 	}
 	if err := snapshot.Validate(current, operation); err != nil {
 		return nil, err

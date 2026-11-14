@@ -9,8 +9,12 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	legacycontroller "github.com/kubeovn/kube-ovn/pkg/controller"
+	"github.com/kubeovn/kube-ovn/pkg/internal"
 )
 
 type recordingSubnetDataPlaneBackend struct {
@@ -23,6 +27,52 @@ type recordingSubnetDataPlaneBackend struct {
 
 type legacySubnetDataPlaneBackend struct {
 	reconcile int
+}
+
+type installingSubnetDataPlaneBackend struct {
+	status           legacycontroller.SubnetRuntimeStatusWriter
+	ipStatus         legacycontroller.SubnetRuntimeIPStatusWriter
+	gatewayMAC       legacycontroller.SubnetRuntimeGatewayMACWriter
+	finalizer        legacycontroller.SubnetRuntimeFinalizerWriter
+	ovn              legacycontroller.SubnetRuntimeDomainWriter
+	ipam             legacycontroller.SubnetRuntimeDomainWriter
+	virtualPort      legacycontroller.SubnetRuntimeVirtualPortWriter
+	virtualPortCalls int
+}
+
+func (b *installingSubnetDataPlaneBackend) RecoverSubnetRuntime(context.Context, *kubeovnv1.Subnet) error {
+	return nil
+}
+
+func (b *installingSubnetDataPlaneBackend) ReconcileSubnetRuntime(context.Context, *kubeovnv1.Subnet) error {
+	return nil
+}
+
+func (b *installingSubnetDataPlaneBackend) SyncSubnetVirtualPort(context.Context, *kubeovnv1.Subnet) error {
+	b.virtualPortCalls++
+	return nil
+}
+
+func (b *installingSubnetDataPlaneBackend) SetSubnetRuntimeWriters(
+	status legacycontroller.SubnetRuntimeStatusWriter,
+	ipStatus legacycontroller.SubnetRuntimeIPStatusWriter,
+	gatewayMAC legacycontroller.SubnetRuntimeGatewayMACWriter,
+	finalizer legacycontroller.SubnetRuntimeFinalizerWriter,
+	ovn legacycontroller.SubnetRuntimeDomainWriter,
+	ipam legacycontroller.SubnetRuntimeDomainWriter,
+) error {
+	b.status = status
+	b.ipStatus = ipStatus
+	b.gatewayMAC = gatewayMAC
+	b.finalizer = finalizer
+	b.ovn = ovn
+	b.ipam = ipam
+	return nil
+}
+
+func (b *installingSubnetDataPlaneBackend) SetSubnetRuntimeVirtualPortWriter(writer legacycontroller.SubnetRuntimeVirtualPortWriter) error {
+	b.virtualPort = writer
+	return nil
 }
 
 func (b *legacySubnetDataPlaneBackend) RecoverSubnetRuntime(context.Context, *kubeovnv1.Subnet) error {
@@ -63,6 +113,98 @@ func TestSubnetControllerWriterAdapterDelegatesDomainPath(t *testing.T) {
 	require.Equal(t, 1, backend.reconcile)
 	require.True(t, backend.allowed)
 	require.False(t, backend.deleting)
+}
+
+func TestSubnetControllerWriterAdapterInstallsExplicitRuntimeWriters(t *testing.T) {
+	backend := &legacycontroller.Controller{}
+	client := newRuntimeClient(t)
+	adapter := &SubnetControllerWriterAdapter{
+		Backend: backend,
+		Client:  client,
+		Reader:  client,
+		Gate:    SubnetWriterGate{Recovery: func(context.Context) error { return nil }},
+	}
+	require.NoError(t, adapter.InstallRuntimeWriters())
+	require.Error(t, adapter.InstallRuntimeWriters())
+}
+
+func TestSubnetControllerWriterAdapterWritersSyncResourceVersion(t *testing.T) {
+	scheme, err := NewScheme()
+	require.NoError(t, err)
+	subnet := testSubnet("")
+	subnet.UID = types.UID("subnet-uid")
+	api := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&kubeovnv1.Subnet{}).WithObjects(subnet).Build()
+	backend := &installingSubnetDataPlaneBackend{}
+	adapter := &SubnetControllerWriterAdapter{
+		Backend: backend,
+		Client:  api,
+		Reader:  api,
+		Gate:    SubnetWriterGate{Recovery: func(context.Context) error { return nil }},
+	}
+	require.NoError(t, adapter.InstallRuntimeWriters())
+	require.NotNil(t, backend.ipStatus)
+	require.NotNil(t, backend.gatewayMAC)
+	require.NotNil(t, backend.ovn)
+	require.NotNil(t, backend.ipam)
+	require.NotNil(t, backend.virtualPort)
+	current := &kubeovnv1.Subnet{}
+	require.NoError(t, api.Get(t.Context(), client.ObjectKey{Name: subnet.Name}, current))
+	require.NoError(t, backend.virtualPort(t.Context(), current.Name))
+	require.Equal(t, 1, backend.virtualPortCalls)
+
+	require.NoError(t, api.Get(t.Context(), client.ObjectKey{Name: subnet.Name}, current))
+	projected := current.DeepCopy()
+	projected.Status.V4AvailableIPs = internal.NewBigInt(2)
+	oldResourceVersion := projected.ResourceVersion
+	require.NoError(t, backend.ipStatus(t.Context(), projected))
+	require.NotEqual(t, oldResourceVersion, projected.ResourceVersion)
+
+	oldResourceVersion = projected.ResourceVersion
+	require.NoError(t, backend.gatewayMAC(t.Context(), projected, "00:11:22:33:44:55"))
+	require.NotEqual(t, oldResourceVersion, projected.ResourceVersion)
+	require.Equal(t, "00:11:22:33:44:55", projected.Status.GatewayMAC)
+	applyCalls := 0
+	require.NoError(t, backend.ovn(t.Context(), projected, legacycontroller.SubnetRuntimeOVNAllocateOperation, func(context.Context) error {
+		applyCalls++
+		return nil
+	}))
+	require.NoError(t, backend.ipam(t.Context(), projected, legacycontroller.SubnetRuntimeIPAMAllocateOperation, func(context.Context) error {
+		applyCalls++
+		return nil
+	}))
+	require.Equal(t, 2, applyCalls)
+}
+
+func TestSubnetControllerWriterAdapterVirtualPortRejectsReplacement(t *testing.T) {
+	scheme, err := NewScheme()
+	require.NoError(t, err)
+	original := testSubnet("")
+	original.UID = types.UID("subnet-old")
+	api := fake.NewClientBuilder().WithScheme(scheme).WithObjects(original).Build()
+	replacement := original.DeepCopy()
+	replacement.UID = types.UID("subnet-new")
+	replacement.ResourceVersion = ""
+	replacement.Spec.CIDRBlock = "10.0.1.0/24"
+	recoveryCalls := 0
+	backend := &installingSubnetDataPlaneBackend{}
+	adapter := &SubnetControllerWriterAdapter{
+		Backend: backend,
+		Client:  api,
+		Reader:  api,
+		Gate: SubnetWriterGate{Recovery: func(context.Context) error {
+			recoveryCalls++
+			if recoveryCalls == 2 {
+				require.NoError(t, api.Delete(t.Context(), original))
+				require.NoError(t, api.Create(t.Context(), replacement))
+			}
+			return nil
+		}},
+	}
+	require.NoError(t, adapter.InstallRuntimeWriters())
+
+	err = backend.virtualPort(t.Context(), original.Name)
+	require.True(t, apierrors.IsConflict(err), err)
+	require.Zero(t, backend.virtualPortCalls, "replacement must be rejected before OVN mutation")
 }
 
 func TestSubnetControllerWriterAdapterPreservesTermination(t *testing.T) {

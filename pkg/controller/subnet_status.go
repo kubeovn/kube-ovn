@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
 
@@ -73,6 +74,16 @@ func (c *Controller) patchSubnetStatusWithContext(ctx context.Context, subnet *k
 		klog.Error(err)
 		return err
 	}
+	if c.subnetRuntimeStatusWriter != nil {
+		if err := c.subnetRuntimeStatusWriter(ctx, subnet); err != nil {
+			klog.Errorf("failed to patch status for subnet %s through runtime writer: %v", subnet.Name, err)
+			return err
+		}
+		if errStr == "" {
+			c.recordResourceEvent(subnet, v1.EventTypeNormal, reason, fmt.Sprintf("Subnet %s status updated successfully", subnet.Name))
+		}
+		return nil
+	}
 	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 		klog.Errorf("failed to patch status for subnet %s, %v", subnet.Name, err)
 		return err
@@ -83,17 +94,23 @@ func (c *Controller) patchSubnetStatusWithContext(ctx context.Context, subnet *k
 	return nil
 }
 
-func (c *Controller) patchSubnetGatewayMACWithContext(ctx context.Context, subnetName, gatewayMAC string) error {
+func (c *Controller) patchSubnetGatewayMACWithContext(ctx context.Context, subnet *kubeovnv1.Subnet, gatewayMAC string) error {
+	if subnet == nil {
+		return errors.New("subnet gateway MAC status requires a Subnet")
+	}
 	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
+	}
+	if c.subnetRuntimeGatewayMACWriter != nil {
+		return c.subnetRuntimeGatewayMACWriter(ctx, subnet, gatewayMAC)
 	}
 	patch, err := json.Marshal(map[string]any{"status": map[string]any{"gatewayMAC": gatewayMAC}})
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
-	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnetName, types.MergePatchType, patch, metav1.PatchOptions{}, "status"); err != nil {
-		klog.Errorf("failed to patch gateway mac status for subnet %s, %v", subnetName, err)
+	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnet.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "status"); err != nil {
+		klog.Errorf("failed to patch gateway mac status for subnet %s, %v", subnet.Name, err)
 		return err
 	}
 	return nil
@@ -121,7 +138,7 @@ func (c *Controller) recordSubnetGatewayMACWithContext(ctx context.Context, subn
 	if subnet.Status.GatewayMAC == lrp.MAC {
 		return nil
 	}
-	if err := c.patchSubnetGatewayMACWithContext(ctx, subnet.Name, lrp.MAC); err != nil {
+	if err := c.patchSubnetGatewayMACWithContext(ctx, subnet, lrp.MAC); err != nil {
 		klog.Errorf("failed to patch gateway MAC %s for subnet %s: %v", lrp.MAC, subnet.Name, err)
 		return err
 	}
@@ -318,6 +335,13 @@ func (c *Controller) calcSubnetStatusIPWithContext(ctx context.Context, subnet *
 	}
 	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return nil, err
+	}
+	if c.subnetRuntimeIPStatusWriter != nil {
+		if err := c.subnetRuntimeIPStatusWriter(ctx, projected); err != nil {
+			return nil, err
+		}
+		subnet.Status = *projected.Status.DeepCopy()
+		return subnet, nil
 	}
 	return c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
 }

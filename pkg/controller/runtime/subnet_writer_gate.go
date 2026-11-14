@@ -24,6 +24,7 @@ const (
 	SubnetFinalizerAddOperation    SubnetWriteOperation = "finalizer-add"
 	SubnetFinalizerRemoveOperation SubnetWriteOperation = "finalizer-remove"
 	SubnetOVNAllocateOperation     SubnetWriteOperation = "ovn-allocate"
+	SubnetOVNVirtualPortOperation  SubnetWriteOperation = "ovn-virtual-port"
 	SubnetOVNCleanupOperation      SubnetWriteOperation = "ovn-cleanup"
 	SubnetIPAMAllocateOperation    SubnetWriteOperation = "ipam-allocate"
 	SubnetIPAMReleaseOperation     SubnetWriteOperation = "ipam-release"
@@ -100,7 +101,7 @@ func (s SubnetWriteSnapshot) validateCurrent(current *kubeovnv1.Subnet) error {
 
 func (s SubnetWriteSnapshot) validateOperation(operation SubnetWriteOperation) error {
 	switch operation {
-	case SubnetStatusWriteOperation, SubnetFinalizerAddOperation:
+	case SubnetStatusWriteOperation, SubnetFinalizerAddOperation, SubnetOVNVirtualPortOperation:
 		if s.Deleting {
 			return fmt.Errorf("subnet %s is terminating; %s is not allowed", s.Name, operation)
 		}

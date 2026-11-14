@@ -284,7 +284,7 @@ func TestSubnetReconcilerConsumesSameNameDeleteSnapshotsInUIDOrder(t *testing.T)
 
 	result, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: deletedA.Name})
 	require.NoError(t, err)
-	require.True(t, result.Requeue)
+	require.NotZero(t, result.RequeueAfter)
 	require.Equal(t, []types.UID{snapshotA.UID}, calls)
 
 	result, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: deletedA.Name})

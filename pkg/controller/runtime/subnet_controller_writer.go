@@ -34,13 +34,166 @@ type SubnetGatedDataPlaneBackend interface {
 	ReconcileSubnetRuntimeWithGate(context.Context, *kubeovnv1.Subnet, bool) error
 }
 
+// SubnetVirtualPortBackend is the legacy OVN operation behind the runtime
+// virtual-port queue admission. The runtime adapter supplies a fresh API
+// object before invoking it.
+type SubnetVirtualPortBackend interface {
+	SyncSubnetVirtualPort(context.Context, *kubeovnv1.Subnet) error
+}
+
 // SubnetControllerWriterAdapter wires the real Controller domain path into
 // the runtime reconciler. The facade carries the immutable API snapshot into
 // the existing status, finalizer, IPAM, and OVN sequence.
 type SubnetControllerWriterAdapter struct {
 	Backend SubnetDataPlaneBackend
+	Client  client.Client
 	Reader  client.Reader
 	Gate    SubnetWriterGate
+}
+
+type subnetRuntimeWriterInstaller interface {
+	SetSubnetRuntimeWriters(
+		legacycontroller.SubnetRuntimeStatusWriter,
+		legacycontroller.SubnetRuntimeIPStatusWriter,
+		legacycontroller.SubnetRuntimeGatewayMACWriter,
+		legacycontroller.SubnetRuntimeFinalizerWriter,
+		legacycontroller.SubnetRuntimeDomainWriter,
+		legacycontroller.SubnetRuntimeDomainWriter,
+	) error
+}
+
+type subnetRuntimeVirtualPortWriterInstaller interface {
+	SetSubnetRuntimeVirtualPortWriter(legacycontroller.SubnetRuntimeVirtualPortWriter) error
+}
+
+// InstallRuntimeWriters connects the explicit API writers to the legacy domain
+// sequence. The runtime mode owns this installation before manager start; a
+// legacy backend that cannot expose the hooks fails closed instead of silently
+// falling back to direct status or finalizer patches.
+func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
+	if a == nil || a.Backend == nil {
+		return errors.New("subnet controller writer backend is not configured")
+	}
+	if a.Client == nil || a.Reader == nil {
+		return ErrSubnetRuntimeReaderMissing
+	}
+	installer, ok := a.Backend.(subnetRuntimeWriterInstaller)
+	if !ok {
+		return errors.New("subnet controller writer backend does not expose runtime writers")
+	}
+	virtualPortInstaller, ok := a.Backend.(subnetRuntimeVirtualPortWriterInstaller)
+	if !ok {
+		return errors.New("subnet controller writer backend does not expose virtual-port writer")
+	}
+	virtualPortBackend, ok := a.Backend.(SubnetVirtualPortBackend)
+	if !ok {
+		return errors.New("subnet controller writer backend does not expose virtual-port backend")
+	}
+	statusWriter := func(ctx context.Context, subnet *kubeovnv1.Subnet) error {
+		return (&subnetStatusWriter{ctx: ctx, client: a.Client, reader: a.Reader, gate: a.Gate}).PatchStatus(subnet)
+	}
+	gatewayMACWriter := func(ctx context.Context, subnet *kubeovnv1.Subnet, gatewayMAC string) error {
+		if subnet == nil {
+			return errors.New("subnet gateway MAC writer requires a Subnet")
+		}
+		current, err := getSubnet(ctx, a.Reader, subnet.Name, subnetStatusWriteTimeout)
+		if err != nil {
+			return err
+		}
+		if err := (&subnetStatusWriter{ctx: ctx, client: a.Client, reader: a.Reader, gate: a.Gate}).PatchGatewayMAC(current, gatewayMAC); err != nil {
+			return err
+		}
+		subnet.ObjectMeta = *current.ObjectMeta.DeepCopy()
+		subnet.Status = *current.Status.DeepCopy()
+		return nil
+	}
+	ipStatusWriter := func(ctx context.Context, subnet *kubeovnv1.Subnet) error {
+		if subnet == nil {
+			return errors.New("subnet IP status writer requires a Subnet")
+		}
+		current, err := getSubnet(ctx, a.Reader, subnet.Name, subnetStatusWriteTimeout)
+		if err != nil {
+			return err
+		}
+		desired := current.DeepCopy()
+		desired.Status.V4AvailableIPs = subnet.Status.V4AvailableIPs.Clone()
+		desired.Status.V4AvailableIPRange = subnet.Status.V4AvailableIPRange
+		desired.Status.V4UsingIPs = subnet.Status.V4UsingIPs.Clone()
+		desired.Status.V4UsingIPRange = subnet.Status.V4UsingIPRange
+		desired.Status.V6AvailableIPs = subnet.Status.V6AvailableIPs.Clone()
+		desired.Status.V6AvailableIPRange = subnet.Status.V6AvailableIPRange
+		desired.Status.V6UsingIPs = subnet.Status.V6UsingIPs.Clone()
+		desired.Status.V6UsingIPRange = subnet.Status.V6UsingIPRange
+		if err := (&subnetStatusWriter{ctx: ctx, client: a.Client, reader: a.Reader, gate: a.Gate}).PatchStatus(desired); err != nil {
+			return err
+		}
+		subnet.ObjectMeta = *desired.ObjectMeta.DeepCopy()
+		return nil
+	}
+	finalizerWriter := func(ctx context.Context, subnet *kubeovnv1.Subnet, remove bool) (*kubeovnv1.Subnet, error) {
+		writer := &subnetFinalizerWriter{ctx: ctx, client: a.Client, reader: a.Reader, gate: a.Gate}
+		updated := subnet.DeepCopy()
+		var err error
+		if remove {
+			err = writer.RemoveFinalizer(updated)
+		} else {
+			err = writer.AddFinalizer(updated)
+		}
+		return updated, err
+	}
+	domainWriter := func(ctx context.Context, subnet *kubeovnv1.Subnet, operation legacycontroller.SubnetRuntimeDomainOperation, apply func(context.Context) error) error {
+		if apply == nil {
+			return errors.New("subnet runtime domain operation is not configured")
+		}
+		allocationAllowed := subnet.DeletionTimestamp.IsZero()
+		snapshot, err := NewSubnetWriteSnapshot(subnet, allocationAllowed)
+		if err != nil {
+			return err
+		}
+		writer := &subnetSideEffectWriter{ctx: ctx, reader: a.Reader, gate: a.Gate}
+		sideEffectOperation := SubnetWriteOperation(operation)
+		return writer.Execute(snapshot, sideEffectOperation, SubnetSideEffectPlan{
+			Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
+				return nil, apply(ctx)
+			},
+		})
+	}
+	virtualPortWriter := func(ctx context.Context, name string) error {
+		if err := a.Gate.WaitForRecovery(ctx); err != nil {
+			return err
+		}
+		current, err := getSubnet(ctx, a.Reader, name, subnetStatusWriteTimeout)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		if !current.DeletionTimestamp.IsZero() {
+			return nil
+		}
+		snapshot, err := NewSubnetWriteSnapshot(current, false)
+		if err != nil {
+			return err
+		}
+		if err := a.Gate.Validate(ctx, snapshot, current, SubnetOVNVirtualPortOperation); err != nil {
+			return err
+		}
+		// Re-read immediately before the backend call so a delayed queue key
+		// cannot use an object replaced after the first admission check.
+		latest, err := getSubnet(ctx, a.Reader, name, subnetStatusWriteTimeout)
+		if err != nil {
+			return err
+		}
+		if err := snapshot.Validate(latest, SubnetOVNVirtualPortOperation); err != nil {
+			return err
+		}
+		return virtualPortBackend.SyncSubnetVirtualPort(ctx, latest)
+	}
+	if err := installer.SetSubnetRuntimeWriters(statusWriter, ipStatusWriter, gatewayMACWriter, finalizerWriter, domainWriter, domainWriter); err != nil {
+		return err
+	}
+	return virtualPortInstaller.SetSubnetRuntimeVirtualPortWriter(virtualPortWriter)
 }
 
 func (a *SubnetControllerWriterAdapter) RecoverSubnet(ctx context.Context, snapshot SubnetWriteSnapshot) error {

@@ -73,6 +73,21 @@ func TestSubnetSideEffectWriterRunsEachOperationAfterGate(t *testing.T) {
 	}
 }
 
+func TestSubnetSideEffectWriterRunsCleanupForMissingTombstone(t *testing.T) {
+	w, api, subnet, snapshot := newSubnetSideEffectWriterAPI(t, true)
+	subnet.Finalizers = nil
+	require.NoError(t, api.Update(t.Context(), subnet))
+	err := api.Delete(t.Context(), subnet)
+	require.True(t, apierrors.IsNotFound(err), err)
+
+	called := false
+	require.NoError(t, w.CleanupOVN(snapshot, func(context.Context) error {
+		called = true
+		return nil
+	}))
+	require.True(t, called, "cleanup must run after a delete tombstone is gone from the API")
+}
+
 func TestSubnetSideEffectWriterRejectsInvalidOperationsBeforeCallback(t *testing.T) {
 	w, _, snapshot := newSubnetSideEffectWriter(t)
 	tests := []struct {

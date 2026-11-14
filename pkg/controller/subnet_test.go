@@ -69,6 +69,65 @@ func TestSubnetRuntimeHelpersHonorCanceledContext(t *testing.T) {
 	require.ErrorIs(t, err, fenceErr)
 }
 
+func TestSubnetPolicyRouteWritersStopWhenRuntimeFenceIsLost(t *testing.T) {
+	fenceErr := errors.New("subnet writer fence lost")
+	controller := &Controller{subnetRuntimeFence: func(context.Context) error { return fenceErr }}
+	require.ErrorIs(t, controller.updatePolicyRouteForCentralizedSubnet("subnet-a", "10.0.0.0/24", nil, nil), fenceErr)
+	require.ErrorIs(t, controller.deletePolicyRouteByGatewayType(&kubeovnv1.Subnet{Name: "subnet-a"}, kubeovnv1.GWCentralizedType, false), fenceErr)
+}
+
+func TestSubnetRuntimeWritersReplaceDirectStatusAndFinalizerPatches(t *testing.T) {
+	var statusCalls, gatewayCalls, finalizerCalls int
+	controller := &Controller{}
+	err := controller.SetSubnetRuntimeWriters(
+		func(_ context.Context, subnet *kubeovnv1.Subnet) error {
+			statusCalls++
+			subnet.Status.GatewayMAC = "00:11:22:33:44:55"
+			return nil
+		},
+		func(_ context.Context, _ *kubeovnv1.Subnet) error { return nil },
+		func(_ context.Context, _ *kubeovnv1.Subnet, _ string) error {
+			gatewayCalls++
+			return nil
+		},
+		func(_ context.Context, subnet *kubeovnv1.Subnet, remove bool) (*kubeovnv1.Subnet, error) {
+			finalizerCalls++
+			updated := subnet.DeepCopy()
+			if remove {
+				updated.Finalizers = nil
+			} else {
+				updated.Finalizers = []string{util.KubeOVNControllerFinalizer}
+			}
+			return updated, nil
+		},
+		func(_ context.Context, _ *kubeovnv1.Subnet, _ SubnetRuntimeDomainOperation, apply func(context.Context) error) error {
+			return apply(t.Context())
+		},
+		func(_ context.Context, _ *kubeovnv1.Subnet, _ SubnetRuntimeDomainOperation, apply func(context.Context) error) error {
+			return apply(t.Context())
+		},
+	)
+	require.NoError(t, err)
+	require.Error(t, controller.SetSubnetRuntimeWriters(nil, nil, nil, nil, nil, nil))
+
+	active := &kubeovnv1.Subnet{Name: "subnet-a"}
+	require.NoError(t, controller.patchSubnetStatusWithContext(t.Context(), active, "SetNonOvnSubnetSuccess", ""))
+	require.Equal(t, 1, statusCalls)
+
+	terminating := active.DeepCopy()
+	deletionTimestamp := metav1.Now()
+	terminating.DeletionTimestamp = &deletionTimestamp
+	terminating.Finalizers = []string{util.KubeOVNControllerFinalizer}
+	updated, removed, err := controller.handleSubnetFinalizerWithContext(t.Context(), terminating)
+	require.NoError(t, err)
+	require.True(t, removed)
+	require.Empty(t, updated.Finalizers)
+	require.Equal(t, 1, finalizerCalls)
+
+	require.NoError(t, controller.patchSubnetGatewayMACWithContext(t.Context(), active, "00:11:22:33:44:55"))
+	require.Equal(t, 1, gatewayCalls)
+}
+
 func TestEnqueueDeleteSubnetRuntimeWriterOwnership(t *testing.T) {
 	t.Parallel()
 
@@ -1069,6 +1128,18 @@ func Test_reconcileVips(t *testing.T) {
 	})
 }
 
+func TestReconcileVipsStopsWhenRuntimeFenceIsLost(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	fenceErr := errors.New("subnet writer fence lost")
+	ctrl.subnetRuntimeFence = func(context.Context) error { return fenceErr }
+
+	err := ctrl.reconcileVips(&kubeovnv1.Subnet{Name: "ovn-test"})
+	require.ErrorIs(t, err, fenceErr)
+}
+
 func Test_syncVirtualPort(t *testing.T) {
 	t.Parallel()
 
@@ -1112,6 +1183,69 @@ func Test_syncVirtualPort(t *testing.T) {
 
 	err = ctrl.syncVirtualPort(subnet.Name)
 	require.NoError(t, err)
+}
+
+func TestSyncVirtualPortStopsWhenRuntimeFenceIsLost(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	fakeinformers := fakeController.fakeInformers
+	subnet := &kubeovnv1.Subnet{
+		Name: "ovn-test",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "192.168.123.0/24",
+			Vips:      []string{"192.168.123.10"},
+		},
+	}
+	require.NoError(t, fakeinformers.subnetInformer.Informer().GetStore().Add(subnet))
+
+	fenceErr := errors.New("subnet writer fence lost")
+	ctrl.subnetRuntimeFence = func(context.Context) error { return fenceErr }
+
+	err := ctrl.syncVirtualPort(subnet.Name)
+	require.ErrorIs(t, err, fenceErr)
+}
+
+func TestSyncVirtualPortChecksRuntimeFenceBeforeEachOVNWrite(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	fakeinformers := fakeController.fakeInformers
+	mockOvnClient := fakeController.mockOvnClient
+	subnet := &kubeovnv1.Subnet{
+		Name: "ovn-test",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "192.168.123.0/24",
+			Vips:      []string{"192.168.123.10", "192.168.123.11"},
+		},
+	}
+	require.NoError(t, fakeinformers.subnetInformer.Informer().GetStore().Add(subnet))
+	mockLsp := func(name string) ovnnb.LogicalSwitchPort {
+		return ovnnb.LogicalSwitchPort{
+			Name: name,
+			ExternalIDs: map[string]string{
+				"ls":   "",
+				"vips": "192.168.123.10,192.168.123.11",
+			},
+		}
+	}
+	mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{mockLsp("lsp-a")}, nil)
+	mockOvnClient.EXPECT().SetLogicalSwitchPortVirtualParents(subnet.Name, "lsp-a", "192.168.123.10").Return(nil)
+	fenceErr := errors.New("subnet writer fence lost")
+	checks := 0
+	ctrl.subnetRuntimeFence = func(context.Context) error {
+		checks++
+		if checks >= 3 {
+			return fenceErr
+		}
+		return nil
+	}
+
+	err := ctrl.syncVirtualPort(subnet.Name)
+	require.ErrorIs(t, err, fenceErr)
+	require.Equal(t, 3, checks)
 }
 
 func Test_syncVirtualPort_noSubstringMatch(t *testing.T) {
