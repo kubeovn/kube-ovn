@@ -160,10 +160,7 @@ func (f *KubernetesSubnetWriterFence) Start(ctx context.Context) error {
 	f.cancel = cancel
 	f.renewDone = renewDone
 	f.mu.Unlock()
-	interval := f.duration / 3
-	if interval < time.Second {
-		interval = time.Second
-	}
+	interval := max(f.duration/3, time.Second)
 	go f.renewLoop(runCtx, stop, runID, interval, renewDone)
 	return nil
 }
