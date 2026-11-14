@@ -264,6 +264,9 @@ features:
   # -- Allow a /32 address to be selected as the tunnel source (required on clouds that assign /32 to the host interface)
   # @section -- Opt-in/out Features
   enableHostTunnelSrc: false
+  # -- Experimental: treat devices allocated by the kube-ovn DRA NIC driver (nic.kubeovn.io) as pod network attachments
+  # @section -- Opt-in/out Features
+  enableDraNic: false
 
   ENABLE_BIND_LOCAL_IP: true
   LS_DNAT_MOD_DL_DST: true

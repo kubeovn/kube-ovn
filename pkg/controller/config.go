@@ -206,6 +206,10 @@ type Configuration struct {
 	// Non Primary CNI flag
 	EnableNonPrimaryCNI bool
 
+	// DRA NIC: treat devices allocated by this DRA driver as pod network attachments
+	EnableDRANic     bool
+	DRANicDriverName string
+
 	// Enforcement level of network policies (standard, lax)
 	NetworkPolicyEnforcement string
 	ACLSampling              aclsampling.ControllerConfig
@@ -321,6 +325,9 @@ func ParseFlags() (*Configuration, error) {
 
 		argNonPrimaryCNI = pflag.Bool("non-primary-cni-mode", false, "Use Kube-OVN in non primary cni mode. When true, Kube-OVN will only manage the network for network attachment definitions")
 
+		argEnableDRANic     = pflag.Bool("enable-dra-nic", false, "Experimental: treat ResourceClaim devices allocated by the kube-ovn DRA NIC driver as pod network attachments")
+		argDRANicDriverName = pflag.String("dra-nic-driver-name", "nic.kubeovn.io", "Name of the DRA driver whose allocated devices are kube-ovn secondary NICs")
+
 		argSkipConntrackDstCidrs = pflag.String("skip-conntrack-dst-cidrs", "", "Comma-separated list of destination IP CIDRs that should skip conntrack processing")
 	)
 
@@ -432,6 +439,8 @@ func ParseFlags() (*Configuration, error) {
 		TLSMaxVersion:               *argTLSMaxVersion,
 		TLSCipherSuites:             *argTLSCipherSuites,
 		EnableNonPrimaryCNI:         *argNonPrimaryCNI,
+		EnableDRANic:                *argEnableDRANic,
+		DRANicDriverName:            *argDRANicDriverName,
 		NetworkPolicyEnforcement:    *argNPEnforcement,
 		SkipConntrackDstCidrs:       *argSkipConntrackDstCidrs,
 	}
