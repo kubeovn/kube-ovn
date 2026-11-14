@@ -79,6 +79,61 @@ func TestSubnetShadowReconcilerMapsDependencies(t *testing.T) {
 		reconciler.requestsForProviderNetwork(t.Context(), provider))
 }
 
+func TestSubnetShadowReconcilerUnionsProviderNetworkStatusAndSubnetSpec(t *testing.T) {
+	statusSubnet := testSubnet("vlan-status")
+	specSubnet := testSubnet("vlan-spec")
+	statusSubnet.Name = "subnet-status"
+	specSubnet.Name = "subnet-spec"
+	statusVlan := testVlan("vlan-status", "provider-a")
+	statusVlan.Status.Subnets = []string{statusSubnet.Name}
+	specVlan := testVlan("vlan-spec", "provider-a")
+	provider := testProvider("provider-a", true, statusVlan.Name)
+	reconciler := &SubnetShadowReconciler{Reader: newRuntimeClient(t, statusSubnet, specSubnet, statusVlan, specVlan, provider)}
+
+	requests, err := reconciler.providerNetworkStatusRequestsWithFallback(t.Context(), provider)
+	require.NoError(t, err)
+	require.Equal(t, []ctrl.Request{{Name: specSubnet.Name}, {Name: statusSubnet.Name}}, requests)
+}
+
+func TestSubnetShadowReconcilerMapsProviderNetworkWithEmptyStatus(t *testing.T) {
+	subnet := testSubnet("vlan-a")
+	vlan := testVlan("vlan-a", "provider-a")
+	provider := testProvider("provider-a", true)
+	reconciler := &SubnetShadowReconciler{Reader: newRuntimeClient(t, subnet, vlan, provider)}
+
+	requests, err := reconciler.providerNetworkStatusRequestsWithFallback(t.Context(), provider)
+	require.NoError(t, err)
+	require.Equal(t, []ctrl.Request{{Name: subnet.Name}}, requests)
+}
+
+func TestSubnetShadowReconcilerReturnsSpecMappingErrorWhenStatusHasNoVlan(t *testing.T) {
+	vlan := testVlan("vlan-a", "provider-a")
+	reader := &transientSubnetMapperReader{
+		Reader:   newRuntimeClient(t, vlan),
+		failures: map[string]int{"subnets": 3},
+	}
+	reconciler := &SubnetShadowReconciler{Reader: reader}
+
+	_, err := reconciler.providerNetworkStatusRequestsWithFallback(t.Context(), testProvider("provider-a", true))
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "injected transient list failure")
+}
+
+func TestSubnetShadowReconcilerPreservesStatusRequestsOnSpecMappingError(t *testing.T) {
+	subnet := testSubnet("vlan-a")
+	vlan := testVlan("vlan-a", "provider-a")
+	vlan.Status.Subnets = []string{subnet.Name}
+	reader := &transientSubnetMapperReader{
+		Reader:   newRuntimeClient(t, subnet, vlan),
+		failures: map[string]int{"subnets": 3},
+	}
+	reconciler := &SubnetShadowReconciler{Reader: reader}
+
+	requests, err := reconciler.providerNetworkStatusRequestsWithFallback(t.Context(), testProvider("provider-a", true, vlan.Name))
+	require.Error(t, err)
+	require.Equal(t, []ctrl.Request{{Name: subnet.Name}}, requests)
+}
+
 func TestSubnetShadowReconcilerMapsVlanStatusAcrossEvents(t *testing.T) {
 	reconciler := &SubnetShadowReconciler{}
 	oldVlan := &kubeovnv1.Vlan{Status: kubeovnv1.VlanStatus{Subnets: []string{"subnet-b", "subnet-a", ""}}}
