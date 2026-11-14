@@ -34,6 +34,9 @@ func (c *Controller) enqueueAddSubnet(obj any) {
 	c.invalidatePolicySelectorCache()
 	key := cache.MetaObjectToName(obj.(*kubeovnv1.Subnet)).String()
 	klog.V(3).Infof("enqueue add subnet %s", key)
+	if controllerRuntimeSubnetWriterEnabled(c.config) {
+		return
+	}
 	c.enqueueSubnetReconcile(key)
 }
 

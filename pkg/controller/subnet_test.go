@@ -115,6 +115,17 @@ func TestEnqueueDeleteSubnetRuntimeWriterLeavesNativeDeleteWatchOwnership(t *tes
 	require.Empty(t, controller.subnetRuntimeEvents.pending)
 }
 
+func TestEnqueueAddSubnetRuntimeWriterLeavesNativeCreateWatchOwnership(t *testing.T) {
+	t.Parallel()
+
+	controller := &Controller{
+		config:              &Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetWriter},
+		subnetRuntimeEvents: newSubnetRuntimeEventFanout(),
+	}
+	controller.enqueueAddSubnet(&kubeovnv1.Subnet{Name: "subnet-a"})
+	require.Empty(t, controller.subnetRuntimeEvents.pending)
+}
+
 func TestEnqueueUpdateSubnetRuntimeWriterFansOutStatusOnlyReadyEvent(t *testing.T) {
 	t.Parallel()
 
