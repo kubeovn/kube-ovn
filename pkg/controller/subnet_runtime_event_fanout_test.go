@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
@@ -99,4 +101,22 @@ func TestSubnetRuntimeDeleteFanoutNotifiesGenericSubscriber(t *testing.T) {
 	pending := fanout.pending
 	fanout.mu.Unlock()
 	require.Empty(t, pending)
+}
+
+func TestSubnetRuntimeDeleteFanoutRetainsSameNameDifferentUIDs(t *testing.T) {
+	fanout := newSubnetRuntimeEventFanout()
+	first := &kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "subnet-a", UID: types.UID("uid-a")}}
+	second := first.DeepCopy()
+	second.UID = types.UID("uid-b")
+	fanout.publishDelete(first)
+	fanout.publishDelete(first)
+	fanout.publishDelete(second)
+
+	var got []types.UID
+	unsubscribe := fanout.subscribeDelete(t.Context(), func(_ string, subnet *kubeovnv1.Subnet) {
+		got = append(got, subnet.UID)
+	})
+	defer unsubscribe()
+
+	require.Equal(t, []types.UID{"uid-a", "uid-b"}, got)
 }
