@@ -105,9 +105,12 @@ The executable vocabulary for this map is in
 Subnet, its VLAN, and its ProviderNetwork. Missing dependencies are represented
 as an unready observation. `SubnetAllocationGate` is a read-only gate: a VLAN
 must exist without conflict, its ProviderNetwork must be Ready, and the VLAN
-must be present in `ProviderNetwork.status.vlans` before a future writer may
-allocate IPAM or create OVN objects. This is stricter than the current legacy
-validator and is intentionally not wired into production by this PR.
+must be present in `ProviderNetwork.status.vlans` before the opt-in runtime
+writer may enter the combined status, finalizer, IPAM, and OVN path. The
+runtime adapter re-checks this gate immediately before admission and the
+Controller facade rejects an active reconcile without the grant; terminating
+cleanup and startup recovery retain their separate semantics. The default
+modes continue to use the legacy Subnet writer.
 
 `pkg/controller/runtime/subnet_writer_gate.go` and
 `pkg/controller/runtime/subnet_writer_ownership.go` now make the writer gates

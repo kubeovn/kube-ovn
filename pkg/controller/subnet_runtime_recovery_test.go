@@ -94,6 +94,23 @@ func TestRecoverSubnetRuntimeRestoresSubnetAndU2OAddress(t *testing.T) {
 	require.NotEqual(t, subnet.Status.U2OInterconnectionIP, address)
 }
 
+func TestReconcileSubnetRuntimeRejectsClosedAllocationGate(t *testing.T) {
+	t.Parallel()
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{})
+	require.NoError(t, err)
+	controller := fc.fakeController
+	controller.ipam = ipam.NewIPAM()
+	subnet := &kubeovnv1.Subnet{
+		Name: "subnet",
+		Spec: kubeovnv1.SubnetSpec{CIDRBlock: "10.0.0.0/29", Gateway: "10.0.0.1"},
+	}
+
+	require.ErrorIs(t, controller.ReconcileSubnetRuntime(t.Context(), subnet, false), ErrSubnetRuntimeAllocationNotAllowed)
+	_, _, _, err = controller.ipam.GetRandomAddress("pod", "pod-nic", nil, subnet.Name, "", nil, true)
+	require.ErrorIs(t, err, ipam.ErrNoSubnet)
+}
+
 func TestReconcileSubnetRuntimeRejectsReplacementBeforeCleanup(t *testing.T) {
 	t.Parallel()
 
@@ -109,7 +126,7 @@ func TestReconcileSubnetRuntimeRejectsReplacementBeforeCleanup(t *testing.T) {
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{replacement}})
 	require.NoError(t, err)
 
-	err = fc.fakeController.ReconcileSubnetRuntime(t.Context(), snapshot)
+	err = fc.fakeController.ReconcileSubnetRuntime(t.Context(), snapshot, false)
 	require.True(t, k8serrors.IsConflict(err), err)
 }
 
@@ -137,7 +154,7 @@ func TestReconcileSubnetRuntimeStopsWhenReplacementAppearsBeforeCleanup(t *testi
 		return false, nil, nil
 	})
 
-	err = fc.fakeController.ReconcileSubnetRuntime(t.Context(), snapshot)
+	err = fc.fakeController.ReconcileSubnetRuntime(t.Context(), snapshot, false)
 	require.True(t, k8serrors.IsConflict(err), err)
 	require.Equal(t, 2, gets)
 }

@@ -698,7 +698,10 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 // uncached API snapshot supplied by controller-runtime. The runtime writer
 // mode disables the legacy Subnet workers, so this explicit facade is the only
 // path that performs the IPAM, OVN, status, and finalizer mutations there.
-func (c *Controller) ReconcileSubnetRuntime(ctx context.Context, subnet *kubeovnv1.Subnet) error {
+// Active snapshots must carry a dependency readiness grant before entering
+// the combined legacy path; terminating snapshots use the cleanup path and do
+// not require allocation readiness.
+func (c *Controller) ReconcileSubnetRuntime(ctx context.Context, subnet *kubeovnv1.Subnet, allocationAllowed bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -710,6 +713,9 @@ func (c *Controller) ReconcileSubnetRuntime(ctx context.Context, subnet *kubeovn
 	c.invalidatePolicySelectorCache()
 	if subnet == nil {
 		return errors.New("runtime Subnet reconcile requires a Subnet")
+	}
+	if subnet.DeletionTimestamp.IsZero() && !allocationAllowed {
+		return ErrSubnetRuntimeAllocationNotAllowed
 	}
 	if !subnet.DeletionTimestamp.IsZero() {
 		preflightLive, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(ctx, subnet.Name, metav1.GetOptions{})

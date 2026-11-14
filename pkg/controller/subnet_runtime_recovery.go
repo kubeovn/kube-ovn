@@ -1,6 +1,14 @@
 package controller
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrSubnetRuntimeAllocationNotAllowed reports a dependency readiness gate
+// that must be retried before the active Subnet writer can allocate or mutate
+// data-plane state.
+var ErrSubnetRuntimeAllocationNotAllowed = errors.New("subnet runtime allocation is not allowed")
 
 // beginSubnetRuntimeRecovery closes the Subnet writer gate until the shared
 // IPAM and OVN prerequisites have been restored by controller startup.

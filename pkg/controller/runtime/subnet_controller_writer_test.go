@@ -17,6 +17,7 @@ type recordingSubnetDataPlaneBackend struct {
 	recover   int
 	reconcile int
 	deleting  bool
+	allowed   bool
 	last      *kubeovnv1.Subnet
 }
 
@@ -25,8 +26,9 @@ func (b *recordingSubnetDataPlaneBackend) RecoverSubnetRuntime(context.Context, 
 	return nil
 }
 
-func (b *recordingSubnetDataPlaneBackend) ReconcileSubnetRuntime(_ context.Context, subnet *kubeovnv1.Subnet) error {
+func (b *recordingSubnetDataPlaneBackend) ReconcileSubnetRuntime(_ context.Context, subnet *kubeovnv1.Subnet, allocationAllowed bool) error {
 	b.reconcile++
+	b.allowed = allocationAllowed
 	b.last = subnet.DeepCopy()
 	b.deleting = !subnet.DeletionTimestamp.IsZero()
 	return nil
@@ -42,6 +44,7 @@ func TestSubnetControllerWriterAdapterDelegatesDomainPath(t *testing.T) {
 	require.NoError(t, adapter.ReconcileSubnet(t.Context(), snapshot, SubnetShadowObservation{}))
 	require.Equal(t, 1, backend.recover)
 	require.Equal(t, 1, backend.reconcile)
+	require.True(t, backend.allowed)
 	require.False(t, backend.deleting)
 }
 
@@ -56,6 +59,7 @@ func TestSubnetControllerWriterAdapterPreservesTermination(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, adapter.ReconcileSubnet(t.Context(), snapshot, SubnetShadowObservation{}))
 	require.True(t, backend.deleting)
+	require.False(t, backend.allowed)
 }
 
 func TestSubnetControllerWriterAdapterPreservesStatusAndFinalizers(t *testing.T) {
@@ -69,6 +73,42 @@ func TestSubnetControllerWriterAdapterPreservesStatusAndFinalizers(t *testing.T)
 	require.NoError(t, adapter.ReconcileSubnet(t.Context(), snapshot, SubnetShadowObservation{}))
 	require.Equal(t, subnet.Finalizers, backend.last.Finalizers)
 	require.Equal(t, subnet.Status.GatewayMAC, backend.last.Status.GatewayMAC)
+}
+
+func TestSubnetControllerWriterAdapterRejectsAllocationWhenGateIsClosed(t *testing.T) {
+	backend := &recordingSubnetDataPlaneBackend{}
+	subnet := testSubnet("vlan-a")
+	vlan := testVlan("vlan-a", "provider-a")
+	provider := testProvider("provider-a", false, "vlan-a")
+	adapter := &SubnetControllerWriterAdapter{
+		Backend: backend,
+		Reader:  newRuntimeClient(t, subnet, vlan, provider),
+		Gate:    SubnetWriterGate{Recovery: func(context.Context) error { return nil }},
+	}
+	snapshot, err := NewSubnetWriteSnapshot(subnet, false)
+	require.NoError(t, err)
+
+	err = adapter.ReconcileSubnet(t.Context(), snapshot, SubnetShadowObservation{})
+	require.ErrorIs(t, err, ErrSubnetRuntimeAllocationNotAllowed)
+	require.Zero(t, backend.reconcile)
+}
+
+func TestSubnetControllerWriterAdapterRechecksDependencyGate(t *testing.T) {
+	backend := &recordingSubnetDataPlaneBackend{}
+	subnet := testSubnet("vlan-a")
+	vlan := testVlan("vlan-a", "provider-a")
+	provider := testProvider("provider-a", false, "vlan-a")
+	adapter := &SubnetControllerWriterAdapter{
+		Backend: backend,
+		Reader:  newRuntimeClient(t, subnet, vlan, provider),
+		Gate:    SubnetWriterGate{Recovery: func(context.Context) error { return nil }},
+	}
+	snapshot, err := NewSubnetWriteSnapshot(subnet, true)
+	require.NoError(t, err)
+
+	err = adapter.ReconcileSubnet(t.Context(), snapshot, SubnetShadowObservation{})
+	require.ErrorIs(t, err, ErrSubnetRuntimeAllocationNotAllowed)
+	require.Zero(t, backend.reconcile)
 }
 
 func TestSubnetControllerWriterAdapterRejectsStaleSnapshot(t *testing.T) {
