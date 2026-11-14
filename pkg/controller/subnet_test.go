@@ -99,7 +99,7 @@ func TestReconcileSubnetRuntimeInvalidatesPolicySelectorCache(t *testing.T) {
 
 	controller := &Controller{}
 	before := controller.policySelectorCacheGeneration()
-	err := controller.ReconcileSubnetRuntime(t.Context(), nil, true)
+	err := controller.ReconcileSubnetRuntime(t.Context(), nil)
 	require.Error(t, err)
 	require.Equal(t, before+1, controller.policySelectorCacheGeneration())
 }
