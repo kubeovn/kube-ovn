@@ -1236,6 +1236,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 	}
 
 	u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
+	u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
 	if err := checkFence(); err != nil {
 		return err
 	}
@@ -1245,6 +1246,10 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 			return err
 		}
 	}
+	if err := checkFence(); err != nil {
+		return err
+	}
+	c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
 
 	if subnet.Spec.Vpc != c.config.ClusterRouter {
 		if err := checkFence(); err != nil {
@@ -2253,7 +2258,8 @@ func (c *Controller) releaseU2OIPWithContext(ctx context.Context, subnet *kubeov
 		klog.Errorf("failed to delete ip %s, %v", u2oInterconnName, err)
 		return err
 	}
-	c.ipam.ReleaseAddressByPod(u2oInterconnName, subnet.Name)
+	u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
+	c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
 	subnet.Status.U2OInterconnectionIP = ""
 	subnet.Status.U2OInterconnectionMAC = ""
 	subnet.Status.U2OInterconnectionVPC = ""

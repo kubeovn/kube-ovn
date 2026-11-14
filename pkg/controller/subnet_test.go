@@ -124,6 +124,37 @@ func TestAcquireU2OIPWithContextPreservesExistingAndOtherNICAllocations(t *testi
 	}
 }
 
+func TestReleaseU2OIPWithContextOnlyReleasesU2ONIC(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	controller := fakeController.fakeController
+	const (
+		subnetName = "subnet-a"
+		podName    = "u2o-interconnection.vpc.subnet-a"
+		nicName    = "vpc-subnet-a"
+		otherNIC   = "other-nic"
+	)
+	require.NoError(t, controller.ipam.AddOrUpdateSubnet(subnetName, "10.0.0.0/24", "10.0.0.1", nil))
+	_, _, _, err := controller.ipam.GetStaticAddress(podName, nicName, "10.0.0.2", nil, subnetName, true)
+	require.NoError(t, err)
+	_, _, _, err = controller.ipam.GetStaticAddress(podName, otherNIC, "10.0.0.3", nil, subnetName, true)
+	require.NoError(t, err)
+
+	subnet := &kubeovnv1.Subnet{
+		Name:   subnetName,
+		Spec:   kubeovnv1.SubnetSpec{Vpc: "vpc"},
+		Status: kubeovnv1.SubnetStatus{U2OInterconnectionIP: "10.0.0.2"},
+	}
+	err = controller.releaseU2OIPWithContext(t.Context(), subnet, "u2o-interconnection.vpc.subnet-a")
+	require.NoError(t, err)
+
+	_, _, _, targetFound := controller.ipam.GetPodAddressByNic(podName, nicName, subnetName)
+	require.False(t, targetFound)
+	_, _, _, otherFound := controller.ipam.GetPodAddressByNic(podName, otherNIC, subnetName)
+	require.True(t, otherFound)
+}
+
 func TestValidateSubnetRuntimeDeleteTarget(t *testing.T) {
 	t.Parallel()
 
