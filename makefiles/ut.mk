@@ -2,7 +2,6 @@
 
 .PHONY: ut
 ut:
-	$(GINKGO) --show-node-events --poll-progress-after=60s $(GINKGO_OUTPUT_OPT) -v test/unittest
 	go test -coverprofile=profile.cov $$(go list ./cmd/... ./pkg/... | grep -vw '^github.com/kubeovn/kube-ovn/pkg/client')
 	bash dist/images/vpcnatgateway/nat_gateway_qos_test.sh
 	bash dist/images/vpcnatgateway/nat_gateway_vip_test.sh
@@ -28,13 +27,6 @@ cover:
 	go test ./pkg/ovs ./pkg/util ./pkg/ipam -gcflags=all=-l -coverprofile=cover.out -covermode=atomic
 	go tool cover -func=cover.out | grep -v "100.0%"
 	go tool cover -html=cover.out -o cover.html
-
-.PHONY: ginkgo-cover
-ginkgo-cover:
-	$(RM) test/unittest/cover.out
-	cd test/unittest && $(GINKGO) -r -cover -output-dir=. -coverprofile=cover.out -covermode=atomic -coverpkg=github.com/kubeovn/kube-ovn/pkg/ipam
-	go tool cover -func=test/unittest/cover.out | grep -v "100.0%"
-	go tool cover -html=test/unittest/cover.out -o test/unittest/cover.html
 
 .PHONY: ipam-bench
 ipam-bench:
