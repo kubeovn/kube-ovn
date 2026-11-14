@@ -750,7 +750,7 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		}
 		err = fmt.Errorf("failed to validate vlan for subnet %s, %w", cachedSubnet.Name, err)
 		klog.Error(err)
-		if patchErr := c.patchSubnetStatus(subnet, "ValidateSubnetVlanFailed", err.Error()); patchErr != nil {
+		if patchErr := c.patchSubnetStatusWithContext(ctx, subnet, "ValidateSubnetVlanFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
 			return c.recordResourceError(subnet, "UpdateStatusFailed", patchErr)
 		}
@@ -759,13 +759,13 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 
 	if err = util.ValidateSubnet(*subnet); err != nil {
 		klog.Errorf("failed to validate subnet %s, %v", subnet.Name, err)
-		if patchErr := c.patchSubnetStatus(subnet, "ValidateLogicalSwitchFailed", err.Error()); patchErr != nil {
+		if patchErr := c.patchSubnetStatusWithContext(ctx, subnet, "ValidateLogicalSwitchFailed", err.Error()); patchErr != nil {
 			klog.Error(patchErr)
 			return c.recordResourceError(subnet, "UpdateStatusFailed", patchErr)
 		}
 		return err
 	}
-	if err = c.patchSubnetStatus(subnet, "ValidateLogicalSwitchSuccess", ""); err != nil {
+	if err = c.patchSubnetStatusWithContext(ctx, subnet, "ValidateLogicalSwitchSuccess", ""); err != nil {
 		klog.Error(err)
 		return c.recordResourceError(subnet, "UpdateStatusFailed", err)
 	}
@@ -812,7 +812,7 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			return err
 		}
-		return c.finishNonOvnSubnetReconcile(subnet)
+		return c.finishNonOvnSubnetReconcile(ctx, subnet)
 	}
 	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
@@ -825,9 +825,9 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 	return c.finishOvnSubnetReconcile(ctx, subnet, vpc)
 }
 
-func (c *Controller) finishNonOvnSubnetReconcile(subnet *kubeovnv1.Subnet) error {
+func (c *Controller) finishNonOvnSubnetReconcile(ctx context.Context, subnet *kubeovnv1.Subnet) error {
 	// subnet provider is not ovn, and vpc is empty, should not reconcile
-	if err := c.patchSubnetStatus(subnet, "SetNonOvnSubnetSuccess", ""); err != nil {
+	if err := c.patchSubnetStatusWithContext(ctx, subnet, "SetNonOvnSubnetSuccess", ""); err != nil {
 		klog.Error(err)
 		return c.recordResourceError(subnet, "UpdateStatusFailed", err)
 	}
