@@ -111,7 +111,7 @@ func TestEnqueueDeleteSubnetRuntimeWriterLeavesNativeDeleteWatchOwnership(t *tes
 		config:              &Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetWriter},
 		subnetRuntimeEvents: newSubnetRuntimeEventFanout(),
 	}
-	controller.enqueueDeleteSubnet(&kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"}})
+	controller.enqueueDeleteSubnet(&kubeovnv1.Subnet{Name: "subnet-a"})
 	require.Empty(t, controller.subnetRuntimeEvents.pending)
 }
 
