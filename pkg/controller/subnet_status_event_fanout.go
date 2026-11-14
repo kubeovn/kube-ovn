@@ -29,7 +29,8 @@ func newSubnetStatusEventFanout() *subnetStatusEventFanout {
 }
 
 func newSubnetStatusEventFanoutForConfig(config *Configuration) *subnetStatusEventFanout {
-	if config == nil || config.ControllerRuntimeMode != ControllerRuntimeModeSubnetStatus {
+	if config == nil || (config.ControllerRuntimeMode != ControllerRuntimeModeSubnetStatus &&
+		config.ControllerRuntimeMode != ControllerRuntimeModeSubnetWriter) {
 		return nil
 	}
 	return newSubnetStatusEventFanout()
@@ -105,12 +106,16 @@ func (c *Controller) SubscribeSubnetStatusEvents(ctx context.Context, subscriber
 }
 
 func (c *Controller) enqueueSubnetStatus(name, sourceKind string) {
-	c.updateSubnetStatusQueue.Add(name)
+	if !controllerRuntimeSubnetWriterEnabled(c.config) {
+		c.updateSubnetStatusQueue.Add(name)
+	}
 	c.subnetStatusEvents.publish(name, sourceKind)
 }
 
 func (c *Controller) enqueueSubnetStatusAfter(name, sourceKind string, delay time.Duration) {
-	c.updateSubnetStatusQueue.AddAfter(name, delay)
+	if !controllerRuntimeSubnetWriterEnabled(c.config) {
+		c.updateSubnetStatusQueue.AddAfter(name, delay)
+	}
 	if c.subnetStatusEvents == nil || name == "" {
 		return
 	}

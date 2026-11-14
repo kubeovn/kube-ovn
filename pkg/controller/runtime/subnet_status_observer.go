@@ -70,6 +70,13 @@ func (r *SubnetStatusReconciler) observeStatus(ctx context.Context, request Subn
 	if sameSubnetIPStatus(&current.Status, &projection.Status) {
 		return "match", nil
 	}
+	if r.Writer != nil {
+		desired := current.DeepCopy()
+		desired.Status = *projection.Status.DeepCopy()
+		if err := r.Writer.PatchStatus(desired); err != nil {
+			return "", err
+		}
+	}
 	return "drift", nil
 }
 

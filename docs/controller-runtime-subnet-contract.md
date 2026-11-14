@@ -1,14 +1,14 @@
 # Controller-runtime Subnet contract
 
-This document is the boundary for the next incremental migration after the
-VLAN and ProviderNetwork pilot. It describes the current legacy ownership and
-the read-only contract that a future Subnet reconciler must satisfy. The
-contract is deliberately separate from production wiring: the current
-`CONTROLLER_RUNTIME_MODE` leaves the Subnet writer in the legacy controller.
+This document is the boundary for the incremental migration after the VLAN and
+ProviderNetwork pilot. It describes the current legacy ownership and the
+contract enforced by the opt-in Subnet writer. Default
+`CONTROLLER_RUNTIME_MODE` values leave the Subnet writer in the legacy
+controller; `subnet-writer` is the explicit opt-in runtime writer mode.
 The explicit `subnet-shadow` mode now wires only the read-only
 `SubnetShadowReconciler`; it observes Subnet dependencies without owning status,
 finalizers, OVN, or IPAM. All other modes leave that shadow unwired, and no mode
-enables the Subnet writer yet. The shadow exposes
+enables the Subnet writer by default. The shadow exposes
 `kube_ovn_subnet_shadow_reconciliations_total{result}` and
 `kube_ovn_subnet_shadow_reconcile_duration_seconds` for reconcile outcome and
 latency observability; these metrics do not change its read-only ownership. The
@@ -26,6 +26,11 @@ name while the manager starts, and preserves delayed notifications. Other
 runtime modes leave this bridge disabled. Non-status spec/dependency events
 are rejected before entering the status queue.
 
+The explicit `subnet-writer` mode is opt-in production wiring: it acquires a
+dedicated Kubernetes Lease for durable fencing, disables legacy Subnet workers
+and startup Subnet syncs, and routes one runtime reconcile through the
+Controller's status, finalizer, IPAM, and OVN domain path.
+
 The event source returns an idempotent bridge handle. A controller-runtime
 source start reuses one active legacy subscription for the same context, while
 a different active context must close the old bridge before starting again.
@@ -35,7 +40,9 @@ lifecycle and avoids silently redirecting an active legacy watcher to a new
 queue; it does not transfer ownership of the legacy status queue.
 
 `SubnetStatusReconciler` reads the Subnet through the manager's uncached API
-reader and invokes the legacy read-only IP/status calculator. The returned
+reader and invokes the legacy read-only IP/status calculator. In observer mode
+it never persists the projection; an optional writer is only used by an
+explicitly gated mode. The returned
 `SubnetStatusProjection` must carry the original identity, spec, generation,
 resource version, and deletion state; a projector cannot substitute another
 snapshot. Before comparing the projection, a second uncached GET confirms that
@@ -61,7 +68,8 @@ A stable Subnet revision is not an atomic snapshot of all informer and IPAM
 inputs. The observer reuses the legacy calculator, so a drift observation
 records a difference at that moment rather than independent proof of calculator
 correctness or persistent divergence. It does not add a full-cache scan or a
-periodic resync. Legacy status persistence remains the only production writer.
+periodic resync. Legacy status persistence remains the only production writer
+in the default modes; `subnet-writer` is the explicit exception.
 
 ## Single-writer matrix
 
@@ -77,8 +85,9 @@ periodic resync. Legacy status persistence remains the only production writer.
 | `IP` status/finalizer/address ownership | Existing IP handlers and Pod/VIP paths | Observe only | Migrate after IPPool |
 
 The shadow must not patch a status, add/remove a finalizer, enqueue a legacy
-queue, call OVN, or mutate IPAM. The production Subnet writer remains the
-single writer until every row has an explicit replacement and rollback gate.
+queue, call OVN, or mutate IPAM. The default modes retain the legacy Subnet
+writer; `subnet-writer` replaces its workers behind the durable fence and the
+same snapshot/conflict gates.
 
 ## Dependency and event map
 
@@ -102,27 +111,28 @@ validator and is intentionally not wired into production by this PR.
 
 `pkg/controller/runtime/subnet_writer_gate.go` and
 `pkg/controller/runtime/subnet_writer_ownership.go` now make the writer gates
-executable without enabling a second production writer. Every side effect must
+executable for the opt-in `subnet-writer` mode. Every side effect must
 carry an immutable Subnet identity/spec/resource-version snapshot. Status and
 finalizer-add operations require an active object; finalizer removal, OVN
 cleanup, and IPAM release require a terminating object; OVN/IPAM allocation
 requires `AllocationAllowed`. UID, generation, spec, resource-version, and
 deletion-state changes return a Kubernetes conflict. A missing recovery callback
 fails closed, so a restart cannot allocate or mutate OVN state before durable
-recovery completes. `subnet_status_writer.go` adds the next unwired status-only
-implementation: it performs an uncached snapshot check, uses an optimistic-lock
-status patch, preserves foreign condition types, and confirms a write that may
-have committed before its response was lost. The gate and writer remain an
-unwired contract until the legacy Subnet writer has an explicit replacement and
-rollback path. `subnet_finalizer_writer.go` adds the matching unwired metadata
-contract: it migrates the deprecated finalizer on active objects, removes both
-owned finalizers during termination, preserves foreign finalizers, and confirms
-metadata writes after an uncertain response. `subnet_side_effect_writer.go` adds
-the unwired OVN/IPAM side-effect boundary: each allocate or cleanup/release
-callback is executed only after the matching snapshot operation and recovery
-gate pass, and callback or context failures fail closed without retrying the
-side effect in the contract. Each invocation waits for recovery and performs
-a fresh Subnet GET with a five-second deadline before checking the immutable
+recovery completes. `subnet_status_writer.go` remains an isolated status-only implementation for a
+future split backend: it performs an uncached snapshot check, uses an
+optimistic-lock status patch, preserves foreign condition types, and confirms a
+write that may have committed before its response was lost. The opt-in
+`subnet-writer` mode currently reaches status through the Controller facade,
+which is the production owner while the legacy Subnet workers are disabled.
+`subnet_finalizer_writer.go` provides the matching isolated metadata contract;
+the production mode delegates finalizer changes to the Controller facade. It
+migrates the deprecated finalizer on active objects, removes both owned
+finalizers during termination, preserves foreign finalizers, and confirms
+metadata writes after an uncertain response. `subnet_side_effect_writer.go`
+provides the isolated OVN/IPAM side-effect boundary for a future split backend;
+the production mode delegates those operations to the Controller facade behind
+the durable Lease. Each isolated invocation waits for recovery and performs a
+fresh Subnet GET with a five-second deadline before checking the immutable
 snapshot and operation gate. The writer requires an uncached API reader (the
 manager's `GetAPIReader()`); a missing reader, missing object, API error,
 timeout, cancellation, or changed identity/spec/resource-version/deletion state
@@ -133,9 +143,11 @@ invocations is therefore checked against the API again.
 The ownership lease is process-local and epoch-bound: legacy and runtime claims
 are mutually exclusive, stale or wrong-owner releases fail closed, and an
 active reconcile or manager registration holds an operation guard so release
-cannot switch owners during side effects. A runtime `SubnetReconciler` cannot
-be registered without an active lease. It is an explicit handoff contract for
-future wiring, not durable leader fencing.
+cannot switch owners during side effects. `subnet-writer` binds this lease to a
+dedicated Kubernetes Lease that is acquired, renewed, and checked before each
+operation; losing the holder or lease expiry fails closed. A runtime
+`SubnetReconciler` cannot be registered without both leases. OVN and IPAM
+uncertain commits still require backend ownership checks.
 
 This read does not make the API check and OVN/IPAM mutation atomic. Changes
 after the GET still require backend identity/ownership fencing and recovery;
@@ -158,7 +170,10 @@ Compensation inherits writer cancellation and has a five-second deadline;
 adapters must honor that context. Compensation errors and deadline expiry are
 joined with the apply error. There is no deduplication across plan executions.
 
-`subnet_ipam_adapter.go` is the first concrete IPAM seam, but remains unwired.
+`subnet_ipam_adapter.go` remains the isolated receipt seam for future direct
+IPAM operations. The opt-in `subnet-writer` currently reaches IPAM through the
+Controller domain facade; this adapter documents the stronger receipt contract
+needed for a split backend.
 It stages allocation and release through `IPAM.WithTransactionContext`, whose
 atomic commit is provided by `IPAM.WithTransaction`, so a failed allocation
 leaves no committed address and a retry can allocate again. An
@@ -197,12 +212,13 @@ backend must replace this with an atomic fencing check. The current
 implementation wraps the in-memory IPAM transaction API; a future durable
 backend can implement the same seam only after preserving the receipt,
 ownership, and uncertain-commit guarantees. This interface is testable in
-isolation and remains unwired from the production manager.
+isolation; the opt-in production mode currently invokes the Controller's IPAM
+facade and keeps this receipt adapter available for a later split.
 
 ## Readiness and deletion gates
 
-The following cases remain legacy-owned and must be covered before enabling a
-Subnet writer:
+The following cases remain legacy-owned in the default modes and must be
+covered during the `subnet-writer` rollout and further hardening:
 
 - missing VLAN or ProviderNetwork, a ProviderNetwork that is not Ready, a VLAN
   conflict, and recovery from each condition;
@@ -213,20 +229,22 @@ Subnet writer:
 - deletion with occupied addresses, U2O interconnection state, finalizer
   removal, OVN errors, and API errors;
 - controller restart, cache resync, leader handoff and OVN database restart;
-- rollback from a future `subnet-shadow`/`subnet-new` mode to legacy without
+- rollback from `subnet-shadow` or `subnet-writer` to legacy without
   duplicate cleanup or lost IPAM ownership.
 
-The IPAM transaction seam is now available, and the status-only Subnet writer
-is implemented as an unwired contract. The opt-in `subnet-shadow` mode provides
-read-only dependency observation without changing ownership. The next
+The IPAM transaction seam is now available, and the opt-in `subnet-writer`
+mode wires the Controller's status, finalizer, OVN, and IPAM path behind the
+durable Lease. The opt-in `subnet-shadow` mode still provides read-only
+dependency observation without changing ownership. The next
 production increment is opt-in
 [IPPool scheduling](controller-runtime-ippool.md), which reuses the recovered
 legacy backend and its count-pool activation protocol. Further Subnet business
-handler extraction and conflict-safe finalizer/OVN/IPAM writes remain separate
-steps. IP is last because Pod, VM, LSP and `syncIPCR` paths depend on it.
-Subnet status, finalizer, and OVN/IPAM side-effect writers remain legacy-owned
-in every currently supported mode. Wiring side effects requires concrete OVN
-and IPAM adapters, durable recovery, and an explicit rollback/ownership gate.
+handler extraction and conflict-safe finalizer/OVN/IPAM receipts remain
+separate steps. IP is last because Pod, VM, LSP and `syncIPCR` paths depend on
+it. In `subnet-writer`, the Controller facade is the single Subnet domain
+writer while legacy Subnet workers and startup syncs are disabled; all other
+modes remain legacy-owned. Direct split adapters still require concrete durable
+receipts and an explicit rollback/ownership gate.
 The plan compensation contract is also unwired and does not itself provide
 durable backend rollback or a fencing mechanism. Concrete adapters must
 implement atomic receipt checks, idempotency, uncertain-commit confirmation,

@@ -193,12 +193,21 @@ func sameSubnetStatusEventContext(left, right context.Context) bool {
 }
 
 // SubnetStatusReconciler compares a status projection with the current Subnet
-// for a normalized status event. It never writes Kubernetes status or invokes
-// finalizer, OVN, or IPAM operations.
+// for a normalized status event. Observer mode never writes Kubernetes status
+// or invokes finalizer, OVN, or IPAM operations; an optional Writer is used
+// only by an explicitly gated writer mode.
 type SubnetStatusReconciler struct {
 	Reader    client.Reader
 	Events    SubnetStatusEventSource
 	Projector SubnetStatusProjector
+	Writer    SubnetStatusWriter
+}
+
+// SubnetStatusWriter is optional in the observer mode and required only by
+// the opt-in subnet-writer mode. It keeps status persistence behind the same
+// conflict and durable-fence checks as direct Subnet reconciles.
+type SubnetStatusWriter interface {
+	PatchStatus(*kubeovnv1.Subnet) error
 }
 
 // SetupWithManager registers the status-only queue and explicit event source.

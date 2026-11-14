@@ -46,6 +46,9 @@ func (c *Controller) updateNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet
 }
 
 func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr string) error {
+	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+		return err
+	}
 	if errStr != "" {
 		subnet.Status.SetError(reason, errStr)
 		if reason == "ValidateLogicalSwitchFailed" {
@@ -84,6 +87,9 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 // of the wider patchSubnetStatus flow, since it must be visible to the validating webhook
 // (which only reads the Subnet CR) as soon as prepareOvnSubnet records it in ipam.
 func (c *Controller) patchSubnetGatewayMAC(subnetName, gatewayMAC string) error {
+	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+		return err
+	}
 	patch, err := json.Marshal(map[string]any{"status": map[string]any{"gatewayMAC": gatewayMAC}})
 	if err != nil {
 		klog.Error(err)

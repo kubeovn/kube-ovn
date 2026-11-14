@@ -9,9 +9,20 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
+
+func TestSubnetReconcilerIgnoresStatusOnlyUpdates(t *testing.T) {
+	oldSubnet := testSubnet("")
+	newSubnet := oldSubnet.DeepCopy()
+	newSubnet.Status.GatewayMAC = "00:11:22:33:44:55"
+	require.False(t, subnetSpecOrLifecycleChanged(event.UpdateEvent{ObjectOld: oldSubnet, ObjectNew: newSubnet}))
+
+	newSubnet.Generation++
+	require.True(t, subnetSpecOrLifecycleChanged(event.UpdateEvent{ObjectOld: oldSubnet, ObjectNew: newSubnet}))
+}
 
 func TestSubnetReconcilerFailsClosedWithoutDependencies(t *testing.T) {
 	reconciler := &SubnetReconciler{}

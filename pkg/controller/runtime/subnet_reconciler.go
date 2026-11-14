@@ -3,12 +3,18 @@ package controllerruntime
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/event"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
@@ -27,6 +33,12 @@ type SubnetWriterAdapter interface {
 	ReconcileSubnet(context.Context, SubnetWriteSnapshot, SubnetShadowObservation) error
 }
 
+// LegacySubnetRuntimeEventSource adapts dependency changes that are still
+// observed by the legacy controller into runtime reconcile requests.
+type LegacySubnetRuntimeEventSource interface {
+	SubscribeSubnetRuntimeEvents(context.Context, func(string)) func()
+}
+
 // SubnetReconciler is the explicit wiring point for the future Subnet writer.
 // It is inert until both RecoveryGate and Adapter are supplied, so a manager
 // cannot accidentally start a partial writer during the migration.
@@ -35,13 +47,28 @@ type SubnetReconciler struct {
 	RecoveryGate func(context.Context) error
 	Adapter      SubnetWriterAdapter
 	Lease        SubnetWriterLease
-	recoveryMu   sync.Mutex
-	recovered    map[subnetRecoveryKey]struct{}
+	Events       LegacySubnetRuntimeEventSource
+	// Fence is checked before recovery and before the adapter can perform any
+	// status, finalizer, OVN, or IPAM side effect.
+	Fence      SubnetWriterFence
+	recoveryMu sync.Mutex
+	recovered  map[subnetRecoveryKey]struct{}
 }
 
 type subnetRecoveryKey struct {
 	name string
 	uid  types.UID
+}
+
+func subnetSpecOrLifecycleChanged(e event.UpdateEvent) bool {
+	oldSubnet, oldOK := e.ObjectOld.(*kubeovnv1.Subnet)
+	newSubnet, newOK := e.ObjectNew.(*kubeovnv1.Subnet)
+	if !oldOK || !newOK {
+		return false
+	}
+	return oldSubnet.Generation != newSubnet.Generation ||
+		oldSubnet.DeletionTimestamp.IsZero() != newSubnet.DeletionTimestamp.IsZero() ||
+		!slices.Equal(oldSubnet.Finalizers, newSubnet.Finalizers)
 }
 
 // SetupSubnetReconciler is the explicit manager wiring entry point. Callers
@@ -65,10 +92,27 @@ func (r *SubnetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		if r.Reader == nil {
 			r.Reader = mgr.GetAPIReader()
 		}
-		return ctrl.NewControllerManagedBy(mgr).
+		updates := predicate.Funcs{
+			CreateFunc:  func(event.CreateEvent) bool { return true },
+			UpdateFunc:  subnetSpecOrLifecycleChanged,
+			DeleteFunc:  func(event.DeleteEvent) bool { return true },
+			GenericFunc: func(event.GenericEvent) bool { return true },
+		}
+		builder := ctrl.NewControllerManagedBy(mgr).
 			Named("kube-ovn-subnet").
-			For(&kubeovnv1.Subnet{}).
-			Complete(r)
+			For(&kubeovnv1.Subnet{}, builder.WithPredicates(updates))
+		if r.Events != nil {
+			builder.WatchesRawSource(source.TypedFunc[ctrl.Request](func(ctx context.Context, q workqueue.TypedRateLimitingInterface[ctrl.Request]) error {
+				unsubscribe := r.Events.SubscribeSubnetRuntimeEvents(ctx, func(name string) {
+					if name != "" {
+						q.Add(ctrl.Request{NamespacedName: types.NamespacedName{Name: name}})
+					}
+				})
+				context.AfterFunc(ctx, unsubscribe)
+				return nil
+			}))
+		}
+		return builder.Complete(r)
 	})
 }
 
@@ -81,6 +125,11 @@ func (r *SubnetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	}
 	var result ctrl.Result
 	err := r.Lease.WithActive(ctx, func(ctx context.Context) error {
+		if r.Fence != nil {
+			if err := r.Fence.Check(ctx); err != nil {
+				return err
+			}
+		}
 		if r.Reader == nil {
 			return errors.New("subnet writer API reader is not configured")
 		}

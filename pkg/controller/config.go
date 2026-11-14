@@ -39,6 +39,7 @@ const (
 	ControllerRuntimeModeIPPool       = "ippool"
 	ControllerRuntimeModeSubnetShadow = "subnet-shadow"
 	ControllerRuntimeModeSubnetStatus = "subnet-status"
+	ControllerRuntimeModeSubnetWriter = "subnet-writer"
 )
 
 // LeaderElectionConfiguration contains the timing configuration for controller leader election.
@@ -507,10 +508,10 @@ func ParseFlags() (*Configuration, error) {
 
 func validateControllerRuntimeMode(mode string) error {
 	switch mode {
-	case ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool, ControllerRuntimeModeSubnetShadow, ControllerRuntimeModeSubnetStatus:
+	case ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool, ControllerRuntimeModeSubnetShadow, ControllerRuntimeModeSubnetStatus, ControllerRuntimeModeSubnetWriter:
 		return nil
 	default:
-		return fmt.Errorf("--controller-runtime-mode must be %q, %q, %q, %q, %q, or %q, got %q", ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool, ControllerRuntimeModeSubnetShadow, ControllerRuntimeModeSubnetStatus, mode)
+		return fmt.Errorf("--controller-runtime-mode must be %q, %q, %q, %q, %q, %q, or %q, got %q", ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool, ControllerRuntimeModeSubnetShadow, ControllerRuntimeModeSubnetStatus, ControllerRuntimeModeSubnetWriter, mode)
 	}
 }
 
@@ -528,6 +529,10 @@ func controllerRuntimeSubnetShadowEnabled(config *Configuration) bool {
 
 func controllerRuntimeSubnetStatusEnabled(config *Configuration) bool {
 	return config != nil && config.ControllerRuntimeMode == ControllerRuntimeModeSubnetStatus
+}
+
+func controllerRuntimeSubnetWriterEnabled(config *Configuration) bool {
+	return config != nil && config.ControllerRuntimeMode == ControllerRuntimeModeSubnetWriter
 }
 
 // validateServiceFeatureGates rejects direct conflicts between the Service data plane

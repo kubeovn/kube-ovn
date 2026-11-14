@@ -40,9 +40,22 @@ type SubnetWriterLease struct {
 	ownership *SubnetWriterOwnership
 	owner     SubnetWriterOwner
 	epoch     uint64
+	fence     SubnetWriterFence
 }
 
 func (o *SubnetWriterOwnership) Claim(ctx context.Context, owner SubnetWriterOwner) (SubnetWriterLease, error) {
+	return o.claim(ctx, owner, nil)
+}
+
+// ClaimWithFence binds the process-local epoch to the durable fencing token.
+func (o *SubnetWriterOwnership) ClaimWithFence(ctx context.Context, owner SubnetWriterOwner, fence SubnetWriterFence) (SubnetWriterLease, error) {
+	if fence == nil {
+		return SubnetWriterLease{}, ErrSubnetWriterFenceMissing
+	}
+	return o.claim(ctx, owner, fence)
+}
+
+func (o *SubnetWriterOwnership) claim(ctx context.Context, owner SubnetWriterOwner, fence SubnetWriterFence) (SubnetWriterLease, error) {
 	if err := contextError(ctx); err != nil {
 		return SubnetWriterLease{}, err
 	}
@@ -59,7 +72,7 @@ func (o *SubnetWriterOwnership) Claim(ctx context.Context, owner SubnetWriterOwn
 	}
 	o.epoch++
 	o.owner = owner
-	return SubnetWriterLease{ownership: o, owner: owner, epoch: o.epoch}, nil
+	return SubnetWriterLease{ownership: o, owner: owner, epoch: o.epoch, fence: fence}, nil
 }
 
 func (l SubnetWriterLease) Active(ctx context.Context) error {
@@ -73,6 +86,11 @@ func (l SubnetWriterLease) Active(ctx context.Context) error {
 	defer l.ownership.mu.Unlock()
 	if l.ownership.owner != l.owner || l.ownership.epoch != l.epoch {
 		return ErrSubnetWriterLeaseStale
+	}
+	if l.fence != nil {
+		if err := l.fence.Check(ctx); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -94,6 +112,12 @@ func (l SubnetWriterLease) WithActive(ctx context.Context, fn func(context.Conte
 	if l.ownership.owner != l.owner || l.ownership.epoch != l.epoch {
 		l.ownership.mu.Unlock()
 		return ErrSubnetWriterLeaseStale
+	}
+	if l.fence != nil {
+		if err := l.fence.Check(ctx); err != nil {
+			l.ownership.mu.Unlock()
+			return err
+		}
 	}
 	l.ownership.active++
 	l.ownership.mu.Unlock()
