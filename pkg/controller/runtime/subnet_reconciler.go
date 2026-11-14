@@ -20,9 +20,10 @@ import (
 )
 
 var (
-	ErrSubnetWriterAdapterMissing  = errors.New("subnet writer adapter is not configured")
-	ErrSubnetWriterManagerMissing  = errors.New("subnet writer manager is not configured")
-	ErrSubnetWriterRecoveryMissing = errors.New("subnet writer recovery gate is not configured")
+	ErrSubnetWriterAdapterMissing       = errors.New("subnet writer adapter is not configured")
+	ErrSubnetWriterManagerMissing       = errors.New("subnet writer manager is not configured")
+	ErrSubnetWriterRecoveryMissing      = errors.New("subnet writer recovery gate is not configured")
+	ErrSubnetWriterDeleteAdapterMissing = errors.New("subnet writer delete adapter is not configured")
 )
 
 // SubnetWriterAdapter owns the domain mutations for one Subnet. The
@@ -39,6 +40,14 @@ type LegacySubnetRuntimeEventSource interface {
 	SubscribeSubnetRuntimeEvents(context.Context, func(string)) func()
 }
 
+type LegacySubnetRuntimeDeleteEventSource interface {
+	SubscribeSubnetRuntimeDeleteEvents(context.Context, func(string, *kubeovnv1.Subnet)) func()
+}
+
+type SubnetDeletedWriterAdapter interface {
+	ReconcileDeletedSubnet(context.Context, SubnetWriteSnapshot) error
+}
+
 // SubnetReconciler is the explicit wiring point for the future Subnet writer.
 // It is inert until both RecoveryGate and Adapter are supplied, so a manager
 // cannot accidentally start a partial writer during the migration.
@@ -53,6 +62,8 @@ type SubnetReconciler struct {
 	Fence      SubnetWriterFence
 	recoveryMu sync.Mutex
 	recovered  map[subnetRecoveryKey]struct{}
+	deleteMu   sync.Mutex
+	deletes    map[string]SubnetWriteSnapshot
 }
 
 type subnetRecoveryKey struct {
@@ -108,7 +119,28 @@ func (r *SubnetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 						q.Add(ctrl.Request{Name: name})
 					}
 				})
-				context.AfterFunc(ctx, unsubscribe)
+				unsubscribers := []func(){unsubscribe}
+				if deleteEvents, ok := r.Events.(LegacySubnetRuntimeDeleteEventSource); ok {
+					unsubscribers = append(unsubscribers, deleteEvents.SubscribeSubnetRuntimeDeleteEvents(ctx, func(name string, subnet *kubeovnv1.Subnet) {
+						if name == "" || subnet == nil {
+							return
+						}
+						if snapshot, err := NewSubnetWriteSnapshot(subnet, false); err == nil {
+							r.deleteMu.Lock()
+							if r.deletes == nil {
+								r.deletes = make(map[string]SubnetWriteSnapshot)
+							}
+							r.deletes[name] = snapshot
+							r.deleteMu.Unlock()
+						}
+						q.Add(ctrl.Request{Name: name})
+					}))
+				}
+				context.AfterFunc(ctx, func() {
+					for _, unsubscribe := range unsubscribers {
+						unsubscribe()
+					}
+				})
 				return nil
 			}))
 		}
@@ -139,10 +171,33 @@ func (r *SubnetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		var subnet kubeovnv1.Subnet
 		if err := r.Reader.Get(ctx, types.NamespacedName{Name: req.Name}, &subnet); err != nil {
 			if apierrors.IsNotFound(err) {
+				r.deleteMu.Lock()
+				snapshot, ok := r.deletes[req.Name]
+				r.deleteMu.Unlock()
+				if !ok {
+					return nil
+				}
+				deleted, ok := r.Adapter.(SubnetDeletedWriterAdapter)
+				if !ok {
+					return ErrSubnetWriterDeleteAdapterMissing
+				}
+				if err := deleted.ReconcileDeletedSubnet(ctx, snapshot); err != nil {
+					return err
+				}
+				r.deleteMu.Lock()
+				if current, exists := r.deletes[req.Name]; exists && current.UID == snapshot.UID {
+					delete(r.deletes, req.Name)
+				}
+				r.deleteMu.Unlock()
 				return nil
 			}
 			return err
 		}
+		r.deleteMu.Lock()
+		if snapshot, ok := r.deletes[req.Name]; ok && snapshot.UID != "" && snapshot.UID != subnet.UID {
+			delete(r.deletes, req.Name)
+		}
+		r.deleteMu.Unlock()
 		observation, err := observeSubnet(ctx, r.Reader, &subnet)
 		if err != nil {
 			return err
