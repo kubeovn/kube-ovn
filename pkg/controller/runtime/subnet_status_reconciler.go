@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/client-go/util/workqueue"
@@ -95,9 +96,9 @@ func (s legacySubnetStatusEventSource) StartSubnetStatusEventBridge(ctx context.
 	}()
 }
 
-// SubnetStatusReconciler reads the current Subnet and produces a status
-// projection for a normalized status event. It never writes Kubernetes status
-// or invokes finalizer, OVN, or IPAM operations.
+// SubnetStatusReconciler compares a status projection with the current Subnet
+// for a normalized status event. It never writes Kubernetes status or invokes
+// finalizer, OVN, or IPAM operations.
 type SubnetStatusReconciler struct {
 	Reader    client.Reader
 	Events    SubnetStatusEventSource
@@ -105,7 +106,7 @@ type SubnetStatusReconciler struct {
 }
 
 // SetupWithManager registers the status-only queue and explicit event source.
-// No production mode calls this during the migration; callers must opt in.
+// Only the opt-in subnet-status mode calls this during migration.
 func (r *SubnetStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if mgr == nil {
 		return ErrSubnetStatusManagerMissing
@@ -145,10 +146,16 @@ func (r *SubnetStatusReconciler) eventSource() source.TypedSource[SubnetStatusRe
 // Reconcile consumes one normalized queue key. A deleted Subnet is already
 // converged for this read-only path and therefore does not retry.
 func (r *SubnetStatusReconciler) Reconcile(ctx context.Context, request SubnetStatusRequest) (ctrl.Result, error) {
-	_, err := r.ProjectStatus(ctx, request)
-	if apierrors.IsNotFound(err) {
-		return ctrl.Result{}, nil
+	started := time.Now()
+	outcome, err := r.observeStatus(ctx, request)
+	if err != nil {
+		outcome = "error"
+		if apierrors.IsConflict(err) {
+			outcome = "conflict"
+		}
 	}
+	subnetStatusObservations.WithLabelValues(outcome).Inc()
+	subnetStatusObservationDuration.Observe(time.Since(started).Seconds())
 	return ctrl.Result{}, err
 }
 
@@ -156,29 +163,48 @@ func (r *SubnetStatusReconciler) Reconcile(ctx context.Context, request SubnetSt
 // The returned projection is intentionally handed to the caller; this seam
 // does not own the subsequent API write.
 func (r *SubnetStatusReconciler) ProjectStatus(ctx context.Context, request SubnetStatusRequest) (SubnetStatusProjection, error) {
+	subnet, err := r.readStatusSubnet(ctx, request)
+	if err != nil {
+		return SubnetStatusProjection{}, err
+	}
+	return r.projectStatusForSubnet(ctx, subnet)
+}
+
+func (r *SubnetStatusReconciler) readStatusSubnet(ctx context.Context, request SubnetStatusRequest) (*kubeovnv1.Subnet, error) {
 	if request.Name == "" {
-		return SubnetStatusProjection{}, ErrSubnetStatusEventNameMissing
+		return nil, ErrSubnetStatusEventNameMissing
 	}
 	if r.Reader == nil {
-		return SubnetStatusProjection{}, ErrSubnetStatusReaderMissing
+		return nil, ErrSubnetStatusReaderMissing
 	}
 	if r.Projector == nil {
-		return SubnetStatusProjection{}, ErrSubnetStatusProjectorMissing
+		return nil, ErrSubnetStatusProjectorMissing
 	}
-	var subnet kubeovnv1.Subnet
-	if err := r.Reader.Get(ctx, client.ObjectKey{Name: request.Name}, &subnet); err != nil {
+	subnet, err := getSubnet(ctx, r.Reader, request.Name, subnetStatusObservationTimeout)
+	if err != nil {
 		if apierrors.IsNotFound(err) {
-			return SubnetStatusProjection{}, err
+			return nil, err
 		}
-		return SubnetStatusProjection{}, fmt.Errorf("get subnet %s: %w", request.Name, err)
+		return nil, fmt.Errorf("get subnet %s: %w", request.Name, err)
 	}
-	observation, err := observeSubnet(ctx, r.Reader, &subnet)
+	return subnet, nil
+}
+
+func (r *SubnetStatusReconciler) projectStatusForSubnet(ctx context.Context, subnet *kubeovnv1.Subnet) (SubnetStatusProjection, error) {
+	observation, err := observeSubnet(ctx, r.Reader, subnet)
 	if err != nil {
 		return SubnetStatusProjection{}, err
 	}
-	snapshot, err := NewSubnetWriteSnapshot(&subnet, observation.AllocationAllowed)
+	snapshot, err := NewSubnetWriteSnapshot(subnet, observation.AllocationAllowed)
 	if err != nil {
 		return SubnetStatusProjection{}, err
 	}
-	return r.Projector.ProjectSubnetStatus(ctx, snapshot, observation)
+	projection, err := r.Projector.ProjectSubnetStatus(ctx, snapshot, observation)
+	if err != nil {
+		return SubnetStatusProjection{}, err
+	}
+	if err := projection.Snapshot.validateCurrent(subnet); err != nil {
+		return SubnetStatusProjection{}, err
+	}
+	return projection, nil
 }

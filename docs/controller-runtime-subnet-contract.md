@@ -18,43 +18,40 @@ ProviderNetwork, and IP caches before shadow workers can run. It exposes
 `kube_ovn_subnet_shadow_cache_sync_duration_seconds`; cancellation or a failed
 sync keeps readiness closed and fails manager startup.
 
-The status migration starts with a pure projection seam. The legacy controller
-continues to collect IP, Pod, VIP, and EIP inputs, calculate the IP-related
-status projection, and remain the only status writer. Runtime code can now
-carry a snapshot-bound `SubnetStatusProjection` through an injected projector;
-it performs no API write and does not suppress legacy status handling. An
-explicit `subnet-status` mode will be added only after this projection source
-and its conflict/readback tests are complete.
+The opt-in `subnet-status` mode installs a read-only status observer beside
+legacy producers. IP, Pod, VIP, EIP, and NAT enqueues continue to reach the
+legacy `updateSubnetStatusQueue` and worker. A callback fan-out mirrors them to
+an explicit `SubnetStatusEventSource`, coalesces pending notifications by Subnet
+name while the manager starts, and preserves delayed notifications. Other
+runtime modes leave this bridge disabled. Non-status spec/dependency events
+are rejected before entering the status queue.
 
-The next seam accepts status-only `SubnetStatusEvent` inputs through an
-explicit `SubnetStatusEventSource`. Events are normalized to a
-`SubnetStatusRequest` keyed only by Subnet name, so concurrent IP, Pod, VIP,
-EIP, and NAT notifications coalesce before the runtime reconciler reads the
-current object and invokes the projector. The source is intentionally separate
-from the legacy `updateSubnetStatusQueue`; no existing producer is consumed or
-rewired by this step. Deleted Subnets converge as no-ops, and invalid
-spec/dependency events are rejected before entering the status queue. The
-reconciler returns the projection to its caller and still owns no API write,
-finalizer, OVN, or IPAM operation.
+`SubnetStatusReconciler` reads the Subnet through the manager's uncached API
+reader and invokes the legacy read-only IP/status calculator. The returned
+`SubnetStatusProjection` must carry the original identity, spec, generation,
+resource version, and deletion state; a projector cannot substitute another
+snapshot. Before comparing the projection, a second uncached GET confirms that
+the active Subnet revision is unchanged. Changed snapshots return a conflict
+for queue retry and fresh calculation. Missing or terminating Subnets converge
+without reporting a status difference, and already terminating objects never
+reach the calculator. API errors remain retryable. Both Subnet reads have a
+five-second deadline.
 
-The opt-in `subnet-status` runtime mode now installs a bounded migration
-bridge beside the legacy producers. The legacy status queue remains connected
-to its existing worker; each IP, Pod, VIP, EIP, and NAT enqueue is also
-published to the runtime fan-out. Pending notifications are coalesced by
-Subnet name until the runtime subscriber is ready, and delayed legacy
-notifications preserve their delay before fan-out. The runtime calculator
-reuses the legacy read-only IP/status calculation and returns a snapshot-bound
-projection without patching the API. All other runtime modes leave this bridge
-disabled.
+The comparison covers only the IP calculator's eight IPv4/IPv6 used/available
+counter and range fields. Counters are compared as arbitrary-precision integers,
+so large IPv6 values retain their precision. Conditions, gateway MAC, U2O state,
+and other status fields are excluded. The observer exposes
+`kube_ovn_subnet_status_observations_total{result}` with the bounded results
+`match`, `drift`, `conflict`, `not_found`, `terminating`, and `error`, plus
+`kube_ovn_subnet_status_observation_duration_seconds`. These metrics have no
+Subnet name, address, or source-object labels. Observations never write status,
+finalizers, OVN, or IPAM state, and drift alone does not trigger a retry.
 
-The opt-in `subnet-status` runtime mode now installs a callback fan-out beside
-the legacy `updateSubnetStatusQueue`. IP, Pod, VIP, EIP, and NAT producers keep
-adding to the legacy queue and worker; the fan-out mirrors those notifications
-to the runtime source without consuming the queue. Events are coalesced while
-the manager starts, and delayed legacy notifications retain their delay before
-being mirrored. The mode starts the legacy controller and runtime manager
-together, reusing the legacy read-only status calculator as the projector while
-leaving the legacy status patch as the only API writer.
+A stable Subnet revision is not an atomic snapshot of all informer and IPAM
+inputs. The observer reuses the legacy calculator, so a drift observation
+records a difference at that moment rather than independent proof of calculator
+correctness or persistent divergence. It does not add a full-cache scan or a
+periodic resync. Legacy status persistence remains the only production writer.
 
 ## Single-writer matrix
 
