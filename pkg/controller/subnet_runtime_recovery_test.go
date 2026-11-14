@@ -7,6 +7,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -86,6 +89,25 @@ func TestRecoverSubnetRuntimeRestoresSubnetAndU2OAddress(t *testing.T) {
 	address, _, _, err := controller.ipam.GetRandomAddress("pod", "pod-nic", nil, subnet.Name, "", nil, true)
 	require.NoError(t, err)
 	require.NotEqual(t, subnet.Status.U2OInterconnectionIP, address)
+}
+
+func TestReconcileSubnetRuntimeRejectsReplacementBeforeCleanup(t *testing.T) {
+	t.Parallel()
+
+	deleting := metav1.Now()
+	snapshot := &kubeovnv1.Subnet{
+		Name:              "subnet",
+		UID:               "deleted-uid",
+		Generation:        1,
+		DeletionTimestamp: &deleting,
+	}
+	replacement := snapshot.DeepCopy()
+	replacement.UID = "replacement-uid"
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{replacement}})
+	require.NoError(t, err)
+
+	err = fc.fakeController.ReconcileSubnetRuntime(t.Context(), snapshot)
+	require.True(t, k8serrors.IsConflict(err), err)
 }
 
 func TestRecoverSubnetRuntimeStopsBeforeIPAMWhenFenceFails(t *testing.T) {

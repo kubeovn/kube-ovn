@@ -125,7 +125,7 @@ func (r *SubnetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 						if name == "" || subnet == nil {
 							return
 						}
-						if snapshot, err := NewSubnetWriteSnapshot(subnet, false); err == nil {
+						if snapshot, err := NewSubnetDeleteSnapshot(subnet); err == nil {
 							r.deleteMu.Lock()
 							if r.deletes == nil {
 								r.deletes = make(map[string]SubnetWriteSnapshot)
