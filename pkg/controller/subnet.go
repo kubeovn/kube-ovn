@@ -810,15 +810,53 @@ func (c *Controller) checkSubnetRuntimeFence(ctx context.Context) error {
 // available before the runtime writer accepts its first request. IPAM and OVN
 // are initialized before the runtime manager starts; a missing backend fails
 // closed instead of allowing a partial writer to mutate API state.
-func (c *Controller) RecoverSubnetRuntime(ctx context.Context, _ *kubeovnv1.Subnet) error {
+func (c *Controller) RecoverSubnetRuntime(ctx context.Context, subnet *kubeovnv1.Subnet) error {
+	if c == nil {
+		return errors.New("subnet runtime domain backends are not initialized")
+	}
+	if ctx == nil {
+		return errors.New("subnet runtime context is nil")
+	}
 	if err := c.waitForSubnetRuntimeRecovery(ctx); err != nil {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if c == nil || c.ipam == nil || c.OVNNbClient == nil {
+	if subnet == nil {
+		return errors.New("subnet runtime recovery requires a Subnet")
+	}
+	if c.ipam == nil || c.OVNNbClient == nil {
 		return errors.New("subnet runtime domain backends are not initialized")
+	}
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
+	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+		return fmt.Errorf("failed to recover subnet %s in IPAM: %w", subnet.Name, err)
+	}
+	if subnet.Status.U2OInterconnectionIP != "" {
+		var mac *string
+		if subnet.Status.U2OInterconnectionMAC != "" {
+			mac = new(subnet.Status.U2OInterconnectionMAC)
+		} else {
+			lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
+			lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, true)
+			if err != nil {
+				return fmt.Errorf("failed to recover subnet %s U2O router port: %w", subnet.Name, err)
+			}
+			if lrp != nil {
+				mac = new(lrp.MAC)
+			}
+		}
+		u2oName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
+		u2oNicName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
+		if _, _, _, err := c.ipam.GetStaticAddress(u2oName, u2oNicName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, true); err != nil {
+			return fmt.Errorf("failed to recover subnet %s U2O address: %w", subnet.Name, err)
+		}
+	}
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
 	}
 	return nil
 }
