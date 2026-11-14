@@ -20,12 +20,18 @@ func TestSubnetReconcilerFailsClosedWithoutDependencies(t *testing.T) {
 	reconciler.RecoveryGate = func(context.Context) error { return nil }
 	_, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: "subnet-a"})
 	require.ErrorIs(t, err, ErrSubnetWriterAdapterMissing)
+	reconciler.Adapter = &recordingSubnetWriterAdapter{}
+	_, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: "subnet-a"})
+	require.ErrorIs(t, err, ErrSubnetWriterLeaseMissing)
 }
 
 func TestSetupSubnetReconcilerFailsClosedBeforeManagerRegistration(t *testing.T) {
-	require.ErrorIs(t, SetupSubnetReconciler(nil, nil, nil, nil), ErrSubnetWriterRecoveryMissing)
-	require.ErrorIs(t, SetupSubnetReconciler(nil, nil, func(context.Context) error { return nil }, nil), ErrSubnetWriterAdapterMissing)
-	require.ErrorIs(t, SetupSubnetReconciler(nil, nil, func(context.Context) error { return nil }, &recordingSubnetWriterAdapter{}), ErrSubnetWriterManagerMissing)
+	ownership := &SubnetWriterOwnership{}
+	lease, err := ownership.Claim(t.Context(), SubnetWriterOwnerRuntime)
+	require.NoError(t, err)
+	require.ErrorIs(t, SetupSubnetReconciler(nil, nil, nil, nil, lease), ErrSubnetWriterRecoveryMissing)
+	require.ErrorIs(t, SetupSubnetReconciler(nil, nil, func(context.Context) error { return nil }, nil, lease), ErrSubnetWriterAdapterMissing)
+	require.ErrorIs(t, SetupSubnetReconciler(nil, nil, func(context.Context) error { return nil }, &recordingSubnetWriterAdapter{}, lease), ErrSubnetWriterManagerMissing)
 }
 
 func TestSubnetReconcilerDelegatesImmutableSnapshot(t *testing.T) {
@@ -43,6 +49,7 @@ func TestSubnetReconcilerDelegatesImmutableSnapshot(t *testing.T) {
 			gotObservation = observation
 			return nil
 		}),
+		Lease: testSubnetWriterLease(t),
 	}
 
 	result, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: subnet.Name})
@@ -76,6 +83,7 @@ func TestSubnetReconcilerRecoversBeforeReconcileAndOnlyOncePerUID(t *testing.T) 
 		Reader:       reader,
 		RecoveryGate: func(context.Context) error { return nil },
 		Adapter:      adapter,
+		Lease:        testSubnetWriterLease(t),
 	}
 
 	_, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: subnet.Name})
@@ -98,6 +106,7 @@ func TestSubnetReconcilerPropagatesAdapterRecoveryError(t *testing.T) {
 				return nil
 			},
 		},
+		Lease: testSubnetWriterLease(t),
 	}
 
 	_, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: "subnet-a"})
@@ -114,9 +123,17 @@ func TestSubnetReconcilerPropagatesRecoveryError(t *testing.T) {
 			t.Fatal("adapter must not run before recovery")
 			return nil
 		}),
+		Lease: testSubnetWriterLease(t),
 	}
 	_, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: "subnet-a"})
 	require.ErrorIs(t, err, recoveryErr)
+}
+
+func testSubnetWriterLease(t *testing.T) SubnetWriterLease {
+	t.Helper()
+	lease, err := (&SubnetWriterOwnership{}).Claim(t.Context(), SubnetWriterOwnerRuntime)
+	require.NoError(t, err)
+	return lease
 }
 
 type subnetWriterAdapterFunc func(context.Context, SubnetWriteSnapshot, SubnetShadowObservation) error

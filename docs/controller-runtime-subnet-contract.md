@@ -26,6 +26,14 @@ name while the manager starts, and preserves delayed notifications. Other
 runtime modes leave this bridge disabled. Non-status spec/dependency events
 are rejected before entering the status queue.
 
+The event source returns an idempotent bridge handle. A controller-runtime
+source start reuses one active legacy subscription for the same context, while
+a different active context must close the old bridge before starting again.
+Source cancellation or explicit shutdown closes the bridge before a later
+start may subscribe again. This keeps event delivery tied to the manager
+lifecycle and avoids silently redirecting an active legacy watcher to a new
+queue; it does not transfer ownership of the legacy status queue.
+
 `SubnetStatusReconciler` reads the Subnet through the manager's uncached API
 reader and invokes the legacy read-only IP/status calculator. The returned
 `SubnetStatusProjection` must carry the original identity, spec, generation,
@@ -92,7 +100,8 @@ must be present in `ProviderNetwork.status.vlans` before a future writer may
 allocate IPAM or create OVN objects. This is stricter than the current legacy
 validator and is intentionally not wired into production by this PR.
 
-`pkg/controller/runtime/subnet_writer_gate.go` now makes the writer gates
+`pkg/controller/runtime/subnet_writer_gate.go` and
+`pkg/controller/runtime/subnet_writer_ownership.go` now make the writer gates
 executable without enabling a second production writer. Every side effect must
 carry an immutable Subnet identity/spec/resource-version snapshot. Status and
 finalizer-add operations require an active object; finalizer removal, OVN
@@ -120,6 +129,13 @@ timeout, cancellation, or changed identity/spec/resource-version/deletion state
 prevents the action from running. Callers cannot supply a previously read
 `current` object as authorization. State changed during recovery or between
 invocations is therefore checked against the API again.
+
+The ownership lease is process-local and epoch-bound: legacy and runtime claims
+are mutually exclusive, stale or wrong-owner releases fail closed, and an
+active reconcile or manager registration holds an operation guard so release
+cannot switch owners during side effects. A runtime `SubnetReconciler` cannot
+be registered without an active lease. It is an explicit handoff contract for
+future wiring, not durable leader fencing.
 
 This read does not make the API check and OVN/IPAM mutation atomic. Changes
 after the GET still require backend identity/ownership fencing and recovery;

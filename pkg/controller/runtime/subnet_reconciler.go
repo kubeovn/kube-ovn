@@ -34,6 +34,7 @@ type SubnetReconciler struct {
 	Reader       client.Reader
 	RecoveryGate func(context.Context) error
 	Adapter      SubnetWriterAdapter
+	Lease        SubnetWriterLease
 	recoveryMu   sync.Mutex
 	recovered    map[subnetRecoveryKey]struct{}
 }
@@ -46,8 +47,8 @@ type subnetRecoveryKey struct {
 // SetupSubnetReconciler is the explicit manager wiring entry point. Callers
 // must provide both the recovery gate and the domain adapter; the default
 // manager path deliberately does not call this function during migration.
-func SetupSubnetReconciler(mgr ctrl.Manager, reader client.Reader, recoveryGate func(context.Context) error, adapter SubnetWriterAdapter) error {
-	return (&SubnetReconciler{Reader: reader, RecoveryGate: recoveryGate, Adapter: adapter}).SetupWithManager(mgr)
+func SetupSubnetReconciler(mgr ctrl.Manager, reader client.Reader, recoveryGate func(context.Context) error, adapter SubnetWriterAdapter, lease SubnetWriterLease) error {
+	return (&SubnetReconciler{Reader: reader, RecoveryGate: recoveryGate, Adapter: adapter, Lease: lease}).SetupWithManager(mgr)
 }
 
 func (r *SubnetReconciler) SetupWithManager(mgr ctrl.Manager) error {
@@ -60,13 +61,15 @@ func (r *SubnetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	if mgr == nil {
 		return ErrSubnetWriterManagerMissing
 	}
-	if r.Reader == nil {
-		r.Reader = mgr.GetAPIReader()
-	}
-	return ctrl.NewControllerManagedBy(mgr).
-		Named("kube-ovn-subnet").
-		For(&kubeovnv1.Subnet{}).
-		Complete(r)
+	return r.Lease.WithActive(context.Background(), func(context.Context) error {
+		if r.Reader == nil {
+			r.Reader = mgr.GetAPIReader()
+		}
+		return ctrl.NewControllerManagedBy(mgr).
+			Named("kube-ovn-subnet").
+			For(&kubeovnv1.Subnet{}).
+			Complete(r)
+	})
 }
 
 func (r *SubnetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
@@ -76,31 +79,35 @@ func (r *SubnetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 	if r.Adapter == nil {
 		return ctrl.Result{}, ErrSubnetWriterAdapterMissing
 	}
-	if r.Reader == nil {
-		return ctrl.Result{}, errors.New("subnet writer API reader is not configured")
-	}
-	if err := r.RecoveryGate(ctx); err != nil {
-		return ctrl.Result{}, err
-	}
-	var subnet kubeovnv1.Subnet
-	if err := r.Reader.Get(ctx, types.NamespacedName{Name: req.Name}, &subnet); err != nil {
-		if apierrors.IsNotFound(err) {
-			return ctrl.Result{}, nil
+	var result ctrl.Result
+	err := r.Lease.WithActive(ctx, func(ctx context.Context) error {
+		if r.Reader == nil {
+			return errors.New("subnet writer API reader is not configured")
 		}
-		return ctrl.Result{}, err
-	}
-	observation, err := observeSubnet(ctx, r.Reader, &subnet)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	snapshot, err := NewSubnetWriteSnapshot(&subnet, observation.AllocationAllowed)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-	if err := r.recoverSubnet(ctx, snapshot); err != nil {
-		return ctrl.Result{}, err
-	}
-	return ctrl.Result{}, r.Adapter.ReconcileSubnet(ctx, snapshot, observation)
+		if err := r.RecoveryGate(ctx); err != nil {
+			return err
+		}
+		var subnet kubeovnv1.Subnet
+		if err := r.Reader.Get(ctx, types.NamespacedName{Name: req.Name}, &subnet); err != nil {
+			if apierrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		observation, err := observeSubnet(ctx, r.Reader, &subnet)
+		if err != nil {
+			return err
+		}
+		snapshot, err := NewSubnetWriteSnapshot(&subnet, observation.AllocationAllowed)
+		if err != nil {
+			return err
+		}
+		if err := r.recoverSubnet(ctx, snapshot); err != nil {
+			return err
+		}
+		return r.Adapter.ReconcileSubnet(ctx, snapshot, observation)
+	})
+	return result, err
 }
 
 func (r *SubnetReconciler) recoverSubnet(ctx context.Context, snapshot SubnetWriteSnapshot) error {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
+	"sync"
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -17,12 +19,15 @@ import (
 )
 
 var (
-	ErrSubnetStatusEventNameMissing   = errors.New("subnet status event name is not configured")
-	ErrSubnetStatusEventNotStatus     = errors.New("subnet status event is not status-only")
-	ErrSubnetStatusEventSourceMissing = errors.New("subnet status event source is not configured")
-	ErrSubnetStatusProjectorMissing   = errors.New("subnet status projector is not configured")
-	ErrSubnetStatusReaderMissing      = errors.New("subnet status API reader is not configured")
-	ErrSubnetStatusManagerMissing     = errors.New("subnet status manager is not configured")
+	ErrSubnetStatusEventNameMissing     = errors.New("subnet status event name is not configured")
+	ErrSubnetStatusEventNotStatus       = errors.New("subnet status event is not status-only")
+	ErrSubnetStatusEventSourceMissing   = errors.New("subnet status event source is not configured")
+	ErrSubnetStatusProjectorMissing     = errors.New("subnet status projector is not configured")
+	ErrSubnetStatusReaderMissing        = errors.New("subnet status API reader is not configured")
+	ErrSubnetStatusManagerMissing       = errors.New("subnet status manager is not configured")
+	ErrSubnetStatusBridgeContextMissing = errors.New("subnet status event bridge context is not configured")
+	ErrSubnetStatusBridgeEnqueueMissing = errors.New("subnet status event bridge enqueue function is not configured")
+	ErrSubnetStatusBridgeActive         = errors.New("subnet status event bridge is already active")
 )
 
 // SubnetStatusEvent is the explicit ingress contract for status-only events.
@@ -57,7 +62,13 @@ func NewSubnetStatusRequest(event SubnetStatusEvent) (SubnetStatusRequest, error
 // It is deliberately separate from the legacy status queue so migration code
 // cannot steal events from the current writer.
 type SubnetStatusEventSource interface {
-	StartSubnetStatusEventBridge(context.Context, func(SubnetStatusEvent))
+	StartSubnetStatusEventBridge(context.Context, func(SubnetStatusEvent)) (SubnetStatusEventBridge, error)
+}
+
+// SubnetStatusEventBridge owns one subscription lifecycle. Closing it must be
+// safe to repeat so controller-runtime restarts cannot leak a legacy watcher.
+type SubnetStatusEventBridge interface {
+	Close()
 }
 
 // LegacySubnetStatusEventSource is the dependency-free callback shape exposed
@@ -68,7 +79,36 @@ type LegacySubnetStatusEventSource interface {
 }
 
 type legacySubnetStatusEventSource struct {
-	source LegacySubnetStatusEventSource
+	source  LegacySubnetStatusEventSource
+	mu      sync.Mutex
+	cond    *sync.Cond
+	bridge  *legacySubnetStatusEventBridge
+	closing bool
+}
+
+type legacySubnetStatusEventBridge struct {
+	closeOnce sync.Once
+	mu        sync.RWMutex
+	enqueue   func(SubnetStatusEvent)
+	ctx       context.Context
+	close     func()
+	closed    bool
+}
+
+func (b *legacySubnetStatusEventBridge) Close() {
+	if b == nil || b.close == nil {
+		return
+	}
+	b.closeOnce.Do(b.close)
+}
+
+func (b *legacySubnetStatusEventBridge) emit(event SubnetStatusEvent) {
+	b.mu.RLock()
+	enqueue := b.enqueue
+	b.mu.RUnlock()
+	if enqueue != nil {
+		enqueue(event)
+	}
 }
 
 // NewLegacySubnetStatusEventSource adapts the legacy producer fan-out to the
@@ -77,23 +117,79 @@ func NewLegacySubnetStatusEventSource(source LegacySubnetStatusEventSource) Subn
 	if source == nil {
 		return nil
 	}
-	return legacySubnetStatusEventSource{source: source}
+	adapter := &legacySubnetStatusEventSource{source: source}
+	adapter.cond = sync.NewCond(&adapter.mu)
+	return adapter
 }
 
-func (s legacySubnetStatusEventSource) StartSubnetStatusEventBridge(ctx context.Context, enqueue func(SubnetStatusEvent)) {
-	if s.source == nil || enqueue == nil {
-		return
+func (s *legacySubnetStatusEventSource) StartSubnetStatusEventBridge(ctx context.Context, enqueue func(SubnetStatusEvent)) (SubnetStatusEventBridge, error) {
+	if s.source == nil {
+		return nil, ErrSubnetStatusEventSourceMissing
 	}
+	if enqueue == nil {
+		return nil, ErrSubnetStatusBridgeEnqueueMissing
+	}
+	if ctx == nil {
+		return nil, ErrSubnetStatusBridgeContextMissing
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for s.closing {
+		s.cond.Wait()
+	}
+	if s.bridge != nil {
+		if !sameSubnetStatusEventContext(s.bridge.ctx, ctx) {
+			return nil, ErrSubnetStatusBridgeActive
+		}
+		return s.bridge, nil
+	}
+	bridge := &legacySubnetStatusEventBridge{ctx: ctx, enqueue: enqueue}
 	unsubscribe := s.source.SubscribeSubnetStatusEvents(ctx, func(name, sourceKind string) {
-		enqueue(SubnetStatusEvent{Name: name, SourceKind: sourceKind})
+		bridge.emit(SubnetStatusEvent{Name: name, SourceKind: sourceKind})
 	})
-	if unsubscribe == nil || ctx == nil {
-		return
+	if unsubscribe == nil {
+		return nil, ErrSubnetStatusEventSourceMissing
 	}
-	go func() {
-		<-ctx.Done()
+	bridge.close = func() {
+		s.mu.Lock()
+		if s.bridge != bridge {
+			s.mu.Unlock()
+			return
+		}
+		s.closing = true
+		s.mu.Unlock()
+
+		bridge.mu.Lock()
+		bridge.closed = true
+		bridge.enqueue = nil
+		bridge.mu.Unlock()
 		unsubscribe()
-	}()
+
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if s.bridge == bridge {
+			s.bridge = nil
+		}
+		s.closing = false
+		s.cond.Broadcast()
+	}
+	s.bridge = bridge
+	context.AfterFunc(ctx, bridge.Close)
+	return bridge, nil
+}
+
+func sameSubnetStatusEventContext(left, right context.Context) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	leftValue, rightValue := reflect.ValueOf(left), reflect.ValueOf(right)
+	if leftValue.Type() != rightValue.Type() || !leftValue.Type().Comparable() {
+		return false
+	}
+	return leftValue.Interface() == rightValue.Interface()
 }
 
 // SubnetStatusReconciler compares a status projection with the current Subnet
@@ -133,12 +229,19 @@ func (r *SubnetStatusReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 func (r *SubnetStatusReconciler) eventSource() source.TypedSource[SubnetStatusRequest] {
 	return source.TypedFunc[SubnetStatusRequest](func(ctx context.Context, q workqueue.TypedRateLimitingInterface[SubnetStatusRequest]) error {
-		r.Events.StartSubnetStatusEventBridge(ctx, func(event SubnetStatusEvent) {
+		bridge, err := r.Events.StartSubnetStatusEventBridge(ctx, func(event SubnetStatusEvent) {
 			request, err := NewSubnetStatusRequest(event)
 			if err == nil {
 				q.Add(request)
 			}
 		})
+		if err != nil {
+			return err
+		}
+		if bridge == nil {
+			return ErrSubnetStatusEventSourceMissing
+		}
+		context.AfterFunc(ctx, bridge.Close)
 		return nil
 	})
 }
