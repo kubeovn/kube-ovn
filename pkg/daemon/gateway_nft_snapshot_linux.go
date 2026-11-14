@@ -53,6 +53,7 @@ type nftSubnetCounter struct {
 }
 
 type nftFamilySnapshot struct {
+	TunnelOnly           bool
 	Family               knftables.Family
 	Table                string
 	NodeInternalIP       string
@@ -62,12 +63,15 @@ type nftFamilySnapshot struct {
 	NATSubnets           []string
 	DistributedGWSubnets []string
 	OtherNodeIPs         []string
+	TunnelRemoteIPs      []string
+	LocalEncapIPs        []string
 	NodeIPs              []string
 	LocalNodePorts       []nftProtocolPort
 	NATPolicies          []nftNATPolicy
 	CentralizedSNATs     []nftCentralizedSNAT
 	TProxyTargets        []nftTProxyTarget
 	SubnetCounters       []nftSubnetCounter
+	TunnelPort           int
 }
 
 type gatewayNFTSnapshot struct {
@@ -75,25 +79,52 @@ type gatewayNFTSnapshot struct {
 }
 
 type nftSnapshotInput struct {
-	Protocol       string
-	ClusterRouter  string
-	NodeName       string
-	Services       []*corev1.Service
-	Subnets        []*kubeovnv1.Subnet
-	Nodes          []*corev1.Node
-	TProxyPods     []*corev1.Pod
-	LocalAddresses []string
+	Protocol        string
+	ClusterRouter   string
+	NodeName        string
+	Services        []*corev1.Service
+	Subnets         []*kubeovnv1.Subnet
+	Nodes           []*corev1.Node
+	TProxyPods      []*corev1.Pod
+	LocalAddresses  []string
+	TunnelPort      int
+	TunnelRemoteIPs []string
+	LocalEncapIPs   []string
 }
 
 func buildNFTGatewaySnapshot(input nftSnapshotInput) (gatewayNFTSnapshot, error) {
 	snapshot := gatewayNFTSnapshot{Families: newNFTFamilySnapshots(input.Protocol)}
+	for _, protocol := range getTunnelProtocols(input.Protocol, input.LocalEncapIPs) {
+		family := knftables.IPv4Family
+		if protocol == kubeovnv1.ProtocolIPv6 {
+			family = knftables.IPv6Family
+		}
+		if !slices.ContainsFunc(snapshot.Families, func(item nftFamilySnapshot) bool { return item.Family == family }) {
+			snapshot.Families = append(snapshot.Families, nftFamilySnapshot{Family: family, Table: nftGatewayTable, TunnelOnly: true})
+		}
+	}
 	for i := range snapshot.Families {
 		family := &snapshot.Families[i]
+		family.TunnelPort = input.TunnelPort
+		for _, ip := range input.LocalEncapIPs {
+			if isNFTAddressFamily(ip, family.Family) {
+				family.LocalEncapIPs = append(family.LocalEncapIPs, ip)
+			}
+		}
+		if family.TunnelOnly {
+			if err := addNFTNodes(family, input); err != nil {
+				return gatewayNFTSnapshot{}, err
+			}
+			normalizeNFTFamilySnapshot(family)
+			continue
+		}
 		addNFTServices(family, input.Services)
 		if err := addNFTSubnets(family, input); err != nil {
 			return gatewayNFTSnapshot{}, err
 		}
-		addNFTNodes(family, input)
+		if err := addNFTNodes(family, input); err != nil {
+			return gatewayNFTSnapshot{}, err
+		}
 		addNFTTProxyTargets(family, input.TProxyPods)
 		normalizeNFTFamilySnapshot(family)
 	}
@@ -263,18 +294,28 @@ func nftCentralizedSNATForSubnet(subnet *kubeovnv1.Subnet, nodeName, cidr string
 	return nftCentralizedSNAT{}, false
 }
 
-func addNFTNodes(snapshot *nftFamilySnapshot, input nftSnapshotInput) {
+func addNFTNodes(snapshot *nftFamilySnapshot, input nftSnapshotInput) error {
+	for _, ip := range input.TunnelRemoteIPs {
+		if isNFTAddressFamily(ip, snapshot.Family) && !slices.Contains(snapshot.TunnelRemoteIPs, ip) {
+			snapshot.TunnelRemoteIPs = append(snapshot.TunnelRemoteIPs, ip)
+		}
+	}
 	for _, node := range input.Nodes {
-		for _, address := range node.Status.Addresses {
-			if address.Type != corev1.NodeInternalIP || !isNFTAddressFamily(address.Address, snapshot.Family) {
-				continue
-			}
-			if node.Name == input.NodeName {
-				if snapshot.NodeInternalIP == "" {
-					snapshot.NodeInternalIP = address.Address
+		if node.Name == input.NodeName {
+			for _, address := range node.Status.Addresses {
+				if address.Type == corev1.NodeInternalIP && isNFTAddressFamily(address.Address, snapshot.Family) {
+					if snapshot.NodeInternalIP == "" {
+						snapshot.NodeInternalIP = address.Address
+					}
 				}
-			} else {
-				snapshot.OtherNodeIPs = append(snapshot.OtherNodeIPs, address.Address)
+			}
+		} else {
+			for _, address := range node.Status.Addresses {
+				if address.Type == corev1.NodeInternalIP && isNFTAddressFamily(address.Address, snapshot.Family) {
+					if !slices.Contains(snapshot.OtherNodeIPs, address.Address) {
+						snapshot.OtherNodeIPs = append(snapshot.OtherNodeIPs, address.Address)
+					}
+				}
 			}
 		}
 	}
@@ -285,6 +326,7 @@ func addNFTNodes(snapshot *nftFamilySnapshot, input nftSnapshotInput) {
 		}
 		snapshot.NodeIPs = append(snapshot.NodeIPs, ip.String())
 	}
+	return nil
 }
 
 func addNFTTProxyTargets(snapshot *nftFamilySnapshot, pods []*corev1.Pod) {
@@ -383,6 +425,8 @@ func normalizeNFTFamilySnapshot(snapshot *nftFamilySnapshot) {
 	snapshot.NATSubnets = compactNFTIntervals(snapshot.NATSubnets)
 	snapshot.DistributedGWSubnets = compactNFTIntervals(snapshot.DistributedGWSubnets)
 	snapshot.OtherNodeIPs = sortedUniqueStrings(snapshot.OtherNodeIPs)
+	snapshot.TunnelRemoteIPs = sortedUniqueStrings(snapshot.TunnelRemoteIPs)
+	snapshot.LocalEncapIPs = sortedUniqueStrings(snapshot.LocalEncapIPs)
 	snapshot.NodeIPs = sortedUniqueStrings(snapshot.NodeIPs)
 	snapshot.NATPolicies = sortedUniqueNATPolicies(snapshot.NATPolicies)
 	snapshot.CentralizedSNATs = sortedUniqueCentralizedSNATs(snapshot.CentralizedSNATs)

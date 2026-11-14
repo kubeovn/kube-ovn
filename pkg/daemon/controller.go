@@ -87,6 +87,11 @@ type Controller struct {
 	protocol              string
 	gatewayBackendManager *gatewayBackendManager
 
+	lastTunnelPeerIPsMutex sync.RWMutex
+	lastTunnelPeerIPs      []string
+
+	iptablesMutex sync.RWMutex
+
 	ControllerRuntime
 
 	k8sExec k8sexec.Interface
