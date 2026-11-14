@@ -417,10 +417,14 @@ func (c *Controller) InitIPAM() error {
 	for _, subnet := range subnets {
 		klog.Infof("Init subnet %s", subnet.Name)
 		subnetProviderMaps[subnet.Name] = subnet.Spec.Provider
+		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
+		}
+
 		u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-		var mac *string
 		if subnet.Status.U2OInterconnectionIP != "" {
+			var mac *string
 			klog.Infof("Init U2O for subnet %s", subnet.Name)
 			if subnet.Status.U2OInterconnectionMAC != "" {
 				mac = new(subnet.Status.U2OInterconnectionMAC)
@@ -430,17 +434,10 @@ func (c *Controller) InitIPAM() error {
 					klog.Errorf("failed to get logical router port %s: %v", u2oInterconnLrpName, err)
 					return err
 				}
-				if lrp == nil || lrp.MAC == "" {
-					return fmt.Errorf("failed to get logical router port %s: MAC is unavailable", u2oInterconnLrpName)
+				if lrp != nil {
+					mac = new(lrp.MAC)
 				}
-				mac = new(lrp.MAC)
 			}
-		}
-		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
-			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
-		}
-
-		if subnet.Status.U2OInterconnectionIP != "" {
 			if _, _, _, err = c.ipam.GetStaticAddress(u2oInterconnName, u2oInterconnLrpName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, true); err != nil {
 				klog.Errorf("failed to init subnet %q u2o interconnection ip to ipam %v", subnet.Name, err)
 			}
