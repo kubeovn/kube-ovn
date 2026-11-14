@@ -845,9 +845,10 @@ func (c *Controller) RecoverSubnetRuntime(ctx context.Context, subnet *kubeovnv1
 			if err != nil {
 				return fmt.Errorf("failed to recover subnet %s U2O router port: %w", subnet.Name, err)
 			}
-			if lrp != nil {
-				mac = new(lrp.MAC)
+			if lrp == nil || lrp.MAC == "" {
+				return fmt.Errorf("failed to recover subnet %s U2O router port: MAC is unavailable", subnet.Name)
 			}
+			mac = new(lrp.MAC)
 		}
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			return err
@@ -911,6 +912,9 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 	}
 
 	if subnet.Spec.CIDRBlock != "" {
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			klog.Error(err)
 			return c.recordResourceError(subnet, "UpdateIPAMFailed", err)
@@ -928,6 +932,9 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		// lightweight IPAM entry so MAC allocations are tracked and the GC does not
 		// clean the subnet's mac-only IP/LSP resources. It has no IP ranges, so there
 		// is no subnet IP status to calculate.
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, "", "", nil); err != nil {
 			klog.Error(err)
 			return c.recordResourceError(subnet, "UpdateIPAMFailed", err)

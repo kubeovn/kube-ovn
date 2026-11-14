@@ -144,3 +144,30 @@ func TestRecoverSubnetRuntimeStopsBeforeU2OWhenFenceExpires(t *testing.T) {
 	)
 	require.False(t, allocated)
 }
+
+func TestRecoverSubnetRuntimeFailsClosedWithoutU2OMAC(t *testing.T) {
+	t.Parallel()
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{})
+	require.NoError(t, err)
+	controller := fc.fakeController
+	controller.ipam = ipam.NewIPAM()
+	fc.mockOvnClient.EXPECT().GetLogicalRouterPort("ovn-cluster-subnet", true).Return(nil, nil)
+
+	subnet := &kubeovnv1.Subnet{
+		Name: "subnet",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/29",
+			Gateway:   "10.0.0.1",
+			Vpc:       "ovn-cluster",
+		},
+		Status: kubeovnv1.SubnetStatus{U2OInterconnectionIP: "10.0.0.2"},
+	}
+	require.ErrorContains(t, controller.RecoverSubnetRuntime(t.Context(), subnet), "MAC is unavailable")
+	_, _, _, allocated := controller.ipam.GetPodAddressByNic(
+		"u2o-interconnection.ovn-cluster.subnet",
+		"ovn-cluster-subnet",
+		subnet.Name,
+	)
+	require.False(t, allocated)
+}
