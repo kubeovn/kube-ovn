@@ -69,6 +69,31 @@ func TestSubnetRuntimeHelpersHonorCanceledContext(t *testing.T) {
 	require.ErrorIs(t, err, fenceErr)
 }
 
+func TestEnqueueDeleteSubnetRuntimeWriterOwnership(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		mode   string
+		queued int
+	}{
+		{name: "legacy mode", mode: ControllerRuntimeModeDisabled, queued: 1},
+		{name: "runtime writer mode", mode: ControllerRuntimeModeSubnetWriter, queued: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			controller := &Controller{
+				config:            &Configuration{ControllerRuntimeMode: tc.mode},
+				deleteSubnetQueue: newTypedRateLimitingQueue[*kubeovnv1.Subnet]("DeleteSubnetTest", nil),
+			}
+			t.Cleanup(controller.deleteSubnetQueue.ShutDown)
+
+			controller.enqueueDeleteSubnet(&kubeovnv1.Subnet{ObjectMeta: metav1.ObjectMeta{Name: "subnet-a"}})
+			require.Equal(t, tc.queued, controller.deleteSubnetQueue.Len())
+		})
+	}
+}
+
 func TestAcquireU2OIPWithContextPreservesExistingAndOtherNICAllocations(t *testing.T) {
 	t.Parallel()
 

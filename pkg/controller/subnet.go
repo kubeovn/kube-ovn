@@ -55,6 +55,10 @@ func (c *Controller) enqueueDeleteSubnet(obj any) {
 		return
 	}
 
+	if controllerRuntimeSubnetWriterEnabled(c.config) {
+		klog.V(3).Infof("skip legacy delete queue for subnet %s in runtime writer mode", subnet.Name)
+		return
+	}
 	klog.V(3).Infof("enqueue delete subnet %s", subnet.Name)
 	c.deleteSubnetQueue.Add(subnet)
 }
