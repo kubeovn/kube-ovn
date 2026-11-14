@@ -198,3 +198,26 @@ func TestReconcileSubnetChecksFenceBeforeIPAM(t *testing.T) {
 	require.ErrorIs(t, controller.reconcileSubnetObject(t.Context(), subnet), fenceErr)
 	require.NotContains(t, controller.ipam.Subnets, subnet.Name)
 }
+
+func TestInitIPAMSubnetWriterFailsClosedBeforeU2ORegistration(t *testing.T) {
+	t.Parallel()
+
+	subnet := &kubeovnv1.Subnet{
+		Name: "subnet",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/29",
+			Gateway:   "10.0.0.1",
+			Vpc:       "ovn-cluster",
+		},
+		Status: kubeovnv1.SubnetStatus{U2OInterconnectionIP: "10.0.0.2"},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}})
+	require.NoError(t, err)
+	controller := fc.fakeController
+	controller.config.ControllerRuntimeMode = ControllerRuntimeModeSubnetWriter
+	controller.ipam = ipam.NewIPAM()
+	fc.mockOvnClient.EXPECT().GetLogicalRouterPort("ovn-cluster-subnet", true).Return(nil, nil)
+
+	require.ErrorContains(t, controller.InitIPAM(), "MAC is unavailable")
+	require.NotContains(t, controller.ipam.Subnets, subnet.Name)
+}
