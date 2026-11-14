@@ -98,7 +98,7 @@ func TestEnqueueSubnetStatusAfterDelaysFanout(t *testing.T) {
 
 func TestSubnetWriterStatusEventsSkipLegacyQueue(t *testing.T) {
 	c := &Controller{
-		config:                &Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetWriter},
+		config:                  &Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetWriter},
 		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
 		subnetStatusEvents:      newSubnetStatusEventFanout(),
 	}

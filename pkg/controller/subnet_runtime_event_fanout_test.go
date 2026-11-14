@@ -3,7 +3,6 @@ package controller
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -36,10 +35,13 @@ func TestEnqueueSubnetReconcileRoutesWriterEvents(t *testing.T) {
 
 func TestSubnetRuntimeEventFanoutUnsubscribeStopsEvents(t *testing.T) {
 	fanout := newSubnetRuntimeEventFanout()
-	unsubscribe := fanout.subscribe(t.Context(), func(string) { t.Fatal("received event after unsubscribe") })
+	events := make(chan struct{}, 1)
+	unsubscribe := fanout.subscribe(t.Context(), func(string) { events <- struct{}{} })
 	unsubscribe()
 	fanout.publish("subnet-a")
 	select {
-	case <-time.After(20 * time.Millisecond):
+	case <-events:
+		t.Fatal("received event after unsubscribe")
+	default:
 	}
 }
