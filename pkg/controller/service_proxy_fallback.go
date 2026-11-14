@@ -177,7 +177,7 @@ func (c *Controller) enqueueCentralizedServiceProxySubnets() {
 	}
 	for _, subnet := range subnets {
 		if c.subnetUsesNodeServiceProxy(subnet) && subnet.Spec.GatewayType == kubeovnv1.GWCentralizedType {
-			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			c.enqueueSubnetReconcile(subnet.Name)
 		}
 	}
 }

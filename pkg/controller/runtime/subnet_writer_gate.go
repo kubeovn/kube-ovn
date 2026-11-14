@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"k8s.io/apimachinery/pkg/api/equality"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -37,6 +38,8 @@ type SubnetWriteSnapshot struct {
 	Generation        int64
 	ResourceVersion   string
 	Spec              kubeovnv1.SubnetSpec
+	Status            kubeovnv1.SubnetStatus
+	Finalizers        []string
 	Deleting          bool
 	AllocationAllowed bool
 }
@@ -53,6 +56,8 @@ func NewSubnetWriteSnapshot(subnet *kubeovnv1.Subnet, allocationAllowed bool) (S
 		Generation:        subnet.Generation,
 		ResourceVersion:   subnet.ResourceVersion,
 		Spec:              *subnet.Spec.DeepCopy(),
+		Status:            *subnet.Status.DeepCopy(),
+		Finalizers:        slices.Clone(subnet.Finalizers),
 		Deleting:          !subnet.DeletionTimestamp.IsZero(),
 		AllocationAllowed: allocationAllowed,
 	}, nil
@@ -61,6 +66,15 @@ func NewSubnetWriteSnapshot(subnet *kubeovnv1.Subnet, allocationAllowed bool) (S
 // Validate checks the live object immediately before a side effect. A
 // conflict forces reconciliation to restart from a fresh snapshot.
 func (s SubnetWriteSnapshot) Validate(current *kubeovnv1.Subnet, operation SubnetWriteOperation) error {
+	if err := s.validateCurrent(current); err != nil {
+		return err
+	}
+	return s.validateOperation(operation)
+}
+
+// validateCurrent checks only API identity and revision. Read-only observers
+// share this check without authorizing any writer operation.
+func (s SubnetWriteSnapshot) validateCurrent(current *kubeovnv1.Subnet) error {
 	if current == nil {
 		return subnetWriteConflict(s.Name, "live Subnet is missing")
 	}
@@ -69,7 +83,10 @@ func (s SubnetWriteSnapshot) Validate(current *kubeovnv1.Subnet, operation Subne
 		(!current.DeletionTimestamp.IsZero()) != s.Deleting {
 		return subnetWriteConflict(s.Name, "Subnet changed since the reconciliation snapshot")
 	}
+	return nil
+}
 
+func (s SubnetWriteSnapshot) validateOperation(operation SubnetWriteOperation) error {
 	switch operation {
 	case SubnetStatusWriteOperation, SubnetFinalizerAddOperation:
 		if s.Deleting {
@@ -106,6 +123,7 @@ func subnetWriteConflict(name, reason string) error {
 // allocate or mutate OVN state from an uninitialized process.
 type SubnetWriterGate struct {
 	Recovery func(context.Context) error
+	Fence    SubnetWriterFence
 }
 
 func (g SubnetWriterGate) WaitForRecovery(ctx context.Context) error {
@@ -115,7 +133,13 @@ func (g SubnetWriterGate) WaitForRecovery(ctx context.Context) error {
 	if g.Recovery == nil {
 		return errors.New("subnet writer recovery gate is not configured")
 	}
-	return g.Recovery(ctx)
+	if err := g.Recovery(ctx); err != nil {
+		return err
+	}
+	if g.Fence != nil {
+		return g.Fence.Check(ctx)
+	}
+	return nil
 }
 
 func (g SubnetWriterGate) Validate(ctx context.Context, snapshot SubnetWriteSnapshot, current *kubeovnv1.Subnet, operation SubnetWriteOperation) error {

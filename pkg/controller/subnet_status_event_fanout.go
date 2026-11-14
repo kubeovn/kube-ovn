@@ -105,11 +105,26 @@ func (c *Controller) SubscribeSubnetStatusEvents(ctx context.Context, subscriber
 }
 
 func (c *Controller) enqueueSubnetStatus(name, sourceKind string) {
+	if controllerRuntimeSubnetWriterEnabled(c.config) {
+		if c.subnetRuntimeEvents != nil {
+			c.subnetRuntimeEvents.publish(name)
+		}
+		return
+	}
 	c.updateSubnetStatusQueue.Add(name)
 	c.subnetStatusEvents.publish(name, sourceKind)
 }
 
 func (c *Controller) enqueueSubnetStatusAfter(name, sourceKind string, delay time.Duration) {
+	if controllerRuntimeSubnetWriterEnabled(c.config) {
+		if c.subnetRuntimeEvents == nil || name == "" {
+			return
+		}
+		time.AfterFunc(delay, func() {
+			c.subnetRuntimeEvents.publish(name)
+		})
+		return
+	}
 	c.updateSubnetStatusQueue.AddAfter(name, delay)
 	if c.subnetStatusEvents == nil || name == "" {
 		return

@@ -53,6 +53,39 @@ func TestBigInt_DeepCopyInto(t *testing.T) {
 	}
 }
 
+func TestBigIntDeepCopyIntoDetachesExistingStorage(t *testing.T) {
+	for _, value := range []string{"0", "42", "-42", "340282366920938463463374607431768211455", "-340282366920938463463374607431768211455"} {
+		for _, destination := range []string{"empty", "shallow copy", "reused", "self"} {
+			t.Run(value+"/"+destination, func(t *testing.T) {
+				var original BigInt
+				_, ok := original.SetString(value, 10)
+				require.True(t, ok)
+				alias := original
+				var copied BigInt
+				target := &copied
+				switch destination {
+				case "shallow copy":
+					copied = original
+				case "reused":
+					copied = NewBigInt(999)
+				case "self":
+					target = &original
+				}
+				original.DeepCopyInto(target)
+				require.Equal(t, value, target.String())
+				target.SetInt64(999)
+				require.Equal(t, value, alias.String(), "copying must detach any existing shared backing storage")
+				if destination != "self" {
+					require.Equal(t, value, original.String(), "mutating the destination must not affect the source")
+					copiedValue := target.String()
+					original.SetInt64(777)
+					require.Equal(t, copiedValue, target.String(), "mutating the source must not affect the destination")
+				}
+			})
+		}
+	}
+}
+
 func TestBigInt_Clone(t *testing.T) {
 	original := BigInt{*big.NewInt(42)}
 	cloned := original.Clone()

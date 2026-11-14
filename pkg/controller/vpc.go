@@ -612,7 +612,7 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 			// Accelerate subnet update when vpc config is updated.
 			// In case VPC not set namespaces, subnet will backoff and may take long time to back to ready.
 			if subnet.Status.IsNotReady() {
-				c.addOrUpdateSubnetQueue.Add(subnet.Name)
+				c.enqueueSubnetReconcile(subnet.Name)
 			}
 		}
 	}
