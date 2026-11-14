@@ -589,7 +589,7 @@ func (c *Controller) getSubnetMTU(subnet *kubeovnv1.Subnet) (int, error) {
 	return mtu, nil
 }
 
-func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter bool) error {
+func (c *Controller) updateSubnetDHCPOption(ctx context.Context, subnet *kubeovnv1.Subnet, needRouter bool) error {
 	mtu, err := c.getSubnetMTU(subnet)
 	if err != nil {
 		return err
@@ -619,7 +619,7 @@ func (c *Controller) updateSubnetDHCPOption(subnet *kubeovnv1.Subnet, needRouter
 			klog.Error(err)
 			return err
 		}
-		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 			klog.Errorf("patch subnet %s dhcp options failed: %v", subnet.Name, err)
 			return err
 		}
@@ -698,6 +698,12 @@ func (c *Controller) SetSubnetRuntimeFence(check func(context.Context) error) er
 }
 
 func (c *Controller) checkSubnetRuntimeFence(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("subnet runtime context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if c == nil || c.subnetRuntimeFence == nil {
 		return nil
 	}
@@ -812,11 +818,11 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		return err
 	}
 
-	vpc, err := c.prepareOvnSubnet(subnet)
+	vpc, err := c.prepareOvnSubnet(ctx, subnet)
 	if err != nil {
 		return err
 	}
-	return c.finishOvnSubnetReconcile(subnet, vpc)
+	return c.finishOvnSubnetReconcile(ctx, subnet, vpc)
 }
 
 func (c *Controller) finishNonOvnSubnetReconcile(subnet *kubeovnv1.Subnet) error {
@@ -832,8 +838,8 @@ func (c *Controller) finishNonOvnSubnetReconcile(subnet *kubeovnv1.Subnet) error
 	return nil
 }
 
-func (c *Controller) prepareOvnSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Vpc, error) {
-	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+func (c *Controller) prepareOvnSubnet(ctx context.Context, subnet *kubeovnv1.Subnet) (*kubeovnv1.Vpc, error) {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return nil, err
 	}
 	// This validate should be processed after isOvnSubnet, since maybe there's no vpc for subnet not managed by kube-ovn
@@ -888,7 +894,7 @@ func (c *Controller) prepareOvnSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Vpc,
 
 	if needRouter {
 		routerPortName := ovs.LogicalRouterPortName(vpc.Status.Router, subnet.Name)
-		if err := c.recordSubnetGatewayMAC(subnet, routerPortName); err != nil {
+		if err := c.recordSubnetGatewayMACWithContext(ctx, subnet, routerPortName); err != nil {
 			return nil, c.recordResourceError(subnet, "UpdateGatewayMACStatusFailed", err)
 		}
 	}
@@ -901,7 +907,7 @@ func (c *Controller) prepareOvnSubnet(subnet *kubeovnv1.Subnet) (*kubeovnv1.Vpc,
 	}
 
 	subnet.Status.EnsureStandardConditions()
-	if err := c.updateSubnetDHCPOption(subnet, needRouter); err != nil {
+	if err := c.updateSubnetDHCPOption(ctx, subnet, needRouter); err != nil {
 		klog.Errorf("failed to update subnet %s dhcpOptions: %v", subnet.Name, err)
 		return nil, c.recordResourceError(subnet, "UpdateDHCPOptionsFailed", err)
 	}
@@ -937,8 +943,8 @@ func (c *Controller) updateSubnetLoadBalancers(subnet *kubeovnv1.Subnet, vpc *ku
 	return nil
 }
 
-func (c *Controller) finishOvnSubnetReconcile(subnet *kubeovnv1.Subnet, vpc *kubeovnv1.Vpc) error {
-	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+func (c *Controller) finishOvnSubnetReconcile(ctx context.Context, subnet *kubeovnv1.Subnet, vpc *kubeovnv1.Vpc) error {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
 	}
 	if err := c.reconcileSubnet(subnet); err != nil {
@@ -1053,8 +1059,12 @@ func (c *Controller) reconcileSubnetBaseACLs(subnet *kubeovnv1.Subnet, router st
 	}
 }
 
-func (c *Controller) handleDeleteLogicalSwitch(key string, routerPortNames ...string) (err error) {
-	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+func (c *Controller) handleDeleteLogicalSwitch(key string, routerPortNames ...string) error {
+	return c.handleDeleteLogicalSwitchWithContext(context.Background(), key, routerPortNames...)
+}
+
+func (c *Controller) handleDeleteLogicalSwitchWithContext(ctx context.Context, key string, routerPortNames ...string) (err error) {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
 	}
 	c.ipam.DeleteSubnet(key)
@@ -1202,7 +1212,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 	if err := checkFence(); err != nil {
 		return err
 	}
-	if err = c.handleDeleteLogicalSwitch(subnet.Name, lrpName); err != nil {
+	if err = c.handleDeleteLogicalSwitchWithContext(ctx, subnet.Name, lrpName); err != nil {
 		klog.Errorf("failed to delete logical switch %s resources: %v", subnet.Name, err)
 		return err
 	}

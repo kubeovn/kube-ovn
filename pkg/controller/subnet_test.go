@@ -27,6 +27,22 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
+func TestSubnetRuntimeHelpersHonorCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	controller := &Controller{}
+	subnet := &kubeovnv1.Subnet{Name: "subnet-a"}
+
+	_, err := controller.prepareOvnSubnet(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.finishOvnSubnetReconcile(ctx, subnet, nil)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.handleDeleteLogicalSwitchWithContext(ctx, subnet.Name)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.recordSubnetGatewayMACWithContext(ctx, subnet, "router-port")
+	require.ErrorIs(t, err, context.Canceled)
+}
+
 func TestHandleDeleteLogicalSwitchResources(t *testing.T) {
 	t.Parallel()
 	failure := errors.New("resource deletion failed")
