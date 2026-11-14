@@ -45,6 +45,12 @@ func TestSubnetRuntimeHelpersHonorCanceledContext(t *testing.T) {
 	require.ErrorIs(t, err, context.Canceled)
 	err = controller.checkSubnetConflictWithContext(ctx, subnet)
 	require.ErrorIs(t, err, context.Canceled)
+	err = controller.reconcileOvnDefaultVpcRouteWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	fenceErr := errors.New("subnet fence lost")
+	fenced := &Controller{subnetRuntimeFence: func(context.Context) error { return fenceErr }}
+	err = fenced.reconcileOvnDefaultVpcRouteWithContext(context.Background(), subnet)
+	require.ErrorIs(t, err, fenceErr)
 }
 
 func TestHandleDeleteLogicalSwitchResources(t *testing.T) {

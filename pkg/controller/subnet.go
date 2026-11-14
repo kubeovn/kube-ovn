@@ -1789,7 +1789,13 @@ func (c *Controller) reconcileOvnDefaultVpcRoute(subnet *kubeovnv1.Subnet) error
 }
 
 func (c *Controller) reconcileOvnDefaultVpcRouteWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) error {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	if subnet.Name == c.config.NodeSwitch {
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
 		if err := c.addCommonRoutesForSubnet(subnet); err != nil {
 			klog.Error(err)
 			return err
@@ -1797,8 +1803,14 @@ func (c *Controller) reconcileOvnDefaultVpcRouteWithContext(ctx context.Context,
 		return nil
 	}
 
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	if err := c.reconcileServiceProxyFallbackDropPolicy(subnet); err != nil {
 		klog.Error(err)
+		return err
+	}
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
 	}
 	if err := c.reconcileServiceProxyFallbackReroutePolicy(subnet); err != nil {
@@ -1815,6 +1827,9 @@ func (c *Controller) reconcileOvnDefaultVpcRouteWithContext(ctx context.Context,
 		}
 		for _, pod := range pods {
 			if pod.Annotations[util.LogicalSwitchAnnotation] == subnet.Name && pod.Annotations[util.IPAddressAnnotation] != "" {
+				if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+					return err
+				}
 				if err := c.deleteStaticRoute(
 					pod.Annotations[util.IPAddressAnnotation], c.config.ClusterRouter, subnet.Spec.RouteTable,
 				); err != nil {
@@ -1825,6 +1840,9 @@ func (c *Controller) reconcileOvnDefaultVpcRouteWithContext(ctx context.Context,
 		}
 
 		if !subnet.Spec.LogicalGateway && subnet.Name != c.config.ExternalGatewaySwitch && !subnet.Spec.U2OInterconnection {
+			if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+				return err
+			}
 			lspName := fmt.Sprintf("%s-%s", subnet.Name, c.config.ClusterRouter)
 			klog.Infof("delete logical switch port %s", lspName)
 			if err := c.OVNNbClient.DeleteLogicalSwitchPort(lspName); err != nil {
@@ -1840,11 +1858,17 @@ func (c *Controller) reconcileOvnDefaultVpcRouteWithContext(ctx context.Context,
 		}
 
 		if subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
+			if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+				return err
+			}
 			if err := c.addPolicyRouteForU2OInterconn(subnet); err != nil {
 				klog.Errorf("failed to add policy route for underlay to overlay subnet interconnection %s %v", subnet.Name, err)
 				return err
 			}
 		} else {
+			if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+				return err
+			}
 			if err := c.deletePolicyRouteForU2OInterconn(subnet); err != nil {
 				klog.Errorf("failed to delete policy route for underlay to overlay subnet interconnection %s, %v", subnet.Name, err)
 				return err
@@ -1853,11 +1877,17 @@ func (c *Controller) reconcileOvnDefaultVpcRouteWithContext(ctx context.Context,
 
 		if (!c.config.EnableOvnLB || (subnet.Spec.EnableLb == nil || !*subnet.Spec.EnableLb)) &&
 			subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP != "" {
+			if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+				return err
+			}
 			if err := c.addPolicyRouteForU2ONoLoadBalancer(subnet); err != nil {
 				klog.Errorf("failed to add policy route for underlay to overlay subnet interconnection without enabling loadbalancer %s %v", subnet.Name, err)
 				return err
 			}
 		} else {
+			if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+				return err
+			}
 			if err := c.deletePolicyRouteForU2ONoLoadBalancer(subnet); err != nil {
 				klog.Errorf("failed to delete policy route for underlay to overlay subnet interconnection without enabling loadbalancer %s, %v", subnet.Name, err)
 				return err
@@ -1865,11 +1895,17 @@ func (c *Controller) reconcileOvnDefaultVpcRouteWithContext(ctx context.Context,
 		}
 	} else {
 		// It's difficult to update policy route when subnet cidr is changed, add check for cidr changed situation
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
 		if err := c.reconcilePolicyRouteForCidrChangedSubnet(subnet, true); err != nil {
 			klog.Error(err)
 			return err
 		}
 
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
 		if err := c.addCommonRoutesForSubnet(subnet); err != nil {
 			klog.Error(err)
 			return err
@@ -1877,6 +1913,9 @@ func (c *Controller) reconcileOvnDefaultVpcRouteWithContext(ctx context.Context,
 
 		// distributed subnet, only add distributed policy route
 		if subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
+			if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+				return err
+			}
 			if err := c.reconcileDistributedSubnetRouteInDefaultVpcWithContext(ctx, subnet); err != nil {
 				klog.Error(err)
 				return err
@@ -1900,17 +1939,26 @@ func (c *Controller) reconcileOvnDefaultVpcRouteWithContext(ctx context.Context,
 				return errors.New("failed to add ecmp policy route, no gateway node exists")
 			}
 
+			if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+				return err
+			}
 			if err := c.reconcilePolicyRouteForCidrChangedSubnet(subnet, false); err != nil {
 				klog.Error(err)
 				return err
 			}
 
 			if subnet.Spec.EnableEcmp {
+				if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+					return err
+				}
 				if err := c.reconcileEcmpCentralizedSubnetRouteInDefaultVpcWithContext(ctx, subnet); err != nil {
 					klog.Error(err)
 					return err
 				}
 			} else {
+				if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+					return err
+				}
 				if err := c.reconcileDefaultCentralizedSubnetRouteInDefaultVpcWithContext(ctx, subnet); err != nil {
 					klog.Error(err)
 					return err
