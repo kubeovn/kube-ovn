@@ -105,9 +105,7 @@ func (r *SubnetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			builder.WatchesRawSource(source.TypedFunc[ctrl.Request](func(ctx context.Context, q workqueue.TypedRateLimitingInterface[ctrl.Request]) error {
 				unsubscribe := r.Events.SubscribeSubnetRuntimeEvents(ctx, func(name string) {
 					if name != "" {
-						request := ctrl.Request{}
-						request.Name = name
-						q.Add(request)
+						q.Add(ctrl.Request{Name: name})
 					}
 				})
 				context.AfterFunc(ctx, unsubscribe)
