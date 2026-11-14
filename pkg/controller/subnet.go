@@ -103,8 +103,11 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 		// A status-only usage update does not satisfy the runtime controller's
 		// generation/finalizer predicate. Preserve this explicit fanout, while
 		// letting native runtime watches handle updates that already change the
-		// deletion timestamp or finalizers.
-		if !controllerRuntimeSubnetWriterEnabled(c.config) || slices.Equal(oldSubnet.Finalizers, newSubnet.Finalizers) {
+		// generation, deletion timestamp, or finalizers.
+		statusOnly := oldSubnet.Generation == newSubnet.Generation &&
+			oldSubnet.DeletionTimestamp.IsZero() == newSubnet.DeletionTimestamp.IsZero() &&
+			slices.Equal(oldSubnet.Finalizers, newSubnet.Finalizers)
+		if !controllerRuntimeSubnetWriterEnabled(c.config) || statusOnly {
 			c.enqueueSubnetReconcile(key)
 		}
 		return

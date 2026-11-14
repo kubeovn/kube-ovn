@@ -115,6 +115,44 @@ func TestEnqueueDeleteSubnetRuntimeWriterLeavesNativeDeleteWatchOwnership(t *tes
 	require.Empty(t, controller.subnetRuntimeEvents.pending)
 }
 
+func TestEnqueueUpdateSubnetRuntimeWriterFansOutStatusOnlyReadyEvent(t *testing.T) {
+	t.Parallel()
+
+	deletionTimestamp := metav1.Now()
+	controller := &Controller{
+		config:              &Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetWriter},
+		subnetRuntimeEvents: newSubnetRuntimeEventFanout(),
+	}
+	oldSubnet := &kubeovnv1.Subnet{
+		Name:              "subnet-a",
+		Generation:        2,
+		DeletionTimestamp: &deletionTimestamp,
+		Status:            kubeovnv1.SubnetStatus{V4UsingIPs: internal.NewBigInt(1)},
+	}
+	statusOnly := oldSubnet.DeepCopy()
+	statusOnly.Status.V4UsingIPs = internal.NewBigInt(0)
+	controller.enqueueUpdateSubnet(oldSubnet, statusOnly)
+	require.Contains(t, controller.subnetRuntimeEvents.pending, oldSubnet.Name)
+
+	clear(controller.subnetRuntimeEvents.pending)
+	active := statusOnly.DeepCopy()
+	active.DeletionTimestamp = nil
+	controller.enqueueUpdateSubnet(active, statusOnly)
+	require.Empty(t, controller.subnetRuntimeEvents.pending)
+
+	clear(controller.subnetRuntimeEvents.pending)
+	generationUpdate := statusOnly.DeepCopy()
+	generationUpdate.Generation++
+	controller.enqueueUpdateSubnet(statusOnly, generationUpdate)
+	require.Empty(t, controller.subnetRuntimeEvents.pending)
+
+	clear(controller.subnetRuntimeEvents.pending)
+	finalizerUpdate := statusOnly.DeepCopy()
+	finalizerUpdate.Finalizers = []string{"example.com/finalizer"}
+	controller.enqueueUpdateSubnet(statusOnly, finalizerUpdate)
+	require.Empty(t, controller.subnetRuntimeEvents.pending)
+}
+
 func TestAcquireU2OIPWithContextPreservesExistingAndOtherNICAllocations(t *testing.T) {
 	t.Parallel()
 
