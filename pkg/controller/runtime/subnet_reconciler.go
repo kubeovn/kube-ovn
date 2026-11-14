@@ -64,7 +64,7 @@ type SubnetReconciler struct {
 	recoveryMu sync.Mutex
 	recovered  map[subnetRecoveryKey]struct{}
 	deleteMu   sync.Mutex
-	deletes    map[string]SubnetWriteSnapshot
+	deletes    map[string][]SubnetWriteSnapshot
 }
 
 type subnetRecoveryKey struct {
@@ -139,10 +139,7 @@ func (r *SubnetReconciler) SetupWithManager(mgr ctrl.Manager) error {
 						}
 						if snapshot, err := NewSubnetDeleteSnapshot(subnet); err == nil {
 							r.deleteMu.Lock()
-							if r.deletes == nil {
-								r.deletes = make(map[string]SubnetWriteSnapshot)
-							}
-							r.deletes[name] = snapshot
+							r.addDeleteSnapshot(name, snapshot)
 							r.deleteMu.Unlock()
 						}
 						q.Add(ctrl.Request{Name: name})
@@ -189,31 +186,32 @@ func (r *SubnetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if err := r.Reader.Get(ctx, types.NamespacedName{Name: req.Name}, &subnet); err != nil {
 			if apierrors.IsNotFound(err) {
 				r.deleteMu.Lock()
-				snapshot, ok := r.deletes[req.Name]
+				snapshots := slices.Clone(r.deletes[req.Name])
 				r.deleteMu.Unlock()
-				if !ok {
+				if len(snapshots) == 0 {
 					return nil
 				}
 				deleted, ok := r.Adapter.(SubnetDeletedWriterAdapter)
 				if !ok {
 					return ErrSubnetWriterDeleteAdapterMissing
 				}
+				snapshot := snapshots[0]
 				if err := deleted.ReconcileDeletedSubnet(ctx, snapshot); err != nil {
 					return err
 				}
 				r.deleteMu.Lock()
-				if current, exists := r.deletes[req.Name]; exists && current.UID == snapshot.UID {
-					delete(r.deletes, req.Name)
-				}
+				r.removeDeleteSnapshot(req.Name, snapshot.UID)
+				hasMore := len(r.deletes[req.Name]) > 0
 				r.deleteMu.Unlock()
+				if hasMore {
+					result.Requeue = true
+				}
 				return nil
 			}
 			return err
 		}
 		r.deleteMu.Lock()
-		if snapshot, ok := r.deletes[req.Name]; ok && snapshot.UID != "" && snapshot.UID != subnet.UID {
-			delete(r.deletes, req.Name)
-		}
+		r.retainDeleteSnapshotForLive(req.Name, &subnet)
 		r.deleteMu.Unlock()
 		observation, err := observeSubnet(ctx, r.Reader, &subnet)
 		if err != nil {
@@ -246,4 +244,46 @@ func (r *SubnetReconciler) recoverSubnet(ctx context.Context, snapshot SubnetWri
 	}
 	r.recovered[key] = struct{}{}
 	return nil
+}
+
+func (r *SubnetReconciler) addDeleteSnapshot(name string, snapshot SubnetWriteSnapshot) {
+	if r.deletes == nil {
+		r.deletes = make(map[string][]SubnetWriteSnapshot)
+	}
+	snapshots := r.deletes[name]
+	if index := slices.IndexFunc(snapshots, func(existing SubnetWriteSnapshot) bool {
+		return existing.UID == snapshot.UID
+	}); index >= 0 {
+		snapshots[index] = snapshot
+		r.deletes[name] = snapshots
+		return
+	}
+	r.deletes[name] = append(snapshots, snapshot)
+}
+
+func (r *SubnetReconciler) removeDeleteSnapshot(name string, uid types.UID) {
+	snapshots := r.deletes[name]
+	index := slices.IndexFunc(snapshots, func(snapshot SubnetWriteSnapshot) bool {
+		return snapshot.UID == uid
+	})
+	if index < 0 {
+		return
+	}
+	snapshots = slices.Delete(snapshots, index, index+1)
+	if len(snapshots) == 0 {
+		delete(r.deletes, name)
+		return
+	}
+	r.deletes[name] = snapshots
+}
+
+func (r *SubnetReconciler) retainDeleteSnapshotForLive(name string, live *kubeovnv1.Subnet) {
+	if live == nil || len(r.deletes[name]) == 0 {
+		return
+	}
+	// A live same-name object may be a replacement for one of the pending
+	// tombstones. Its presence does not prove that the old object's cleanup
+	// completed, and the runtime writer owns the only delete path in this mode.
+	// Keep every tombstone until a later NotFound reconciliation can fence and
+	// consume it by UID.
 }

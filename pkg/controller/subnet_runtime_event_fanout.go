@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 
+	"k8s.io/apimachinery/pkg/types"
+
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
@@ -15,7 +17,7 @@ type subnetRuntimeEventFanout struct {
 	subscribers   map[uint64]func(string)
 	deleteSubs    map[uint64]func(string, *kubeovnv1.Subnet)
 	pending       map[string]struct{}
-	deletePending map[string]*kubeovnv1.Subnet
+	deletePending map[string][]*kubeovnv1.Subnet
 }
 
 func newSubnetRuntimeEventFanout() *subnetRuntimeEventFanout {
@@ -23,7 +25,7 @@ func newSubnetRuntimeEventFanout() *subnetRuntimeEventFanout {
 		subscribers:   make(map[uint64]func(string)),
 		deleteSubs:    make(map[uint64]func(string, *kubeovnv1.Subnet)),
 		pending:       make(map[string]struct{}),
-		deletePending: make(map[string]*kubeovnv1.Subnet),
+		deletePending: make(map[string][]*kubeovnv1.Subnet),
 	}
 }
 
@@ -47,7 +49,10 @@ func (f *subnetRuntimeEventFanout) publishDelete(subnet *kubeovnv1.Subnet) {
 		delete(f.pending, subnet.Name)
 	}
 	if len(deleteSubscribers) == 0 {
-		f.deletePending[subnet.Name] = snapshot
+		pending := f.deletePending[subnet.Name]
+		if !containsSubnetUID(pending, snapshot.UID) {
+			f.deletePending[subnet.Name] = append(pending, snapshot)
+		}
 	} else {
 		delete(f.deletePending, subnet.Name)
 	}
@@ -150,8 +155,10 @@ func (f *subnetRuntimeEventFanout) subscribeDelete(ctx context.Context, subscrib
 	id := f.nextID
 	f.deleteSubs[id] = subscriber
 	pending := make([]*kubeovnv1.Subnet, 0, len(f.deletePending))
-	for name, snapshot := range f.deletePending {
-		pending = append(pending, snapshot.DeepCopy())
+	for name, snapshots := range f.deletePending {
+		for _, snapshot := range snapshots {
+			pending = append(pending, snapshot.DeepCopy())
+		}
 		delete(f.deletePending, name)
 	}
 	f.mu.Unlock()
@@ -164,6 +171,15 @@ func (f *subnetRuntimeEventFanout) subscribeDelete(ctx context.Context, subscrib
 		context.AfterFunc(ctx, unsubscribe)
 	}
 	return unsubscribe
+}
+
+func containsSubnetUID(subnets []*kubeovnv1.Subnet, uid types.UID) bool {
+	for _, subnet := range subnets {
+		if subnet != nil && subnet.UID == uid {
+			return true
+		}
+	}
+	return false
 }
 
 func (c *Controller) SubscribeSubnetRuntimeDeleteEvents(ctx context.Context, subscriber func(string, *kubeovnv1.Subnet)) func() {

@@ -113,7 +113,8 @@ func TestEnqueueDeleteSubnetRuntimeWriterLeavesNativeDeleteWatchOwnership(t *tes
 	}
 	controller.enqueueDeleteSubnet(&kubeovnv1.Subnet{Name: "subnet-a"})
 	require.Contains(t, controller.subnetRuntimeEvents.pending, "subnet-a")
-	require.Equal(t, "subnet-a", controller.subnetRuntimeEvents.deletePending["subnet-a"].Name)
+	require.Len(t, controller.subnetRuntimeEvents.deletePending["subnet-a"], 1)
+	require.Equal(t, "subnet-a", controller.subnetRuntimeEvents.deletePending["subnet-a"][0].Name)
 }
 
 func TestEnqueueAddSubnetRuntimeWriterLeavesNativeCreateWatchOwnership(t *testing.T) {

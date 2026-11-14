@@ -183,7 +183,7 @@ func TestSubnetReconcilerConsumesDeleteSnapshotWhenAPIObjectIsGone(t *testing.T)
 		RecoveryGate: func(context.Context) error { return nil },
 		Adapter:      adapter,
 		Lease:        testSubnetWriterLease(t),
-		deletes:      map[string]SubnetWriteSnapshot{deleted.Name: snapshot},
+		deletes:      map[string][]SubnetWriteSnapshot{deleted.Name: {snapshot}},
 	}
 
 	_, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: deleted.Name})
@@ -208,12 +208,12 @@ func TestSubnetReconcilerRetainsDeleteSnapshotWhenAdapterFails(t *testing.T) {
 		RecoveryGate: func(context.Context) error { return nil },
 		Adapter:      adapter,
 		Lease:        testSubnetWriterLease(t),
-		deletes:      map[string]SubnetWriteSnapshot{deleted.Name: snapshot},
+		deletes:      map[string][]SubnetWriteSnapshot{deleted.Name: {snapshot}},
 	}
 
 	_, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: deleted.Name})
 	require.ErrorIs(t, err, adapterErr)
-	require.Equal(t, snapshot, reconciler.deletes[deleted.Name])
+	require.Equal(t, []SubnetWriteSnapshot{snapshot}, reconciler.deletes[deleted.Name])
 
 	called := false
 	adapter.deleted = func(_ context.Context, got SubnetWriteSnapshot) error {
@@ -227,7 +227,7 @@ func TestSubnetReconcilerRetainsDeleteSnapshotWhenAdapterFails(t *testing.T) {
 	require.Empty(t, reconciler.deletes)
 }
 
-func TestSubnetReconcilerDropsDeleteSnapshotForReplacementUID(t *testing.T) {
+func TestSubnetReconcilerRetainsDeleteSnapshotForReplacementUID(t *testing.T) {
 	replacement := testSubnet("")
 	replacement.UID = types.UID("replacement-uid")
 	deleted := replacement.DeepCopy()
@@ -246,13 +246,68 @@ func TestSubnetReconcilerDropsDeleteSnapshotForReplacementUID(t *testing.T) {
 		RecoveryGate: func(context.Context) error { return nil },
 		Adapter:      adapter,
 		Lease:        testSubnetWriterLease(t),
-		deletes:      map[string]SubnetWriteSnapshot{deleted.Name: snapshot},
+		deletes:      map[string][]SubnetWriteSnapshot{deleted.Name: {snapshot}},
 	}
 
 	_, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: replacement.Name})
 	require.NoError(t, err)
 	require.False(t, called)
+	require.Equal(t, []SubnetWriteSnapshot{snapshot}, reconciler.deletes[replacement.Name])
+}
+
+func TestSubnetReconcilerConsumesSameNameDeleteSnapshotsInUIDOrder(t *testing.T) {
+	deletedA := testSubnet("")
+	deletedA.UID = types.UID("deleted-uid-a")
+	deletionTimestamp := metav1.Now()
+	deletedA.DeletionTimestamp = &deletionTimestamp
+	snapshotA, err := NewSubnetWriteSnapshot(deletedA, false)
+	require.NoError(t, err)
+
+	deletedB := deletedA.DeepCopy()
+	deletedB.UID = types.UID("deleted-uid-b")
+	snapshotB, err := NewSubnetWriteSnapshot(deletedB, false)
+	require.NoError(t, err)
+
+	var calls []types.UID
+	adapter := &recordingSubnetWriterAdapter{deleted: func(_ context.Context, snapshot SubnetWriteSnapshot) error {
+		calls = append(calls, snapshot.UID)
+		return nil
+	}}
+	reconciler := &SubnetReconciler{
+		Reader:       newRuntimeClient(t),
+		RecoveryGate: func(context.Context) error { return nil },
+		Adapter:      adapter,
+		Lease:        testSubnetWriterLease(t),
+	}
+	reconciler.addDeleteSnapshot(deletedA.Name, snapshotA)
+	reconciler.addDeleteSnapshot(deletedB.Name, snapshotB)
+
+	result, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: deletedA.Name})
+	require.NoError(t, err)
+	require.True(t, result.Requeue)
+	require.Equal(t, []types.UID{snapshotA.UID}, calls)
+
+	result, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: deletedA.Name})
+	require.NoError(t, err)
+	require.Zero(t, result)
+	require.Equal(t, []types.UID{snapshotA.UID, snapshotB.UID}, calls)
 	require.Empty(t, reconciler.deletes)
+}
+
+func TestSubnetReconcilerRetainsDeleteSnapshotsForLiveReplacement(t *testing.T) {
+	live := testSubnet("")
+	live.UID = types.UID("live-uid")
+	old := live.DeepCopy()
+	old.UID = types.UID("old-uid")
+	deletionTimestamp := metav1.Now()
+	old.DeletionTimestamp = &deletionTimestamp
+	oldSnapshot, err := NewSubnetWriteSnapshot(old, false)
+	require.NoError(t, err)
+
+	reconciler := &SubnetReconciler{}
+	reconciler.addDeleteSnapshot(live.Name, oldSnapshot)
+	reconciler.retainDeleteSnapshotForLive(live.Name, live)
+	require.Equal(t, []SubnetWriteSnapshot{oldSnapshot}, reconciler.deletes[live.Name])
 }
 
 func TestSubnetReconcilerPropagatesRecoveryError(t *testing.T) {
