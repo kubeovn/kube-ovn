@@ -3,10 +3,18 @@ set -euo pipefail
 shopt -s expand_aliases
 
 OVN_DB_IPS=${OVN_DB_IPS:-}
+OVN_SB_HOST=${OVN_SB_HOST:-}
 ENABLE_SSL=${ENABLE_SSL:-false}
 
 function gen_conn_str {
-  if [[ -z "${OVN_DB_IPS}" ]]; then
+  local port=$1
+  if [[ -n "${OVN_SB_HOST}" ]]; then
+    if [[ "$ENABLE_SSL" == "false" ]]; then
+      x="tcp:${OVN_SB_HOST}:${port}"
+    else
+      x="ssl:${OVN_SB_HOST}:${port}"
+    fi
+  elif [[ -z "${OVN_DB_IPS}" ]]; then
     if [[ "$ENABLE_SSL" == "false" ]]; then
       x="tcp:[${OVN_SB_SERVICE_HOST}]:${OVN_SB_SERVICE_PORT}"
     else
@@ -15,9 +23,9 @@ function gen_conn_str {
   else
     t=$(echo -n "${OVN_DB_IPS}" | sed 's/[[:space:]]//g' | sed 's/,/ /g')
     if [[ "$ENABLE_SSL" == "false" ]]; then
-      x=$(for i in ${t}; do echo -n "tcp:[$i]:$1",; done| sed 's/,$//')
+      x=$(for i in ${t}; do echo -n "tcp:[$i]:${port}",; done | sed 's/,$//')
     else
-      x=$(for i in ${t}; do echo -n "ssl:[$i]:$1",; done| sed 's/,$//')
+      x=$(for i in ${t}; do echo -n "ssl:[$i]:${port}",; done | sed 's/,$//')
     fi
   fi
   echo "$x"
