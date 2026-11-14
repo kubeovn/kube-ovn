@@ -57,7 +57,6 @@ func (c *Controller) enqueueDeleteSubnet(obj any) {
 
 	if controllerRuntimeSubnetWriterEnabled(c.config) {
 		klog.V(3).Infof("skip legacy delete queue for subnet %s in runtime writer mode", subnet.Name)
-		c.enqueueSubnetReconcile(subnet.Name)
 		return
 	}
 	klog.V(3).Infof("enqueue delete subnet %s", subnet.Name)
@@ -93,13 +92,21 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 
 	if oldSubnet.DeletionTimestamp.IsZero() && !newSubnet.DeletionTimestamp.IsZero() {
 		klog.Infof("enqueue update subnet %s triggered by deletion timestamp", key)
-		c.enqueueSubnetReconcile(key)
+		if !controllerRuntimeSubnetWriterEnabled(c.config) {
+			c.enqueueSubnetReconcile(key)
+		}
 		return
 	}
 
 	if readyToRemoveFinalizer(newSubnet) {
 		klog.Infof("enqueue update subnet %s triggered by ready to remove finalizer", key)
-		c.enqueueSubnetReconcile(key)
+		// A status-only usage update does not satisfy the runtime controller's
+		// generation/finalizer predicate. Preserve this explicit fanout, while
+		// letting native runtime watches handle updates that already change the
+		// deletion timestamp or finalizers.
+		if !controllerRuntimeSubnetWriterEnabled(c.config) || slices.Equal(oldSubnet.Finalizers, newSubnet.Finalizers) {
+			c.enqueueSubnetReconcile(key)
+		}
 		return
 	}
 
@@ -122,7 +129,9 @@ func (c *Controller) enqueueUpdateSubnet(oldObj, newObj any) {
 				fmt.Sprintf("gateway node changes from %q to %q", oldSubnet.Spec.GatewayNode, newSubnet.Spec.GatewayNode))
 		}
 
-		c.enqueueSubnetReconcile(key)
+		if !controllerRuntimeSubnetWriterEnabled(c.config) {
+			c.enqueueSubnetReconcile(key)
+		}
 	}
 }
 
