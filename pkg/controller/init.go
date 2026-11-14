@@ -419,21 +419,20 @@ func (c *Controller) InitIPAM() error {
 		klog.Infof("Init subnet %s", subnet.Name)
 		subnetProviderMaps[subnet.Name] = subnet.Spec.Provider
 		var mac *string
-		if strictSubnetWriterRecovery && subnet.Status.U2OInterconnectionIP != "" {
-			if subnet.Status.U2OInterconnectionMAC != "" {
-				mac = new(subnet.Status.U2OInterconnectionMAC)
-			} else {
-				lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-				lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, true)
-				if err != nil {
-					klog.Errorf("failed to get logical router port %s: %v", lrpName, err)
-					return err
-				}
-				if lrp == nil || lrp.MAC == "" {
-					return fmt.Errorf("failed to get logical router port %s: MAC is unavailable", lrpName)
-				}
-				mac = new(lrp.MAC)
+		if subnet.Status.U2OInterconnectionMAC != "" {
+			mac = new(subnet.Status.U2OInterconnectionMAC)
+		}
+		if strictSubnetWriterRecovery && subnet.Status.U2OInterconnectionIP != "" && mac == nil {
+			lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
+			lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, true)
+			if err != nil {
+				klog.Errorf("failed to get logical router port %s: %v", lrpName, err)
+				return err
 			}
+			if lrp == nil || lrp.MAC == "" {
+				return fmt.Errorf("failed to get logical router port %s: MAC is unavailable", lrpName)
+			}
+			mac = new(lrp.MAC)
 		}
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
