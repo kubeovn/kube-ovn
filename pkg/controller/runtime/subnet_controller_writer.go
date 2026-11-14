@@ -3,6 +3,7 @@ package controllerruntime
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -10,16 +11,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	legacycontroller "github.com/kubeovn/kube-ovn/pkg/controller"
 )
 
-var ErrSubnetRuntimeReaderMissing = errors.New("subnet runtime reader is not configured")
+var (
+	ErrSubnetRuntimeReaderMissing        = errors.New("subnet runtime reader is not configured")
+	ErrSubnetRuntimeAllocationNotAllowed = legacycontroller.ErrSubnetRuntimeAllocationNotAllowed
+)
 
 // SubnetDataPlaneBackend is the explicit seam for the initialized legacy
 // Controller. In subnet-writer mode it is the only implementation that may
 // touch IPAM and OVN; the legacy Subnet workers are disabled by the mode gate.
 type SubnetDataPlaneBackend interface {
 	RecoverSubnetRuntime(context.Context, *kubeovnv1.Subnet) error
-	ReconcileSubnetRuntime(context.Context, *kubeovnv1.Subnet) error
+	// allocationAllowed is the dependency readiness grant captured by the
+	// runtime writer. The backend must reject active writes when it is false;
+	// delete snapshots may carry false because they only release state.
+	ReconcileSubnetRuntime(context.Context, *kubeovnv1.Subnet, bool) error
 }
 
 // SubnetControllerWriterAdapter wires the real Controller domain path into
@@ -59,7 +67,25 @@ func (a *SubnetControllerWriterAdapter) ReconcileSubnet(ctx context.Context, sna
 	if err := snapshot.Validate(live, operation); err != nil {
 		return err
 	}
-	return a.Backend.ReconcileSubnetRuntime(ctx, subnetFromSnapshot(snapshot))
+	allocationAllowed := snapshot.AllocationAllowed
+	if !snapshot.Deleting {
+		// ProviderNetwork readiness can change between the shadow observation
+		// and this writer admission, so re-read dependencies after checking
+		// the Subnet identity.
+		freshObservation, err := observeSubnet(ctx, a.Reader, live)
+		if err != nil {
+			return err
+		}
+		allocationAllowed = allocationAllowed && freshObservation.AllocationAllowed
+		// The legacy runtime backend performs status, finalizer, IPAM, and OVN
+		// work as one operation. Until those phases have separate writer seams,
+		// fail closed before entering it when dependency readiness denies new
+		// allocation.
+		if !allocationAllowed {
+			return fmt.Errorf("%w: subnet %s", ErrSubnetRuntimeAllocationNotAllowed, snapshot.Name)
+		}
+	}
+	return a.Backend.ReconcileSubnetRuntime(ctx, subnetFromSnapshot(snapshot), allocationAllowed)
 }
 
 func (a *SubnetControllerWriterAdapter) ReconcileDeletedSubnet(ctx context.Context, snapshot SubnetWriteSnapshot) error {
@@ -83,7 +109,7 @@ func (a *SubnetControllerWriterAdapter) ReconcileDeletedSubnet(ctx context.Conte
 	if err := a.Gate.WaitForRecovery(ctx); err != nil {
 		return err
 	}
-	return a.Backend.ReconcileSubnetRuntime(ctx, subnetFromSnapshot(snapshot))
+	return a.Backend.ReconcileSubnetRuntime(ctx, subnetFromSnapshot(snapshot), snapshot.AllocationAllowed)
 }
 
 func subnetFromSnapshot(snapshot SubnetWriteSnapshot) *kubeovnv1.Subnet {
