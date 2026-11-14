@@ -9,8 +9,11 @@ import (
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	ktesting "k8s.io/client-go/testing"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -108,6 +111,35 @@ func TestReconcileSubnetRuntimeRejectsReplacementBeforeCleanup(t *testing.T) {
 
 	err = fc.fakeController.ReconcileSubnetRuntime(t.Context(), snapshot)
 	require.True(t, k8serrors.IsConflict(err), err)
+}
+
+func TestReconcileSubnetRuntimeStopsWhenReplacementAppearsBeforeCleanup(t *testing.T) {
+	t.Parallel()
+
+	deleting := metav1.Now()
+	snapshot := &kubeovnv1.Subnet{
+		Name:              "subnet",
+		UID:               "deleted-uid",
+		Generation:        1,
+		DeletionTimestamp: &deleting,
+	}
+	replacement := snapshot.DeepCopy()
+	replacement.UID = "replacement-uid"
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{replacement}})
+	require.NoError(t, err)
+	client := fc.fakeController.config.KubeOvnClient.(*kubeovnfake.Clientset)
+	gets := 0
+	client.PrependReactor("get", "subnets", func(ktesting.Action) (bool, runtime.Object, error) {
+		gets++
+		if gets == 1 {
+			return true, nil, k8serrors.NewNotFound(kubeovnv1.Resource("subnets"), snapshot.Name)
+		}
+		return false, nil, nil
+	})
+
+	err = fc.fakeController.ReconcileSubnetRuntime(t.Context(), snapshot)
+	require.True(t, k8serrors.IsConflict(err), err)
+	require.Equal(t, 2, gets)
 }
 
 func TestRecoverSubnetRuntimeStopsBeforeIPAMWhenFenceFails(t *testing.T) {

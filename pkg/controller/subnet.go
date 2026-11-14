@@ -1286,13 +1286,23 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) (err error) {
 func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) (err error) {
 	c.subnetKeyMutex.LockKey(subnet.Name)
 	defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
-	checkFence := func() error {
+	checkDeleteTarget := func() error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		return c.checkSubnetRuntimeFence(ctx)
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
+		live, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(ctx, subnet.Name, metav1.GetOptions{})
+		if err == nil {
+			return validateSubnetRuntimeDeleteTarget(subnet, live)
+		}
+		if !k8serrors.IsNotFound(err) {
+			return err
+		}
+		return nil
 	}
-	if err := checkFence(); err != nil {
+	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
 	defer func() {
@@ -1303,7 +1313,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
 	klog.Infof("delete u2o interconnection policy route for subnet %s", subnet.Name)
-	if err := checkFence(); err != nil {
+	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
 	if err := c.deletePolicyRouteForU2OInterconn(subnet); err != nil {
@@ -1316,7 +1326,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 		return err
 	}
 	if subnet.Spec.Vpc != c.config.ClusterRouter {
-		if err := checkFence(); err != nil {
+		if err := checkDeleteTarget(); err != nil {
 			return err
 		}
 		if err := c.deleteStaticRouteForU2OInterconnExcept(subnet, ownership.staticV4, ownership.staticV6); err != nil {
@@ -1327,7 +1337,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 
 	u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 	u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-	if err := checkFence(); err != nil {
+	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
 	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(ctx, u2oInterconnName, metav1.DeleteOptions{}); err != nil {
@@ -1336,13 +1346,13 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 			return err
 		}
 	}
-	if err := checkFence(); err != nil {
+	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
 	c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
 
 	if subnet.Spec.Vpc != c.config.ClusterRouter {
-		if err := checkFence(); err != nil {
+		if err := checkDeleteTarget(); err != nil {
 			return err
 		}
 		if err := c.deleteCustomVPCPolicyRoutesForSubnetExcept(subnet, ownership.policyV4, ownership.policyV6); err != nil {
@@ -1352,7 +1362,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 	}
 
 	if subnet.Spec.Vlan == "" {
-		if err := checkFence(); err != nil {
+		if err := checkDeleteTarget(); err != nil {
 			return err
 		}
 		if _, _, err := c.syncU2OOverlayCIDRsAddressSet(subnet.Spec.Vpc, subnet.Name); err != nil {
@@ -1362,7 +1372,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 	}
 
 	klog.Infof("delete policy route for %s subnet %s", subnet.Spec.GatewayType, subnet.Name)
-	if err := checkFence(); err != nil {
+	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
 	if err := c.deletePolicyRouteByGatewayType(subnet, subnet.Spec.GatewayType, true); err != nil {
@@ -1383,7 +1393,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 	}
 
 	lrpName := fmt.Sprintf("%s-%s", router, subnet.Name)
-	if err := checkFence(); err != nil {
+	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
 	if err = c.handleDeleteLogicalSwitchWithContext(ctx, subnet.Name, lrpName); err != nil {
@@ -1398,7 +1408,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 	}
 
 	for _, vlan := range vlans {
-		if err = checkFence(); err != nil {
+		if err = checkDeleteTarget(); err != nil {
 			return err
 		}
 		if err = c.updateVlanStatusForSubnetDeletionWithContext(ctx, vlan, subnet.Name); err != nil {
