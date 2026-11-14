@@ -63,6 +63,18 @@ func NewSubnetWriteSnapshot(subnet *kubeovnv1.Subnet, allocationAllowed bool) (S
 	}, nil
 }
 
+// NewSubnetDeleteSnapshot captures a delete event even when the informer
+// delivers a tombstone without a DeletionTimestamp. Delete delivery itself is
+// the lifecycle signal for cleanup, so the snapshot must carry that intent.
+func NewSubnetDeleteSnapshot(subnet *kubeovnv1.Subnet) (SubnetWriteSnapshot, error) {
+	snapshot, err := NewSubnetWriteSnapshot(subnet, false)
+	if err != nil {
+		return SubnetWriteSnapshot{}, err
+	}
+	snapshot.Deleting = true
+	return snapshot, nil
+}
+
 // Validate checks the live object immediately before a side effect. A
 // conflict forces reconciliation to restart from a fresh snapshot.
 func (s SubnetWriteSnapshot) Validate(current *kubeovnv1.Subnet, operation SubnetWriteOperation) error {

@@ -28,6 +28,14 @@ func TestNewSubnetWriteSnapshotCopiesIdentityAndSpec(t *testing.T) {
 	require.True(t, snapshot.AllocationAllowed)
 }
 
+func TestNewSubnetDeleteSnapshotMarksTombstoneAsDeleting(t *testing.T) {
+	subnet := testSubnet("")
+	snapshot, err := NewSubnetDeleteSnapshot(subnet)
+	require.NoError(t, err)
+	require.True(t, snapshot.Deleting)
+	require.False(t, snapshot.AllocationAllowed)
+}
+
 func TestSubnetWriteSnapshotRejectsLiveConflicts(t *testing.T) {
 	subnet := testSubnet("")
 	subnet.UID = types.UID("uid-a")

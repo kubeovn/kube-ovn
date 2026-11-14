@@ -712,6 +712,14 @@ func (c *Controller) ReconcileSubnetRuntime(ctx context.Context, subnet *kubeovn
 		return errors.New("runtime Subnet reconcile requires a Subnet")
 	}
 	if !subnet.DeletionTimestamp.IsZero() {
+		preflightLive, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(ctx, subnet.Name, metav1.GetOptions{})
+		if err == nil {
+			if err := validateSubnetRuntimeDeleteTarget(subnet, preflightLive); err != nil {
+				return err
+			}
+		} else if !k8serrors.IsNotFound(err) {
+			return err
+		}
 		if err := c.handleDeleteSubnetWithContext(ctx, subnet); err != nil {
 			return err
 		}
