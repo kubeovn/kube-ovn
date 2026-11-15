@@ -152,10 +152,15 @@ The runtime writer also exposes concrete IPAM mutation seams for Subnet
 registration, address allocation/release, and deletion. `AddOrUpdateSubnet`,
 the Subnet-owned U2O/multicast address operations, and `DeleteSubnet` now pass
 through operation-specific identity and recovery gates instead of relying only
-on the enclosing domain-phase wrapper. These seams currently delegate to the
-existing in-memory IPAM implementation and return no durable receipt; the next
-increment must add backend-owned receipt persistence and conditional recovery
-before claiming cross-process ownership for these mutations.
+on the enclosing domain-phase wrapper. Random and static address allocation,
+release by NIC, and release by Pod use a typed address request; runtime
+installation fails closed unless the backend exposes that typed writer and its
+initialized address backend. The typed adapter preserves the legacy release by
+Pod semantics while conditionalizing release by NIC on the expected address
+tuple. These seams currently delegate to the existing in-memory IPAM
+implementation and return no durable receipt; the next increment must add
+backend-owned receipt persistence and conditional recovery before claiming
+cross-process ownership for these mutations.
 
 Each isolated invocation waits for recovery and performs a fresh Subnet GET
 with a five-second deadline before checking the immutable snapshot and

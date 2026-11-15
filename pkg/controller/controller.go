@@ -80,6 +80,7 @@ type Controller struct {
 	subnetRuntimeOVNWriter          SubnetRuntimeDomainWriter
 	subnetRuntimeIPAMWriter         SubnetRuntimeDomainWriter
 	subnetRuntimeIPAMMutationWriter SubnetRuntimeIPAMMutationWriter
+	subnetRuntimeIPAMAddressWriter  SubnetRuntimeIPAMAddressWriter
 	subnetRuntimeVirtualPortWriter  SubnetRuntimeVirtualPortWriter
 
 	ipam             *ovnipam.IPAM
