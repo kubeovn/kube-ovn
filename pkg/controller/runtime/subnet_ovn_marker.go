@@ -2,10 +2,7 @@ package controllerruntime
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
-	"fmt"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -15,16 +12,6 @@ var (
 	ErrSubnetOVNMarkerInvalid = errors.New("invalid Subnet OVN owner marker")
 	ErrSubnetOVNMarkerChanged = errors.New("subnet OVN owner marker changed")
 )
-
-func subnetOVNMutationKey(snapshot SubnetWriteSnapshot, operation SubnetWriteOperation) SubnetOVNMutationKey {
-	// ResourceVersion belongs to the owner tuple, not the intent identity. API
-	// status/finalizer updates can advance it while the same Subnet generation
-	// and OVN operation are still in flight; keeping it out of the key lets
-	// recovery find and rebind a marker left by an earlier snapshot.
-	intent := fmt.Sprintf("%s\x00%s\x00%d\x00%s", snapshot.Name, snapshot.UID, snapshot.Generation, operation)
-	hash := sha256.Sum256([]byte(intent))
-	return SubnetOVNMutationKey{Name: snapshot.Name, UID: snapshot.UID, Operation: operation, IntentHash: hex.EncodeToString(hash[:16])}
-}
 
 // SubnetOVNOwner identifies the runtime writer that may mutate one OVN
 // operation. The marker is deliberately separate from the durable receipt;

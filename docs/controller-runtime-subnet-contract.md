@@ -324,10 +324,12 @@ separate steps. IP is last because Pod, VM, LSP and `syncIPCR` paths depend on
 it. In `subnet-writer`, the Controller facade is the single Subnet domain
 writer while legacy Subnet workers and startup syncs are disabled; all other
 modes remain legacy-owned. The OVN split adapter now has concrete durable
-receipts, owner markers, and a backend-aware resolver. The current resolver
-confirms the Subnet logical switch as the coarse OVN mutation boundary; a
-future increment should bind readback to mutation intent so CIDR, gateway,
-ACL, DHCP, and related side-effects can be confirmed individually.
+receipts, owner markers, and a backend-aware resolver. Each new receipt stores
+a canonical, generation-scoped `SubnetOVNMutationIntent`; recovery rejects a
+receipt without that intent and the resolver reads the logical switch named by
+the intent. This is still the coarse OVN mutation boundary: CIDR, gateway,
+ACL, DHCP, routes, and related side-effects require additional typed intent
+fields and readback before they can be reported as committed.
 The plan compensation contract is also unwired and does not itself provide
 durable backend rollback or a fencing mechanism. Any future split adapter
 must provide the same atomic receipt checks, idempotency, uncertain-commit

@@ -26,6 +26,40 @@ func TestOVSDBSubnetOVNMarkerRowRoundTrip(t *testing.T) {
 	require.Equal(t, markerName(marker.Key), markerName(equivalent))
 }
 
+func TestOVSDBSubnetOVNMarkerNamesAreUniquePerMutationKey(t *testing.T) {
+	marker := testOVSDBSubnetOVNMarker()
+	cleanup := marker.Key
+	cleanup.Operation = SubnetOVNCleanupOperation
+	otherUID := marker.Key
+	otherUID.UID = types.UID("other-uid")
+
+	require.NotEqual(t, markerName(marker.Key), markerName(cleanup))
+	require.NotEqual(t, markerName(marker.Key), markerName(otherUID))
+}
+
+func TestOVSDBSubnetOVNMarkerReadsLegacyName(t *testing.T) {
+	snapshot := SubnetWriteSnapshot{Name: "subnet-a", UID: types.UID("uid-a"), Generation: 3}
+	key := legacySubnetOVNMutationKey(snapshot, SubnetOVNAllocateOperation)
+	marker := SubnetOVNOwnerMarker{
+		Key: key,
+		Owner: SubnetOVNOwner{
+			Token:           7,
+			SubnetUID:       snapshot.UID,
+			Generation:      snapshot.Generation,
+			ResourceVersion: "9",
+			WriterEpoch:     "epoch-a",
+		},
+	}
+	row := (&OVSDBSubnetOVNMarkerBackend{}).markerRow(marker)
+	row.Name = legacyMarkerName(key)
+	backend, err := NewOVSDBSubnetOVNMarkerBackend(&markerTestProvider{handle: &markerTestHandle{row: row}})
+	require.NoError(t, err)
+	got, found, err := backend.Read(t.Context(), key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, marker, got)
+}
+
 func TestOVSDBSubnetOVNMarkerAcquireRejectsWrongOwner(t *testing.T) {
 	marker := testOVSDBSubnetOVNMarker()
 	other := marker
