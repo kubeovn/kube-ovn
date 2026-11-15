@@ -145,10 +145,11 @@ type subnetIPAMKey struct {
 }
 
 type subnetIPAMAllocation struct {
-	key     subnetIPAMKey
-	token   uint64
-	uid     string
-	address subnetIPAMAddress
+	key      subnetIPAMKey
+	token    uint64
+	uid      string
+	address  subnetIPAMAddress
+	identity SubnetMutationIdentity
 }
 
 func subnetIPAMRecoveryContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -246,6 +247,11 @@ func (a *subnetIPAMAdapter) AllocateRandom(snapshot SubnetWriteSnapshot, podName
 	allocation := subnetIPAMAllocation{key: key, uid: string(snapshot.UID)}
 	var noOp bool
 	plan := SubnetSideEffectPlan{Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
+		identity, ok := SubnetMutationIdentityFromContext(ctx)
+		if !ok {
+			return nil, ErrSubnetMutationIdentityMissing
+		}
+		allocation.identity = identity
 		var err error
 		allocation.address, noOp, err = a.backend.ExistingAllocation(ctx, snapshot.Name, podName, nicName)
 		if err != nil {
@@ -297,6 +303,7 @@ func (a *subnetIPAMAdapter) AllocateRandom(snapshot SubnetWriteSnapshot, podName
 		}
 		return receipt, nil
 	}}
+	plan.RequireReceiptIdentity = true
 	receipt, err := a.writer.executePlan(snapshot, SubnetIPAMAllocateOperation, plan)
 	if err != nil {
 		if receipt != nil {
@@ -313,6 +320,10 @@ func (a *subnetIPAMAdapter) AllocateRandom(snapshot SubnetWriteSnapshot, podName
 type subnetIPAMReceipt struct {
 	adapter    *subnetIPAMAdapter
 	allocation subnetIPAMAllocation
+}
+
+func (r *subnetIPAMReceipt) SubnetMutationIdentity() SubnetMutationIdentity {
+	return r.allocation.identity
 }
 
 func (r *subnetIPAMReceipt) Compensate(ctx context.Context) error {

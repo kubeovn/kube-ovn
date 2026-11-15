@@ -29,6 +29,16 @@ func TestSubnetIPAMAdapterAllocatesTransactionAndCompensatesByReceipt(t *testing
 	require.Empty(t, v6)
 	require.NotEmpty(t, mac)
 	require.NotNil(t, receipt)
+	identityReceipt, ok := receipt.(SubnetSideEffectReceiptIdentity)
+	require.True(t, ok)
+	require.Equal(t, SubnetMutationIdentity{
+		Name:            snapshot.Name,
+		UID:             snapshot.UID,
+		Generation:      snapshot.Generation,
+		ResourceVersion: snapshot.ResourceVersion,
+		Operation:       SubnetIPAMAllocateOperation,
+		WriterEpoch:     "test-epoch",
+	}, identityReceipt.SubnetMutationIdentity())
 
 	_, _, _, noOpReceipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
 	require.NoError(t, err)

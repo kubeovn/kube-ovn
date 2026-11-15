@@ -18,6 +18,12 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
+type staticSubnetWriterFence struct{}
+
+func (staticSubnetWriterFence) Check(context.Context) error { return nil }
+
+func (staticSubnetWriterFence) Epoch(context.Context) (string, error) { return "test-epoch", nil }
+
 func newSubnetSideEffectWriterAPI(t *testing.T, terminating bool) (*subnetSideEffectWriter, client.WithWatch, *kubeovnv1.Subnet, SubnetWriteSnapshot) {
 	t.Helper()
 	scheme, err := NewScheme()
@@ -38,7 +44,7 @@ func newSubnetSideEffectWriterAPI(t *testing.T, terminating bool) (*subnetSideEf
 	w := &subnetSideEffectWriter{
 		ctx:    t.Context(),
 		reader: api,
-		gate:   SubnetWriterGate{Recovery: func(context.Context) error { return nil }},
+		gate:   SubnetWriterGate{Recovery: func(context.Context) error { return nil }, Fence: staticSubnetWriterFence{}},
 	}
 	return w, api, live, snapshot
 }
@@ -167,6 +173,57 @@ func TestSubnetSideEffectWriterReturnsCancellationAfterAction(t *testing.T) {
 type sideEffectReceiptFunc func(context.Context) error
 
 func (f sideEffectReceiptFunc) Compensate(ctx context.Context) error { return f(ctx) }
+
+type identitySideEffectReceipt struct {
+	identity SubnetMutationIdentity
+}
+
+func (identitySideEffectReceipt) Compensate(context.Context) error { return nil }
+
+func (r identitySideEffectReceipt) SubnetMutationIdentity() SubnetMutationIdentity {
+	return r.identity
+}
+
+func TestSubnetSideEffectWriterPropagatesMutationIdentity(t *testing.T) {
+	w, _, snapshot := newSubnetSideEffectWriter(t)
+	var got SubnetMutationIdentity
+	require.NoError(t, w.Execute(snapshot, SubnetIPAMAllocateOperation, SubnetSideEffectPlan{
+		Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
+			var ok bool
+			got, ok = SubnetMutationIdentityFromContext(ctx)
+			require.True(t, ok)
+			return nil, nil
+		},
+	}))
+	require.Equal(t, SubnetMutationIdentity{
+		Name:            snapshot.Name,
+		UID:             snapshot.UID,
+		Generation:      snapshot.Generation,
+		ResourceVersion: snapshot.ResourceVersion,
+		Operation:       SubnetIPAMAllocateOperation,
+		WriterEpoch:     "test-epoch",
+	}, got)
+}
+
+func TestSubnetSideEffectWriterRejectsMismatchedReceiptIdentity(t *testing.T) {
+	w, _, snapshot := newSubnetSideEffectWriter(t)
+	identity := SubnetMutationIdentity{
+		Name:            snapshot.Name,
+		UID:             snapshot.UID,
+		Generation:      snapshot.Generation,
+		ResourceVersion: snapshot.ResourceVersion,
+		Operation:       SubnetIPAMAllocateOperation,
+		WriterEpoch:     "test-epoch",
+	}
+	identity.UID = "replacement"
+	err := w.Execute(snapshot, SubnetIPAMAllocateOperation, SubnetSideEffectPlan{
+		RequireReceiptIdentity: true,
+		Apply: func(context.Context) (SubnetSideEffectReceipt, error) {
+			return identitySideEffectReceipt{identity: identity}, nil
+		},
+	})
+	require.ErrorIs(t, err, ErrSubnetMutationIdentityChanged)
+}
 
 func TestSubnetSideEffectWriterCompensatesConfirmedMutation(t *testing.T) {
 	for _, compensationFails := range []bool{false, true} {

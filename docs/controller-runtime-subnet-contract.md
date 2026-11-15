@@ -123,7 +123,12 @@ cleanup, and IPAM release require a terminating object; OVN/IPAM allocation
 requires `AllocationAllowed`. UID, generation, spec, resource-version, and
 deletion-state changes return a Kubernetes conflict. A missing recovery callback
 fails closed, so a restart cannot allocate or mutate OVN state before durable
-recovery completes. `subnet_status_writer.go` is the explicit status writer
+recovery completes. Side-effect plans now propagate a `SubnetMutationIdentity`
+containing the Subnet UID, generation, resource version, operation, and (when
+the durable fence exposes it) writer epoch into the backend context. Concrete
+receipts can require and verify that identity; the production Controller facade
+still returns no per-mutation receipt, so backend atomic fencing remains a
+follow-up step. `subnet_status_writer.go` is the explicit status writer
 installed by `subnet-writer`. It performs an uncached snapshot check, uses an
 optimistic-lock status patch, preserves foreign condition types, and confirms a
 write that may have committed before its response was lost. The same
