@@ -322,3 +322,25 @@ func TestInitIPAMReusesPersistedU2OMACInLegacyMode(t *testing.T) {
 	require.True(t, allocated)
 	require.Equal(t, subnet.Status.U2OInterconnectionMAC, mac)
 }
+
+func TestInitIPAMLegacyModeToleratesSubnetRegistrationFailure(t *testing.T) {
+	t.Parallel()
+
+	subnet := &kubeovnv1.Subnet{
+		Name: "invalid-dual-subnet",
+		UID:  "subnet-uid",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "10.0.0.0/29,fd00::/64",
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Subnets: []*kubeovnv1.Subnet{subnet}})
+	require.NoError(t, err)
+	controller := fc.fakeController
+	controller.ipam = ipam.NewIPAM()
+
+	// Legacy startup logs a transiently invalid Subnet and continues. The
+	// failed registration must not be followed by a fatal UID bind against a
+	// Subnet that was never admitted to IPAM.
+	require.NoError(t, controller.InitIPAM())
+	require.NotContains(t, controller.ipam.Subnets, subnet.Name)
+}
