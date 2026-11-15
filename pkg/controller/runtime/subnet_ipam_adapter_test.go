@@ -283,7 +283,10 @@ func TestSubnetIPAMAdapterRecoversDurableReceipt(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, adapter.Recover(t.Context(), snapshot))
-	receipt := &subnetIPAMReceipt{adapter: adapter, allocation: backend.recoverAllocations[0]}
+	allocation, found, err := adapter.store.Lookup(t.Context(), backend.recoverAllocations[0].key)
+	require.NoError(t, err)
+	require.True(t, found)
+	receipt := &subnetIPAMReceipt{adapter: adapter, allocation: allocation}
 	require.NoError(t, receipt.Compensate(t.Context()))
 	require.False(t, backend.allocated)
 }
@@ -314,6 +317,7 @@ func TestSubnetIPAMAdapterRecoveryRebindsReceiptToCurrentEpoch(t *testing.T) {
 	require.NotEqual(t, previous.token, rebound.token)
 	require.Equal(t, "test-epoch", rebound.identity.WriterEpoch)
 	require.ErrorIs(t, (&subnetIPAMReceipt{adapter: adapter, allocation: previous}).Compensate(t.Context()), ErrSubnetIPAMReceiptStale)
+	require.Zero(t, backend.releaseCalls, "a stale epoch must not reach the backend")
 	require.NoError(t, (&subnetIPAMReceipt{adapter: adapter, allocation: rebound}).Compensate(t.Context()))
 }
 
@@ -619,6 +623,10 @@ func TestSubnetIPAMReceiptReleaseErrorPreservesOwnerForRetry(t *testing.T) {
 	require.NoError(t, err)
 	require.ErrorIs(t, receipt.Compensate(context.Background()), backend.releaseErr)
 	require.True(t, backend.allocated)
+	stored, found, lookupErr := adapter.store.Lookup(context.Background(), receipt.(*subnetIPAMReceipt).allocation.key)
+	require.NoError(t, lookupErr)
+	require.True(t, found)
+	require.Equal(t, subnetIPAMReceiptPhaseReleasing, stored.phase)
 
 	backend.releaseErr = nil
 	require.NoError(t, receipt.Compensate(context.Background()), "a recovered owner must be able to retry release")
@@ -661,8 +669,12 @@ func TestSubnetIPAMReceiptRetriesStoreDeleteAfterBackendRelease(t *testing.T) {
 	require.NoError(t, err)
 	require.ErrorIs(t, receipt.Compensate(context.Background()), store.deleteErr)
 	require.False(t, backend.allocated, "backend release committed before store delete failed")
+	stored, found, lookupErr := store.Lookup(context.Background(), receipt.(*subnetIPAMReceipt).allocation.key)
+	require.NoError(t, lookupErr)
+	require.True(t, found)
+	require.Equal(t, subnetIPAMReceiptPhaseReleasing, stored.phase)
 	require.NoError(t, receipt.Compensate(context.Background()), "retry should confirm release and delete the durable record")
-	_, found, err := store.Lookup(context.Background(), receipt.(*subnetIPAMReceipt).allocation.key)
+	_, found, err = store.Lookup(context.Background(), receipt.(*subnetIPAMReceipt).allocation.key)
 	require.NoError(t, err)
 	require.False(t, found)
 }

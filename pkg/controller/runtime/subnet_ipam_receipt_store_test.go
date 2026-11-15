@@ -1,6 +1,7 @@
 package controllerruntime
 
 import (
+	"encoding/json/v2"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -56,6 +57,52 @@ func TestKubernetesSubnetIPAMReceiptStoreRebindsWithCAS(t *testing.T) {
 	require.Equal(t, replacement, current)
 	require.ErrorIs(t, store.Rebind(t.Context(), previous, testDurableSubnetIPAMAllocation()), ErrSubnetIPAMReceiptChanged)
 	require.NoError(t, store.Delete(t.Context(), replacement))
+}
+
+func TestSubnetIPAMReceiptClaimCASAndRetry(t *testing.T) {
+	store := newMemorySubnetIPAMReceiptStore()
+	allocation := testDurableSubnetIPAMAllocation()
+	require.NoError(t, store.Remember(t.Context(), allocation))
+	claimed, err := store.Claim(t.Context(), allocation)
+	require.NoError(t, err)
+	require.Equal(t, subnetIPAMReceiptPhaseReleasing, claimed.phase)
+	oldEpoch := allocation
+	oldEpoch.identity.WriterEpoch = "old-epoch"
+	_, err = store.Claim(t.Context(), oldEpoch)
+	require.ErrorIs(t, err, ErrSubnetIPAMReceiptChanged)
+	_, err = store.Claim(t.Context(), allocation)
+	require.ErrorIs(t, err, ErrSubnetIPAMReceiptChanged)
+	retry, err := store.Claim(t.Context(), claimed)
+	require.ErrorIs(t, err, ErrSubnetIPAMReceiptChanged)
+	require.Empty(t, retry)
+}
+
+func TestSubnetIPAMReceiptJSONPhaseRoundTripAndLegacyDefault(t *testing.T) {
+	allocation := testDurableSubnetIPAMAllocation()
+	allocation.phase = subnetIPAMReceiptPhaseReleasing
+	record, err := marshalSubnetIPAMAllocation(allocation)
+	require.NoError(t, err)
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(record, &raw))
+	require.Equal(t, "releasing", raw["phase"])
+	decoded, err := unmarshalSubnetIPAMAllocation(string(record))
+	require.NoError(t, err)
+	require.Equal(t, allocation, decoded)
+	allocation.phase = subnetIPAMReceiptPhaseActive
+	record, err = marshalSubnetIPAMAllocation(allocation)
+	require.NoError(t, err)
+	var activeRaw map[string]any
+	require.NoError(t, json.Unmarshal(record, &activeRaw))
+	require.Equal(t, "active", activeRaw["phase"])
+	legacy := string(record)
+	var legacyRaw map[string]any
+	require.NoError(t, json.Unmarshal([]byte(legacy), &legacyRaw))
+	delete(legacyRaw, "phase")
+	legacyBytes, err := json.Marshal(legacyRaw)
+	require.NoError(t, err)
+	decoded, err = unmarshalSubnetIPAMAllocation(string(legacyBytes))
+	require.NoError(t, err)
+	require.Equal(t, subnetIPAMReceiptPhaseActive, decoded.phase)
 }
 
 func TestKubernetesSubnetIPAMReceiptStoreRejectsMalformedRecords(t *testing.T) {

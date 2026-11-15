@@ -157,10 +157,11 @@ release by NIC, and release by Pod use a typed address request; runtime
 installation fails closed unless the backend exposes that typed writer and its
 initialized address backend. The typed adapter preserves the legacy release by
 Pod semantics while conditionalizing release by NIC on the expected address
-tuple. These seams currently delegate to the existing in-memory IPAM
-implementation and return no durable receipt; the next increment must add
-backend-owned receipt persistence and conditional recovery before claiming
-cross-process ownership for these mutations.
+tuple. These seams delegate to the existing in-memory IPAM implementation;
+allocation receipts are persisted by the configured memory or ConfigMap store.
+Release first claims a receipt with a durable CAS (active to releasing)
+over the complete allocation, token, Subnet UID, identity, and address, so an
+old epoch or rebound receipt cannot invoke the backend.
 
 Each isolated invocation waits for recovery and performs a fresh Subnet GET
 with a five-second deadline before checking the immutable snapshot and
@@ -219,9 +220,12 @@ resource-version guarded compare-and-swap operations. During startup recovery,
 a receipt whose Subnet UID, address tuple, and complete old identity still
 match is atomically rebound to a new token and the current writer epoch. The
 old receipt therefore cannot compensate after a restart; failure to compare
-and update the durable record fails closed. Allocations discovered directly
-from IPAM without a durable receipt are legacy ownership and are published
-with `Remember` before further mutation is admitted.
+and update the durable record fails closed. A `releasing` receipt is pending
+work: recovery removes it when the backend allocation is gone, or rebinds it
+to the current epoch so release can be retried when the allocation remains.
+An active receipt whose backend allocation is missing fails closed.
+Allocations discovered directly from IPAM without a durable receipt are legacy
+ownership and are published with `Remember` before further mutation is admitted.
 `IPAM.WithTransactionContext` checks cancellation before and after the atomic
 transaction, but cannot interrupt the IPAM mutex while a transaction is
 running. Cancellation observed after the action can therefore report an
@@ -233,8 +237,13 @@ the allocation untouched; cancellation during the transaction still requires
 readback because the atomic release may already have committed.
 
 If conditional release returns a backend error before ownership is cleared, the
-receipt remains available for recovery to retry; the adapter does not discard
-ownership after an unsuccessful release.
+receipt remains in releasing for recovery to retry; the adapter does not discard
+ownership after an unsuccessful release. A successful backend release is
+followed by a claimed-record CAS delete; if that delete is lost, retrying the
+pending receipt confirms the uncached backend state before cleanup. When the
+backend reports ErrAddressOwnershipChanged, cleanup is allowed only after an
+uncached read confirms no address remains; a replacement tuple keeps the
+receipt and returns the ownership error.
 The same rule applies when the release context is canceled while the backend
 operation is in progress: recovery must retry with a fresh context and resolve
 the resulting ownership state.
@@ -243,15 +252,13 @@ The adapter now consumes a narrow backend interface for exact allocation
 lookup, transactional allocation, and conditional release. Lookup receives
 the writer context and returns errors separately from the no-op result, so a
 durable backend read failure fails closed without attempting allocation or
-compensation. Receipt release passes the expected address tuple into the
-backend, which validates ownership and releases it in one IPAM transaction;
-this closes the lookup/release race for the current backend. A future durable
-backend must replace this with an atomic fencing check. The current
-implementation wraps the in-memory IPAM transaction API; a future durable
-backend can implement the same seam only after preserving the receipt,
-ownership, and uncertain-commit guarantees. This interface is testable in
-isolation; the opt-in production mode currently invokes the Controller's IPAM
-facade and keeps this receipt adapter available for a later split.
+compensation. Receipt release passes the claimed complete allocation into the
+backend, which validates ownership and releases it in one IPAM transaction.
+The current transaction backend still fences by address tuple; durable token
+and identity fencing remains a backend responsibility and is not claimed
+complete here. This interface is testable in isolation; the opt-in production
+mode currently invokes the Controller's IPAM facade and keeps this receipt
+adapter available for a later split.
 
 ## Readiness and deletion gates
 

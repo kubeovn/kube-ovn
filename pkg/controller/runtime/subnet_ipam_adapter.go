@@ -39,6 +39,10 @@ type subnetIPAMReceiptStore interface {
 	// replacement; a failed compare must leave the current receipt untouched.
 	Rebind(ctx context.Context, previous, replacement subnetIPAMAllocation) error
 	Lookup(ctx context.Context, key subnetIPAMKey) (subnetIPAMAllocation, bool, error)
+	// Claim changes an active receipt to releasing using a complete CAS compare.
+	// A releasing allocation is already claimed and cannot be claimed by a
+	// second contender; release retry uses the persisted releasing value.
+	Claim(ctx context.Context, allocation subnetIPAMAllocation) (subnetIPAMAllocation, error)
 	Delete(ctx context.Context, allocation subnetIPAMAllocation) error
 }
 
@@ -54,6 +58,15 @@ type memorySubnetIPAMReceiptStore struct {
 	mu          sync.Mutex
 	allocations map[subnetIPAMKey]subnetIPAMAllocation
 }
+
+type subnetIPAMReceiptPhase string
+
+const (
+	// The zero value is active so receipts written before phase fencing remain
+	// comparable with records decoded from the legacy JSON shape.
+	subnetIPAMReceiptPhaseActive    subnetIPAMReceiptPhase = ""
+	subnetIPAMReceiptPhaseReleasing subnetIPAMReceiptPhase = "releasing"
+)
 
 func newMemorySubnetIPAMReceiptStore() *memorySubnetIPAMReceiptStore {
 	return &memorySubnetIPAMReceiptStore{allocations: make(map[subnetIPAMKey]subnetIPAMAllocation)}
@@ -103,6 +116,27 @@ func (s *memorySubnetIPAMReceiptStore) Lookup(ctx context.Context, key subnetIPA
 	defer s.mu.Unlock()
 	allocation, ok := s.allocations[key]
 	return allocation, ok, nil
+}
+
+func (s *memorySubnetIPAMReceiptStore) Claim(ctx context.Context, allocation subnetIPAMAllocation) (subnetIPAMAllocation, error) {
+	if err := contextError(ctx); err != nil {
+		return subnetIPAMAllocation{}, err
+	}
+	if err := validateSubnetIPAMAllocation(allocation); err != nil {
+		return subnetIPAMAllocation{}, err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.allocations[allocation.key]
+	if !ok || !sameSubnetIPAMAllocationOwner(current, allocation) {
+		return subnetIPAMAllocation{}, ErrSubnetIPAMReceiptChanged
+	}
+	if current.phase != subnetIPAMReceiptPhaseActive || allocation.phase != subnetIPAMReceiptPhaseActive {
+		return subnetIPAMAllocation{}, ErrSubnetIPAMReceiptChanged
+	}
+	current.phase = subnetIPAMReceiptPhaseReleasing
+	s.allocations[allocation.key] = current
+	return current, nil
 }
 
 func (s *memorySubnetIPAMReceiptStore) Delete(ctx context.Context, allocation subnetIPAMAllocation) error {
@@ -256,6 +290,7 @@ type subnetIPAMAllocation struct {
 	uid      string
 	address  subnetIPAMAddress
 	identity SubnetMutationIdentity
+	phase    subnetIPAMReceiptPhase
 }
 
 func validSubnetIPAMRecoveryIdentity(identity SubnetMutationIdentity, snapshot SubnetWriteSnapshot) bool {
@@ -327,6 +362,11 @@ func (a *subnetIPAMAdapter) Recover(ctx context.Context, snapshot SubnetWriteSna
 	}
 	if identity.WriterEpoch == "" {
 		return ErrSubnetWriterEpochUnavailable
+	}
+	for i := range allocations {
+		if allocations[i].identity == (SubnetMutationIdentity{}) {
+			allocations[i].identity = identity
+		}
 	}
 	if lister, ok := a.backend.(subnetIPAMExistingAllocationLister); ok {
 		existing, err := lister.ListExisting(ctx, snapshot)
@@ -554,6 +594,9 @@ func (a *subnetIPAMAdapter) ReleaseByNicWithContext(ctx context.Context, snapsho
 			if !found {
 				return nil, ErrSubnetIPAMRecoveryUnsafe
 			}
+			if identity, ok := SubnetMutationIdentityFromContext(ctx); !ok || !sameSubnetResourceIdentity(stored.identity, identity) {
+				return nil, ErrSubnetIPAMReceiptStale
+			}
 			if expectedV4 == "" && expectedV6 == "" && expectedMAC == "" {
 				address, found, err := a.backend.ExistingAllocation(ctx, snapshot.Name, podName, nicName)
 				if err != nil {
@@ -564,28 +607,10 @@ func (a *subnetIPAMAdapter) ReleaseByNicWithContext(ctx context.Context, snapsho
 				}
 				expectedV4, expectedV6, expectedMAC = address.v4, address.v6, address.mac
 			}
-			allocation := subnetIPAMAllocation{key: key, uid: string(snapshot.UID), address: subnetIPAMAddress{v4: expectedV4, v6: expectedV6, mac: expectedMAC}}
-			if found && stored.address != allocation.address {
+			if stored.address != (subnetIPAMAddress{v4: expectedV4, v6: expectedV6, mac: expectedMAC}) {
 				return nil, ErrSubnetIPAMReceiptChanged
 			}
-			if err := a.backend.ReleaseIfMatches(ctx, allocation); err != nil {
-				if !errors.Is(err, ipam.ErrAddressOwnershipChanged) || !found {
-					return nil, err
-				}
-				current, currentFound, lookupErr := a.backend.ExistingAllocation(ctx, snapshot.Name, podName, nicName)
-				if lookupErr != nil {
-					return nil, errors.Join(err, lookupErr)
-				}
-				if currentFound || current != allocation.address {
-					return nil, err
-				}
-			}
-			if found {
-				if err := a.store.Delete(ctx, stored); err != nil {
-					return nil, err
-				}
-			}
-			return nil, nil
+			return nil, a.releaseClaim(ctx, stored)
 		},
 	})
 }
@@ -599,6 +624,10 @@ func (a *subnetIPAMAdapter) ReleaseByPodWithContext(ctx context.Context, snapsho
 	}
 	return a.writerForContext(ctx).Execute(snapshot, SubnetIPAMAddressReleaseOperation, SubnetSideEffectPlan{
 		Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
+			identity, identityOK := SubnetMutationIdentityFromContext(ctx)
+			if !identityOK {
+				return nil, ErrSubnetMutationIdentityMissing
+			}
 			allocations, err := lister.List(ctx, snapshot.Name)
 			if err != nil {
 				return nil, err
@@ -606,6 +635,9 @@ func (a *subnetIPAMAdapter) ReleaseByPodWithContext(ctx context.Context, snapsho
 			owned := make([]subnetIPAMAllocation, 0, len(allocations))
 			for _, allocation := range allocations {
 				if allocation.key.pod == podName {
+					if !sameSubnetResourceIdentity(allocation.identity, identity) {
+						return nil, ErrSubnetIPAMReceiptStale
+					}
 					owned = append(owned, allocation)
 				}
 			}
@@ -613,10 +645,7 @@ func (a *subnetIPAMAdapter) ReleaseByPodWithContext(ctx context.Context, snapsho
 				return nil, ErrSubnetIPAMRecoveryUnsafe
 			}
 			for _, allocation := range owned {
-				if err := a.backend.ReleaseIfMatches(ctx, allocation); err != nil {
-					return nil, err
-				}
-				if err := a.store.Delete(ctx, allocation); err != nil {
+				if err := a.releaseClaim(ctx, allocation); err != nil {
 					return nil, err
 				}
 			}
@@ -644,24 +673,46 @@ func (r *subnetIPAMReceipt) Compensate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if !ok || current != r.allocation {
+	if !ok || !sameSubnetIPAMAllocationOwner(current, r.allocation) {
 		return ErrSubnetIPAMReceiptStale
 	}
-	if err := r.adapter.backend.ReleaseIfMatches(ctx, r.allocation); err != nil {
+	return r.adapter.releaseClaim(ctx, current)
+}
+
+func sameSubnetIPAMAllocationOwner(left, right subnetIPAMAllocation) bool {
+	left.phase = subnetIPAMReceiptPhaseActive
+	right.phase = subnetIPAMReceiptPhaseActive
+	return left == right
+}
+
+func sameSubnetResourceIdentity(left, right SubnetMutationIdentity) bool {
+	return left.Name == right.Name && left.UID == right.UID && left.Generation == right.Generation &&
+		left.ResourceVersion == right.ResourceVersion && left.WriterEpoch == right.WriterEpoch
+}
+
+func (a *subnetIPAMAdapter) releaseClaim(ctx context.Context, allocation subnetIPAMAllocation) error {
+	claimed := allocation
+	if allocation.phase != subnetIPAMReceiptPhaseReleasing {
+		var err error
+		claimed, err = a.store.Claim(ctx, allocation)
+		if err != nil {
+			return err
+		}
+	}
+	if err := a.backend.ReleaseIfMatches(ctx, claimed); err != nil {
 		if !errors.Is(err, ipam.ErrAddressOwnershipChanged) {
 			return err
 		}
-		_, found, lookupErr := r.adapter.backend.ExistingAllocation(ctx, r.allocation.key.subnet, r.allocation.key.pod, r.allocation.key.nic)
+		readCtx, cancel := subnetIPAMRecoveryContext(ctx)
+		defer cancel()
+		current, found, lookupErr := a.backend.ExistingAllocation(readCtx, claimed.key.subnet, claimed.key.pod, claimed.key.nic)
 		if lookupErr != nil {
 			return errors.Join(err, lookupErr)
 		}
-		if found {
+		if found || current != (subnetIPAMAddress{}) {
 			return err
 		}
-		return r.adapter.store.Delete(ctx, r.allocation)
+		return a.store.Delete(readCtx, claimed)
 	}
-	if err := r.adapter.store.Delete(ctx, r.allocation); err != nil {
-		return err
-	}
-	return nil
+	return a.store.Delete(ctx, claimed)
 }
