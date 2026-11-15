@@ -41,6 +41,11 @@ type SubnetSideEffectReceiptIdentity interface {
 type SubnetSideEffectPlan struct {
 	Apply                  func(context.Context) (SubnetSideEffectReceipt, error)
 	RequireReceiptIdentity bool
+	// RetainReceiptOnError keeps a receipt-owned fence when Apply returns an
+	// error. A backend may have committed before reporting the error, so
+	// speculative compensation could release ownership before recovery has
+	// read back the actual data-plane state.
+	RetainReceiptOnError bool
 }
 
 // subnetSideEffectWriter gates an OVN or IPAM domain phase behind the immutable
@@ -149,6 +154,9 @@ func (w *subnetSideEffectWriter) executePlan(snapshot SubnetWriteSnapshot, opera
 		return receipt, errors.Join(applyErr, err)
 	}
 	if applyErr != nil {
+		if plan.RetainReceiptOnError {
+			return receipt, applyErr
+		}
 		return nil, w.compensate(receipt, applyErr)
 	}
 	return receipt, nil

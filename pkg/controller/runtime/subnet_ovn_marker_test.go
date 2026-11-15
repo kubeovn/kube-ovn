@@ -73,6 +73,23 @@ func TestMemorySubnetOVNMarkerBackendHonorsCancellation(t *testing.T) {
 	require.ErrorIs(t, backend.Acquire(ctx, testSubnetOVNOwnerMarker()), context.Canceled)
 }
 
+func TestSubnetOVNMutationKeyIsStableAcrossResourceVersions(t *testing.T) {
+	snapshot := testSubnetWriteSnapshot("7")
+	updated := snapshot
+	updated.ResourceVersion = "8"
+
+	require.Equal(t, subnetOVNMutationKey(snapshot, SubnetOVNAllocateOperation), subnetOVNMutationKey(updated, SubnetOVNAllocateOperation))
+}
+
+func testSubnetWriteSnapshot(resourceVersion string) SubnetWriteSnapshot {
+	return SubnetWriteSnapshot{
+		Name:            "subnet-a",
+		UID:             types.UID("uid-a"),
+		Generation:      3,
+		ResourceVersion: resourceVersion,
+	}
+}
+
 func testSubnetOVNOwnerMarker() SubnetOVNOwnerMarker {
 	return SubnetOVNOwnerMarker{
 		Key: SubnetOVNMutationKey{

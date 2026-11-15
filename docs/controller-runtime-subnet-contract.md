@@ -143,13 +143,25 @@ OVN/IPAM domain phases and gives them the same recovery, identity, and durable
 Lease gate. The production callback still delegates the complete phase to the
 Controller facade through an explicit OVN mutation writer seam. The seam
 preserves the legacy domain callback while isolating operation-specific OVN
-admission for a future receipt-backed adapter; per-mutation receipts and backend
-ownership checks remain a follow-up step. IPAM allocation and release now have
-concrete per-mutation receipts and owner fencing.
-The OVN receipt model and ConfigMap CAS store are now available as an unwired
-persistence seam. A memory OVN owner-marker CAS seam is also available for
-tests, but production OVSDB marker wiring and OVN ownership checks remain
-separate. The queued virtual-port parent worker
+admission. In strict `subnet-writer` mode, that seam acquires a deterministic
+OVN `Address_Set` owner marker before the domain callback and conditionally
+releases it only after the callback succeeds. Apply or release errors retain the
+marker for recovery; they never speculate that an uncertain OVN mutation did
+not commit. Recovery rebinds a marker for the current Subnet revision to the
+new writer epoch while preserving its pending token, so the next retry takes
+over the same fence. Active recovery also enumerates markers for the same
+Subnet UID and fails closed on an older generation or operation marker. Delete
+recovery enumerates every marker for the UID, rebinds markers from the current
+generation to the new writer epoch, retains older-generation markers under
+their original CAS owner, and releases all of them only after cleanup
+succeeds. This lets a previously uncertain allocation marker converge during
+deletion without releasing a fence before the data-plane cleanup. Legacy mode
+keeps the existing callback without this marker. IPAM allocation and release
+now have concrete per-mutation receipts and owner fencing. The OVN receipt model
+and ConfigMap
+CAS store remain available as a future persistence seam; production strict mode
+currently uses the OVSDB marker as the durable fence. A memory OVN owner-marker
+CAS seam is also available for tests. The queued virtual-port parent worker
 is also wired through a runtime hook: it reads the Subnet with the uncached API reader,
 revalidates UID, generation, spec, resource version, and deletion state, and
 only then invokes the OVN backend. Legacy mode keeps the informer-backed
@@ -202,7 +214,9 @@ resolved by bounded backend readback; when the address is confirmed, the
 adapter persists and returns a receipt together with the cancellation error so
 the caller can retain the owner for recovery. If readback cannot confirm the
 commit, the adapter fails closed and leaves the uncertainty for recovery. A
-receipt must bind the Subnet UID,
+OVN marker-backed plans retain their marker on any apply or release error,
+because releasing a fence before readback could allow a later writer to race
+the uncertain mutation. A receipt must bind the Subnet UID,
 mutation revision, and writer ownership epoch, and atomically check them in
 the backend before conditionally reverting only its own change. An idempotent
 delete by name alone is insufficient. Cancellation never authorizes rollback,
