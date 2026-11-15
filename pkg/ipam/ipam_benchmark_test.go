@@ -1,8 +1,7 @@
-package ipam_bench
+package ipam_test
 
 import (
 	"crypto/rand"
-	"flag"
 	"fmt"
 	"math/big"
 	"sync"
@@ -17,9 +16,7 @@ import (
 )
 
 func init() {
-	testing.Init()
 	klog.InitFlags(nil)
-	flag.Parse()
 }
 
 func BenchmarkIPAMSerialIPv4AddSubnet(b *testing.B) {
@@ -162,7 +159,7 @@ func BenchmarkPerformanceIPAMRandomIPv4AllocAddr(b *testing.B) {
 }
 
 func addSubnetCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
-	for n := 0; b.Loop(); n++ {
+	for n := 0; n < b.N; n++ {
 		if !addIPAMSubnet(b, im, n, protocol) {
 			b.Errorf("ERROR: add %s subnet with index %d", protocol, n)
 			return
@@ -171,7 +168,7 @@ func addSubnetCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 }
 
 func delSubnetCapacity(b *testing.B, im *ipam.IPAM) {
-	for n := 0; b.Loop(); n++ {
+	for n := 0; n < b.N; n++ {
 		delIPAMSubnet(im, n)
 	}
 }
@@ -183,7 +180,7 @@ func addSerialAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string) {
 		return
 	}
 
-	for n := 0; b.Loop(); n++ {
+	for n := 0; n < b.N; n++ {
 		podName := fmt.Sprintf("pod%d", n)
 		nicName := fmt.Sprintf("nic%d", n)
 		if _, _, _, err := im.GetRandomAddress(podName, nicName, nil, subnetName, "", nil, true); err != nil {
@@ -203,7 +200,7 @@ func addRandomAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string, isTimeT
 	step := 10000
 	ipSet := getDefaultSubnetRandomIps(b, protocol, b.N)
 	startTime := time.Now().Unix()
-	for n := 0; b.Loop(); n++ {
+	for n := 0; n < b.N; n++ {
 		podName := fmt.Sprintf("pod%d", n)
 		nicName := fmt.Sprintf("nic%d", n)
 		ip, ok := ipSet.Pop()
@@ -227,7 +224,7 @@ func addRandomAddrCapacity(b *testing.B, im *ipam.IPAM, protocol string, isTimeT
 func delPodAddressCapacity(b *testing.B, im *ipam.IPAM, isTimeTrace bool) {
 	step := 10000
 	startTime := time.Now().Unix()
-	for n := 0; b.Loop(); n++ {
+	for n := 0; n < b.N; n++ {
 		podName := fmt.Sprintf("pod%d", n)
 		if isTimeTrace && (n+1)%step == 0 {
 			currentTime := time.Now().Unix()
@@ -247,8 +244,8 @@ func addIPAMSubnet(b *testing.B, im *ipam.IPAM, index int, protocol string) bool
 	v4Gw := fmt.Sprintf("%d.%d.%d.1", key1, key2, key3)
 	ipv4ExcludeIPs := []string{v4Gw}
 
-	ipv6CIDR := fmt.Sprintf("fd00::%02X:%02X:%02X/120", key1, key2, key3)
-	v6Gw := fmt.Sprintf("fd00::%02X:%02X:%02X:01", key1, key2, key3)
+	ipv6CIDR := fmt.Sprintf("fd00:%02X:%02X:%02X::/120", key1, key2, key3)
+	v6Gw := fmt.Sprintf("fd00:%02X:%02X:%02X::1", key1, key2, key3)
 	ipv6ExcludeIPs := []string{v6Gw}
 
 	dualCIDR := fmt.Sprintf("%s,%s", ipv4CIDR, ipv6CIDR)
@@ -276,7 +273,7 @@ func addIPAMSubnet(b *testing.B, im *ipam.IPAM, index int, protocol string) bool
 }
 
 func delIPAMSubnet(im *ipam.IPAM, index int) {
-	subnetName := fmt.Sprintf("test%d", index)
+	subnetName := fmt.Sprintf("subnet%d", index)
 	im.DeleteSubnet(subnetName)
 }
 

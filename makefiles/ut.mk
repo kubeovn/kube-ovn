@@ -30,5 +30,5 @@ cover:
 
 .PHONY: ipam-bench
 ipam-bench:
-	go test -timeout 30m -bench='^BenchmarkIPAM' -benchtime=10000x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false
-	go test -timeout 90m -bench='^BenchmarkParallelIPAM' -benchtime=10x test/unittest/ipam_bench/ipam_test.go -args -logtostderr=false
+	go test -timeout 30m -run '^$$' -bench='^BenchmarkIPAM' -benchtime=10000x ./pkg/ipam -args -logtostderr=false
+	go test -timeout 90m -run '^$$' -bench='^BenchmarkParallelIPAM' -benchtime=10x ./pkg/ipam -args -logtostderr=false
