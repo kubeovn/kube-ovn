@@ -73,6 +73,14 @@ func (b *recordingSubnetIPAMAddressBackend) ExistingSubnetRuntimeIPAMAddress(con
 	return b.existingResult, b.existingFound, b.existingErr
 }
 
+func (b *recordingSubnetIPAMAddressBackend) ListSubnetRuntimeIPAMAddresses(context.Context, string) ([]legacycontroller.SubnetRuntimeIPAMAddressAllocation, error) {
+	return nil, nil
+}
+
+func (b *recordingSubnetIPAMAddressBackend) BindSubnetRuntimeIPAMIdentity(context.Context, string, string) error {
+	return nil
+}
+
 func (b *recordingSubnetIPAMAddressBackend) AllocateSubnetRuntimeIPAMRandom(_ context.Context, podName, nicName, subnetName, poolName string, skipped []string, checkConflict bool) (legacycontroller.SubnetRuntimeIPAMAddressResult, error) {
 	b.lastPodName = podName
 	b.lastNICName = nicName

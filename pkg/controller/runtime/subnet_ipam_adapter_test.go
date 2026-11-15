@@ -272,6 +272,36 @@ func TestSubnetIPAMAdapterRecoversDurableReceipt(t *testing.T) {
 	require.False(t, backend.allocated)
 }
 
+func TestSubnetIPAMAdapterBootstrapsExistingAllocation(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	backend := &fakeSubnetIPAMBackend{existingAllocations: []subnetIPAMAllocation{{
+		key:     subnetIPAMKey{subnet: snapshot.Name, pod: "legacy-pod", nic: "legacy-nic"},
+		uid:     string(snapshot.UID),
+		address: subnetIPAMAddress{v4: "192.0.2.10", mac: "00:00:5e:00:53:10"},
+	}}}
+	adapter, err := newSubnetIPAMAdapterWithBackend(writer, backend)
+	require.NoError(t, err)
+
+	require.NoError(t, adapter.Recover(t.Context(), snapshot))
+	allocation, found, err := adapter.store.Lookup(t.Context(), subnetIPAMKey{subnet: snapshot.Name, pod: "legacy-pod", nic: "legacy-nic"})
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, string(snapshot.UID), allocation.uid)
+	require.NotZero(t, allocation.token)
+	require.Equal(t, SubnetIPAMAddressAllocateOperation, allocation.identity.Operation)
+	require.Equal(t, snapshot.Name, allocation.identity.Name)
+	require.Equal(t, snapshot.UID, allocation.identity.UID)
+}
+
+func TestSubnetIPAMAdapterRejectsReplacedSubnetIdentity(t *testing.T) {
+	adapter, snapshot := newSubnetIPAMAdapterTest(t)
+	ipamBackend, ok := adapter.backend.(*transactionalSubnetIPAMBackend)
+	require.True(t, ok)
+	require.NoError(t, ipamBackend.ipam.BindSubnetUID(snapshot.Name, "old-subnet-uid"))
+
+	require.ErrorIs(t, adapter.Recover(t.Context(), snapshot), ipam.ErrSubnetIdentityChanged)
+}
+
 func TestSubnetIPAMAdapterRejectsStaleDurableReceipt(t *testing.T) {
 	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
 	backend := &fakeSubnetIPAMBackend{recoverAllocations: []subnetIPAMAllocation{{
@@ -530,6 +560,7 @@ type fakeSubnetIPAMBackend struct {
 	releaseAllocation     subnetIPAMAllocation
 	releaseStarted        chan struct{}
 	recoverAllocations    []subnetIPAMAllocation
+	existingAllocations   []subnetIPAMAllocation
 }
 
 func (b *fakeSubnetIPAMBackend) ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (subnetIPAMAddress, bool, error) {
@@ -561,6 +592,10 @@ func (b *fakeSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nic
 
 func (b *fakeSubnetIPAMBackend) Recover(context.Context, SubnetWriteSnapshot) ([]subnetIPAMAllocation, error) {
 	return b.recoverAllocations, nil
+}
+
+func (b *fakeSubnetIPAMBackend) ListExisting(context.Context, SubnetWriteSnapshot) ([]subnetIPAMAllocation, error) {
+	return b.existingAllocations, nil
 }
 
 type cancelAfterRememberStore struct {

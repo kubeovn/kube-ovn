@@ -131,6 +131,14 @@ type subnetIPAMAddressBackend interface {
 	ReleaseByPod(ctx context.Context, podName, subnetName string) error
 }
 
+type subnetIPAMExistingAllocationLister interface {
+	ListExisting(ctx context.Context, snapshot SubnetWriteSnapshot) ([]subnetIPAMAllocation, error)
+}
+
+type subnetIPAMIdentityBinder interface {
+	BindIdentity(ctx context.Context, snapshot SubnetWriteSnapshot) error
+}
+
 type subnetIPAMAddress struct {
 	v4  string
 	v6  string
@@ -151,6 +159,29 @@ func (b *transactionalSubnetIPAMBackend) ExistingAllocation(ctx context.Context,
 	}
 	v4, v6, mac, found := b.ipam.GetPodAddressByNic(podName, nicName, subnetName)
 	return subnetIPAMAddress{v4: v4, v6: v6, mac: mac}, found, nil
+}
+
+func (b *transactionalSubnetIPAMBackend) BindIdentity(ctx context.Context, snapshot SubnetWriteSnapshot) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return b.ipam.BindSubnetUID(snapshot.Name, string(snapshot.UID))
+}
+
+func (b *transactionalSubnetIPAMBackend) ListExisting(ctx context.Context, snapshot SubnetWriteSnapshot) ([]subnetIPAMAllocation, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	allocations := b.ipam.ListSubnetAddressAllocations(snapshot.Name)
+	result := make([]subnetIPAMAllocation, 0, len(allocations))
+	for _, allocation := range allocations {
+		result = append(result, subnetIPAMAllocation{
+			key:     subnetIPAMKey{subnet: snapshot.Name, pod: allocation.PodName, nic: allocation.NICName},
+			uid:     allocation.SubnetUID,
+			address: subnetIPAMAddress{v4: allocation.V4, v6: allocation.V6, mac: allocation.MAC},
+		})
+	}
+	return result, nil
 }
 
 func (b *transactionalSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nicName, subnetName, poolName string) (subnetIPAMAddress, error) {
@@ -232,6 +263,11 @@ func (a *subnetIPAMAdapter) Recover(ctx context.Context, snapshot SubnetWriteSna
 	}
 	a.allocMu.Lock()
 	defer a.allocMu.Unlock()
+	if binder, ok := a.backend.(subnetIPAMIdentityBinder); ok {
+		if err := binder.BindIdentity(ctx, snapshot); err != nil {
+			return err
+		}
+	}
 	allocations, err := a.backend.Recover(ctx, snapshot)
 	if err != nil {
 		return err
@@ -239,11 +275,55 @@ func (a *subnetIPAMAdapter) Recover(ctx context.Context, snapshot SubnetWriteSna
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	byKey := make(map[subnetIPAMKey]subnetIPAMAllocation, len(allocations))
 	for _, allocation := range allocations {
 		if allocation.key.subnet != snapshot.Name || allocation.key.pod == "" || allocation.key.nic == "" ||
 			allocation.uid != string(snapshot.UID) || allocation.token == 0 ||
 			(allocation.address.v4 == "" && allocation.address.v6 == "" && allocation.address.mac == "") {
 			return ErrSubnetIPAMRecoveryUnsafe
+		}
+		byKey[allocation.key] = allocation
+	}
+	if lister, ok := a.backend.(subnetIPAMExistingAllocationLister); ok {
+		existing, err := lister.ListExisting(ctx, snapshot)
+		if err != nil {
+			return err
+		}
+		identity, err := newSubnetMutationIdentity(ctx, snapshot, SubnetIPAMAddressAllocateOperation, a.writer.gate.Fence)
+		if err != nil {
+			return err
+		}
+		if identity.WriterEpoch == "" {
+			return ErrSubnetWriterEpochUnavailable
+		}
+		for _, allocation := range existing {
+			if allocation.key.subnet != snapshot.Name || allocation.key.pod == "" || allocation.key.nic == "" ||
+				allocation.uid != string(snapshot.UID) ||
+				(allocation.address.v4 == "" && allocation.address.v6 == "" && allocation.address.mac == "") {
+				return ErrSubnetIPAMRecoveryUnsafe
+			}
+			if durable, found := byKey[allocation.key]; found {
+				if durable.address != allocation.address {
+					return ErrSubnetIPAMRecoveryUnsafe
+				}
+				continue
+			}
+			current, found, err := a.store.Lookup(ctx, allocation.key)
+			if err != nil {
+				return err
+			}
+			if found {
+				if current.address != allocation.address || current.uid != string(snapshot.UID) {
+					return ErrSubnetIPAMRecoveryUnsafe
+				}
+				byKey[allocation.key] = current
+				continue
+			}
+			allocation.uid = string(snapshot.UID)
+			allocation.token = a.next.Add(1)
+			allocation.identity = identity
+			allocations = append(allocations, allocation)
+			byKey[allocation.key] = allocation
 		}
 	}
 	existing := make(map[subnetIPAMKey]bool, len(allocations))
