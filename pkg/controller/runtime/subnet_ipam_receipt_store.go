@@ -56,11 +56,9 @@ func (s *kubernetesSubnetIPAMReceiptStore) Remember(ctx context.Context, allocat
 	}
 	name := subnetIPAMReceiptConfigMapName(allocation.key)
 	cm := &corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:   name,
-			Labels: map[string]string{subnetIPAMReceiptLabel: "true"},
-		},
-		Data: map[string]string{subnetIPAMReceiptDataKey: string(record)},
+		Name:   name,
+		Labels: map[string]string{subnetIPAMReceiptLabel: "true"},
+		Data:   map[string]string{subnetIPAMReceiptDataKey: string(record)},
 	}
 	_, err = s.configMaps.Create(ctx, cm, metav1.CreateOptions{})
 	if err == nil {

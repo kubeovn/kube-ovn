@@ -5,7 +5,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	kubernetesfake "k8s.io/client-go/kubernetes/fake"
 )
@@ -41,12 +40,10 @@ func TestKubernetesSubnetIPAMReceiptStoreUsesCASRecords(t *testing.T) {
 
 func TestKubernetesSubnetIPAMReceiptStoreRejectsMalformedRecords(t *testing.T) {
 	client := kubernetesfake.NewSimpleClientset(&corev1.ConfigMap{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      "malformed",
-			Namespace: "kube-system",
-			Labels:    map[string]string{subnetIPAMReceiptLabel: "true"},
-		},
-		Data: map[string]string{subnetIPAMReceiptDataKey: "{}"},
+		Name:      "malformed",
+		Namespace: "kube-system",
+		Labels:    map[string]string{subnetIPAMReceiptLabel: "true"},
+		Data:      map[string]string{subnetIPAMReceiptDataKey: "{}"},
 	})
 	store, err := newKubernetesSubnetIPAMReceiptStore(client.CoreV1().ConfigMaps("kube-system"))
 	require.NoError(t, err)
