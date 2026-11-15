@@ -94,17 +94,29 @@ type markerTestProvider struct {
 func (p *markerTestProvider) Table(model.Model) table.Handle { return p.handle }
 
 type markerTestHandle struct {
-	row          *ovnnb.AddressSet
-	pending      *ovnnb.AddressSet
-	transactions [][]ovsdb.Operation
+	row           *ovnnb.AddressSet
+	logicalSwitch *ovnnb.LogicalSwitch
+	pending       *ovnnb.AddressSet
+	transactions  [][]ovsdb.Operation
 }
 
 func (h *markerTestHandle) Get(_ context.Context, result model.Model) error {
-	if h.row == nil {
-		return table.ErrNotFound
+	switch result := result.(type) {
+	case *ovnnb.AddressSet:
+		if h.row == nil {
+			return table.ErrNotFound
+		}
+		*result = *h.row
+		return nil
+	case *ovnnb.LogicalSwitch:
+		if h.logicalSwitch == nil {
+			return table.ErrNotFound
+		}
+		*result = *h.logicalSwitch
+		return nil
+	default:
+		return table.ErrInvalidModel
 	}
-	*result.(*ovnnb.AddressSet) = *h.row
-	return nil
 }
 
 func (*markerTestHandle) List(context.Context, any) error               { return nil }

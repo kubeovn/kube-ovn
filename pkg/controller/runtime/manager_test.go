@@ -83,6 +83,18 @@ func TestSetupSubnetStatusReconcilerRequiresBackend(t *testing.T) {
 	require.EqualError(t, setupSubnetStatusReconciler(mgr, nil), "subnet status runtime backend is nil")
 }
 
+func TestNewSubnetWriterOVNResolverUsesControllerNBProvider(t *testing.T) {
+	provider := &markerTestProvider{handle: &markerTestHandle{}}
+	backend := &controller.Controller{OVNNbTables: provider}
+	resolver, err := newSubnetWriterOVNResolver(backend)
+	require.NoError(t, err)
+	require.IsType(t, &OVSDBSubnetOVNMutationResolver{}, resolver)
+
+	resolver, err = newSubnetWriterOVNResolver(nil)
+	require.Nil(t, resolver)
+	require.EqualError(t, err, "subnet writer runtime backend is nil")
+}
+
 func TestTrimCacheObjectUsesControllerTransforms(t *testing.T) {
 	pod := &corev1.Pod{Spec: corev1.PodSpec{Volumes: []corev1.Volume{{Name: "cache"}}}}
 	pod.ManagedFields = []metav1.ManagedFieldsEntry{{Manager: "controller"}}

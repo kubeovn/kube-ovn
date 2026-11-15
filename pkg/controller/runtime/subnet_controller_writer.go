@@ -54,6 +54,7 @@ type SubnetControllerWriterAdapter struct {
 	ipamAdapter *subnetIPAMAdapter
 	ovnMarker   SubnetOVNMarkerBackend
 	ovnReceipts subnetOVNMutationReceiptStore
+	ovnResolver SubnetOVNMutationResolver
 	ovnToken    atomic.Uint64
 }
 

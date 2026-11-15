@@ -160,9 +160,21 @@ keeps the existing callback without this marker. IPAM allocation and release
 now have concrete per-mutation receipts and owner fencing. OVN mutations also
 persist an Active/Releasing receipt in a ConfigMap around the OVSDB marker saga:
 uncertain apply/release outcomes retain both records for recovery, while a
-confirmed marker release deletes the receipt. The ConfigMap and OVSDB steps are
-retryable and are not a two-phase commit. A memory OVN owner-marker CAS seam is
-also available for tests. The queued virtual-port parent worker
+confirmed marker release deletes the receipt. Recovery must use the configured
+backend-aware `SubnetOVNMutationResolver` to read the concrete OVN mutation
+before changing either durable record; marker presence alone is not evidence
+that the mutation committed. An active allocation receipt is releasable only
+after the resolver reports `Committed`; a confirmed `Absent` allocation
+reacquires the marker for a retry while the Subnet is live. During deletion, an
+allocation receipt confirmed `Absent` is a tombstone terminal state and is
+removed with its marker. An active cleanup receipt is releasable only after
+`Absent` is confirmed. A receipt already in `Releasing` follows the same
+operation-specific terminal state before its marker and record are removed.
+Resolver errors and `Unknown` or pending states retain the receipt and any
+existing marker and fail closed, so a restart cannot issue a duplicate mutation
+or release ownership prematurely. The ConfigMap and OVSDB steps remain a
+retryable saga and are not a two-phase commit. A memory OVN owner-marker CAS
+seam is also available for tests. The queued virtual-port parent worker
 is also wired through a runtime hook: it reads the Subnet with the uncached API reader,
 revalidates UID, generation, spec, resource version, and deletion state, and
 only then invokes the OVN backend. Legacy mode keeps the informer-backed
@@ -311,10 +323,13 @@ handler extraction and conflict-safe finalizer/OVN/IPAM receipts remain
 separate steps. IP is last because Pod, VM, LSP and `syncIPCR` paths depend on
 it. In `subnet-writer`, the Controller facade is the single Subnet domain
 writer while legacy Subnet workers and startup syncs are disabled; all other
-modes remain legacy-owned. Direct split adapters still require concrete durable
-receipts and an explicit rollback/ownership gate.
+modes remain legacy-owned. The OVN split adapter now has concrete durable
+receipts, owner markers, and a backend-aware resolver. The current resolver
+confirms the Subnet logical switch as the coarse OVN mutation boundary; a
+future increment should bind readback to mutation intent so CIDR, gateway,
+ACL, DHCP, and related side-effects can be confirmed individually.
 The plan compensation contract is also unwired and does not itself provide
-durable backend rollback or a fencing mechanism. OVN and any future split
-adapters must implement atomic receipt checks, idempotency, uncertain-commit
-confirmation, and ownership fencing before those paths can be used in
+durable backend rollback or a fencing mechanism. Any future split adapter
+must provide the same atomic receipt checks, idempotency, uncertain-commit
+confirmation, and ownership fencing before its path can be used in
 production.
