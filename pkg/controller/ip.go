@@ -393,12 +393,19 @@ func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP) error {
 }
 
 func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string, string, string, error) {
+	return c.acquireIPAddressWithContext(context.Background(), nil, subnetName, name, nicName)
+}
+
+func (c *Controller) acquireIPAddressWithContext(ctx context.Context, subnet *kubeovnv1.Subnet, subnetName, name, nicName string) (string, string, string, error) {
 	var skippedAddrs []string
 	var v4ip, v6ip, mac string
 	checkConflict := true
 	var err error
 	for {
-		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, nil, subnetName, "", skippedAddrs, checkConflict)
+		err = c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMAllocateAddressOperation, func(context.Context) error {
+			v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, nil, subnetName, "", skippedAddrs, checkConflict)
+			return err
+		})
 		if err != nil {
 			klog.Error(err)
 			return "", "", "", err
@@ -424,6 +431,10 @@ func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string,
 }
 
 func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string, macPointer *string) (string, string, string, error) {
+	return c.acquireStaticIPAddressWithContext(context.Background(), nil, subnetName, name, nicName, ip, macPointer)
+}
+
+func (c *Controller) acquireStaticIPAddressWithContext(ctx context.Context, subnet *kubeovnv1.Subnet, subnetName, name, nicName, ip string, macPointer *string) (string, string, string, error) {
 	checkConflict := true
 	var v4ip, v6ip, mac string
 	var err error
@@ -433,7 +444,11 @@ func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string
 		}
 	}
 
-	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, macPointer, subnetName, checkConflict); err != nil {
+	err = c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMAllocateAddressOperation, func(context.Context) error {
+		v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, macPointer, subnetName, checkConflict)
+		return err
+	})
+	if err != nil {
 		klog.Errorf("failed to get static virtual ip '%s', mac '%s', subnet '%s', %v", ip, mac, subnetName, err)
 		return "", "", "", err
 	}

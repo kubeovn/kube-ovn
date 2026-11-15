@@ -216,6 +216,10 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 			sideEffectOperation = SubnetIPAMRegisterOperation
 		case legacycontroller.SubnetRuntimeIPAMDeleteOperation:
 			sideEffectOperation = SubnetIPAMDeleteOperation
+		case legacycontroller.SubnetRuntimeIPAMAllocateAddressOperation:
+			sideEffectOperation = SubnetIPAMAddressAllocateOperation
+		case legacycontroller.SubnetRuntimeIPAMReleaseAddressOperation:
+			sideEffectOperation = SubnetIPAMAddressReleaseOperation
 		default:
 			return fmt.Errorf("unsupported Subnet IPAM mutation operation %q", operation)
 		}

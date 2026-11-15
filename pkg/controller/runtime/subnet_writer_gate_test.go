@@ -76,6 +76,7 @@ func TestSubnetWriteSnapshotGatesOperations(t *testing.T) {
 		SubnetOVNAllocateOperation,
 		SubnetIPAMAllocateOperation,
 		SubnetIPAMRegisterOperation,
+		SubnetIPAMAddressAllocateOperation,
 	} {
 		require.NoError(t, activeSnapshot.Validate(active, operation), operation)
 	}
@@ -90,6 +91,7 @@ func TestSubnetWriteSnapshotGatesOperations(t *testing.T) {
 		SubnetOVNCleanupOperation,
 		SubnetIPAMReleaseOperation,
 		SubnetIPAMDeleteOperation,
+		SubnetIPAMAddressReleaseOperation,
 	} {
 		require.NoError(t, terminatingSnapshot.Validate(terminating, operation), operation)
 	}
