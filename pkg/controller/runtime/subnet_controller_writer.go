@@ -70,6 +70,10 @@ type subnetRuntimeIPAMMutationWriterInstaller interface {
 	SetSubnetRuntimeIPAMMutationWriter(legacycontroller.SubnetRuntimeIPAMMutationWriter) error
 }
 
+type subnetRuntimeIPAMAddressWriterInstaller interface {
+	SetSubnetRuntimeIPAMAddressWriter(legacycontroller.SubnetRuntimeIPAMAddressWriter) error
+}
+
 // InstallRuntimeWriters connects the explicit API writers to the legacy domain
 // sequence. The runtime mode owns this installation before manager start; a
 // legacy backend that cannot expose the hooks fails closed instead of silently
@@ -234,6 +238,70 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 		return err
 	}
 	if err := ipamMutationInstaller.SetSubnetRuntimeIPAMMutationWriter(ipamMutationWriter); err != nil {
+		return err
+	}
+	addressInstaller, ok := a.Backend.(subnetRuntimeIPAMAddressWriterInstaller)
+	if !ok {
+		return errors.New("subnet controller writer backend does not expose typed IPAM address writer")
+	}
+	backendProvider, ok := a.Backend.(legacycontroller.SubnetRuntimeIPAMAddressBackendProvider)
+	if !ok {
+		return errors.New("subnet controller writer backend does not expose typed IPAM address backend")
+	}
+	addressBackend := backendProvider.SubnetRuntimeIPAMAddressBackend()
+	if addressBackend == nil {
+		return errors.New("subnet controller writer typed IPAM address backend is not configured")
+	}
+	addressWriter := func(ctx context.Context, subnet *kubeovnv1.Subnet, request legacycontroller.SubnetRuntimeIPAMAddressRequest) (legacycontroller.SubnetRuntimeIPAMAddressResult, error) {
+		if subnet == nil {
+			return legacycontroller.SubnetRuntimeIPAMAddressResult{}, errors.New("subnet IPAM address writer requires a Subnet")
+		}
+		snapshot, err := NewSubnetWriteSnapshot(subnet, subnet.DeletionTimestamp.IsZero())
+		if err != nil {
+			return legacycontroller.SubnetRuntimeIPAMAddressResult{}, err
+		}
+		operation := SubnetWriteOperation(request.Operation)
+		writer := &subnetSideEffectWriter{ctx: ctx, reader: a.Reader, gate: a.Gate}
+		var result legacycontroller.SubnetRuntimeIPAMAddressResult
+		_, err = writer.executePlan(snapshot, operation, SubnetSideEffectPlan{
+			Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
+				switch request.Operation {
+				case legacycontroller.SubnetRuntimeIPAMAllocateAddressOperation:
+					if existing, found, err := addressBackend.ExistingSubnetRuntimeIPAMAddress(ctx, request.PodName, request.NICName, request.SubnetName); err != nil {
+						return nil, err
+					} else if found {
+						result = existing
+						return nil, nil
+					}
+					if request.RequestedIP != "" {
+						result, err = addressBackend.AllocateSubnetRuntimeIPAMStatic(ctx, request.PodName, request.NICName, request.RequestedIP, request.MAC, request.SubnetName, request.CheckConflict)
+					} else {
+						result, err = addressBackend.AllocateSubnetRuntimeIPAMRandom(ctx, request.PodName, request.NICName, request.SubnetName, request.PoolName, request.SkippedAddrs, request.CheckConflict)
+					}
+					return nil, err
+				case legacycontroller.SubnetRuntimeIPAMReleaseAddressOperation:
+					if request.NICName == "" {
+						return nil, addressBackend.ReleaseSubnetRuntimeIPAMByPod(ctx, request.PodName, request.SubnetName)
+					}
+					nicName := request.NICName
+					expectedV4, expectedV6, expectedMAC := request.ExpectedV4, request.ExpectedV6, request.ExpectedMAC
+					if expectedV4 == "" && expectedV6 == "" && expectedMAC == "" {
+						existing, found, readErr := addressBackend.ExistingSubnetRuntimeIPAMAddress(ctx, request.PodName, nicName, request.SubnetName)
+						if readErr != nil || !found {
+							return nil, readErr
+						}
+						expectedV4, expectedV6, expectedMAC = existing.V4, existing.V6, existing.MAC
+					}
+					err = addressBackend.ReleaseSubnetRuntimeIPAMByNicIfMatches(ctx, request.PodName, nicName, request.SubnetName, expectedV4, expectedV6, expectedMAC)
+					return nil, err
+				default:
+					return nil, fmt.Errorf("unsupported Subnet IPAM address operation %q", request.Operation)
+				}
+			},
+		})
+		return result, err
+	}
+	if err := addressInstaller.SetSubnetRuntimeIPAMAddressWriter(addressWriter); err != nil {
 		return err
 	}
 	return virtualPortInstaller.SetSubnetRuntimeVirtualPortWriter(virtualPortWriter)

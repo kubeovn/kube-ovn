@@ -899,8 +899,58 @@ type SubnetRuntimeDomainWriter func(context.Context, *kubeovnv1.Subnet, SubnetRu
 // instead of claiming the whole reconcile phase.
 type SubnetRuntimeIPAMMutationWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeIPAMMutationOperation, func(context.Context) error) error
 
+// SubnetRuntimeIPAMAddressRequest identifies one Subnet-owned address
+// allocation or release. The runtime writer uses the key and expected
+// address tuple to make release conditional and retry-safe.
+type SubnetRuntimeIPAMAddressRequest struct {
+	Operation     SubnetRuntimeIPAMMutationOperation
+	SubnetName    string
+	PodName       string
+	NICName       string
+	PoolName      string
+	RequestedIP   string
+	MAC           *string
+	SkippedAddrs  []string
+	CheckConflict bool
+	ExpectedV4    string
+	ExpectedV6    string
+	ExpectedMAC   string
+}
+
+// SubnetRuntimeIPAMAddressResult contains the address tuple returned by an
+// allocation. Release operations return the zero value.
+type SubnetRuntimeIPAMAddressResult struct {
+	V4  string
+	V6  string
+	MAC string
+}
+
+// SubnetRuntimeIPAMAddressWriter owns one typed Subnet IPAM address mutation.
+// It replaces the generic error-only hook for address operations so a runtime
+// adapter can persist and conditionally compensate a concrete allocation.
+type SubnetRuntimeIPAMAddressWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeIPAMAddressRequest) (SubnetRuntimeIPAMAddressResult, error)
+
+// SubnetRuntimeIPAMAddressBackend is the narrow initialized IPAM backend used
+// by the typed runtime address writer. It deliberately carries primitive
+// tuples so the runtime package does not depend on the controller's IPAM
+// implementation.
+type SubnetRuntimeIPAMAddressBackend interface {
+	ExistingSubnetRuntimeIPAMAddress(context.Context, string, string, string) (SubnetRuntimeIPAMAddressResult, bool, error)
+	AllocateSubnetRuntimeIPAMRandom(context.Context, string, string, string, string, []string, bool) (SubnetRuntimeIPAMAddressResult, error)
+	AllocateSubnetRuntimeIPAMStatic(context.Context, string, string, string, *string, string, bool) (SubnetRuntimeIPAMAddressResult, error)
+	ReleaseSubnetRuntimeIPAMByNicIfMatches(context.Context, string, string, string, string, string, string) error
+	ReleaseSubnetRuntimeIPAMByPod(context.Context, string, string) error
+}
+
+// SubnetRuntimeIPAMAddressBackendProvider exposes the initialized IPAM backend
+// to the opt-in runtime writer without importing runtime types into the
+// legacy controller package.
+type SubnetRuntimeIPAMAddressBackendProvider interface {
+	SubnetRuntimeIPAMAddressBackend() SubnetRuntimeIPAMAddressBackend
+}
+
 // SubnetRuntimeIPAMMutationOperation identifies one concrete Subnet-owned
-// IPAM registration or deletion.
+// IPAM registration, address allocation/release, or deletion.
 type SubnetRuntimeIPAMMutationOperation string
 
 const (
@@ -960,6 +1010,83 @@ func (c *Controller) SetSubnetRuntimeIPAMMutationWriter(writer SubnetRuntimeIPAM
 	return nil
 }
 
+// SetSubnetRuntimeIPAMAddressWriter installs the typed address mutation seam
+// used by the opt-in runtime Subnet writer. Legacy workers leave it unset.
+func (c *Controller) SetSubnetRuntimeIPAMAddressWriter(writer SubnetRuntimeIPAMAddressWriter) error {
+	if c == nil || writer == nil {
+		return errors.New("subnet runtime IPAM address writer is not configured")
+	}
+	if c.subnetRuntimeIPAMAddressWriter != nil {
+		return errors.New("subnet runtime IPAM address writer is already configured")
+	}
+	c.subnetRuntimeIPAMAddressWriter = writer
+	return nil
+}
+
+func (c *Controller) SubnetRuntimeIPAMAddressBackend() SubnetRuntimeIPAMAddressBackend {
+	if c == nil {
+		return nil
+	}
+	return c
+}
+
+func (c *Controller) ExistingSubnetRuntimeIPAMAddress(ctx context.Context, podName, nicName, subnetName string) (SubnetRuntimeIPAMAddressResult, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeIPAMAddressResult{}, false, err
+	}
+	if c == nil || c.ipam == nil {
+		return SubnetRuntimeIPAMAddressResult{}, false, errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	v4, v6, mac, found := c.ipam.GetPodAddressByNic(podName, nicName, subnetName)
+	return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, found, nil
+}
+
+func (c *Controller) AllocateSubnetRuntimeIPAMRandom(ctx context.Context, podName, nicName, subnetName, poolName string, skippedAddrs []string, checkConflict bool) (SubnetRuntimeIPAMAddressResult, error) {
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeIPAMAddressResult{}, err
+	}
+	if c == nil || c.ipam == nil {
+		return SubnetRuntimeIPAMAddressResult{}, errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	v4, v6, mac, err := c.ipam.GetRandomAddress(podName, nicName, nil, subnetName, poolName, skippedAddrs, checkConflict)
+	return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, err
+}
+
+func (c *Controller) AllocateSubnetRuntimeIPAMStatic(ctx context.Context, podName, nicName, requestedIP string, mac *string, subnetName string, checkConflict bool) (SubnetRuntimeIPAMAddressResult, error) {
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeIPAMAddressResult{}, err
+	}
+	if c == nil || c.ipam == nil {
+		return SubnetRuntimeIPAMAddressResult{}, errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	v4, v6, resultMAC, err := c.ipam.GetStaticAddress(podName, nicName, requestedIP, mac, subnetName, checkConflict)
+	return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: resultMAC}, err
+}
+
+func (c *Controller) ReleaseSubnetRuntimeIPAMByNicIfMatches(ctx context.Context, podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c == nil || c.ipam == nil {
+		return errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	return c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		return tx.ReleaseAddressByNicIfMatches(podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC)
+	})
+}
+
+func (c *Controller) ReleaseSubnetRuntimeIPAMByPod(ctx context.Context, podName, subnetName string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c == nil || c.ipam == nil {
+		return errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	return c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		return tx.ReleaseAddressByPod(podName, subnetName)
+	})
+}
+
 func (c *Controller) runSubnetRuntimeIPAMMutation(ctx context.Context, subnet *kubeovnv1.Subnet, operation SubnetRuntimeIPAMMutationOperation, apply func(context.Context) error) error {
 	if apply == nil {
 		return errors.New("subnet runtime IPAM mutation is nil")
@@ -973,25 +1100,48 @@ func (c *Controller) runSubnetRuntimeIPAMMutation(ctx context.Context, subnet *k
 	return apply(ctx)
 }
 
-func (c *Controller) runSubnetRuntimeIPAMAddressMutation(ctx context.Context, subnet *kubeovnv1.Subnet, operation SubnetRuntimeIPAMMutationOperation, apply func(context.Context) error) error {
+func (c *Controller) runSubnetRuntimeIPAMAddressMutation(ctx context.Context, subnet *kubeovnv1.Subnet, request SubnetRuntimeIPAMAddressRequest, apply func(context.Context) (SubnetRuntimeIPAMAddressResult, error)) (SubnetRuntimeIPAMAddressResult, error) {
+	if apply == nil {
+		return SubnetRuntimeIPAMAddressResult{}, errors.New("subnet runtime IPAM address mutation is nil")
+	}
+	if subnet != nil && c.subnetRuntimeIPAMAddressWriter != nil {
+		return c.subnetRuntimeIPAMAddressWriter(ctx, subnet, request)
+	}
 	if subnet == nil {
 		return apply(ctx)
 	}
-	return c.runSubnetRuntimeIPAMMutation(ctx, subnet, operation, apply)
+	var result SubnetRuntimeIPAMAddressResult
+	err := c.runSubnetRuntimeIPAMMutation(ctx, subnet, request.Operation, func(ctx context.Context) error {
+		var err error
+		result, err = apply(ctx)
+		return err
+	})
+	return result, err
 }
 
 func (c *Controller) releaseSubnetRuntimeIPAMByNic(ctx context.Context, subnet *kubeovnv1.Subnet, podName, nicName, subnetName string) error {
-	return c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMReleaseAddressOperation, func(context.Context) error {
+	_, err := c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMAddressRequest{
+		Operation:  SubnetRuntimeIPAMReleaseAddressOperation,
+		SubnetName: subnetName,
+		PodName:    podName,
+		NICName:    nicName,
+	}, func(context.Context) (SubnetRuntimeIPAMAddressResult, error) {
 		c.ipam.ReleaseAddressByNic(podName, nicName, subnetName)
-		return nil
+		return SubnetRuntimeIPAMAddressResult{}, nil
 	})
+	return err
 }
 
 func (c *Controller) releaseSubnetRuntimeIPAMByPod(ctx context.Context, subnet *kubeovnv1.Subnet, podName, subnetName string) error {
-	return c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMReleaseAddressOperation, func(context.Context) error {
+	_, err := c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMAddressRequest{
+		Operation:  SubnetRuntimeIPAMReleaseAddressOperation,
+		SubnetName: subnetName,
+		PodName:    podName,
+	}, func(context.Context) (SubnetRuntimeIPAMAddressResult, error) {
 		c.ipam.ReleaseAddressByPod(podName, subnetName)
-		return nil
+		return SubnetRuntimeIPAMAddressResult{}, nil
 	})
+	return err
 }
 
 // SetSubnetRuntimeVirtualPortWriter installs the runtime admission hook for
@@ -1073,9 +1223,17 @@ func (c *Controller) RecoverSubnetRuntime(ctx context.Context, subnet *kubeovnv1
 		}
 		u2oName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 		u2oNicName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-		if err := c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMAllocateAddressOperation, func(context.Context) error {
-			_, _, _, err := c.ipam.GetStaticAddress(u2oName, u2oNicName, subnet.Status.U2OInterconnectionIP, u2oMAC, subnet.Name, true)
-			return err
+		if _, err := c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMAddressRequest{
+			Operation:     SubnetRuntimeIPAMAllocateAddressOperation,
+			SubnetName:    subnet.Name,
+			PodName:       u2oName,
+			NICName:       u2oNicName,
+			RequestedIP:   subnet.Status.U2OInterconnectionIP,
+			MAC:           u2oMAC,
+			CheckConflict: true,
+		}, func(ctx context.Context) (SubnetRuntimeIPAMAddressResult, error) {
+			v4, v6, mac, err := c.ipam.GetStaticAddress(u2oName, u2oNicName, subnet.Status.U2OInterconnectionIP, u2oMAC, subnet.Name, true)
+			return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, err
 		}); err != nil {
 			return fmt.Errorf("failed to recover subnet %s U2O address: %w", subnet.Name, err)
 		}
