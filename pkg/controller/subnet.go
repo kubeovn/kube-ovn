@@ -1231,7 +1231,7 @@ func (c *Controller) RecoverSubnetRuntime(ctx context.Context, subnet *kubeovnv1
 			RequestedIP:   subnet.Status.U2OInterconnectionIP,
 			MAC:           u2oMAC,
 			CheckConflict: true,
-		}, func(ctx context.Context) (SubnetRuntimeIPAMAddressResult, error) {
+		}, func(_ context.Context) (SubnetRuntimeIPAMAddressResult, error) {
 			v4, v6, mac, err := c.ipam.GetStaticAddress(u2oName, u2oNicName, subnet.Status.U2OInterconnectionIP, u2oMAC, subnet.Name, true)
 			return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, err
 		}); err != nil {
