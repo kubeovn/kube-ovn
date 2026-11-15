@@ -72,14 +72,15 @@ type Controller struct {
 
 	// subnetRuntimeFence is installed only by the explicit subnet-writer mode.
 	// Legacy workers leave it nil and retain their existing ownership path.
-	subnetRuntimeFence             func(context.Context) error
-	subnetRuntimeStatusWriter      SubnetRuntimeStatusWriter
-	subnetRuntimeIPStatusWriter    SubnetRuntimeIPStatusWriter
-	subnetRuntimeGatewayMACWriter  SubnetRuntimeGatewayMACWriter
-	subnetRuntimeFinalizerWriter   SubnetRuntimeFinalizerWriter
-	subnetRuntimeOVNWriter         SubnetRuntimeDomainWriter
-	subnetRuntimeIPAMWriter        SubnetRuntimeDomainWriter
-	subnetRuntimeVirtualPortWriter SubnetRuntimeVirtualPortWriter
+	subnetRuntimeFence              func(context.Context) error
+	subnetRuntimeStatusWriter       SubnetRuntimeStatusWriter
+	subnetRuntimeIPStatusWriter     SubnetRuntimeIPStatusWriter
+	subnetRuntimeGatewayMACWriter   SubnetRuntimeGatewayMACWriter
+	subnetRuntimeFinalizerWriter    SubnetRuntimeFinalizerWriter
+	subnetRuntimeOVNWriter          SubnetRuntimeDomainWriter
+	subnetRuntimeIPAMWriter         SubnetRuntimeDomainWriter
+	subnetRuntimeIPAMMutationWriter SubnetRuntimeIPAMMutationWriter
+	subnetRuntimeVirtualPortWriter  SubnetRuntimeVirtualPortWriter
 
 	ipam             *ovnipam.IPAM
 	namedPort        *NamedPort
