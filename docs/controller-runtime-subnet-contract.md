@@ -147,8 +147,9 @@ admission for a future receipt-backed adapter; per-mutation receipts and backend
 ownership checks remain a follow-up step. IPAM allocation and release now have
 concrete per-mutation receipts and owner fencing.
 The OVN receipt model and ConfigMap CAS store are now available as an unwired
-persistence seam; OVSDB markers and OVN
-ownership checks remain separate. The queued virtual-port parent worker
+persistence seam. A memory OVN owner-marker CAS seam is also available for
+tests, but production OVSDB marker wiring and OVN ownership checks remain
+separate. The queued virtual-port parent worker
 is also wired through a runtime hook: it reads the Subnet with the uncached API reader,
 revalidates UID, generation, spec, resource version, and deletion state, and
 only then invokes the OVN backend. Legacy mode keeps the informer-backed
