@@ -420,6 +420,7 @@ func TestSubnetControllerWriterAdapterPersistsOVNReceiptLifecycle(t *testing.T) 
 		Gate:        SubnetWriterGate{Recovery: func(context.Context) error { return nil }, Fence: staticSubnetWriterFence{}},
 		ovnMarker:   newMemorySubnetOVNMarkerBackend(),
 		ovnReceipts: newMemorySubnetOVNMutationReceiptStore(),
+		ovnResolver: committedSubnetOVNResolver(),
 	}
 	require.NoError(t, adapter.InstallRuntimeWriters())
 	require.NoError(t, backend.ovnMutation(t.Context(), subnet, legacycontroller.SubnetRuntimeOVNAllocateMutationOperation, func(context.Context) error {
@@ -457,6 +458,7 @@ func TestSubnetControllerWriterAdapterRetainsReleasingOVNReceipt(t *testing.T) {
 		Gate:        SubnetWriterGate{Recovery: func(context.Context) error { return nil }, Fence: staticSubnetWriterFence{}},
 		ovnMarker:   markerBackend,
 		ovnReceipts: newMemorySubnetOVNMutationReceiptStore(),
+		ovnResolver: committedSubnetOVNResolver(),
 	}
 	require.NoError(t, adapter.InstallRuntimeWriters())
 	require.ErrorIs(t, backend.ovnMutation(t.Context(), subnet, legacycontroller.SubnetRuntimeOVNAllocateMutationOperation, func(context.Context) error {
@@ -487,7 +489,7 @@ func TestSubnetControllerWriterAdapterRecoversReleasingOVNReceipt(t *testing.T) 
 	require.NoError(t, markerBackend.Acquire(t.Context(), marker))
 	receipt := SubnetOVNMutationReceipt{Key: key, Token: marker.Owner.Token, Generation: marker.Owner.Generation, ResourceVersion: marker.Owner.ResourceVersion, WriterEpoch: marker.Owner.WriterEpoch, Phase: SubnetOVNReceiptPhaseReleasing}
 	require.NoError(t, receiptStore.Remember(t.Context(), receipt))
-	adapter := &SubnetControllerWriterAdapter{Backend: &recordingSubnetDataPlaneBackend{}, Gate: SubnetWriterGate{Fence: staticSubnetWriterFence{}}, ovnMarker: markerBackend, ovnReceipts: receiptStore}
+	adapter := &SubnetControllerWriterAdapter{Backend: &recordingSubnetDataPlaneBackend{}, Gate: SubnetWriterGate{Fence: staticSubnetWriterFence{}}, ovnMarker: markerBackend, ovnReceipts: receiptStore, ovnResolver: committedSubnetOVNResolver()}
 	require.NoError(t, adapter.RecoverSubnet(t.Context(), snapshot))
 	_, found, err := markerBackend.Read(t.Context(), key)
 	require.NoError(t, err)
@@ -509,7 +511,7 @@ func TestSubnetControllerWriterAdapterRecoversActiveReceiptWithoutMarker(t *test
 	key := subnetOVNMutationKey(snapshot, SubnetOVNAllocateOperation)
 	receipt := SubnetOVNMutationReceipt{Key: key, Token: 8, Generation: snapshot.Generation, ResourceVersion: "6", WriterEpoch: "old-epoch", Phase: SubnetOVNReceiptPhaseActive}
 	require.NoError(t, receiptStore.Remember(t.Context(), receipt))
-	adapter := &SubnetControllerWriterAdapter{Backend: &recordingSubnetDataPlaneBackend{}, Gate: SubnetWriterGate{Fence: staticSubnetWriterFence{}}, ovnMarker: markerBackend, ovnReceipts: receiptStore}
+	adapter := &SubnetControllerWriterAdapter{Backend: &recordingSubnetDataPlaneBackend{}, Gate: SubnetWriterGate{Fence: staticSubnetWriterFence{}}, ovnMarker: markerBackend, ovnReceipts: receiptStore, ovnResolver: testSubnetOVNMutationResolver{state: SubnetOVNMutationStateAbsent, force: true}}
 	require.NoError(t, adapter.RecoverSubnet(t.Context(), snapshot))
 	current, found, err := markerBackend.Read(t.Context(), key)
 	require.NoError(t, err)
@@ -538,16 +540,115 @@ func TestSubnetControllerWriterAdapterRejectsReleasingReceiptWrongOwner(t *testi
 	require.NoError(t, markerBackend.Acquire(t.Context(), marker))
 	receipt := SubnetOVNMutationReceipt{Key: key, Token: marker.Owner.Token, Generation: snapshot.Generation, ResourceVersion: snapshot.ResourceVersion, WriterEpoch: marker.Owner.WriterEpoch, Phase: SubnetOVNReceiptPhaseReleasing}
 	require.NoError(t, receiptStore.Remember(t.Context(), receipt))
-	adapter := &SubnetControllerWriterAdapter{Backend: &recordingSubnetDataPlaneBackend{}, Gate: SubnetWriterGate{Fence: staticSubnetWriterFence{}}, ovnMarker: markerBackend, ovnReceipts: receiptStore}
+	adapter := &SubnetControllerWriterAdapter{Backend: &recordingSubnetDataPlaneBackend{}, Gate: SubnetWriterGate{Fence: staticSubnetWriterFence{}}, ovnMarker: markerBackend, ovnReceipts: receiptStore, ovnResolver: committedSubnetOVNResolver()}
 	require.ErrorIs(t, adapter.releaseSubnetOVNReceipts(t.Context(), snapshot), ErrSubnetOVNReceiptChanged)
 	_, found, err := receiptStore.Lookup(t.Context(), key)
 	require.NoError(t, err)
 	require.True(t, found, "owner mismatch must retain the releasing receipt")
 }
 
+func TestSubnetControllerWriterAdapterRetainsReleasingReceiptWhenResolverUnknown(t *testing.T) {
+	subnet := testSubnet("")
+	subnet.UID = types.UID("subnet-uid")
+	subnet.ResourceVersion = "7"
+	snapshot, err := NewSubnetWriteSnapshot(subnet, true)
+	require.NoError(t, err)
+	markerBackend := newMemorySubnetOVNMarkerBackend()
+	receiptStore := newMemorySubnetOVNMutationReceiptStore()
+	key := subnetOVNMutationKey(snapshot, SubnetOVNAllocateOperation)
+	marker := SubnetOVNOwnerMarker{Key: key, Owner: SubnetOVNOwner{
+		Token: 8, SubnetUID: snapshot.UID, Generation: snapshot.Generation,
+		ResourceVersion: snapshot.ResourceVersion, WriterEpoch: "epoch-a",
+	}}
+	require.NoError(t, markerBackend.Acquire(t.Context(), marker))
+	receipt := SubnetOVNMutationReceipt{Key: key, Token: marker.Owner.Token, Generation: snapshot.Generation, ResourceVersion: marker.Owner.ResourceVersion, WriterEpoch: marker.Owner.WriterEpoch, Phase: SubnetOVNReceiptPhaseReleasing}
+	require.NoError(t, receiptStore.Remember(t.Context(), receipt))
+	adapter := &SubnetControllerWriterAdapter{Backend: &recordingSubnetDataPlaneBackend{}, Gate: SubnetWriterGate{Fence: staticSubnetWriterFence{}}, ovnMarker: markerBackend, ovnReceipts: receiptStore, ovnResolver: testSubnetOVNMutationResolver{state: SubnetOVNMutationStateUnknown, force: true}}
+	require.ErrorIs(t, adapter.RecoverSubnet(t.Context(), snapshot), ErrSubnetOVNResolverUnknown)
+	_, found, err := markerBackend.Read(t.Context(), key)
+	require.NoError(t, err)
+	require.True(t, found)
+	_, found, err = receiptStore.Lookup(t.Context(), key)
+	require.NoError(t, err)
+	require.True(t, found)
+}
+
+func TestSubnetControllerWriterAdapterDoesNotAcquireMarkerWhenResolverUnknown(t *testing.T) {
+	subnet := testSubnet("")
+	subnet.UID = types.UID("subnet-uid")
+	subnet.ResourceVersion = "7"
+	snapshot, err := NewSubnetWriteSnapshot(subnet, true)
+	require.NoError(t, err)
+	markerBackend := newMemorySubnetOVNMarkerBackend()
+	receiptStore := newMemorySubnetOVNMutationReceiptStore()
+	key := subnetOVNMutationKey(snapshot, SubnetOVNAllocateOperation)
+	receipt := SubnetOVNMutationReceipt{Key: key, Token: 8, Generation: snapshot.Generation, ResourceVersion: "6", WriterEpoch: "old-epoch", Phase: SubnetOVNReceiptPhaseActive}
+	require.NoError(t, receiptStore.Remember(t.Context(), receipt))
+	adapter := &SubnetControllerWriterAdapter{Backend: &recordingSubnetDataPlaneBackend{}, Gate: SubnetWriterGate{Fence: staticSubnetWriterFence{}}, ovnMarker: markerBackend, ovnReceipts: receiptStore, ovnResolver: testSubnetOVNMutationResolver{state: SubnetOVNMutationStateUnknown, force: true}}
+	require.ErrorIs(t, adapter.RecoverSubnet(t.Context(), snapshot), ErrSubnetOVNResolverUnknown)
+	_, found, err := markerBackend.Read(t.Context(), key)
+	require.NoError(t, err)
+	require.False(t, found)
+}
+
+func TestSubnetControllerWriterAdapterDeletesAbsentAllocateReceiptForTombstone(t *testing.T) {
+	subnet := testSubnet("")
+	subnet.UID = types.UID("subnet-uid")
+	subnet.Generation = 3
+	subnet.ResourceVersion = "7"
+	snapshot, err := NewSubnetDeleteSnapshot(subnet)
+	require.NoError(t, err)
+	markerBackend := newMemorySubnetOVNMarkerBackend()
+	receiptStore := newMemorySubnetOVNMutationReceiptStore()
+	key := subnetOVNMutationKey(snapshot, SubnetOVNAllocateOperation)
+	marker := SubnetOVNOwnerMarker{Key: key, Owner: SubnetOVNOwner{
+		Token: 8, SubnetUID: snapshot.UID, Generation: snapshot.Generation,
+		ResourceVersion: snapshot.ResourceVersion, WriterEpoch: "test-epoch",
+	}}
+	require.NoError(t, markerBackend.Acquire(t.Context(), marker))
+	receipt := SubnetOVNMutationReceipt{Key: key, Token: marker.Owner.Token, Generation: marker.Owner.Generation, ResourceVersion: marker.Owner.ResourceVersion, WriterEpoch: marker.Owner.WriterEpoch, Phase: SubnetOVNReceiptPhaseActive}
+	require.NoError(t, receiptStore.Remember(t.Context(), receipt))
+	adapter := &SubnetControllerWriterAdapter{
+		Backend:   &recordingSubnetDataPlaneBackend{},
+		Gate:      SubnetWriterGate{Fence: staticSubnetWriterFence{}},
+		ovnMarker: markerBackend, ovnReceipts: receiptStore,
+		ovnResolver: testSubnetOVNMutationResolver{state: SubnetOVNMutationStateAbsent, force: true},
+	}
+	require.NoError(t, adapter.RecoverSubnet(t.Context(), snapshot))
+	_, found, err := markerBackend.Read(t.Context(), key)
+	require.NoError(t, err)
+	require.False(t, found)
+	_, found, err = receiptStore.Lookup(t.Context(), key)
+	require.NoError(t, err)
+	require.False(t, found)
+}
+
 type failingReleaseMarkerBackend struct {
 	SubnetOVNMarkerBackend
 	releaseErr error
+}
+
+type testSubnetOVNMutationResolver struct {
+	state SubnetOVNMutationState
+	err   error
+	force bool
+}
+
+func (r testSubnetOVNMutationResolver) ResolveSubnetOVNMutation(_ context.Context, _ SubnetWriteSnapshot, key SubnetOVNMutationKey, _ SubnetOVNMutationReceipt) (SubnetOVNMutationState, error) {
+	if r.err != nil {
+		return SubnetOVNMutationStateUnknown, r.err
+	}
+	if !r.force {
+		if key.Operation == SubnetOVNCleanupOperation {
+			return SubnetOVNMutationStateAbsent, nil
+		}
+		return SubnetOVNMutationStateCommitted, nil
+	}
+	return r.state, nil
+}
+
+func committedSubnetOVNResolver() testSubnetOVNMutationResolver {
+	return testSubnetOVNMutationResolver{state: SubnetOVNMutationStateCommitted}
 }
 
 func (b *failingReleaseMarkerBackend) Release(context.Context, SubnetOVNOwnerMarker) error {
@@ -667,7 +768,7 @@ func TestSubnetControllerWriterAdapterDeleteRebindsSameGenerationAllocateReceipt
 	require.NoError(t, markerBackend.Acquire(t.Context(), marker))
 	receipt := SubnetOVNMutationReceipt{Key: key, Token: marker.Owner.Token, Generation: snapshot.Generation, ResourceVersion: marker.Owner.ResourceVersion, WriterEpoch: marker.Owner.WriterEpoch, Phase: SubnetOVNReceiptPhaseActive}
 	require.NoError(t, receiptStore.Remember(t.Context(), receipt))
-	adapter := &SubnetControllerWriterAdapter{Backend: &recordingSubnetDataPlaneBackend{}, Reader: newRuntimeClient(t), Gate: SubnetWriterGate{Recovery: func(context.Context) error { return nil }, Fence: staticSubnetWriterFence{}}, ovnMarker: markerBackend, ovnReceipts: receiptStore}
+	adapter := &SubnetControllerWriterAdapter{Backend: &recordingSubnetDataPlaneBackend{}, Reader: newRuntimeClient(t), Gate: SubnetWriterGate{Recovery: func(context.Context) error { return nil }, Fence: staticSubnetWriterFence{}}, ovnMarker: markerBackend, ovnReceipts: receiptStore, ovnResolver: committedSubnetOVNResolver()}
 	require.NoError(t, adapter.ReconcileDeletedSubnet(t.Context(), snapshot))
 	_, found, err := receiptStore.Lookup(t.Context(), key)
 	require.NoError(t, err)
@@ -688,7 +789,7 @@ func TestSubnetControllerWriterAdapterDeleteCleansOldReceiptWithoutMarker(t *tes
 	receiptStore := newMemorySubnetOVNMutationReceiptStore()
 	receipt := SubnetOVNMutationReceipt{Key: key, Token: 8, Generation: old.Generation, ResourceVersion: old.ResourceVersion, WriterEpoch: "old-epoch", Phase: SubnetOVNReceiptPhaseActive}
 	require.NoError(t, receiptStore.Remember(t.Context(), receipt))
-	adapter := &SubnetControllerWriterAdapter{Backend: &recordingSubnetDataPlaneBackend{}, Reader: newRuntimeClient(t), Gate: SubnetWriterGate{Recovery: func(context.Context) error { return nil }, Fence: staticSubnetWriterFence{}}, ovnMarker: newMemorySubnetOVNMarkerBackend(), ovnReceipts: receiptStore}
+	adapter := &SubnetControllerWriterAdapter{Backend: &recordingSubnetDataPlaneBackend{}, Reader: newRuntimeClient(t), Gate: SubnetWriterGate{Recovery: func(context.Context) error { return nil }, Fence: staticSubnetWriterFence{}}, ovnMarker: newMemorySubnetOVNMarkerBackend(), ovnReceipts: receiptStore, ovnResolver: committedSubnetOVNResolver()}
 	require.NoError(t, adapter.ReconcileDeletedSubnet(t.Context(), snapshot))
 	_, found, err := receiptStore.Lookup(t.Context(), key)
 	require.NoError(t, err)

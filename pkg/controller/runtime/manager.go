@@ -142,7 +142,14 @@ func setupSubnetStatusReconciler(mgr ctrl.Manager, backend *controller.Controlle
 	return reconciler.SetupWithManager(mgr)
 }
 
-func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controller, lease SubnetWriterLease, fence SubnetWriterFence, ipamAdapter *subnetIPAMAdapter, ovnReceipts subnetOVNMutationReceiptStore) error {
+func newSubnetWriterOVNResolver(backend *controller.Controller) (SubnetOVNMutationResolver, error) {
+	if backend == nil {
+		return nil, errors.New("subnet writer runtime backend is nil")
+	}
+	return NewOVSDBSubnetOVNMutationResolver(backend.SubnetRuntimeOVNMarkerTableProvider())
+}
+
+func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controller, lease SubnetWriterLease, fence SubnetWriterFence, ipamAdapter *subnetIPAMAdapter, ovnReceipts subnetOVNMutationReceiptStore, ovnResolver SubnetOVNMutationResolver) error {
 	if mgr == nil {
 		return errors.New("controller-runtime manager is nil")
 	}
@@ -152,6 +159,9 @@ func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controlle
 	if ovnReceipts == nil {
 		return errors.New("subnet writer OVN receipt store is not configured")
 	}
+	if ovnResolver == nil {
+		return ErrSubnetOVNResolverMissing
+	}
 	adapter := &SubnetControllerWriterAdapter{
 		Backend:     backend,
 		Client:      mgr.GetClient(),
@@ -159,6 +169,7 @@ func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controlle
 		Gate:        SubnetWriterGate{Recovery: backend.WaitForSubnetRuntimeRecovery, Fence: fence},
 		ipamAdapter: ipamAdapter,
 		ovnReceipts: ovnReceipts,
+		ovnResolver: ovnResolver,
 	}
 	if err := adapter.InstallRuntimeWriters(); err != nil {
 		return err
@@ -260,6 +271,10 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 		if err != nil {
 			return err
 		}
+		ovnResolver, err := newSubnetWriterOVNResolver(backend)
+		if err != nil {
+			return err
+		}
 		ipamBackend, err := newStrictSubnetRuntimeIPAMBackend(backend.SubnetRuntimeIPAMAddressBackend(), receiptStore)
 		if err != nil {
 			return err
@@ -278,7 +293,7 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 			return err
 		}
 		defer func() { _ = lease.Release(context.WithoutCancel(ctx)) }()
-		if err := setupSubnetWriterReconciler(mgr, backend, lease, fence, ipamAdapter, ovnReceiptStore); err != nil {
+		if err := setupSubnetWriterReconciler(mgr, backend, lease, fence, ipamAdapter, ovnReceiptStore, ovnResolver); err != nil {
 			return err
 		}
 	}

@@ -75,6 +75,20 @@ func subnetOVNReceiptOwnerMatchesMarker(receipt SubnetOVNMutationReceipt, marker
 		receipt.WriterEpoch == marker.Owner.WriterEpoch
 }
 
+func (a *SubnetControllerWriterAdapter) resolveSubnetOVNReceipt(ctx context.Context, snapshot SubnetWriteSnapshot, receipt SubnetOVNMutationReceipt) (SubnetOVNMutationState, error) {
+	if a == nil || a.ovnResolver == nil {
+		return SubnetOVNMutationStateUnknown, ErrSubnetOVNResolverMissing
+	}
+	state, err := a.ovnResolver.ResolveSubnetOVNMutation(ctx, snapshot, receipt.Key, receipt)
+	if err != nil {
+		return SubnetOVNMutationStateUnknown, err
+	}
+	if err := validateSubnetOVNMutationState(state); err != nil {
+		return SubnetOVNMutationStateUnknown, err
+	}
+	return state, nil
+}
+
 func (a *SubnetControllerWriterAdapter) recoverSubnetOVNReceipts(ctx context.Context, snapshot SubnetWriteSnapshot) error {
 	if a == nil || a.ovnReceipts == nil {
 		return nil
@@ -118,11 +132,32 @@ func (a *SubnetControllerWriterAdapter) recoverSubnetOVNReceipts(ctx context.Con
 				receipt = replacementReceipt
 			}
 		}
+		state, err := a.resolveSubnetOVNReceipt(ctx, snapshot, receipt)
+		if err != nil {
+			return err
+		}
 		marker, found, err := a.ovnMarker.Read(ctx, receipt.Key)
 		if err != nil {
 			return err
 		}
 		if receipt.Phase == SubnetOVNReceiptPhaseReleasing {
+			if !subnetOVNResolverAllowsRelease(receipt.Key.Operation, state) && !subnetOVNResolverAllowsTombstoneRelease(snapshot, receipt.Key.Operation, state) {
+				return ErrSubnetOVNResolverPending
+			}
+			if found {
+				if !subnetOVNReceiptOwnerMatchesMarker(receipt, marker) {
+					return ErrSubnetOVNReceiptChanged
+				}
+				if err := a.ovnMarker.Release(ctx, marker); err != nil {
+					return err
+				}
+			}
+			if err := a.ovnReceipts.Delete(ctx, receipt); err != nil {
+				return err
+			}
+			continue
+		}
+		if subnetOVNResolverAllowsRelease(receipt.Key.Operation, state) || subnetOVNResolverAllowsTombstoneRelease(snapshot, receipt.Key.Operation, state) {
 			if found {
 				if !subnetOVNReceiptOwnerMatchesMarker(receipt, marker) {
 					return ErrSubnetOVNReceiptChanged
@@ -177,6 +212,13 @@ func (a *SubnetControllerWriterAdapter) releaseSubnetOVNReceipts(ctx context.Con
 	for _, receipt := range receipts {
 		if receipt.Key.UID != snapshot.UID {
 			return ErrSubnetOVNReceiptStale
+		}
+		state, err := a.resolveSubnetOVNReceipt(ctx, snapshot, receipt)
+		if err != nil {
+			return err
+		}
+		if !subnetOVNResolverAllowsRelease(receipt.Key.Operation, state) && !subnetOVNResolverAllowsTombstoneRelease(snapshot, receipt.Key.Operation, state) {
+			return ErrSubnetOVNResolverPending
 		}
 		claimed := receipt
 		if receipt.Phase == SubnetOVNReceiptPhaseActive {
