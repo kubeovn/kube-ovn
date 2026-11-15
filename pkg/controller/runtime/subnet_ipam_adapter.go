@@ -37,6 +37,14 @@ type subnetIPAMReceiptStore interface {
 	Delete(ctx context.Context, allocation subnetIPAMAllocation) error
 }
 
+// subnetIPAMReceiptLister is the recovery refinement implemented by durable
+// stores. Recovery must enumerate persisted ownership before a new adapter can
+// admit another address mutation.
+type subnetIPAMReceiptLister interface {
+	subnetIPAMReceiptStore
+	List(ctx context.Context, subnetName string) ([]subnetIPAMAllocation, error)
+}
+
 type memorySubnetIPAMReceiptStore struct {
 	mu          sync.Mutex
 	allocations map[subnetIPAMKey]subnetIPAMAllocation
