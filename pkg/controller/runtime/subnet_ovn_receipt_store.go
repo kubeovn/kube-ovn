@@ -48,9 +48,9 @@ const (
 	SubnetOVNReceiptPhaseReleasing SubnetOVNReceiptPhase = "releasing"
 )
 
-// SubnetOVNMutationReceipt is the durable ownership record for one future OVN
-// mutation. It is intentionally independent from OVSDB marker state: this
-// increment provides the CAS persistence seam before an OVN adapter is wired.
+// SubnetOVNMutationReceipt is the durable ownership record for one OVN
+// mutation. It is intentionally independent from OVSDB marker state; the two
+// stores form a retryable saga rather than a two-phase commit.
 type SubnetOVNMutationReceipt struct {
 	Key             SubnetOVNMutationKey  `json:"key"`
 	Token           uint64                `json:"token"`

@@ -53,6 +53,7 @@ type SubnetControllerWriterAdapter struct {
 	Gate        SubnetWriterGate
 	ipamAdapter *subnetIPAMAdapter
 	ovnMarker   SubnetOVNMarkerBackend
+	ovnReceipts subnetOVNMutationReceiptStore
 	ovnToken    atomic.Uint64
 }
 
@@ -239,15 +240,26 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 					}
 					marker = pending
 				}
+				var receipt SubnetOVNMutationReceipt
+				if a.ovnReceipts != nil {
+					marker, receipt, err = prepareSubnetOVNReceipt(ctx, a.ovnReceipts, marker, identity)
+					if err != nil {
+						return nil, err
+					}
+				}
 				if err := a.ovnMarker.Acquire(ctx, marker); err != nil {
 					return nil, err
 				}
-				receipt := &subnetOVNMarkerReceipt{backend: a.ovnMarker, marker: marker, identity: identity}
+				markerReceipt := &subnetOVNMarkerReceipt{backend: a.ovnMarker, marker: marker, identity: identity}
 				if err := apply(ctx); err != nil {
-					return receipt, err
+					return markerReceipt, err
 				}
-				if err := a.ovnMarker.Release(ctx, marker); err != nil {
-					return receipt, err
+				if a.ovnReceipts != nil {
+					if err := finalizeSubnetOVNReceipt(ctx, a.ovnReceipts, marker, receipt, a.ovnMarker.Release); err != nil {
+						return markerReceipt, err
+					}
+				} else if err := a.ovnMarker.Release(ctx, marker); err != nil {
+					return markerReceipt, err
 				}
 				return nil, nil
 			},
@@ -447,6 +459,9 @@ func (a *SubnetControllerWriterAdapter) RecoverSubnet(ctx context.Context, snaps
 	if _, err := a.recoverSubnetOVNMarkers(ctx, snapshot); err != nil {
 		return err
 	}
+	if err := a.recoverSubnetOVNReceipts(ctx, snapshot); err != nil {
+		return err
+	}
 	if a.ipamAdapter != nil {
 		if err := a.ipamAdapter.Recover(ctx, snapshot); err != nil {
 			return err
@@ -617,10 +632,16 @@ func (a *SubnetControllerWriterAdapter) ReconcileDeletedSubnet(ctx context.Conte
 	if err != nil {
 		return err
 	}
+	if err := a.recoverSubnetOVNReceipts(ctx, snapshot); err != nil {
+		return err
+	}
 	if err := a.reconcileRuntime(ctx, snapshot, snapshot.AllocationAllowed); err != nil {
 		return err
 	}
-	return a.releaseSubnetOVNMarkers(ctx, markers)
+	if err := a.releaseSubnetOVNMarkers(ctx, markers); err != nil {
+		return err
+	}
+	return a.releaseSubnetOVNReceipts(ctx, snapshot)
 }
 
 func (a *SubnetControllerWriterAdapter) reconcileRuntime(ctx context.Context, snapshot SubnetWriteSnapshot, allocationAllowed bool) error {

@@ -142,12 +142,15 @@ func setupSubnetStatusReconciler(mgr ctrl.Manager, backend *controller.Controlle
 	return reconciler.SetupWithManager(mgr)
 }
 
-func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controller, lease SubnetWriterLease, fence SubnetWriterFence, ipamAdapter *subnetIPAMAdapter) error {
+func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controller, lease SubnetWriterLease, fence SubnetWriterFence, ipamAdapter *subnetIPAMAdapter, ovnReceipts subnetOVNMutationReceiptStore) error {
 	if mgr == nil {
 		return errors.New("controller-runtime manager is nil")
 	}
 	if backend == nil {
 		return errors.New("subnet writer runtime backend is nil")
+	}
+	if ovnReceipts == nil {
+		return errors.New("subnet writer OVN receipt store is not configured")
 	}
 	adapter := &SubnetControllerWriterAdapter{
 		Backend:     backend,
@@ -155,6 +158,7 @@ func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controlle
 		Reader:      mgr.GetAPIReader(),
 		Gate:        SubnetWriterGate{Recovery: backend.WaitForSubnetRuntimeRecovery, Fence: fence},
 		ipamAdapter: ipamAdapter,
+		ovnReceipts: ovnReceipts,
 	}
 	if err := adapter.InstallRuntimeWriters(); err != nil {
 		return err
@@ -246,9 +250,13 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 			return err
 		}
 		if config.KubeClient == nil || config.PodNamespace == "" {
-			return errors.New("subnet writer durable IPAM receipt configuration is incomplete")
+			return errors.New("subnet writer durable receipt configuration is incomplete")
 		}
 		receiptStore, err := newKubernetesSubnetIPAMReceiptStore(config.KubeClient.CoreV1().ConfigMaps(config.PodNamespace))
+		if err != nil {
+			return err
+		}
+		ovnReceiptStore, err := newKubernetesSubnetOVNMutationReceiptStore(config.KubeClient.CoreV1().ConfigMaps(config.PodNamespace))
 		if err != nil {
 			return err
 		}
@@ -270,7 +278,7 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 			return err
 		}
 		defer func() { _ = lease.Release(context.WithoutCancel(ctx)) }()
-		if err := setupSubnetWriterReconciler(mgr, backend, lease, fence, ipamAdapter); err != nil {
+		if err := setupSubnetWriterReconciler(mgr, backend, lease, fence, ipamAdapter, ovnReceiptStore); err != nil {
 			return err
 		}
 	}
