@@ -78,6 +78,7 @@ type Controller struct {
 	subnetRuntimeGatewayMACWriter   SubnetRuntimeGatewayMACWriter
 	subnetRuntimeFinalizerWriter    SubnetRuntimeFinalizerWriter
 	subnetRuntimeOVNWriter          SubnetRuntimeDomainWriter
+	subnetRuntimeOVNMutationWriter  SubnetRuntimeOVNMutationWriter
 	subnetRuntimeIPAMWriter         SubnetRuntimeDomainWriter
 	subnetRuntimeIPAMMutationWriter SubnetRuntimeIPAMMutationWriter
 	subnetRuntimeIPAMAddressWriter  SubnetRuntimeIPAMAddressWriter

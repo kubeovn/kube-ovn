@@ -71,6 +71,10 @@ type subnetRuntimeIPAMMutationWriterInstaller interface {
 	SetSubnetRuntimeIPAMMutationWriter(legacycontroller.SubnetRuntimeIPAMMutationWriter) error
 }
 
+type subnetRuntimeOVNMutationWriterInstaller interface {
+	SetSubnetRuntimeOVNMutationWriter(legacycontroller.SubnetRuntimeOVNMutationWriter) error
+}
+
 type subnetRuntimeIPAMAddressWriterInstaller interface {
 	SetSubnetRuntimeIPAMAddressWriter(legacycontroller.SubnetRuntimeIPAMAddressWriter) error
 }
@@ -171,6 +175,25 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 			},
 		})
 	}
+	ovnMutationWriter := func(ctx context.Context, subnet *kubeovnv1.Subnet, operation legacycontroller.SubnetRuntimeOVNMutationOperation, apply func(context.Context) error) error {
+		if subnet == nil {
+			return errors.New("subnet OVN mutation writer requires a Subnet")
+		}
+		if apply == nil {
+			return errors.New("subnet OVN mutation operation is not configured")
+		}
+		allocationAllowed := subnet.DeletionTimestamp.IsZero()
+		snapshot, err := NewSubnetWriteSnapshot(subnet, allocationAllowed)
+		if err != nil {
+			return err
+		}
+		writer := &subnetSideEffectWriter{ctx: ctx, reader: a.Reader, gate: a.Gate}
+		return writer.Execute(snapshot, SubnetWriteOperation(operation), SubnetSideEffectPlan{
+			Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
+				return nil, apply(ctx)
+			},
+		})
+	}
 	virtualPortWriter := func(ctx context.Context, name string) error {
 		if err := a.Gate.WaitForRecovery(ctx); err != nil {
 			return err
@@ -237,6 +260,11 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 	}
 	if err := installer.SetSubnetRuntimeWriters(statusWriter, ipStatusWriter, gatewayMACWriter, finalizerWriter, domainWriter, domainWriter); err != nil {
 		return err
+	}
+	if ovnInstaller, ok := a.Backend.(subnetRuntimeOVNMutationWriterInstaller); ok {
+		if err := ovnInstaller.SetSubnetRuntimeOVNMutationWriter(ovnMutationWriter); err != nil {
+			return err
+		}
 	}
 	if err := ipamMutationInstaller.SetSubnetRuntimeIPAMMutationWriter(ipamMutationWriter); err != nil {
 		return err

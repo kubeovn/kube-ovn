@@ -789,7 +789,7 @@ func (c *Controller) runSubnetRuntimeDomainWriters(ctx context.Context, subnet *
 	if operation == nil {
 		return errors.New("subnet runtime domain operation is nil")
 	}
-	if c.subnetRuntimeOVNWriter == nil && c.subnetRuntimeIPAMWriter == nil {
+	if c.subnetRuntimeOVNWriter == nil && c.subnetRuntimeOVNMutationWriter == nil && c.subnetRuntimeIPAMWriter == nil {
 		return operation(ctx)
 	}
 	operationKind := SubnetRuntimeOVNAllocateOperation
@@ -807,7 +807,16 @@ func (c *Controller) runSubnetRuntimeDomainWriters(ctx context.Context, subnet *
 			return c.subnetRuntimeIPAMWriter(ctx, subnet, ipamKind, previous)
 		}
 	}
-	if c.subnetRuntimeOVNWriter != nil {
+	if c.subnetRuntimeOVNMutationWriter != nil {
+		previous := wrapped
+		ovnKind := SubnetRuntimeOVNAllocateMutationOperation
+		if !subnet.DeletionTimestamp.IsZero() {
+			ovnKind = SubnetRuntimeOVNCleanupMutationOperation
+		}
+		wrapped = func(ctx context.Context) error {
+			return c.subnetRuntimeOVNMutationWriter(ctx, subnet, ovnKind, previous)
+		}
+	} else if c.subnetRuntimeOVNWriter != nil {
 		previous := wrapped
 		wrapped = func(ctx context.Context) error {
 			return c.subnetRuntimeOVNWriter(ctx, subnet, operationKind, previous)
@@ -892,6 +901,12 @@ type SubnetRuntimeFinalizerWriter func(context.Context, *kubeovnv1.Subnet, bool)
 // installed writer supplies the uncached identity check and durable fence
 // immediately before OVN or IPAM side effects.
 type SubnetRuntimeDomainWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeDomainOperation, func(context.Context) error) error
+
+// SubnetRuntimeOVNMutationWriter is the explicit OVN adapter seam used by the
+// opt-in Subnet writer. It separates OVN admission from the generic domain
+// wrapper so a later adapter can return per-mutation receipts and enforce
+// backend ownership without changing the legacy callback.
+type SubnetRuntimeOVNMutationWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeOVNMutationOperation, func(context.Context) error) error
 
 // SubnetRuntimeIPAMMutationWriter wraps one concrete Subnet-owned IPAM
 // registration, address allocation/release, or deletion. It is deliberately narrower than
@@ -1014,11 +1029,17 @@ type SubnetRuntimeVirtualPortWriter func(context.Context, string) error
 // the whole operation.
 type SubnetRuntimeDomainOperation string
 
+// SubnetRuntimeOVNMutationOperation identifies one OVN data-plane mutation
+// phase. Legacy mode never installs this writer.
+type SubnetRuntimeOVNMutationOperation string
+
 const (
-	SubnetRuntimeOVNAllocateOperation  SubnetRuntimeDomainOperation = "ovn-allocate"
-	SubnetRuntimeOVNCleanupOperation   SubnetRuntimeDomainOperation = "ovn-cleanup"
-	SubnetRuntimeIPAMAllocateOperation SubnetRuntimeDomainOperation = "ipam-allocate"
-	SubnetRuntimeIPAMReleaseOperation  SubnetRuntimeDomainOperation = "ipam-release"
+	SubnetRuntimeOVNAllocateOperation         SubnetRuntimeDomainOperation      = "ovn-allocate"
+	SubnetRuntimeOVNCleanupOperation          SubnetRuntimeDomainOperation      = "ovn-cleanup"
+	SubnetRuntimeIPAMAllocateOperation        SubnetRuntimeDomainOperation      = "ipam-allocate"
+	SubnetRuntimeIPAMReleaseOperation         SubnetRuntimeDomainOperation      = "ipam-release"
+	SubnetRuntimeOVNAllocateMutationOperation SubnetRuntimeOVNMutationOperation = "ovn-allocate"
+	SubnetRuntimeOVNCleanupMutationOperation  SubnetRuntimeOVNMutationOperation = "ovn-cleanup"
 )
 
 // SetSubnetRuntimeWriters installs the explicit API status and finalizer
@@ -1028,7 +1049,7 @@ func (c *Controller) SetSubnetRuntimeWriters(statusWriter SubnetRuntimeStatusWri
 	if c == nil || statusWriter == nil || ipStatusWriter == nil || gatewayMACWriter == nil || finalizerWriter == nil || ovnWriter == nil || ipamWriter == nil {
 		return errors.New("subnet runtime writers are not configured")
 	}
-	if c.subnetRuntimeStatusWriter != nil || c.subnetRuntimeIPStatusWriter != nil || c.subnetRuntimeGatewayMACWriter != nil || c.subnetRuntimeFinalizerWriter != nil || c.subnetRuntimeOVNWriter != nil || c.subnetRuntimeIPAMWriter != nil {
+	if c.subnetRuntimeStatusWriter != nil || c.subnetRuntimeIPStatusWriter != nil || c.subnetRuntimeGatewayMACWriter != nil || c.subnetRuntimeFinalizerWriter != nil || c.subnetRuntimeOVNWriter != nil || c.subnetRuntimeOVNMutationWriter != nil || c.subnetRuntimeIPAMWriter != nil {
 		return errors.New("subnet runtime writers are already configured")
 	}
 	c.subnetRuntimeStatusWriter = statusWriter
@@ -1037,6 +1058,20 @@ func (c *Controller) SetSubnetRuntimeWriters(statusWriter SubnetRuntimeStatusWri
 	c.subnetRuntimeFinalizerWriter = finalizerWriter
 	c.subnetRuntimeOVNWriter = ovnWriter
 	c.subnetRuntimeIPAMWriter = ipamWriter
+	return nil
+}
+
+// SetSubnetRuntimeOVNMutationWriter installs the explicit OVN adapter seam for
+// the opt-in runtime writer. Existing generic domain writers remain available
+// as a compatibility fallback for older backends and tests.
+func (c *Controller) SetSubnetRuntimeOVNMutationWriter(writer SubnetRuntimeOVNMutationWriter) error {
+	if c == nil || writer == nil {
+		return errors.New("subnet runtime OVN mutation writer is not configured")
+	}
+	if c.subnetRuntimeOVNMutationWriter != nil {
+		return errors.New("subnet runtime OVN mutation writer is already configured")
+	}
+	c.subnetRuntimeOVNMutationWriter = writer
 	return nil
 }
 
