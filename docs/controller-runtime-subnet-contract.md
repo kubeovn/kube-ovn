@@ -144,8 +144,11 @@ Lease gate. The production callback still delegates the complete phase to the
 Controller facade through an explicit OVN mutation writer seam. The seam
 preserves the legacy domain callback while isolating operation-specific OVN
 admission for a future receipt-backed adapter; per-mutation receipts and backend
-ownership checks remain a follow-up step. IPAM allocation and release now have concrete
-per-mutation receipts and owner fencing. The queued virtual-port parent worker
+ownership checks remain a follow-up step. IPAM allocation and release now have
+concrete per-mutation receipts and owner fencing.
+The OVN receipt model and ConfigMap CAS store are now available as an unwired
+persistence seam; OVSDB markers and OVN
+ownership checks remain separate. The queued virtual-port parent worker
 is also wired through a runtime hook: it reads the Subnet with the uncached API reader,
 revalidates UID, generation, spec, resource version, and deletion state, and
 only then invokes the OVN backend. Legacy mode keeps the informer-backed
