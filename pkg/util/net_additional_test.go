@@ -2,15 +2,13 @@ package util
 
 import (
 	"net"
+	"testing"
 
-	"github.com/onsi/ginkgo/v2"
-	"github.com/onsi/gomega"
-
-	"github.com/kubeovn/kube-ovn/pkg/util"
+	"github.com/stretchr/testify/require"
 )
 
-var _ = ginkgo.Describe("[Net]", func() {
-	ginkgo.It("AddressCount", func() {
+func TestAdditionalNet(t *testing.T) {
+	t.Run("AddressCount", func(t *testing.T) {
 		args := []*net.IPNet{
 			{IP: net.ParseIP("10.0.0.0"), Mask: net.CIDRMask(32, 32)},
 			{IP: net.ParseIP("10.0.0.0"), Mask: net.CIDRMask(31, 32)},
@@ -23,15 +21,15 @@ var _ = ginkgo.Describe("[Net]", func() {
 			2,
 			254,
 		}
-		gomega.Expect(args).To(gomega.HaveLen(len(wants)))
+		require.Len(t, args, len(wants))
 
 		for i := range args {
-			gomega.Expect(args[i].IP).NotTo(gomega.BeNil())
-			gomega.Expect(util.AddressCountBigInt(args[i]).EqualInt64(wants[i])).To(gomega.BeTrue())
+			require.NotNil(t, args[i].IP)
+			require.True(t, AddressCountBigInt(args[i]).EqualInt64(wants[i]))
 		}
 	})
 
-	ginkgo.It("CountIPNums", func() {
+	t.Run("CountIPNums", func(t *testing.T) {
 		args := [][]string{
 			{"10.0.0.101"},
 			{"10.0.0.101..10.0.0.105"},
@@ -42,14 +40,14 @@ var _ = ginkgo.Describe("[Net]", func() {
 			5,
 			15,
 		}
-		gomega.Expect(args).To(gomega.HaveLen(len(wants)))
+		require.Len(t, args, len(wants))
 
 		for i := range args {
-			gomega.Expect(util.CountIPNumsBigInt(args[i]).EqualInt64(wants[i])).To(gomega.BeTrue())
+			require.True(t, CountIPNumsBigInt(args[i]).EqualInt64(wants[i]))
 		}
 	})
 
-	ginkgo.It("ExpandExcludeIPs", func() {
+	t.Run("ExpandExcludeIPs", func(t *testing.T) {
 		type arg struct {
 			cidr       string
 			excludeIps []string
@@ -137,10 +135,10 @@ var _ = ginkgo.Describe("[Net]", func() {
 			{"fe00::101", "fe00::1a1..fe00::1a5"},
 			{"10.0.1.1", "10.0.1.101..10.0.1.105", "fe00::101", "fe00::1a1..fe00::1a5"},
 		}
-		gomega.Expect(args).To(gomega.HaveLen(len(wants)))
+		require.Len(t, args, len(wants))
 
 		for i := range args {
-			gomega.Expect(util.ExpandExcludeIPs(args[i].excludeIps, args[i].cidr)).To(gomega.Equal(wants[i]))
+			require.Equal(t, wants[i], ExpandExcludeIPs(args[i].excludeIps, args[i].cidr))
 		}
 	})
-})
+}
