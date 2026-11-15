@@ -136,7 +136,6 @@ func TestAdditionalIPAM(t *testing.T) {
 				_, _, _, err = im.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil, true)
 				require.ErrorIs(t, err, ErrNoSubnet)
 			})
-
 		})
 
 		t.Run("IPv6", func(t *testing.T) {
@@ -238,7 +237,6 @@ func TestAdditionalIPAM(t *testing.T) {
 				_, _, _, err = im.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil, true)
 				require.ErrorIs(t, err, ErrNoSubnet)
 			})
-
 		})
 
 		t.Run("DualStack", func(t *testing.T) {
@@ -370,7 +368,6 @@ func TestAdditionalIPAM(t *testing.T) {
 				_, _, _, err = im.GetRandomAddress(pod5, pod5Nic1, nil, "invalid_subnet", "", nil, true)
 				require.ErrorIs(t, err, ErrNoSubnet)
 			})
-
 		})
 	})
 }
