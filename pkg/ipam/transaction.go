@@ -216,6 +216,7 @@ func (tx *Transaction) commit() {
 func (s *Subnet) clone() *Subnet {
 	clone := &Subnet{
 		Name:         s.Name,
+		SubnetUID:    s.SubnetUID,
 		CIDR:         s.CIDR,
 		Protocol:     s.Protocol,
 		V4CIDR:       cloneIPNet(s.V4CIDR),

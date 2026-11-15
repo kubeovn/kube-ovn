@@ -16,6 +16,7 @@ import (
 
 type Subnet struct {
 	Name         string
+	SubnetUID    string
 	Mutex        sync.RWMutex
 	CIDR         string
 	Protocol     string

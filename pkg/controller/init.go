@@ -437,6 +437,11 @@ func (c *Controller) InitIPAM() error {
 		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
 			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
 		}
+		if subnet.UID != "" {
+			if err := c.ipam.BindSubnetUID(subnet.Name, string(subnet.UID)); err != nil {
+				return fmt.Errorf("failed to bind subnet %s IPAM identity: %w", subnet.Name, err)
+			}
+		}
 
 		u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 		u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)

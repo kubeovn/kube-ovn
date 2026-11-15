@@ -797,6 +797,29 @@ func TestGetPodAddress(t *testing.T) {
 	require.Len(t, dualAddresses, 2)
 }
 
+func TestListSubnetAddressAllocations(t *testing.T) {
+	ipam := NewIPAM()
+	const subnetName = "subnet"
+	require.NoError(t, ipam.AddOrUpdateSubnet(subnetName, "10.0.0.0/29", "10.0.0.1", nil))
+	_, _, _, err := ipam.GetRandomAddress("pod-b", "nic-b", nil, subnetName, "", nil, true)
+	require.NoError(t, err)
+	_, _, _, err = ipam.GetRandomAddress("pod-a", "nic-a", nil, subnetName, "", nil, true)
+	require.NoError(t, err)
+
+	allocations := ipam.ListSubnetAddressAllocations(subnetName)
+	require.Len(t, allocations, 2)
+	require.Equal(t, "pod-a", allocations[0].PodName)
+	require.Equal(t, "nic-a", allocations[0].NICName)
+	require.Equal(t, "10.0.0.2", allocations[0].V4)
+	require.NotEmpty(t, allocations[0].MAC)
+	require.Equal(t, "pod-b", allocations[1].PodName)
+	require.Equal(t, "nic-b", allocations[1].NICName)
+	require.Equal(t, "10.0.0.1", allocations[1].V4)
+	require.NotEmpty(t, allocations[1].MAC)
+	allocations = ipam.ListSubnetAddressAllocations("missing")
+	require.Empty(t, allocations)
+}
+
 func TestContainAddress(t *testing.T) {
 	ipam := NewIPAM()
 	// test v4 subnet
