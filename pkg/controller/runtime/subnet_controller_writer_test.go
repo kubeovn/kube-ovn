@@ -36,6 +36,7 @@ type installingSubnetDataPlaneBackend struct {
 	finalizer        legacycontroller.SubnetRuntimeFinalizerWriter
 	ovn              legacycontroller.SubnetRuntimeDomainWriter
 	ipam             legacycontroller.SubnetRuntimeDomainWriter
+	ipamMutation     legacycontroller.SubnetRuntimeIPAMMutationWriter
 	virtualPort      legacycontroller.SubnetRuntimeVirtualPortWriter
 	virtualPortCalls int
 }
@@ -72,6 +73,11 @@ func (b *installingSubnetDataPlaneBackend) SetSubnetRuntimeWriters(
 
 func (b *installingSubnetDataPlaneBackend) SetSubnetRuntimeVirtualPortWriter(writer legacycontroller.SubnetRuntimeVirtualPortWriter) error {
 	b.virtualPort = writer
+	return nil
+}
+
+func (b *installingSubnetDataPlaneBackend) SetSubnetRuntimeIPAMMutationWriter(writer legacycontroller.SubnetRuntimeIPAMMutationWriter) error {
+	b.ipamMutation = writer
 	return nil
 }
 
@@ -146,6 +152,7 @@ func TestSubnetControllerWriterAdapterWritersSyncResourceVersion(t *testing.T) {
 	require.NotNil(t, backend.gatewayMAC)
 	require.NotNil(t, backend.ovn)
 	require.NotNil(t, backend.ipam)
+	require.NotNil(t, backend.ipamMutation)
 	require.NotNil(t, backend.virtualPort)
 	current := &kubeovnv1.Subnet{}
 	require.NoError(t, api.Get(t.Context(), client.ObjectKey{Name: subnet.Name}, current))
@@ -173,6 +180,12 @@ func TestSubnetControllerWriterAdapterWritersSyncResourceVersion(t *testing.T) {
 		return nil
 	}))
 	require.Equal(t, 2, applyCalls)
+	mutationCalls := 0
+	require.NoError(t, backend.ipamMutation(t.Context(), projected, legacycontroller.SubnetRuntimeIPAMRegisterOperation, func(context.Context) error {
+		mutationCalls++
+		return nil
+	}))
+	require.Equal(t, 1, mutationCalls)
 }
 
 func TestSubnetControllerWriterAdapterVirtualPortRejectsReplacement(t *testing.T) {

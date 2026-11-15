@@ -28,6 +28,8 @@ const (
 	SubnetOVNCleanupOperation      SubnetWriteOperation = "ovn-cleanup"
 	SubnetIPAMAllocateOperation    SubnetWriteOperation = "ipam-allocate"
 	SubnetIPAMReleaseOperation     SubnetWriteOperation = "ipam-release"
+	SubnetIPAMRegisterOperation    SubnetWriteOperation = "ipam-register"
+	SubnetIPAMDeleteOperation      SubnetWriteOperation = "ipam-delete"
 )
 
 // SubnetWriteSnapshot is the immutable API state a writer must carry across
@@ -109,11 +111,11 @@ func (s SubnetWriteSnapshot) validateOperation(operation SubnetWriteOperation) e
 		if !s.Deleting {
 			return fmt.Errorf("subnet %s is not terminating; finalizer removal is not allowed", s.Name)
 		}
-	case SubnetOVNAllocateOperation, SubnetIPAMAllocateOperation:
+	case SubnetOVNAllocateOperation, SubnetIPAMAllocateOperation, SubnetIPAMRegisterOperation:
 		if s.Deleting || !s.AllocationAllowed {
 			return fmt.Errorf("subnet %s is not allocation-ready for %s", s.Name, operation)
 		}
-	case SubnetOVNCleanupOperation, SubnetIPAMReleaseOperation:
+	case SubnetOVNCleanupOperation, SubnetIPAMReleaseOperation, SubnetIPAMDeleteOperation:
 		if !s.Deleting {
 			return fmt.Errorf("subnet %s is not terminating; cleanup is not allowed", s.Name)
 		}

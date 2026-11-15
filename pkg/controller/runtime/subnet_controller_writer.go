@@ -66,6 +66,10 @@ type subnetRuntimeVirtualPortWriterInstaller interface {
 	SetSubnetRuntimeVirtualPortWriter(legacycontroller.SubnetRuntimeVirtualPortWriter) error
 }
 
+type subnetRuntimeIPAMMutationWriterInstaller interface {
+	SetSubnetRuntimeIPAMMutationWriter(legacycontroller.SubnetRuntimeIPAMMutationWriter) error
+}
+
 // InstallRuntimeWriters connects the explicit API writers to the legacy domain
 // sequence. The runtime mode owns this installation before manager start; a
 // legacy backend that cannot expose the hooks fails closed instead of silently
@@ -88,6 +92,10 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 	virtualPortBackend, ok := a.Backend.(SubnetVirtualPortBackend)
 	if !ok {
 		return errors.New("subnet controller writer backend does not expose virtual-port backend")
+	}
+	ipamMutationInstaller, ok := a.Backend.(subnetRuntimeIPAMMutationWriterInstaller)
+	if !ok {
+		return errors.New("subnet controller writer backend does not expose IPAM mutation writer")
 	}
 	statusWriter := func(ctx context.Context, subnet *kubeovnv1.Subnet) error {
 		return (&subnetStatusWriter{ctx: ctx, client: a.Client, reader: a.Reader, gate: a.Gate}).PatchStatus(subnet)
@@ -190,7 +198,38 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 		}
 		return virtualPortBackend.SyncSubnetVirtualPort(ctx, latest)
 	}
+	ipamMutationWriter := func(ctx context.Context, subnet *kubeovnv1.Subnet, operation legacycontroller.SubnetRuntimeIPAMMutationOperation, apply func(context.Context) error) error {
+		if subnet == nil {
+			return errors.New("subnet IPAM mutation writer requires a Subnet")
+		}
+		if apply == nil {
+			return errors.New("subnet IPAM mutation operation is not configured")
+		}
+		allocationAllowed := subnet.DeletionTimestamp.IsZero()
+		snapshot, err := NewSubnetWriteSnapshot(subnet, allocationAllowed)
+		if err != nil {
+			return err
+		}
+		var sideEffectOperation SubnetWriteOperation
+		switch operation {
+		case legacycontroller.SubnetRuntimeIPAMRegisterOperation:
+			sideEffectOperation = SubnetIPAMRegisterOperation
+		case legacycontroller.SubnetRuntimeIPAMDeleteOperation:
+			sideEffectOperation = SubnetIPAMDeleteOperation
+		default:
+			return fmt.Errorf("unsupported Subnet IPAM mutation operation %q", operation)
+		}
+		writer := &subnetSideEffectWriter{ctx: ctx, reader: a.Reader, gate: a.Gate}
+		return writer.Execute(snapshot, sideEffectOperation, SubnetSideEffectPlan{
+			Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
+				return nil, apply(ctx)
+			},
+		})
+	}
 	if err := installer.SetSubnetRuntimeWriters(statusWriter, ipStatusWriter, gatewayMACWriter, finalizerWriter, domainWriter, domainWriter); err != nil {
+		return err
+	}
+	if err := ipamMutationInstaller.SetSubnetRuntimeIPAMMutationWriter(ipamMutationWriter); err != nil {
 		return err
 	}
 	return virtualPortInstaller.SetSubnetRuntimeVirtualPortWriter(virtualPortWriter)

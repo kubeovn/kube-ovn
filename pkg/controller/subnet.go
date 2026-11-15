@@ -893,6 +893,21 @@ type SubnetRuntimeFinalizerWriter func(context.Context, *kubeovnv1.Subnet, bool)
 // immediately before OVN or IPAM side effects.
 type SubnetRuntimeDomainWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeDomainOperation, func(context.Context) error) error
 
+// SubnetRuntimeIPAMMutationWriter wraps one concrete Subnet-owned IPAM
+// registration or deletion. It is deliberately narrower than
+// SubnetRuntimeDomainWriter so a later receipt can identify one mutation
+// instead of claiming the whole reconcile phase.
+type SubnetRuntimeIPAMMutationWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeIPAMMutationOperation, func(context.Context) error) error
+
+// SubnetRuntimeIPAMMutationOperation identifies one concrete Subnet-owned
+// IPAM registration or deletion.
+type SubnetRuntimeIPAMMutationOperation string
+
+const (
+	SubnetRuntimeIPAMRegisterOperation SubnetRuntimeIPAMMutationOperation = "ipam-register"
+	SubnetRuntimeIPAMDeleteOperation   SubnetRuntimeIPAMMutationOperation = "ipam-delete"
+)
+
 // SubnetRuntimeVirtualPortWriter owns the fresh-snapshot admission for queued
 // virtual-port parent updates. The runtime mode installs it so the legacy
 // queue cannot write OVN from an informer-only object.
@@ -928,6 +943,32 @@ func (c *Controller) SetSubnetRuntimeWriters(statusWriter SubnetRuntimeStatusWri
 	c.subnetRuntimeOVNWriter = ovnWriter
 	c.subnetRuntimeIPAMWriter = ipamWriter
 	return nil
+}
+
+// SetSubnetRuntimeIPAMMutationWriter installs the concrete IPAM mutation seam
+// used by the opt-in runtime Subnet writer. Legacy workers leave it unset.
+func (c *Controller) SetSubnetRuntimeIPAMMutationWriter(writer SubnetRuntimeIPAMMutationWriter) error {
+	if c == nil || writer == nil {
+		return errors.New("subnet runtime IPAM mutation writer is not configured")
+	}
+	if c.subnetRuntimeIPAMMutationWriter != nil {
+		return errors.New("subnet runtime IPAM mutation writer is already configured")
+	}
+	c.subnetRuntimeIPAMMutationWriter = writer
+	return nil
+}
+
+func (c *Controller) runSubnetRuntimeIPAMMutation(ctx context.Context, subnet *kubeovnv1.Subnet, operation SubnetRuntimeIPAMMutationOperation, apply func(context.Context) error) error {
+	if apply == nil {
+		return errors.New("subnet runtime IPAM mutation is nil")
+	}
+	if c.subnetRuntimeIPAMMutationWriter != nil {
+		return c.subnetRuntimeIPAMMutationWriter(ctx, subnet, operation, apply)
+	}
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
+	return apply(ctx)
 }
 
 // SetSubnetRuntimeVirtualPortWriter installs the runtime admission hook for
@@ -998,10 +1039,9 @@ func (c *Controller) RecoverSubnetRuntime(ctx context.Context, subnet *kubeovnv1
 			u2oMAC = new(lrp.MAC)
 		}
 	}
-	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
-		return err
-	}
-	if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+	if err := c.runSubnetRuntimeIPAMMutation(ctx, subnet, SubnetRuntimeIPAMRegisterOperation, func(context.Context) error {
+		return c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps)
+	}); err != nil {
 		return fmt.Errorf("failed to recover subnet %s in IPAM: %w", subnet.Name, err)
 	}
 	if subnet.Status.U2OInterconnectionIP != "" {
@@ -1067,10 +1107,9 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 	}
 
 	if subnet.Spec.CIDRBlock != "" {
-		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
-			return err
-		}
-		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+		if err := c.runSubnetRuntimeIPAMMutation(ctx, subnet, SubnetRuntimeIPAMRegisterOperation, func(context.Context) error {
+			return c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps)
+		}); err != nil {
 			klog.Error(err)
 			return c.recordResourceError(subnet, "UpdateIPAMFailed", err)
 		}
@@ -1087,10 +1126,9 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		// lightweight IPAM entry so MAC allocations are tracked and the GC does not
 		// clean the subnet's mac-only IP/LSP resources. It has no IP ranges, so there
 		// is no subnet IP status to calculate.
-		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
-			return err
-		}
-		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, "", "", nil); err != nil {
+		if err := c.runSubnetRuntimeIPAMMutation(ctx, subnet, SubnetRuntimeIPAMRegisterOperation, func(context.Context) error {
+			return c.ipam.AddOrUpdateSubnet(subnet.Name, "", "", nil)
+		}); err != nil {
 			klog.Error(err)
 			return c.recordResourceError(subnet, "UpdateIPAMFailed", err)
 		}
@@ -1375,10 +1413,26 @@ func (c *Controller) handleDeleteLogicalSwitch(key string, routerPortNames ...st
 }
 
 func (c *Controller) handleDeleteLogicalSwitchWithContext(ctx context.Context, key string, routerPortNames ...string) (err error) {
+	return c.handleDeleteLogicalSwitchForSubnetWithContext(ctx, nil, key, routerPortNames...)
+}
+
+func (c *Controller) handleDeleteLogicalSwitchForSubnetWithContext(ctx context.Context, subnet *kubeovnv1.Subnet, key string, routerPortNames ...string) (err error) {
 	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
 	}
-	c.ipam.DeleteSubnet(key)
+	deleteSubnet := func(context.Context) error {
+		c.ipam.DeleteSubnet(key)
+		return nil
+	}
+	if subnet != nil {
+		if err := c.runSubnetRuntimeIPAMMutation(ctx, subnet, SubnetRuntimeIPAMDeleteOperation, deleteSubnet); err != nil {
+			return err
+		}
+	} else {
+		if err := deleteSubnet(ctx); err != nil {
+			return err
+		}
+	}
 
 	exist, err := c.OVNNbClient.LogicalSwitchExists(key)
 	if err != nil {
@@ -1538,7 +1592,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
-	if err = c.handleDeleteLogicalSwitchWithContext(ctx, subnet.Name, lrpName); err != nil {
+	if err = c.handleDeleteLogicalSwitchForSubnetWithContext(ctx, subnet, subnet.Name, lrpName); err != nil {
 		klog.Errorf("failed to delete logical switch %s resources: %v", subnet.Name, err)
 		return err
 	}

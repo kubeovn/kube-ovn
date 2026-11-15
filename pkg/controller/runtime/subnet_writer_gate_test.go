@@ -75,6 +75,7 @@ func TestSubnetWriteSnapshotGatesOperations(t *testing.T) {
 		SubnetFinalizerAddOperation,
 		SubnetOVNAllocateOperation,
 		SubnetIPAMAllocateOperation,
+		SubnetIPAMRegisterOperation,
 	} {
 		require.NoError(t, activeSnapshot.Validate(active, operation), operation)
 	}
@@ -88,6 +89,7 @@ func TestSubnetWriteSnapshotGatesOperations(t *testing.T) {
 		SubnetFinalizerRemoveOperation,
 		SubnetOVNCleanupOperation,
 		SubnetIPAMReleaseOperation,
+		SubnetIPAMDeleteOperation,
 	} {
 		require.NoError(t, terminatingSnapshot.Validate(terminating, operation), operation)
 	}
@@ -96,6 +98,7 @@ func TestSubnetWriteSnapshotGatesOperations(t *testing.T) {
 		SubnetFinalizerAddOperation,
 		SubnetOVNAllocateOperation,
 		SubnetIPAMAllocateOperation,
+		SubnetIPAMRegisterOperation,
 	} {
 		require.Error(t, terminatingSnapshot.Validate(terminating, operation), operation)
 	}

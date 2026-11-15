@@ -128,6 +128,21 @@ func TestSubnetRuntimeWritersReplaceDirectStatusAndFinalizerPatches(t *testing.T
 	require.Equal(t, 1, gatewayCalls)
 }
 
+func TestSubnetRuntimeIPAMMutationWriterIsExplicitAndSingleInstall(t *testing.T) {
+	controller := &Controller{}
+	var calls int
+	writer := func(ctx context.Context, _ *kubeovnv1.Subnet, _ SubnetRuntimeIPAMMutationOperation, apply func(context.Context) error) error {
+		calls++
+		return apply(ctx)
+	}
+	require.NoError(t, controller.SetSubnetRuntimeIPAMMutationWriter(writer))
+	require.Error(t, controller.SetSubnetRuntimeIPAMMutationWriter(writer))
+	require.NoError(t, controller.runSubnetRuntimeIPAMMutation(t.Context(), &kubeovnv1.Subnet{}, SubnetRuntimeIPAMRegisterOperation, func(context.Context) error {
+		return nil
+	}))
+	require.Equal(t, 1, calls)
+}
+
 func TestEnqueueDeleteSubnetRuntimeWriterOwnership(t *testing.T) {
 	t.Parallel()
 
