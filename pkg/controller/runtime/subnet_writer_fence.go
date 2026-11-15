@@ -31,6 +31,15 @@ type SubnetWriterFence interface {
 	Check(context.Context) error
 }
 
+// SubnetWriterFenceEpochProvider exposes the durable lease epoch that must be
+// carried into backend mutation receipts. Keeping it as a refinement of the
+// check-only fence preserves the legacy test seam while production fences can
+// bind receipts to the lease owner that admitted them.
+type SubnetWriterFenceEpochProvider interface {
+	SubnetWriterFence
+	Epoch(context.Context) (string, error)
+}
+
 // KubernetesSubnetWriterFence owns a dedicated coordination.k8s.io Lease.
 // It is independent from the outer kube-ovn-controller election so runtime
 // writers can be fenced during a staged handoff.
@@ -235,6 +244,22 @@ func (f *KubernetesSubnetWriterFence) Check(ctx context.Context) error {
 		return ErrSubnetWriterFenceStale
 	}
 	return nil
+}
+
+// Epoch returns the currently checked durable lease epoch for mutation
+// identity propagation. The caller must still perform its backend-specific
+// atomic ownership check before applying or compensating a mutation.
+func (f *KubernetesSubnetWriterFence) Epoch(ctx context.Context) (string, error) {
+	if err := f.Check(ctx); err != nil {
+		return "", err
+	}
+	f.mu.RLock()
+	epoch := f.epoch
+	f.mu.RUnlock()
+	if epoch == "" {
+		return "", ErrSubnetWriterFenceMissing
+	}
+	return epoch, nil
 }
 
 func (f *KubernetesSubnetWriterFence) renewLoop(ctx context.Context, stop <-chan struct{}, runID uint64, interval time.Duration, done chan<- struct{}) {

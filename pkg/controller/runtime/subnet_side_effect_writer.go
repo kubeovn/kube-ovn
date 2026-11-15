@@ -24,6 +24,13 @@ type SubnetSideEffectReceipt interface {
 	Compensate(context.Context) error
 }
 
+// SubnetSideEffectReceiptIdentity is implemented by receipts that can prove
+// which immutable mutation identity they own. Concrete adapters must expose it
+// when a plan requires receipt identity validation.
+type SubnetSideEffectReceiptIdentity interface {
+	SubnetMutationIdentity() SubnetMutationIdentity
+}
+
 // SubnetSideEffectPlan describes one gated backend mutation. Apply may return
 // a receipt only for a confirmed mutation that it owns. No-op and uncommitted
 // outcomes return a nil receipt. If cancellation races with a committed
@@ -32,7 +39,8 @@ type SubnetSideEffectReceipt interface {
 // readback cannot confirm the mutation, recovery must resolve it; cancellation
 // never authorizes speculative compensation.
 type SubnetSideEffectPlan struct {
-	Apply func(context.Context) (SubnetSideEffectReceipt, error)
+	Apply                  func(context.Context) (SubnetSideEffectReceipt, error)
+	RequireReceiptIdentity bool
 }
 
 // subnetSideEffectWriter gates an OVN or IPAM domain phase behind the immutable
@@ -100,6 +108,13 @@ func (w *subnetSideEffectWriter) executePlan(snapshot SubnetWriteSnapshot, opera
 	if err := w.gate.WaitForRecovery(w.ctx); err != nil {
 		return nil, err
 	}
+	identity, err := newSubnetMutationIdentity(w.ctx, snapshot, operation, w.gate.Fence)
+	if err != nil {
+		return nil, err
+	}
+	if plan.RequireReceiptIdentity && identity.WriterEpoch == "" {
+		return nil, ErrSubnetWriterEpochUnavailable
+	}
 	if w.reader == nil {
 		return nil, errors.New("subnet side effect API reader is not configured")
 	}
@@ -120,7 +135,13 @@ func (w *subnetSideEffectWriter) executePlan(snapshot SubnetWriteSnapshot, opera
 	if err := w.ctx.Err(); err != nil {
 		return nil, err
 	}
-	receipt, applyErr := plan.Apply(w.ctx)
+	receipt, applyErr := plan.Apply(withSubnetMutationIdentity(w.ctx, identity))
+	if receipt != nil && plan.RequireReceiptIdentity {
+		identityReceipt, ok := receipt.(SubnetSideEffectReceiptIdentity)
+		if !ok || !identity.Equal(identityReceipt.SubnetMutationIdentity()) {
+			return receipt, errors.Join(applyErr, ErrSubnetMutationIdentityChanged)
+		}
+	}
 	if err := w.ctx.Err(); err != nil {
 		// Preserve a confirmed receipt when cancellation races with a
 		// committed backend operation. The caller must retain the owner for
