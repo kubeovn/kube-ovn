@@ -717,7 +717,7 @@ func TestNewIPRangeListFrom(t *testing.T) {
 	n := 40 + rand.IntN(20)
 	cidrList := make([]*net.IPNet, 0, n)
 	cidrSet := u32set.NewWithSize(n * 2)
-	for len(cidrList) != cap(cidrList) {
+	for attempts := 0; len(cidrList) != cap(cidrList) && attempts < cap(cidrList)*1000; attempts++ {
 		_, cidr, err := net.ParseCIDR(fmt.Sprintf("%s/%d", util.Uint32ToIPv4(rand.Uint32()), 16+rand.IntN(16)))
 		require.NoError(t, err)
 
@@ -738,10 +738,11 @@ func TestNewIPRangeListFrom(t *testing.T) {
 			cidrSet.Add(util.IPv4ToUint32(bcast))
 		}
 	}
+	require.Equal(t, cap(cidrList), len(cidrList))
 
 	n = 80 + rand.IntN(40)
 	set := u32set.NewWithSize(cidrSet.Size() + n)
-	for set.Size() != n {
+	for attempts := 0; set.Size() != n && attempts < n*1000; attempts++ {
 		v := rand.Uint32()
 		ip := net.ParseIP(util.Uint32ToIPv4(v))
 		var invalid bool
@@ -755,6 +756,7 @@ func TestNewIPRangeListFrom(t *testing.T) {
 			set.Add(v)
 		}
 	}
+	require.Equal(t, n, set.Size())
 	set.Merge(cidrSet)
 
 	ints := set.List()
@@ -848,6 +850,30 @@ func TestNewIPRangeListFrom(t *testing.T) {
 			require.True(t, ipList.Contains(end.Sub(1)))
 		}
 	}
+
+	ipList, err = NewIPRangeListFrom(
+		"2001:db8::/126",
+		"2001:db8::4",
+		"2001:db8::6..2001:db8::8",
+	)
+	require.NoError(t, err)
+	require.Equal(t, 2, ipList.Len())
+	count = ipList.Count()
+	require.Equal(t, int64(8), count.Int64())
+
+	for _, address := range []string{
+		"2001:db8::",
+		"2001:db8::4",
+		"2001:db8::6",
+		"2001:db8::8",
+	} {
+		ip, err := NewIP(address)
+		require.NoError(t, err)
+		require.True(t, ipList.Contains(ip))
+	}
+	ip, err := NewIP("2001:db8::5")
+	require.NoError(t, err)
+	require.False(t, ipList.Contains(ip))
 
 	ipList, err = NewIPRangeListFrom("192.168.1.2..192.168.1.1")
 	require.ErrorContains(t, err, "invalid ip range \"192.168.1.2..192.168.1.1\": 192.168.1.2 is greater than 192.168.1.1")

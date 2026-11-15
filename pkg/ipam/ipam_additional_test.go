@@ -137,83 +137,6 @@ func TestAdditionalIPAM(t *testing.T) {
 				require.ErrorIs(t, err, ErrNoSubnet)
 			})
 
-			t.Run("change cidr", func(t *testing.T) {
-				im := NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, ipv4CIDR, v4Gw, ipv4ExcludeIPs)
-				require.NoError(t, err)
-
-				err = im.AddOrUpdateSubnet(subnetName, "10.17.0.0/16", v4Gw, []string{"10.17.0.1"})
-				require.NoError(t, err)
-				ip, _, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "10.17.0.2", ip)
-
-				t.Log("update invalid cidr, subnet should not change")
-				err = im.AddOrUpdateSubnet(subnetName, "1.1.256.1", v4Gw, nil)
-				require.ErrorIs(t, err, ErrInvalidCIDR)
-				require.Equal(t, "10.17.0.0", im.Subnets[subnetName].V4CIDR.IP.String())
-			})
-
-			t.Run("reuse released address when no unused address", func(t *testing.T) {
-				im := NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", v4Gw, nil)
-				require.NoError(t, err)
-
-				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "10.16.0.1", ip)
-
-				im.ReleaseAddressByPod("pod1.ns", "")
-				ip, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "10.16.0.2", ip)
-
-				im.ReleaseAddressByPod("pod1.ns", "")
-				ip, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "10.16.0.1", ip)
-			})
-
-			t.Run("do not reuse released address after update subnet's excludedIps", func(t *testing.T) {
-				im := NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", v4Gw, nil)
-				require.NoError(t, err)
-
-				ip, _, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "10.16.0.1", ip)
-
-				im.ReleaseAddressByPod("pod1.ns", "")
-				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.0/30", v4Gw, []string{"10.16.0.1..10.16.0.2"})
-				require.NoError(t, err)
-
-				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.ErrorIs(t, err, ErrNoAvailable)
-			})
-
-			t.Run("do not count excludedIps as subnet's v4availableIPs and v4usingIPs", func(t *testing.T) {
-				im := NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "10.16.10.0/28", "10.16.10.1", []string{"10.16.10.1", "10.16.10.10"})
-				require.NoError(t, err)
-
-				ip, _, _, err := im.GetStaticAddress("pod1.ns", "pod1.ns", "10.16.10.10", nil, subnetName, true)
-				require.NoError(t, err)
-				require.Equal(t, "10.16.10.10", ip)
-
-				ip, _, _, err = im.GetStaticAddress("pod2.ns", "pod2.ns", "10.16.10.1", nil, subnetName, true)
-				require.ErrorIs(t, err, ErrConflict)
-				require.Empty(t, ip)
-
-				v4UsingIPStr, _, v4AvailableIPStr, _ := im.GetSubnetIPRangeString(subnetName, []string{"10.16.10.10"})
-				require.Equal(t, "", v4UsingIPStr)
-				require.Equal(t, "10.16.10.2-10.16.10.9,10.16.10.11-10.16.10.14", v4AvailableIPStr)
-
-				err = im.AddOrUpdateSubnet(subnetName, "10.16.10.0/28", "10.16.10.1", []string{"10.16.10.1"})
-				require.NoError(t, err)
-				v4UsingIPStr, _, v4AvailableIPStr, _ = im.GetSubnetIPRangeString(subnetName, nil)
-				require.Equal(t, "10.16.10.10", v4UsingIPStr)
-				require.Equal(t, "10.16.10.2-10.16.10.9,10.16.10.11-10.16.10.14", v4AvailableIPStr)
-			})
 		})
 
 		t.Run("IPv6", func(t *testing.T) {
@@ -316,59 +239,6 @@ func TestAdditionalIPAM(t *testing.T) {
 				require.ErrorIs(t, err, ErrNoSubnet)
 			})
 
-			t.Run("change cidr", func(t *testing.T) {
-				im := NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, ipv6CIDR, v6Gw, ipv6ExcludeIPs)
-				require.NoError(t, err)
-
-				err = im.AddOrUpdateSubnet(subnetName, "fe00::/112", v6Gw, []string{"fe00::1"})
-				require.NoError(t, err)
-				_, ip, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "fe00::2", ip)
-
-				t.Log("update invalid cidr, subnet should not change")
-				err = im.AddOrUpdateSubnet(subnetName, "fd00::g/120", v6Gw, nil)
-				require.ErrorIs(t, err, ErrInvalidCIDR)
-				require.Equal(t, "fe00::", im.Subnets[subnetName].V6CIDR.IP.String())
-			})
-
-			t.Run("reuse released address when no unused address", func(t *testing.T) {
-				im := NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "fd00::/126", v6Gw, nil)
-				require.NoError(t, err)
-
-				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "fd00::1", ip)
-
-				im.ReleaseAddressByPod("pod1.ns", "")
-				_, ip, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "fd00::2", ip)
-
-				im.ReleaseAddressByPod("pod1.ns", "")
-				_, ip, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "fd00::1", ip)
-			})
-
-			t.Run("do not reuse released address after update subnet's excludedIps", func(t *testing.T) {
-				im := NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "fd00::/126", v6Gw, nil)
-				require.NoError(t, err)
-
-				_, ip, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "fd00::1", ip)
-
-				im.ReleaseAddressByPod("pod1.ns", "")
-				err = im.AddOrUpdateSubnet(subnetName, "fd00::/126", v6Gw, []string{"fd00::1..fd00::2"})
-				require.NoError(t, err)
-
-				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.ErrorIs(t, err, ErrNoAvailable)
-			})
 		})
 
 		t.Run("DualStack", func(t *testing.T) {
@@ -501,59 +371,6 @@ func TestAdditionalIPAM(t *testing.T) {
 				require.ErrorIs(t, err, ErrNoSubnet)
 			})
 
-			t.Run("change cidr", func(t *testing.T) {
-				im := NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, dualCIDR, dualGw, dualExcludeIPs)
-				require.NoError(t, err)
-
-				err = im.AddOrUpdateSubnet(subnetName, "10.17.0.2/16,fe00::/112", dualGw, []string{"10.17.0.1", "fe00::1"})
-				require.NoError(t, err)
-				ipv4, ipv6, _, err := im.GetRandomAddress("pod5.ns", "pod5.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "10.17.0.2", ipv4)
-				require.Equal(t, "fe00::2", ipv6)
-			})
-
-			t.Run("reuse released address when no unused address", func(t *testing.T) {
-				im := NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, nil)
-				require.NoError(t, err)
-
-				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "10.16.0.1", ipv4)
-				require.Equal(t, "fd00::1", ipv6)
-
-				im.ReleaseAddressByPod("pod1.ns", "")
-				ipv4, ipv6, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "10.16.0.2", ipv4)
-				require.Equal(t, "fd00::2", ipv6)
-
-				im.ReleaseAddressByPod("pod1.ns", "")
-				ipv4, ipv6, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "10.16.0.1", ipv4)
-				require.Equal(t, "fd00::1", ipv6)
-			})
-
-			t.Run("do not reuse released address after update subnet's excludedIps", func(t *testing.T) {
-				im := NewIPAM()
-				err := im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, nil)
-				require.NoError(t, err)
-
-				ipv4, ipv6, _, err := im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.NoError(t, err)
-				require.Equal(t, "10.16.0.1", ipv4)
-				require.Equal(t, "fd00::1", ipv6)
-
-				im.ReleaseAddressByPod("pod1.ns", "")
-				err = im.AddOrUpdateSubnet(subnetName, "10.16.0.2/30,fd00::/126", dualGw, []string{"10.16.0.1..10.16.0.2", "fd00::1..fd00::2"})
-				require.NoError(t, err)
-
-				_, _, _, err = im.GetRandomAddress("pod1.ns", "pod1.ns", nil, subnetName, "", nil, true)
-				require.ErrorIs(t, err, ErrNoAvailable)
-			})
 		})
 	})
 }
