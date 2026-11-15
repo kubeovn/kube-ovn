@@ -249,7 +249,7 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 		if err != nil {
 			return err
 		}
-		ipamBackend, err := newSubnetRuntimeIPAMBackend(backend.SubnetRuntimeIPAMAddressBackend(), receiptStore)
+		ipamBackend, err := newStrictSubnetRuntimeIPAMBackend(backend.SubnetRuntimeIPAMAddressBackend(), receiptStore)
 		if err != nil {
 			return err
 		}

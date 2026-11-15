@@ -51,6 +51,25 @@ type SubnetAddressAllocation struct {
 	V4        string
 	V6        string
 	MAC       string
+	Owner     AllocationOwner
+}
+
+// AllocationOwner identifies the writer that owns a Pod/NIC allocation.
+// Zero-valued owners represent allocations created through the legacy tuple
+// APIs and cannot be released through owner-aware methods until explicitly
+// bound.
+type AllocationOwner struct {
+	Token           uint64
+	SubnetUID       string
+	Generation      int64
+	ResourceVersion string
+	WriterEpoch     string
+}
+
+func (o AllocationOwner) IsZero() bool { return o == (AllocationOwner{}) }
+
+func (o AllocationOwner) Valid() bool {
+	return o.Token != 0 && o.SubnetUID != "" && o.ResourceVersion != "" && o.WriterEpoch != ""
 }
 
 func NewIPAM() *IPAM {
@@ -104,6 +123,23 @@ func (ipam *IPAM) GetStaticAddressWithFamily(podName, nicName, ip string, mac *s
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
 	return getStaticAddressWithFamily(ipam.Subnets, podName, nicName, ip, mac, subnetName, ipFamily, checkConflict)
+}
+
+// GetPodAddressOwner returns the owner recorded for one Pod/NIC allocation.
+func (ipam *IPAM) GetPodAddressOwner(podName, nicName, subnetName string) (AllocationOwner, bool) {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+	subnet, ok := ipam.Subnets[subnetName]
+	if !ok {
+		return AllocationOwner{}, false
+	}
+	subnet.Mutex.RLock()
+	defer subnet.Mutex.RUnlock()
+	if _, _, _, found := subnet.getPodAddressByNic(podName, nicName); !found {
+		return AllocationOwner{}, false
+	}
+	owner, found := subnet.NicToOwner[nicName]
+	return owner, found
 }
 
 func getStaticAddressWithFamily(subnets map[string]*Subnet, podName, nicName, ip string, mac *string, subnetName, ipFamily string, checkConflict bool) (string, string, string, error) {
@@ -526,7 +562,7 @@ func (ipam *IPAM) ListSubnetAddressAllocations(subnetName string) []SubnetAddres
 		for _, nicName := range nics {
 			v4, v6, mac, found := subnet.getPodAddressByNic(podName, nicName)
 			if found {
-				allocations = append(allocations, SubnetAddressAllocation{SubnetUID: subnet.SubnetUID, PodName: podName, NICName: nicName, V4: v4, V6: v6, MAC: mac})
+				allocations = append(allocations, SubnetAddressAllocation{SubnetUID: subnet.SubnetUID, PodName: podName, NICName: nicName, V4: v4, V6: v6, MAC: mac, Owner: subnet.NicToOwner[nicName]})
 			}
 		}
 	}

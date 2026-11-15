@@ -141,9 +141,10 @@ termination, preserves foreign finalizers, and confirms metadata writes after
 an uncertain response. `subnet_side_effect_writer.go` is installed around the
 OVN/IPAM domain phases and gives them the same recovery, identity, and durable
 Lease gate. The production callback still delegates the complete phase to the
-Controller facade; concrete per-mutation receipts and backend ownership checks
-remain a follow-up step. The queued virtual-port parent worker is also wired
-through a runtime hook: it reads the Subnet with the uncached API reader,
+Controller facade; OVN per-mutation receipts and backend ownership checks
+remain a follow-up step. IPAM allocation and release now have concrete
+per-mutation receipts and owner fencing. The queued virtual-port parent worker
+is also wired through a runtime hook: it reads the Subnet with the uncached API reader,
 revalidates UID, generation, spec, resource version, and deletion state, and
 only then invokes the OVN backend. Legacy mode keeps the informer-backed
 worker.
@@ -254,10 +255,11 @@ the writer context and returns errors separately from the no-op result, so a
 durable backend read failure fails closed without attempting allocation or
 compensation. Receipt release passes the claimed complete allocation into the
 backend, which validates ownership and releases it in one IPAM transaction.
-The current transaction backend still fences by address tuple; durable token
-and identity fencing remains a backend responsibility and is not claimed
-complete here. This interface is testable in isolation; the opt-in production
-mode currently invokes the Controller's IPAM facade and keeps this receipt
+The owner-aware transaction backend fences the opt-in path by the complete
+allocation owner (token, Subnet UID, generation, resource version, and writer
+epoch) in addition to the address tuple. Legacy tuple APIs remain available for
+legacy mode. This interface is testable in isolation; the opt-in production
+mode invokes the Controller's owner-aware IPAM facade and keeps this receipt
 adapter available for a later split.
 
 ## Readiness and deletion gates
@@ -291,6 +293,7 @@ writer while legacy Subnet workers and startup syncs are disabled; all other
 modes remain legacy-owned. Direct split adapters still require concrete durable
 receipts and an explicit rollback/ownership gate.
 The plan compensation contract is also unwired and does not itself provide
-durable backend rollback or a fencing mechanism. Concrete adapters must
-implement atomic receipt checks, idempotency, uncertain-commit confirmation,
-and ownership fencing before this contract can be used in production.
+durable backend rollback or a fencing mechanism. OVN and any future split
+adapters must implement atomic receipt checks, idempotency, uncertain-commit
+confirmation, and ownership fencing before those paths can be used in
+production.

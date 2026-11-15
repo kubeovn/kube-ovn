@@ -85,6 +85,38 @@ func (tx *Transaction) GetRandomAddress(podName, nicName string, mac *string, su
 	return tx.GetRandomAddressWithFamily(podName, nicName, mac, subnetName, poolName, "", skippedAddrs, checkConflict)
 }
 
+// GetRandomAddressOwned stages an allocation and records its owner in the
+// same transaction. Existing allocations must already belong to owner.
+func (tx *Transaction) GetRandomAddressOwned(
+	podName, nicName string, mac *string,
+	subnetName, poolName string, skippedAddrs []string,
+	checkConflict bool, owner AllocationOwner,
+) (string, string, string, error) {
+	if err := tx.ensureOpen(); err != nil {
+		return "", "", "", err
+	}
+	if !owner.Valid() {
+		return "", "", "", ErrAddressOwnershipChanged
+	}
+	subnet, err := tx.subnet(subnetName)
+	if err != nil {
+		return "", "", "", err
+	}
+	if _, _, _, found := subnet.getPodAddressByNic(podName, nicName); found {
+		if current, ok := subnet.NicToOwner[nicName]; !ok || current != owner {
+			return "", "", "", ErrAddressOwnershipChanged
+		}
+		v4, v6, mac, _ := subnet.getPodAddressByNic(podName, nicName)
+		return v4, v6, mac, nil
+	}
+	v4, v6, macStr, err := getRandomAddressWithFamily(tx.subnets, podName, nicName, mac, subnetName, poolName, "", skippedAddrs, checkConflict)
+	if err != nil {
+		return "", "", "", err
+	}
+	subnet.NicToOwner[nicName] = owner
+	return v4, v6, macStr, nil
+}
+
 // GetPodAddressByNic reads one pod/NIC allocation from the transaction's
 // snapshot so a caller can conditionally release the exact address it owns.
 func (tx *Transaction) GetPodAddressByNic(podName, nicName, subnetName string) (string, string, string, bool, error) {
@@ -113,6 +145,36 @@ func (tx *Transaction) GetRandomAddressWithFamily(podName, nicName string, mac *
 // GetStaticAddress stages a static allocation or rebind.
 func (tx *Transaction) GetStaticAddress(podName, nicName, ip string, mac *string, subnetName string, checkConflict bool) (string, string, string, error) {
 	return tx.GetStaticAddressWithFamily(podName, nicName, ip, mac, subnetName, "", checkConflict)
+}
+
+// GetStaticAddressOwned is the owner-fenced counterpart of GetStaticAddress.
+func (tx *Transaction) GetStaticAddressOwned(
+	podName, nicName, ip string, mac *string, subnetName string,
+	checkConflict bool, owner AllocationOwner,
+) (string, string, string, error) {
+	if err := tx.ensureOpen(); err != nil {
+		return "", "", "", err
+	}
+	if !owner.Valid() {
+		return "", "", "", ErrAddressOwnershipChanged
+	}
+	subnet, err := tx.subnet(subnetName)
+	if err != nil {
+		return "", "", "", err
+	}
+	if _, _, _, found := subnet.getPodAddressByNic(podName, nicName); found {
+		if current, ok := subnet.NicToOwner[nicName]; !ok || current != owner {
+			return "", "", "", ErrAddressOwnershipChanged
+		}
+		v4, v6, mac, _ := subnet.getPodAddressByNic(podName, nicName)
+		return v4, v6, mac, nil
+	}
+	v4, v6, macStr, err := getStaticAddressWithFamily(tx.subnets, podName, nicName, ip, mac, subnetName, "", checkConflict)
+	if err != nil {
+		return "", "", "", err
+	}
+	subnet.NicToOwner[nicName] = owner
+	return v4, v6, macStr, nil
 }
 
 // GetStaticAddressWithFamily stages a family-specific static allocation or
@@ -168,6 +230,95 @@ func (tx *Transaction) ReleaseAddressByNicIfMatches(podName, nicName, subnetName
 		return ErrAddressOwnershipChanged
 	}
 	return tx.ReleaseAddressByNic(podName, nicName, subnetName)
+}
+
+// ReleaseAddressByNicIfMatchesOwned atomically checks both address tuple and
+// backend owner before releasing an allocation.
+func (tx *Transaction) ReleaseAddressByNicIfMatchesOwned(
+	podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC string,
+	owner AllocationOwner,
+) error {
+	if err := tx.ensureOpen(); err != nil {
+		return err
+	}
+	if !owner.Valid() {
+		return ErrAddressOwnershipChanged
+	}
+	v4, v6, mac, found, err := tx.GetPodAddressByNic(podName, nicName, subnetName)
+	if err != nil {
+		return err
+	}
+	subnet, err := tx.subnet(subnetName)
+	if err != nil {
+		return err
+	}
+	if !found || v4 != expectedV4 || v6 != expectedV6 || mac != expectedMAC || subnet.NicToOwner[nicName] != owner {
+		return ErrAddressOwnershipChanged
+	}
+	if err := tx.ReleaseAddressByNic(podName, nicName, subnetName); err != nil {
+		return err
+	}
+	delete(subnet.NicToOwner, nicName)
+	return nil
+}
+
+// BindAddressOwnerIfUnowned atomically adopts a legacy allocation with no
+// owner. Existing owned allocations must match owner exactly.
+func (tx *Transaction) BindAddressOwnerIfUnowned(
+	podName, nicName, subnetName string,
+	expectedV4, expectedV6, expectedMAC string,
+	owner AllocationOwner,
+) error {
+	if err := tx.ensureOpen(); err != nil {
+		return err
+	}
+	if !owner.Valid() {
+		return ErrAddressOwnershipChanged
+	}
+	v4, v6, mac, found, err := tx.GetPodAddressByNic(podName, nicName, subnetName)
+	if err != nil {
+		return err
+	}
+	subnet, err := tx.subnet(subnetName)
+	if err != nil {
+		return err
+	}
+	if !found || v4 != expectedV4 || v6 != expectedV6 || mac != expectedMAC {
+		return ErrAddressOwnershipChanged
+	}
+	if current, ok := subnet.NicToOwner[nicName]; ok && current != owner {
+		return ErrAddressOwnershipChanged
+	}
+	subnet.NicToOwner[nicName] = owner
+	return nil
+}
+
+// RebindAddressOwnerIfMatches atomically changes an existing owner after a
+// writer restart.
+func (tx *Transaction) RebindAddressOwnerIfMatches(
+	podName, nicName, subnetName string,
+	expectedV4, expectedV6, expectedMAC string,
+	previous, replacement AllocationOwner,
+) error {
+	if err := tx.ensureOpen(); err != nil {
+		return err
+	}
+	if !previous.Valid() || !replacement.Valid() {
+		return ErrAddressOwnershipChanged
+	}
+	v4, v6, mac, found, err := tx.GetPodAddressByNic(podName, nicName, subnetName)
+	if err != nil {
+		return err
+	}
+	subnet, err := tx.subnet(subnetName)
+	if err != nil {
+		return err
+	}
+	if !found || v4 != expectedV4 || v6 != expectedV6 || mac != expectedMAC || subnet.NicToOwner[nicName] != previous {
+		return ErrAddressOwnershipChanged
+	}
+	subnet.NicToOwner[nicName] = replacement
+	return nil
 }
 
 func (tx *Transaction) ensureOpen() error {
@@ -237,6 +388,7 @@ func (s *Subnet) clone() *Subnet {
 		V6NicToIP:    cloneIPMap(s.V6NicToIP),
 		V6IPToPod:    cloneStringMap(s.V6IPToPod),
 		NicToMac:     cloneStringMap(s.NicToMac),
+		NicToOwner:   cloneOwnerMap(s.NicToOwner),
 		MacToPod:     cloneStringMap(s.MacToPod),
 		PodToNicList: make(map[string][]string, len(s.PodToNicList)),
 		IPPools:      make(map[string]*IPPool, len(s.IPPools)),
@@ -287,6 +439,12 @@ func cloneIPMap(values map[string]IP) map[string]IP {
 
 func cloneStringMap(values map[string]string) map[string]string {
 	clone := make(map[string]string, len(values))
+	maps.Copy(clone, values)
+	return clone
+}
+
+func cloneOwnerMap(values map[string]AllocationOwner) map[string]AllocationOwner {
+	clone := make(map[string]AllocationOwner, len(values))
 	maps.Copy(clone, values)
 	return clone
 }
