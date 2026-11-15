@@ -128,6 +128,36 @@ func TestSubnetRuntimeWritersReplaceDirectStatusAndFinalizerPatches(t *testing.T
 	require.Equal(t, 1, gatewayCalls)
 }
 
+func TestSubnetRuntimeOVNMutationWriterOverridesGenericDomainWriter(t *testing.T) {
+	controller := &Controller{}
+	var genericCalls, mutationCalls int
+	require.NoError(t, controller.SetSubnetRuntimeOVNMutationWriter(func(_ context.Context, subnet *kubeovnv1.Subnet, operation SubnetRuntimeOVNMutationOperation, apply func(context.Context) error) error {
+		require.Equal(t, "subnet-a", subnet.Name)
+		require.Equal(t, SubnetRuntimeOVNAllocateMutationOperation, operation)
+		mutationCalls++
+		return apply(t.Context())
+	}))
+	require.Error(t, controller.SetSubnetRuntimeOVNMutationWriter(func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeOVNMutationOperation, func(context.Context) error) error {
+		return nil
+	}))
+	applyCalls := 0
+	require.NoError(t, controller.runSubnetRuntimeDomainWriters(t.Context(), &kubeovnv1.Subnet{Name: "subnet-a"}, func(context.Context) error {
+		applyCalls++
+		return nil
+	}))
+	controller.subnetRuntimeOVNWriter = func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeDomainOperation, func(context.Context) error) error {
+		genericCalls++
+		return nil
+	}
+	require.NoError(t, controller.runSubnetRuntimeDomainWriters(t.Context(), &kubeovnv1.Subnet{Name: "subnet-a"}, func(context.Context) error {
+		applyCalls++
+		return nil
+	}))
+	require.Equal(t, 2, mutationCalls)
+	require.Zero(t, genericCalls)
+	require.Equal(t, 2, applyCalls)
+}
+
 func TestSubnetRuntimeIPAMMutationWriterIsExplicitAndSingleInstall(t *testing.T) {
 	controller := &Controller{}
 	var calls int

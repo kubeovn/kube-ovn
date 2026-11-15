@@ -125,6 +125,7 @@ type installingSubnetDataPlaneBackend struct {
 	gatewayMAC       legacycontroller.SubnetRuntimeGatewayMACWriter
 	finalizer        legacycontroller.SubnetRuntimeFinalizerWriter
 	ovn              legacycontroller.SubnetRuntimeDomainWriter
+	ovnMutation      legacycontroller.SubnetRuntimeOVNMutationWriter
 	ipam             legacycontroller.SubnetRuntimeDomainWriter
 	ipamMutation     legacycontroller.SubnetRuntimeIPAMMutationWriter
 	ipamAddress      legacycontroller.SubnetRuntimeIPAMAddressWriter
@@ -165,6 +166,11 @@ func (b *installingSubnetDataPlaneBackend) SetSubnetRuntimeWriters(
 
 func (b *installingSubnetDataPlaneBackend) SetSubnetRuntimeVirtualPortWriter(writer legacycontroller.SubnetRuntimeVirtualPortWriter) error {
 	b.virtualPort = writer
+	return nil
+}
+
+func (b *installingSubnetDataPlaneBackend) SetSubnetRuntimeOVNMutationWriter(writer legacycontroller.SubnetRuntimeOVNMutationWriter) error {
+	b.ovnMutation = writer
 	return nil
 }
 
@@ -268,6 +274,7 @@ func TestSubnetControllerWriterAdapterWritersSyncResourceVersion(t *testing.T) {
 	require.NotNil(t, backend.ipStatus)
 	require.NotNil(t, backend.gatewayMAC)
 	require.NotNil(t, backend.ovn)
+	require.NotNil(t, backend.ovnMutation)
 	require.NotNil(t, backend.ipam)
 	require.NotNil(t, backend.ipamMutation)
 	require.NotNil(t, backend.ipamAddress)
@@ -293,6 +300,12 @@ func TestSubnetControllerWriterAdapterWritersSyncResourceVersion(t *testing.T) {
 		applyCalls++
 		return nil
 	}))
+	ovnMutationCalls := 0
+	require.NoError(t, backend.ovnMutation(t.Context(), projected, legacycontroller.SubnetRuntimeOVNAllocateMutationOperation, func(context.Context) error {
+		ovnMutationCalls++
+		return nil
+	}))
+	require.Equal(t, 1, ovnMutationCalls)
 	require.NoError(t, backend.ipam(t.Context(), projected, legacycontroller.SubnetRuntimeIPAMAllocateOperation, func(context.Context) error {
 		applyCalls++
 		return nil
