@@ -434,10 +434,13 @@ func (c *Controller) InitIPAM() error {
 			}
 			mac = new(lrp.MAC)
 		}
-		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
-			klog.Errorf("failed to init subnet %s: %v", subnet.Name, err)
-		}
-		if subnet.UID != "" {
+		initErr := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps)
+		if initErr != nil {
+			klog.Errorf("failed to init subnet %s: %v", subnet.Name, initErr)
+			if strictSubnetWriterRecovery {
+				return fmt.Errorf("failed to init subnet %s: %w", subnet.Name, initErr)
+			}
+		} else if subnet.UID != "" {
 			if err := c.ipam.BindSubnetUID(subnet.Name, string(subnet.UID)); err != nil {
 				return fmt.Errorf("failed to bind subnet %s IPAM identity: %w", subnet.Name, err)
 			}
