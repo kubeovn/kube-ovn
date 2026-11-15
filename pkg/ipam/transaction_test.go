@@ -330,6 +330,85 @@ func TestTransactionReleaseAddressByNicIfMatchesRejectsChangedTuple(t *testing.T
 	require.Equal(t, mac, currentMAC)
 }
 
+func TestTransactionOwnedAllocationFencesReleaseByOwner(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	owner := AllocationOwner{Token: 7, SubnetUID: "uid-a", Generation: 3, ResourceVersion: "9", WriterEpoch: "epoch-a"}
+	var v4, v6, mac string
+	require.NoError(t, ipam.WithTransaction(func(tx *Transaction) error {
+		var err error
+		v4, v6, mac, err = tx.GetRandomAddressOwned("pod", "nic", nil, "subnet", "", nil, true, owner)
+		return err
+	}))
+	require.Equal(t, owner, func() AllocationOwner {
+		current, found := ipam.GetPodAddressOwner("pod", "nic", "subnet")
+		require.True(t, found)
+		return current
+	}())
+	for _, stale := range []AllocationOwner{
+		{Token: 8, SubnetUID: owner.SubnetUID, Generation: owner.Generation, ResourceVersion: owner.ResourceVersion, WriterEpoch: owner.WriterEpoch},
+		{Token: owner.Token, SubnetUID: "uid-b", Generation: owner.Generation, ResourceVersion: owner.ResourceVersion, WriterEpoch: owner.WriterEpoch},
+		{Token: owner.Token, SubnetUID: owner.SubnetUID, Generation: owner.Generation + 1, ResourceVersion: owner.ResourceVersion, WriterEpoch: owner.WriterEpoch},
+		{Token: owner.Token, SubnetUID: owner.SubnetUID, Generation: owner.Generation, ResourceVersion: "10", WriterEpoch: owner.WriterEpoch},
+		{Token: owner.Token, SubnetUID: owner.SubnetUID, Generation: owner.Generation, ResourceVersion: owner.ResourceVersion, WriterEpoch: "epoch-b"},
+	} {
+		require.ErrorIs(t, ipam.WithTransaction(func(tx *Transaction) error {
+			return tx.ReleaseAddressByNicIfMatchesOwned("pod", "nic", "subnet", v4, v6, mac, stale)
+		}), ErrAddressOwnershipChanged)
+	}
+	require.NoError(t, ipam.WithTransaction(func(tx *Transaction) error {
+		return tx.ReleaseAddressByNicIfMatchesOwned("pod", "nic", "subnet", v4, v6, mac, owner)
+	}))
+	_, found := ipam.GetPodAddressOwner("pod", "nic", "subnet")
+	require.False(t, found)
+}
+
+func TestTransactionOwnedAllocationRollbackAndRebind(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	previous := AllocationOwner{Token: 1, SubnetUID: "uid-a", Generation: 1, ResourceVersion: "1", WriterEpoch: "epoch-a"}
+	replacement := previous
+	replacement.Token = 2
+	replacement.WriterEpoch = "epoch-b"
+	var v4, v6, mac string
+	require.NoError(t, ipam.WithTransaction(func(tx *Transaction) error {
+		var err error
+		v4, v6, mac, err = tx.GetRandomAddressOwned("pod", "nic", nil, "subnet", "", nil, true, previous)
+		return err
+	}))
+	failure := errors.New("rollback owner rebind")
+	require.ErrorIs(t, ipam.WithTransaction(func(tx *Transaction) error {
+		require.NoError(t, tx.RebindAddressOwnerIfMatches("pod", "nic", "subnet", v4, v6, mac, previous, replacement))
+		return failure
+	}), failure)
+	current, found := ipam.GetPodAddressOwner("pod", "nic", "subnet")
+	require.True(t, found)
+	require.Equal(t, previous, current)
+	require.NoError(t, ipam.WithTransaction(func(tx *Transaction) error {
+		return tx.RebindAddressOwnerIfMatches("pod", "nic", "subnet", v4, v6, mac, previous, replacement)
+	}))
+	current, found = ipam.GetPodAddressOwner("pod", "nic", "subnet")
+	require.True(t, found)
+	require.Equal(t, replacement, current)
+	allocations := ipam.ListSubnetAddressAllocations("subnet")
+	require.Len(t, allocations, 1)
+	require.Equal(t, replacement, allocations[0].Owner)
+}
+
+func TestTransactionBindAddressOwnerIfUnowned(t *testing.T) {
+	ipam := newTransactionIPAM(t)
+	v4, v6, mac, err := ipam.GetRandomAddress("pod", "nic", nil, "subnet", "", nil, true)
+	require.NoError(t, err)
+	owner := AllocationOwner{Token: 11, SubnetUID: "uid-a", Generation: 2, ResourceVersion: "4", WriterEpoch: "epoch-a"}
+	require.NoError(t, ipam.WithTransaction(func(tx *Transaction) error {
+		return tx.BindAddressOwnerIfUnowned("pod", "nic", "subnet", v4, v6, mac, owner)
+	}))
+	require.ErrorIs(t, ipam.WithTransaction(func(tx *Transaction) error {
+		return tx.BindAddressOwnerIfUnowned("pod", "nic", "subnet", v4, v6, mac, AllocationOwner{Token: 12})
+	}), ErrAddressOwnershipChanged)
+	current, found := ipam.GetPodAddressOwner("pod", "nic", "subnet")
+	require.True(t, found)
+	require.Equal(t, owner, current)
+}
+
 func TestTransactionReleaseAddressByNicIfMatchesRejectsDualStackTupleChanges(t *testing.T) {
 	for _, test := range []struct {
 		name     string

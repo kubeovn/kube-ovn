@@ -925,6 +925,16 @@ type SubnetRuntimeIPAMAddressResult struct {
 	MAC string
 }
 
+// SubnetRuntimeIPAMOwner is the primitive ownership identity passed to the
+// initialized IPAM backend by the opt-in runtime writer.
+type SubnetRuntimeIPAMOwner struct {
+	Token           uint64
+	SubnetUID       string
+	Generation      int64
+	ResourceVersion string
+	WriterEpoch     string
+}
+
 // SubnetRuntimeIPAMAddressAllocation is one existing Subnet-owned Pod/NIC
 // allocation discovered during startup recovery.
 type SubnetRuntimeIPAMAddressAllocation struct {
@@ -934,6 +944,7 @@ type SubnetRuntimeIPAMAddressAllocation struct {
 	V4        string
 	V6        string
 	MAC       string
+	Owner     SubnetRuntimeIPAMOwner
 }
 
 // SubnetRuntimeIPAMAddressWriter owns one typed Subnet IPAM address mutation.
@@ -952,6 +963,20 @@ type SubnetRuntimeIPAMAddressBackend interface {
 	AllocateSubnetRuntimeIPAMStatic(context.Context, string, string, string, *string, string, bool) (SubnetRuntimeIPAMAddressResult, error)
 	ReleaseSubnetRuntimeIPAMByNicIfMatches(context.Context, string, string, string, string, string, string) error
 	ReleaseSubnetRuntimeIPAMByPod(context.Context, string, string) error
+}
+
+// SubnetRuntimeIPAMOwnedAddressBackend provides atomic backend ownership
+// fencing for the opt-in runtime address path. Legacy tuple methods remain
+// available for the legacy writer and older test doubles.
+type SubnetRuntimeIPAMOwnedAddressBackend interface {
+	SubnetRuntimeIPAMAddressBackend
+	ExistingSubnetRuntimeIPAMOwner(context.Context, string, string, string) (SubnetRuntimeIPAMOwner, bool, error)
+	ListSubnetRuntimeIPAMOwnedAddresses(context.Context, string) ([]SubnetRuntimeIPAMAddressAllocation, error)
+	AllocateSubnetRuntimeIPAMRandomOwned(context.Context, string, string, string, string, []string, bool, SubnetRuntimeIPAMOwner) (SubnetRuntimeIPAMAddressResult, error)
+	AllocateSubnetRuntimeIPAMStaticOwned(context.Context, string, string, string, *string, string, bool, SubnetRuntimeIPAMOwner) (SubnetRuntimeIPAMAddressResult, error)
+	ReleaseSubnetRuntimeIPAMByNicIfMatchesOwned(context.Context, string, string, string, string, string, string, SubnetRuntimeIPAMOwner) error
+	BindSubnetRuntimeIPAMOwnerIfUnowned(context.Context, string, string, string, string, string, string, SubnetRuntimeIPAMOwner) error
+	RebindSubnetRuntimeIPAMOwner(context.Context, string, string, string, string, string, string, SubnetRuntimeIPAMOwner, SubnetRuntimeIPAMOwner) error
 }
 
 // SubnetRuntimeIPAMIdentityBinder binds initialized IPAM state to the current
@@ -1059,6 +1084,17 @@ func (c *Controller) ExistingSubnetRuntimeIPAMAddress(ctx context.Context, podNa
 	return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, found, nil
 }
 
+func (c *Controller) ExistingSubnetRuntimeIPAMOwner(ctx context.Context, podName, nicName, subnetName string) (SubnetRuntimeIPAMOwner, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeIPAMOwner{}, false, err
+	}
+	if c == nil || c.ipam == nil {
+		return SubnetRuntimeIPAMOwner{}, false, errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	owner, found := c.ipam.GetPodAddressOwner(podName, nicName, subnetName)
+	return SubnetRuntimeIPAMOwner{Token: owner.Token, SubnetUID: owner.SubnetUID, Generation: owner.Generation, ResourceVersion: owner.ResourceVersion, WriterEpoch: owner.WriterEpoch}, found, nil
+}
+
 // ListSubnetRuntimeIPAMAddresses returns existing initialized allocations for
 // one Subnet so runtime recovery can bootstrap durable ownership receipts.
 func (c *Controller) ListSubnetRuntimeIPAMAddresses(ctx context.Context, subnetName string) ([]SubnetRuntimeIPAMAddressAllocation, error) {
@@ -1078,9 +1114,14 @@ func (c *Controller) ListSubnetRuntimeIPAMAddresses(ctx context.Context, subnetN
 			V4:        allocation.V4,
 			V6:        allocation.V6,
 			MAC:       allocation.MAC,
+			Owner:     SubnetRuntimeIPAMOwner{Token: allocation.Owner.Token, SubnetUID: allocation.Owner.SubnetUID, Generation: allocation.Owner.Generation, ResourceVersion: allocation.Owner.ResourceVersion, WriterEpoch: allocation.Owner.WriterEpoch},
 		})
 	}
 	return result, nil
+}
+
+func (c *Controller) ListSubnetRuntimeIPAMOwnedAddresses(ctx context.Context, subnetName string) ([]SubnetRuntimeIPAMAddressAllocation, error) {
+	return c.ListSubnetRuntimeIPAMAddresses(ctx, subnetName)
 }
 
 // BindSubnetRuntimeIPAMIdentity records the current Subnet UID in initialized
@@ -1106,6 +1147,23 @@ func (c *Controller) AllocateSubnetRuntimeIPAMRandom(ctx context.Context, podNam
 	return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, err
 }
 
+func (c *Controller) AllocateSubnetRuntimeIPAMRandomOwned(ctx context.Context, podName, nicName, subnetName, poolName string, skippedAddrs []string, checkConflict bool, owner SubnetRuntimeIPAMOwner) (SubnetRuntimeIPAMAddressResult, error) {
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeIPAMAddressResult{}, err
+	}
+	if c == nil || c.ipam == nil {
+		return SubnetRuntimeIPAMAddressResult{}, errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	result := ipam.AllocationOwner{Token: owner.Token, SubnetUID: owner.SubnetUID, Generation: owner.Generation, ResourceVersion: owner.ResourceVersion, WriterEpoch: owner.WriterEpoch}
+	var v4, v6, mac string
+	err := c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		var err error
+		v4, v6, mac, err = tx.GetRandomAddressOwned(podName, nicName, nil, subnetName, poolName, skippedAddrs, checkConflict, result)
+		return err
+	})
+	return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, err
+}
+
 func (c *Controller) AllocateSubnetRuntimeIPAMStatic(ctx context.Context, podName, nicName, requestedIP string, mac *string, subnetName string, checkConflict bool) (SubnetRuntimeIPAMAddressResult, error) {
 	if err := ctx.Err(); err != nil {
 		return SubnetRuntimeIPAMAddressResult{}, err
@@ -1114,6 +1172,23 @@ func (c *Controller) AllocateSubnetRuntimeIPAMStatic(ctx context.Context, podNam
 		return SubnetRuntimeIPAMAddressResult{}, errors.New("subnet runtime IPAM backend is not initialized")
 	}
 	v4, v6, resultMAC, err := c.ipam.GetStaticAddress(podName, nicName, requestedIP, mac, subnetName, checkConflict)
+	return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: resultMAC}, err
+}
+
+func (c *Controller) AllocateSubnetRuntimeIPAMStaticOwned(ctx context.Context, podName, nicName, requestedIP string, mac *string, subnetName string, checkConflict bool, owner SubnetRuntimeIPAMOwner) (SubnetRuntimeIPAMAddressResult, error) {
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeIPAMAddressResult{}, err
+	}
+	if c == nil || c.ipam == nil {
+		return SubnetRuntimeIPAMAddressResult{}, errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	result := ipam.AllocationOwner{Token: owner.Token, SubnetUID: owner.SubnetUID, Generation: owner.Generation, ResourceVersion: owner.ResourceVersion, WriterEpoch: owner.WriterEpoch}
+	var v4, v6, resultMAC string
+	err := c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		var err error
+		v4, v6, resultMAC, err = tx.GetStaticAddressOwned(podName, nicName, requestedIP, mac, subnetName, checkConflict, result)
+		return err
+	})
 	return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: resultMAC}, err
 }
 
@@ -1126,6 +1201,46 @@ func (c *Controller) ReleaseSubnetRuntimeIPAMByNicIfMatches(ctx context.Context,
 	}
 	return c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
 		return tx.ReleaseAddressByNicIfMatches(podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC)
+	})
+}
+
+func (c *Controller) ReleaseSubnetRuntimeIPAMByNicIfMatchesOwned(ctx context.Context, podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC string, owner SubnetRuntimeIPAMOwner) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c == nil || c.ipam == nil {
+		return errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	wanted := ipam.AllocationOwner{Token: owner.Token, SubnetUID: owner.SubnetUID, Generation: owner.Generation, ResourceVersion: owner.ResourceVersion, WriterEpoch: owner.WriterEpoch}
+	return c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		return tx.ReleaseAddressByNicIfMatchesOwned(podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC, wanted)
+	})
+}
+
+func (c *Controller) BindSubnetRuntimeIPAMOwnerIfUnowned(ctx context.Context, podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC string, owner SubnetRuntimeIPAMOwner) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c == nil || c.ipam == nil {
+		return errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	wanted := ipam.AllocationOwner{Token: owner.Token, SubnetUID: owner.SubnetUID, Generation: owner.Generation, ResourceVersion: owner.ResourceVersion, WriterEpoch: owner.WriterEpoch}
+	return c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		return tx.BindAddressOwnerIfUnowned(podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC, wanted)
+	})
+}
+
+func (c *Controller) RebindSubnetRuntimeIPAMOwner(ctx context.Context, podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC string, previous, replacement SubnetRuntimeIPAMOwner) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c == nil || c.ipam == nil {
+		return errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	oldOwner := ipam.AllocationOwner{Token: previous.Token, SubnetUID: previous.SubnetUID, Generation: previous.Generation, ResourceVersion: previous.ResourceVersion, WriterEpoch: previous.WriterEpoch}
+	newOwner := ipam.AllocationOwner{Token: replacement.Token, SubnetUID: replacement.SubnetUID, Generation: replacement.Generation, ResourceVersion: replacement.ResourceVersion, WriterEpoch: replacement.WriterEpoch}
+	return c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		return tx.RebindAddressOwnerIfMatches(podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC, oldOwner, newOwner)
 	})
 }
 
