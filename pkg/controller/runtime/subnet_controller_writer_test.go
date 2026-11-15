@@ -185,7 +185,15 @@ func TestSubnetControllerWriterAdapterWritersSyncResourceVersion(t *testing.T) {
 		mutationCalls++
 		return nil
 	}))
-	require.Equal(t, 1, mutationCalls)
+	require.NoError(t, backend.ipamMutation(t.Context(), projected, legacycontroller.SubnetRuntimeIPAMAllocateAddressOperation, func(context.Context) error {
+		mutationCalls++
+		return nil
+	}))
+	require.NoError(t, backend.ipamMutation(t.Context(), projected, legacycontroller.SubnetRuntimeIPAMReleaseAddressOperation, func(context.Context) error {
+		mutationCalls++
+		return nil
+	}))
+	require.Equal(t, 3, mutationCalls)
 }
 
 func TestSubnetControllerWriterAdapterVirtualPortRejectsReplacement(t *testing.T) {

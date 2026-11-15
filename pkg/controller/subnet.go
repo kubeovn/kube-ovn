@@ -894,7 +894,7 @@ type SubnetRuntimeFinalizerWriter func(context.Context, *kubeovnv1.Subnet, bool)
 type SubnetRuntimeDomainWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeDomainOperation, func(context.Context) error) error
 
 // SubnetRuntimeIPAMMutationWriter wraps one concrete Subnet-owned IPAM
-// registration or deletion. It is deliberately narrower than
+// registration, address allocation/release, or deletion. It is deliberately narrower than
 // SubnetRuntimeDomainWriter so a later receipt can identify one mutation
 // instead of claiming the whole reconcile phase.
 type SubnetRuntimeIPAMMutationWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeIPAMMutationOperation, func(context.Context) error) error
@@ -904,8 +904,10 @@ type SubnetRuntimeIPAMMutationWriter func(context.Context, *kubeovnv1.Subnet, Su
 type SubnetRuntimeIPAMMutationOperation string
 
 const (
-	SubnetRuntimeIPAMRegisterOperation SubnetRuntimeIPAMMutationOperation = "ipam-register"
-	SubnetRuntimeIPAMDeleteOperation   SubnetRuntimeIPAMMutationOperation = "ipam-delete"
+	SubnetRuntimeIPAMRegisterOperation        SubnetRuntimeIPAMMutationOperation = "ipam-register"
+	SubnetRuntimeIPAMDeleteOperation          SubnetRuntimeIPAMMutationOperation = "ipam-delete"
+	SubnetRuntimeIPAMAllocateAddressOperation SubnetRuntimeIPAMMutationOperation = "ipam-address-allocate"
+	SubnetRuntimeIPAMReleaseAddressOperation  SubnetRuntimeIPAMMutationOperation = "ipam-address-release"
 )
 
 // SubnetRuntimeVirtualPortWriter owns the fresh-snapshot admission for queued
@@ -969,6 +971,27 @@ func (c *Controller) runSubnetRuntimeIPAMMutation(ctx context.Context, subnet *k
 		return err
 	}
 	return apply(ctx)
+}
+
+func (c *Controller) runSubnetRuntimeIPAMAddressMutation(ctx context.Context, subnet *kubeovnv1.Subnet, operation SubnetRuntimeIPAMMutationOperation, apply func(context.Context) error) error {
+	if subnet == nil {
+		return apply(ctx)
+	}
+	return c.runSubnetRuntimeIPAMMutation(ctx, subnet, operation, apply)
+}
+
+func (c *Controller) releaseSubnetRuntimeIPAMByNic(ctx context.Context, subnet *kubeovnv1.Subnet, podName, nicName, subnetName string) error {
+	return c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMReleaseAddressOperation, func(context.Context) error {
+		c.ipam.ReleaseAddressByNic(podName, nicName, subnetName)
+		return nil
+	})
+}
+
+func (c *Controller) releaseSubnetRuntimeIPAMByPod(ctx context.Context, subnet *kubeovnv1.Subnet, podName, subnetName string) error {
+	return c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMReleaseAddressOperation, func(context.Context) error {
+		c.ipam.ReleaseAddressByPod(podName, subnetName)
+		return nil
+	})
 }
 
 // SetSubnetRuntimeVirtualPortWriter installs the runtime admission hook for
@@ -1050,7 +1073,10 @@ func (c *Controller) RecoverSubnetRuntime(ctx context.Context, subnet *kubeovnv1
 		}
 		u2oName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 		u2oNicName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-		if _, _, _, err := c.ipam.GetStaticAddress(u2oName, u2oNicName, subnet.Status.U2OInterconnectionIP, u2oMAC, subnet.Name, true); err != nil {
+		if err := c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMAllocateAddressOperation, func(context.Context) error {
+			_, _, _, err := c.ipam.GetStaticAddress(u2oName, u2oNicName, subnet.Status.U2OInterconnectionIP, u2oMAC, subnet.Name, true)
+			return err
+		}); err != nil {
 			return fmt.Errorf("failed to recover subnet %s U2O address: %w", subnet.Name, err)
 		}
 	}
@@ -1545,7 +1571,9 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
-	c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
+	if err := c.releaseSubnetRuntimeIPAMByNic(ctx, subnet, u2oInterconnName, u2oInterconnLrpName, subnet.Name); err != nil {
+		return err
+	}
 
 	if subnet.Spec.Vpc != c.config.ClusterRouter {
 		if err := checkDeleteTarget(); err != nil {
@@ -2569,7 +2597,7 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 	allocated := false
 	if subnet.Spec.U2OInterconnectionIP == "" && (subnet.Status.U2OInterconnectionIP == "" || subnet.Status.U2OInterconnectionMAC == "") {
 		_, _, _, hadAllocation := c.ipam.GetPodAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
-		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
+		v4ip, v6ip, mac, err = c.acquireIPAddressWithContext(ctx, subnet, subnet.Name, u2oInterconnName, u2oInterconnLrpName)
 		if err != nil {
 			klog.Errorf("failed to acquire underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
 			return "", "", "", err
@@ -2580,10 +2608,12 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 		_, _, _, hadAllocation := c.ipam.GetPodAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
 		if subnet.Status.U2OInterconnectionIP != "" {
 			klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
-			c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
+			if releaseErr := c.releaseSubnetRuntimeIPAMByNic(ctx, subnet, u2oInterconnName, u2oInterconnLrpName, subnet.Name); releaseErr != nil {
+				return "", "", "", releaseErr
+			}
 			hadAllocation = false
 		}
-		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP, nil)
+		v4ip, v6ip, mac, err = c.acquireStaticIPAddressWithContext(ctx, subnet, subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP, nil)
 		if err != nil {
 			klog.Errorf("failed to acquire static underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
 			return "", "", "", err
@@ -2593,7 +2623,9 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 	if v4ip != "" || v6ip != "" {
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
+				if releaseErr := c.releaseSubnetRuntimeIPAMByNic(ctx, subnet, u2oInterconnName, u2oInterconnLrpName, subnet.Name); releaseErr != nil {
+					err = errors.Join(err, releaseErr)
+				}
 			}
 			return "", "", "", err
 		}
@@ -2608,7 +2640,9 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 		}
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
+				if releaseErr := c.releaseSubnetRuntimeIPAMByNic(ctx, subnet, u2oInterconnName, u2oInterconnLrpName, subnet.Name); releaseErr != nil {
+					err = errors.Join(err, releaseErr)
+				}
 			}
 			subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionMAC, subnet.Status.U2OInterconnectionVPC = oldIP, oldMAC, oldVPC
 			return "", "", "", err
@@ -2616,7 +2650,9 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 		err = c.createOrUpdateIPCRWithContext(ctx, "", u2oInterconnName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, metav1.NamespaceDefault, "", "")
 		if err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
+				if releaseErr := c.releaseSubnetRuntimeIPAMByNic(ctx, subnet, u2oInterconnName, u2oInterconnLrpName, subnet.Name); releaseErr != nil {
+					err = errors.Join(err, releaseErr)
+				}
 			}
 			subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionMAC, subnet.Status.U2OInterconnectionVPC = oldIP, oldMAC, oldVPC
 			klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)
@@ -2638,7 +2674,9 @@ func (c *Controller) releaseU2OIPWithContext(ctx context.Context, subnet *kubeov
 		return err
 	}
 	u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-	c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
+	if err := c.releaseSubnetRuntimeIPAMByNic(ctx, subnet, u2oInterconnName, u2oInterconnLrpName, subnet.Name); err != nil {
+		return err
+	}
 	subnet.Status.U2OInterconnectionIP = ""
 	subnet.Status.U2OInterconnectionMAC = ""
 	subnet.Status.U2OInterconnectionVPC = ""
@@ -2658,7 +2696,7 @@ func (c *Controller) acquireMcastQuerierIPWithContext(ctx context.Context, subne
 
 	if subnet.Status.McastQuerierIP == "" || subnet.Status.McastQuerierMAC == "" {
 		_, _, _, hadAllocation := c.ipam.GetPodAddressByNic(mcastQuerierLspName, mcastQuerierLspName, subnet.Name)
-		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, mcastQuerierLspName, mcastQuerierLspName)
+		v4ip, v6ip, mac, err = c.acquireIPAddressWithContext(ctx, subnet, subnet.Name, mcastQuerierLspName, mcastQuerierLspName)
 		if err != nil {
 			klog.Errorf("failed to acquire mcast querier ip address for subnet %s, %v", subnet.Name, err)
 			return isMcastQuerierChanged, err
@@ -2669,7 +2707,9 @@ func (c *Controller) acquireMcastQuerierIPWithContext(ctx context.Context, subne
 	if v4ip != "" || v6ip != "" {
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByPod(mcastQuerierLspName, subnet.Name)
+				if releaseErr := c.releaseSubnetRuntimeIPAMByPod(ctx, subnet, mcastQuerierLspName, subnet.Name); releaseErr != nil {
+					err = errors.Join(err, releaseErr)
+				}
 			}
 			return false, err
 		}
@@ -2684,7 +2724,9 @@ func (c *Controller) acquireMcastQuerierIPWithContext(ctx context.Context, subne
 		}
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByPod(mcastQuerierLspName, subnet.Name)
+				if releaseErr := c.releaseSubnetRuntimeIPAMByPod(ctx, subnet, mcastQuerierLspName, subnet.Name); releaseErr != nil {
+					err = errors.Join(err, releaseErr)
+				}
 			}
 			subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC = oldIP, oldMAC
 			return false, err
@@ -2693,7 +2735,9 @@ func (c *Controller) acquireMcastQuerierIPWithContext(ctx context.Context, subne
 		err := c.createOrUpdateIPCRWithContext(ctx, "", mcastQuerierLspName, subnet.Status.McastQuerierIP, mac, subnet.Name, metav1.NamespaceDefault, "", "")
 		if err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByPod(mcastQuerierLspName, subnet.Name)
+				if releaseErr := c.releaseSubnetRuntimeIPAMByPod(ctx, subnet, mcastQuerierLspName, subnet.Name); releaseErr != nil {
+					err = errors.Join(err, releaseErr)
+				}
 			}
 			subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC = oldIP, oldMAC
 			klog.Errorf("failed to create or update IPs of %s : %v", mcastQuerierLspName, err)
@@ -2723,7 +2767,9 @@ func (c *Controller) releaseMcastQuerierIPWithContext(ctx context.Context, subne
 				return isMcastQuerierChanged, err
 			}
 		}
-		c.ipam.ReleaseAddressByPod(mcastQuerierLspName, subnet.Name)
+		if err := c.releaseSubnetRuntimeIPAMByPod(ctx, subnet, mcastQuerierLspName, subnet.Name); err != nil {
+			return isMcastQuerierChanged, err
+		}
 		subnet.Status.McastQuerierIP = ""
 		subnet.Status.McastQuerierMAC = ""
 		isMcastQuerierChanged = true

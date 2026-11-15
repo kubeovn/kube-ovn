@@ -148,13 +148,14 @@ revalidates UID, generation, spec, resource version, and deletion state, and
 only then invokes the OVN backend. Legacy mode keeps the informer-backed
 worker.
 
-The runtime writer also exposes a concrete IPAM mutation seam for Subnet
-registration and deletion. `AddOrUpdateSubnet` and `DeleteSubnet` now pass
-through operation-specific identity and recovery gates instead of relying
-only on the enclosing domain-phase wrapper. This seam currently delegates to
-the existing in-memory IPAM implementation and returns no durable receipt;
-the next increment must add backend-owned receipt persistence and conditional
-recovery before claiming cross-process ownership for these mutations.
+The runtime writer also exposes concrete IPAM mutation seams for Subnet
+registration, address allocation/release, and deletion. `AddOrUpdateSubnet`,
+the Subnet-owned U2O/multicast address operations, and `DeleteSubnet` now pass
+through operation-specific identity and recovery gates instead of relying only
+on the enclosing domain-phase wrapper. These seams currently delegate to the
+existing in-memory IPAM implementation and return no durable receipt; the next
+increment must add backend-owned receipt persistence and conditional recovery
+before claiming cross-process ownership for these mutations.
 
 Each isolated invocation waits for recovery and performs a fresh Subnet GET
 with a five-second deadline before checking the immutable snapshot and

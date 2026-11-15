@@ -20,16 +20,18 @@ import (
 type SubnetWriteOperation string
 
 const (
-	SubnetStatusWriteOperation     SubnetWriteOperation = "status"
-	SubnetFinalizerAddOperation    SubnetWriteOperation = "finalizer-add"
-	SubnetFinalizerRemoveOperation SubnetWriteOperation = "finalizer-remove"
-	SubnetOVNAllocateOperation     SubnetWriteOperation = "ovn-allocate"
-	SubnetOVNVirtualPortOperation  SubnetWriteOperation = "ovn-virtual-port"
-	SubnetOVNCleanupOperation      SubnetWriteOperation = "ovn-cleanup"
-	SubnetIPAMAllocateOperation    SubnetWriteOperation = "ipam-allocate"
-	SubnetIPAMReleaseOperation     SubnetWriteOperation = "ipam-release"
-	SubnetIPAMRegisterOperation    SubnetWriteOperation = "ipam-register"
-	SubnetIPAMDeleteOperation      SubnetWriteOperation = "ipam-delete"
+	SubnetStatusWriteOperation         SubnetWriteOperation = "status"
+	SubnetFinalizerAddOperation        SubnetWriteOperation = "finalizer-add"
+	SubnetFinalizerRemoveOperation     SubnetWriteOperation = "finalizer-remove"
+	SubnetOVNAllocateOperation         SubnetWriteOperation = "ovn-allocate"
+	SubnetOVNVirtualPortOperation      SubnetWriteOperation = "ovn-virtual-port"
+	SubnetOVNCleanupOperation          SubnetWriteOperation = "ovn-cleanup"
+	SubnetIPAMAllocateOperation        SubnetWriteOperation = "ipam-allocate"
+	SubnetIPAMReleaseOperation         SubnetWriteOperation = "ipam-release"
+	SubnetIPAMRegisterOperation        SubnetWriteOperation = "ipam-register"
+	SubnetIPAMDeleteOperation          SubnetWriteOperation = "ipam-delete"
+	SubnetIPAMAddressAllocateOperation SubnetWriteOperation = "ipam-address-allocate"
+	SubnetIPAMAddressReleaseOperation  SubnetWriteOperation = "ipam-address-release"
 )
 
 // SubnetWriteSnapshot is the immutable API state a writer must carry across
@@ -111,7 +113,7 @@ func (s SubnetWriteSnapshot) validateOperation(operation SubnetWriteOperation) e
 		if !s.Deleting {
 			return fmt.Errorf("subnet %s is not terminating; finalizer removal is not allowed", s.Name)
 		}
-	case SubnetOVNAllocateOperation, SubnetIPAMAllocateOperation, SubnetIPAMRegisterOperation:
+	case SubnetOVNAllocateOperation, SubnetIPAMAllocateOperation, SubnetIPAMRegisterOperation, SubnetIPAMAddressAllocateOperation:
 		if s.Deleting || !s.AllocationAllowed {
 			return fmt.Errorf("subnet %s is not allocation-ready for %s", s.Name, operation)
 		}
@@ -119,6 +121,7 @@ func (s SubnetWriteSnapshot) validateOperation(operation SubnetWriteOperation) e
 		if !s.Deleting {
 			return fmt.Errorf("subnet %s is not terminating; cleanup is not allowed", s.Name)
 		}
+	case SubnetIPAMAddressReleaseOperation:
 	default:
 		return fmt.Errorf("unknown Subnet write operation %q", operation)
 	}
