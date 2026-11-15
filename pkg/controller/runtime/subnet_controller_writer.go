@@ -45,10 +45,11 @@ type SubnetVirtualPortBackend interface {
 // the runtime reconciler. The facade carries the immutable API snapshot into
 // the existing status, finalizer, IPAM, and OVN sequence.
 type SubnetControllerWriterAdapter struct {
-	Backend SubnetDataPlaneBackend
-	Client  client.Client
-	Reader  client.Reader
-	Gate    SubnetWriterGate
+	Backend     SubnetDataPlaneBackend
+	Client      client.Client
+	Reader      client.Reader
+	Gate        SubnetWriterGate
+	ipamAdapter *subnetIPAMAdapter
 }
 
 type subnetRuntimeWriterInstaller interface {
@@ -252,6 +253,12 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 	if addressBackend == nil {
 		return errors.New("subnet controller writer typed IPAM address backend is not configured")
 	}
+	if a.ipamAdapter != nil {
+		if err := addressInstaller.SetSubnetRuntimeIPAMAddressWriter(a.typedIPAMAddressWriter(a.ipamAdapter)); err != nil {
+			return err
+		}
+		return virtualPortInstaller.SetSubnetRuntimeVirtualPortWriter(virtualPortWriter)
+	}
 	addressWriter := func(ctx context.Context, subnet *kubeovnv1.Subnet, request legacycontroller.SubnetRuntimeIPAMAddressRequest) (legacycontroller.SubnetRuntimeIPAMAddressResult, error) {
 		if subnet == nil {
 			return legacycontroller.SubnetRuntimeIPAMAddressResult{}, errors.New("subnet IPAM address writer requires a Subnet")
@@ -260,6 +267,10 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 		if err != nil {
 			return legacycontroller.SubnetRuntimeIPAMAddressResult{}, err
 		}
+		if request.SubnetName != "" && request.SubnetName != snapshot.Name {
+			return legacycontroller.SubnetRuntimeIPAMAddressResult{}, fmt.Errorf("subnet IPAM address request targets Subnet %q while snapshot is %q", request.SubnetName, snapshot.Name)
+		}
+		request.SubnetName = snapshot.Name
 		operation := SubnetWriteOperation(request.Operation)
 		writer := &subnetSideEffectWriter{ctx: ctx, reader: a.Reader, gate: a.Gate}
 		var result legacycontroller.SubnetRuntimeIPAMAddressResult
@@ -307,9 +318,47 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 	return virtualPortInstaller.SetSubnetRuntimeVirtualPortWriter(virtualPortWriter)
 }
 
+func (a *SubnetControllerWriterAdapter) typedIPAMAddressWriter(adapter *subnetIPAMAdapter) legacycontroller.SubnetRuntimeIPAMAddressWriter {
+	return func(ctx context.Context, subnet *kubeovnv1.Subnet, request legacycontroller.SubnetRuntimeIPAMAddressRequest) (legacycontroller.SubnetRuntimeIPAMAddressResult, error) {
+		if subnet == nil {
+			return legacycontroller.SubnetRuntimeIPAMAddressResult{}, errors.New("subnet IPAM address writer requires a Subnet")
+		}
+		snapshot, err := NewSubnetWriteSnapshot(subnet, subnet.DeletionTimestamp.IsZero())
+		if err != nil {
+			return legacycontroller.SubnetRuntimeIPAMAddressResult{}, err
+		}
+		if request.SubnetName != "" && request.SubnetName != snapshot.Name {
+			return legacycontroller.SubnetRuntimeIPAMAddressResult{}, fmt.Errorf("subnet IPAM address request targets Subnet %q while snapshot is %q", request.SubnetName, snapshot.Name)
+		}
+		request.SubnetName = snapshot.Name
+		switch request.Operation {
+		case legacycontroller.SubnetRuntimeIPAMAllocateAddressOperation:
+			var v4, v6, mac string
+			if request.RequestedIP != "" {
+				v4, v6, mac, _, err = adapter.AllocateStaticWithContext(ctx, snapshot, request.PodName, request.NICName, request.RequestedIP, request.MAC, request.SubnetName, request.CheckConflict)
+			} else {
+				v4, v6, mac, _, err = adapter.AllocateRandomWithContext(ctx, snapshot, request.PodName, request.NICName, request.PoolName)
+			}
+			return legacycontroller.SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, err
+		case legacycontroller.SubnetRuntimeIPAMReleaseAddressOperation:
+			if request.NICName == "" {
+				return legacycontroller.SubnetRuntimeIPAMAddressResult{}, adapter.ReleaseByPodWithContext(ctx, snapshot, request.PodName)
+			}
+			return legacycontroller.SubnetRuntimeIPAMAddressResult{}, adapter.ReleaseByNicWithContext(ctx, snapshot, request.PodName, request.NICName, request.ExpectedV4, request.ExpectedV6, request.ExpectedMAC)
+		default:
+			return legacycontroller.SubnetRuntimeIPAMAddressResult{}, fmt.Errorf("unsupported Subnet IPAM address operation %q", request.Operation)
+		}
+	}
+}
+
 func (a *SubnetControllerWriterAdapter) RecoverSubnet(ctx context.Context, snapshot SubnetWriteSnapshot) error {
 	if a == nil || a.Backend == nil {
 		return errors.New("subnet controller writer backend is not configured")
+	}
+	if a.ipamAdapter != nil {
+		if err := a.ipamAdapter.Recover(ctx, snapshot); err != nil {
+			return err
+		}
 	}
 	return a.Backend.RecoverSubnetRuntime(ctx, subnetFromSnapshot(snapshot))
 }

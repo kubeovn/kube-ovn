@@ -81,6 +81,18 @@ func TestSubnetIPAMAdapterMacOnlyAllocationIsNoOp(t *testing.T) {
 	require.Nil(t, secondReceipt, "existing MAC-only allocation must not create a second receipt")
 }
 
+func TestSubnetIPAMAdapterStaticAllocationRejectsSubnetMismatch(t *testing.T) {
+	adapter, snapshot := newSubnetIPAMAdapterTest(t)
+
+	_, _, _, receipt, err := adapter.AllocateStaticWithContext(
+		t.Context(), snapshot, "pod", "nic", "10.0.0.1", nil, "other-subnet", true,
+	)
+	require.ErrorIs(t, err, ErrSubnetIPAMIdentityMismatch)
+	require.Nil(t, receipt)
+	_, _, _, found := adapterIPAM(t, adapter).GetPodAddressByNic("pod", "nic", snapshot.Name)
+	require.False(t, found)
+}
+
 func TestSubnetIPAMAdapterConcurrentSameKeyHasOneOwner(t *testing.T) {
 	adapter, snapshot := newSubnetIPAMAdapterTest(t)
 	type result struct {
