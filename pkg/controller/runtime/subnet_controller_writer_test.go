@@ -324,6 +324,11 @@ func TestSubnetControllerWriterAdapterTypedIPAMAddressWriterPreservesRequest(t *
 
 	current := &kubeovnv1.Subnet{}
 	require.NoError(t, api.Get(t.Context(), client.ObjectKey{Name: subnet.Name}, current))
+	_, err = backend.ipamAddress(t.Context(), current, legacycontroller.SubnetRuntimeIPAMAddressRequest{
+		Operation:  legacycontroller.SubnetRuntimeIPAMAllocateAddressOperation,
+		SubnetName: "other-subnet",
+	})
+	require.ErrorContains(t, err, "targets Subnet")
 	result, err := backend.ipamAddress(t.Context(), current, legacycontroller.SubnetRuntimeIPAMAddressRequest{
 		Operation:     legacycontroller.SubnetRuntimeIPAMAllocateAddressOperation,
 		SubnetName:    current.Name,
@@ -379,6 +384,90 @@ func TestSubnetControllerWriterAdapterTypedIPAMAddressWriterPreservesRequest(t *
 	require.NoError(t, err)
 	require.Equal(t, 1, backend.addressBackend.releasePodCalls)
 	require.Equal(t, "pod-a", backend.addressBackend.lastPodName)
+}
+
+func TestSubnetControllerWriterAdapterUsesDurableIPAMAdapter(t *testing.T) {
+	scheme, err := NewScheme()
+	require.NoError(t, err)
+	subnet := testSubnet("")
+	subnet.UID = types.UID("subnet-uid")
+	api := fake.NewClientBuilder().WithScheme(scheme).WithObjects(subnet).Build()
+	backend := &installingSubnetDataPlaneBackend{}
+	backend.addressBackend.allocateResult = legacycontroller.SubnetRuntimeIPAMAddressResult{V4: "10.0.0.9", MAC: "00:11:22:33:44:77"}
+	store := newMemorySubnetIPAMReceiptStore()
+	runtimeBackend, err := newSubnetRuntimeIPAMBackend(&backend.addressBackend, store)
+	require.NoError(t, err)
+	ipamAdapter, err := newSubnetIPAMAdapterWithBackendAndStore(&subnetSideEffectWriter{
+		ctx:    t.Context(),
+		reader: api,
+		gate:   SubnetWriterGate{Recovery: func(context.Context) error { return nil }, Fence: staticSubnetWriterFence{}},
+	}, runtimeBackend, store)
+	require.NoError(t, err)
+	adapter := &SubnetControllerWriterAdapter{
+		Backend:     backend,
+		Client:      api,
+		Reader:      api,
+		Gate:        SubnetWriterGate{Recovery: func(context.Context) error { return nil }, Fence: staticSubnetWriterFence{}},
+		ipamAdapter: ipamAdapter,
+	}
+	require.NoError(t, adapter.InstallRuntimeWriters())
+
+	current := &kubeovnv1.Subnet{}
+	require.NoError(t, api.Get(t.Context(), client.ObjectKey{Name: subnet.Name}, current))
+	result, err := backend.ipamAddress(t.Context(), current, legacycontroller.SubnetRuntimeIPAMAddressRequest{
+		Operation:  legacycontroller.SubnetRuntimeIPAMAllocateAddressOperation,
+		SubnetName: current.Name,
+		PodName:    "pod-a",
+		NICName:    "nic-a",
+	})
+	require.NoError(t, err)
+	require.Equal(t, backend.addressBackend.allocateResult, result)
+	key := subnetIPAMKey{subnet: current.Name, pod: "pod-a", nic: "nic-a"}
+	allocation, found, err := store.Lookup(t.Context(), key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, subnetIPAMAddress{v4: result.V4, v6: result.V6, mac: result.MAC}, allocation.address)
+
+	backend.addressBackend.existingResult = result
+	backend.addressBackend.existingFound = true
+	snapshot, err := NewSubnetWriteSnapshot(current, true)
+	require.NoError(t, err)
+	require.NoError(t, ipamAdapter.Recover(t.Context(), snapshot))
+
+	_, err = backend.ipamAddress(t.Context(), current, legacycontroller.SubnetRuntimeIPAMAddressRequest{
+		Operation:  legacycontroller.SubnetRuntimeIPAMReleaseAddressOperation,
+		SubnetName: current.Name,
+		PodName:    "pod-a",
+		NICName:    "nic-a",
+	})
+	require.NoError(t, err)
+	_, found, err = store.Lookup(t.Context(), key)
+	require.NoError(t, err)
+	require.False(t, found)
+
+	backend.addressBackend.existingFound = false
+	backend.addressBackend.allocateResult = legacycontroller.SubnetRuntimeIPAMAddressResult{V4: "10.0.0.10", MAC: "00:11:22:33:44:88"}
+	staticResult, err := backend.ipamAddress(t.Context(), current, legacycontroller.SubnetRuntimeIPAMAddressRequest{
+		Operation:   legacycontroller.SubnetRuntimeIPAMAllocateAddressOperation,
+		SubnetName:  current.Name,
+		PodName:     "pod-b",
+		NICName:     "nic-b",
+		RequestedIP: "10.0.0.10",
+	})
+	require.NoError(t, err)
+	require.Equal(t, backend.addressBackend.allocateResult, staticResult)
+
+	_, err = backend.ipamAddress(t.Context(), current, legacycontroller.SubnetRuntimeIPAMAddressRequest{
+		Operation:  legacycontroller.SubnetRuntimeIPAMReleaseAddressOperation,
+		SubnetName: current.Name,
+		PodName:    "pod-b",
+	})
+	require.NoError(t, err)
+	_, found, err = store.Lookup(t.Context(), subnetIPAMKey{subnet: current.Name, pod: "pod-b", nic: "nic-b"})
+	require.NoError(t, err)
+	require.False(t, found)
+	require.Equal(t, 2, backend.addressBackend.releaseCalls, "durable release should fence each owned tuple")
+	require.Zero(t, backend.addressBackend.releasePodCalls, "durable release must not use the broad Pod fallback")
 }
 
 func TestSubnetControllerWriterAdapterVirtualPortRejectsReplacement(t *testing.T) {

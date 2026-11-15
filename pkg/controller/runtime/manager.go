@@ -142,7 +142,7 @@ func setupSubnetStatusReconciler(mgr ctrl.Manager, backend *controller.Controlle
 	return reconciler.SetupWithManager(mgr)
 }
 
-func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controller, lease SubnetWriterLease, fence SubnetWriterFence) error {
+func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controller, lease SubnetWriterLease, fence SubnetWriterFence, ipamAdapter *subnetIPAMAdapter) error {
 	if mgr == nil {
 		return errors.New("controller-runtime manager is nil")
 	}
@@ -150,10 +150,11 @@ func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controlle
 		return errors.New("subnet writer runtime backend is nil")
 	}
 	adapter := &SubnetControllerWriterAdapter{
-		Backend: backend,
-		Client:  mgr.GetClient(),
-		Reader:  mgr.GetAPIReader(),
-		Gate:    SubnetWriterGate{Recovery: backend.WaitForSubnetRuntimeRecovery, Fence: fence},
+		Backend:     backend,
+		Client:      mgr.GetClient(),
+		Reader:      mgr.GetAPIReader(),
+		Gate:        SubnetWriterGate{Recovery: backend.WaitForSubnetRuntimeRecovery, Fence: fence},
+		ipamAdapter: ipamAdapter,
 	}
 	if err := adapter.InstallRuntimeWriters(); err != nil {
 		return err
@@ -241,13 +242,32 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 		if err := backend.SetSubnetRuntimeFence(fence.Check); err != nil {
 			return err
 		}
+		if config.KubeClient == nil || config.PodNamespace == "" {
+			return errors.New("subnet writer durable IPAM receipt configuration is incomplete")
+		}
+		receiptStore, err := newKubernetesSubnetIPAMReceiptStore(config.KubeClient.CoreV1().ConfigMaps(config.PodNamespace))
+		if err != nil {
+			return err
+		}
+		ipamBackend, err := newSubnetRuntimeIPAMBackend(backend.SubnetRuntimeIPAMAddressBackend(), receiptStore)
+		if err != nil {
+			return err
+		}
+		ipamAdapter, err := newSubnetIPAMAdapterWithBackendAndStore(&subnetSideEffectWriter{
+			ctx:    ctx,
+			reader: mgr.GetAPIReader(),
+			gate:   SubnetWriterGate{Recovery: backend.WaitForSubnetRuntimeRecovery, Fence: fence},
+		}, ipamBackend, receiptStore)
+		if err != nil {
+			return err
+		}
 		ownership := &SubnetWriterOwnership{}
 		lease, err := ownership.ClaimWithFence(ctx, SubnetWriterOwnerRuntime, fence)
 		if err != nil {
 			return err
 		}
 		defer func() { _ = lease.Release(context.WithoutCancel(ctx)) }()
-		if err := setupSubnetWriterReconciler(mgr, backend, lease, fence); err != nil {
+		if err := setupSubnetWriterReconciler(mgr, backend, lease, fence, ipamAdapter); err != nil {
 			return err
 		}
 	}
