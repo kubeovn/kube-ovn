@@ -77,6 +77,53 @@ func (s *kubernetesSubnetIPAMReceiptStore) Remember(ctx context.Context, allocat
 	return nil
 }
 
+// Rebind atomically changes receipt ownership after a writer restart. The
+// complete previous allocation, including its token and identity, is the CAS
+// compare value; a resource-version guarded update prevents an old writer
+// from retaining compensation rights after the new epoch is published.
+func (s *kubernetesSubnetIPAMReceiptStore) Rebind(ctx context.Context, previous, replacement subnetIPAMAllocation) error {
+	if err := validateSubnetIPAMAllocation(previous); err != nil {
+		return err
+	}
+	if err := validateSubnetIPAMAllocation(replacement); err != nil {
+		return err
+	}
+	if previous.key != replacement.key || previous.uid != replacement.uid || previous.address != replacement.address {
+		return ErrSubnetIPAMReceiptChanged
+	}
+	if err := contextError(ctx); err != nil {
+		return err
+	}
+	current, found, err := s.lookupConfigMap(ctx, previous.key)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return ErrSubnetIPAMReceiptChanged
+	}
+	currentAllocation, err := unmarshalSubnetIPAMAllocation(current.Data[subnetIPAMReceiptDataKey])
+	if err != nil {
+		return err
+	}
+	if currentAllocation != previous {
+		return ErrSubnetIPAMReceiptChanged
+	}
+	record, err := marshalSubnetIPAMAllocation(replacement)
+	if err != nil {
+		return err
+	}
+	updated := current.DeepCopy()
+	if updated.Data == nil {
+		updated.Data = make(map[string]string)
+	}
+	updated.Data[subnetIPAMReceiptDataKey] = string(record)
+	_, err = s.configMaps.Update(ctx, updated, metav1.UpdateOptions{})
+	if apierrors.IsConflict(err) || apierrors.IsNotFound(err) {
+		return ErrSubnetIPAMReceiptChanged
+	}
+	return err
+}
+
 func (s *kubernetesSubnetIPAMReceiptStore) Lookup(ctx context.Context, key subnetIPAMKey) (subnetIPAMAllocation, bool, error) {
 	if err := contextError(ctx); err != nil {
 		return subnetIPAMAllocation{}, false, err
