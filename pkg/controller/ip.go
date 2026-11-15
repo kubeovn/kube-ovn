@@ -407,7 +407,7 @@ func (c *Controller) acquireIPAddressWithContext(ctx context.Context, subnet *ku
 			NICName:       nicName,
 			SkippedAddrs:  skippedAddrs,
 			CheckConflict: checkConflict,
-		}, func(ctx context.Context) (SubnetRuntimeIPAMAddressResult, error) {
+		}, func(_ context.Context) (SubnetRuntimeIPAMAddressResult, error) {
 			v4, v6, mac, err := c.ipam.GetRandomAddress(name, nicName, nil, subnetName, "", skippedAddrs, checkConflict)
 			return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, err
 		})
@@ -456,7 +456,7 @@ func (c *Controller) acquireStaticIPAddressWithContext(ctx context.Context, subn
 		RequestedIP:   ip,
 		MAC:           macPointer,
 		CheckConflict: checkConflict,
-	}, func(ctx context.Context) (SubnetRuntimeIPAMAddressResult, error) {
+	}, func(_ context.Context) (SubnetRuntimeIPAMAddressResult, error) {
 		v4, v6, mac, err := c.ipam.GetStaticAddress(name, nicName, ip, macPointer, subnetName, checkConflict)
 		return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, err
 	})
