@@ -212,11 +212,16 @@ atomic commit is provided by `IPAM.WithTransaction`, so a failed allocation
 leaves no committed address and a retry can allocate again. An
 existing pod/NIC/subnet allocation is an explicit no-op and returns no receipt;
 transaction failures likewise return no receipt. Successful allocations carry
-a process-local owner token, Subnet UID, and the allocated address tuple. A
-receipt compensates only while that token and tuple still match the adapter's
-current owner, and refuses replay or a later owner. This check is process-local
-and cannot provide durable fencing or cross-process ownership; production wiring
-still needs a durable owner/revision protocol and an OVN adapter.
+an owner token, Subnet UID, writer epoch, and the allocated address tuple. The
+memory store preserves these checks only within a process; the production
+ConfigMap store persists them with create-if-absent records and
+resource-version guarded compare-and-swap operations. During startup recovery,
+a receipt whose Subnet UID, address tuple, and complete old identity still
+match is atomically rebound to a new token and the current writer epoch. The
+old receipt therefore cannot compensate after a restart; failure to compare
+and update the durable record fails closed. Allocations discovered directly
+from IPAM without a durable receipt are legacy ownership and are published
+with `Remember` before further mutation is admitted.
 `IPAM.WithTransactionContext` checks cancellation before and after the atomic
 transaction, but cannot interrupt the IPAM mutex while a transaction is
 running. Cancellation observed after the action can therefore report an

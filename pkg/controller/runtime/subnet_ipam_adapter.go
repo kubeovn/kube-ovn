@@ -34,6 +34,10 @@ var (
 // implementation below only preserves the existing process-local behavior.
 type subnetIPAMReceiptStore interface {
 	Remember(ctx context.Context, allocation subnetIPAMAllocation) error
+	// Rebind atomically replaces a complete receipt with a new owner identity.
+	// Implementations must compare every field in previous before publishing
+	// replacement; a failed compare must leave the current receipt untouched.
+	Rebind(ctx context.Context, previous, replacement subnetIPAMAllocation) error
 	Lookup(ctx context.Context, key subnetIPAMKey) (subnetIPAMAllocation, bool, error)
 	Delete(ctx context.Context, allocation subnetIPAMAllocation) error
 }
@@ -65,6 +69,29 @@ func (s *memorySubnetIPAMReceiptStore) Remember(ctx context.Context, allocation 
 		return ErrSubnetIPAMReceiptStale
 	}
 	s.allocations[allocation.key] = allocation
+	return nil
+}
+
+func (s *memorySubnetIPAMReceiptStore) Rebind(ctx context.Context, previous, replacement subnetIPAMAllocation) error {
+	if err := contextError(ctx); err != nil {
+		return err
+	}
+	if err := validateSubnetIPAMAllocation(previous); err != nil {
+		return err
+	}
+	if err := validateSubnetIPAMAllocation(replacement); err != nil {
+		return err
+	}
+	if previous.key != replacement.key || previous.uid != replacement.uid || previous.address != replacement.address {
+		return ErrSubnetIPAMReceiptChanged
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.allocations[previous.key]
+	if !ok || current != previous {
+		return ErrSubnetIPAMReceiptChanged
+	}
+	s.allocations[previous.key] = replacement
 	return nil
 }
 
@@ -231,6 +258,13 @@ type subnetIPAMAllocation struct {
 	identity SubnetMutationIdentity
 }
 
+func validSubnetIPAMRecoveryIdentity(identity SubnetMutationIdentity, snapshot SubnetWriteSnapshot) bool {
+	return identity == (SubnetMutationIdentity{}) ||
+		(identity.Validate() == nil && identity.WriterEpoch != "" && identity.Name == snapshot.Name && identity.UID == snapshot.UID &&
+			identity.Generation == snapshot.Generation && identity.ResourceVersion == snapshot.ResourceVersion &&
+			identity.Operation == SubnetIPAMAddressAllocateOperation)
+}
+
 func subnetIPAMRecoveryContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(context.WithoutCancel(ctx), subnetSideEffectCompensationTimeout)
 }
@@ -282,19 +316,22 @@ func (a *subnetIPAMAdapter) Recover(ctx context.Context, snapshot SubnetWriteSna
 			(allocation.address.v4 == "" && allocation.address.v6 == "" && allocation.address.mac == "") {
 			return ErrSubnetIPAMRecoveryUnsafe
 		}
+		if !validSubnetIPAMRecoveryIdentity(allocation.identity, snapshot) {
+			return ErrSubnetIPAMRecoveryUnsafe
+		}
 		byKey[allocation.key] = allocation
+	}
+	identity, err := newSubnetMutationIdentity(ctx, snapshot, SubnetIPAMAddressAllocateOperation, a.writer.gate.Fence)
+	if err != nil {
+		return err
+	}
+	if identity.WriterEpoch == "" {
+		return ErrSubnetWriterEpochUnavailable
 	}
 	if lister, ok := a.backend.(subnetIPAMExistingAllocationLister); ok {
 		existing, err := lister.ListExisting(ctx, snapshot)
 		if err != nil {
 			return err
-		}
-		identity, err := newSubnetMutationIdentity(ctx, snapshot, SubnetIPAMAddressAllocateOperation, a.writer.gate.Fence)
-		if err != nil {
-			return err
-		}
-		if identity.WriterEpoch == "" {
-			return ErrSubnetWriterEpochUnavailable
 		}
 		for _, allocation := range existing {
 			if allocation.key.subnet != snapshot.Name || allocation.key.pod == "" || allocation.key.nic == "" ||
@@ -313,7 +350,8 @@ func (a *subnetIPAMAdapter) Recover(ctx context.Context, snapshot SubnetWriteSna
 				return err
 			}
 			if found {
-				if current.address != allocation.address || current.uid != string(snapshot.UID) {
+				if current.address != allocation.address || current.uid != string(snapshot.UID) ||
+					!validSubnetIPAMRecoveryIdentity(current.identity, snapshot) {
 					return ErrSubnetIPAMRecoveryUnsafe
 				}
 				byKey[allocation.key] = current
@@ -341,6 +379,21 @@ func (a *subnetIPAMAdapter) Recover(ctx context.Context, snapshot SubnetWriteSna
 			return ErrSubnetIPAMRecoveryUnsafe
 		}
 		existing[allocation.key] = ok
+	}
+	for i, allocation := range allocations {
+		if !existing[allocation.key] || allocation.identity.Validate() != nil || allocation.identity.WriterEpoch == "" {
+			continue
+		}
+		if allocation.identity.Equal(identity) {
+			continue
+		}
+		replacement := allocation
+		replacement.token = a.next.Add(1)
+		replacement.identity = identity
+		if err := a.store.Rebind(ctx, allocation, replacement); err != nil {
+			return err
+		}
+		allocations[i] = replacement
 	}
 	remembered := make([]subnetIPAMAllocation, 0, len(allocations))
 	for _, allocation := range allocations {
