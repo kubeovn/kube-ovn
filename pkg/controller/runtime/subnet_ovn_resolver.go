@@ -56,10 +56,16 @@ func (r *OVSDBSubnetOVNMutationResolver) ResolveSubnetOVNMutation(ctx context.Co
 	if key != receipt.Key || key.Name != snapshot.Name || key.UID != snapshot.UID {
 		return SubnetOVNMutationStateUnknown, fmt.Errorf("%w: mutation key does not match Subnet snapshot", ErrSubnetOVNResolverUnknown)
 	}
+	if err := receipt.valid(); err != nil {
+		return SubnetOVNMutationStateUnknown, fmt.Errorf("%w: invalid mutation intent: %w", ErrSubnetOVNResolverUnknown, err)
+	}
+	if receipt.Intent.LogicalSwitchName != snapshot.Name {
+		return SubnetOVNMutationStateUnknown, fmt.Errorf("%w: mutation intent targets logical switch %q", ErrSubnetOVNResolverUnknown, receipt.Intent.LogicalSwitchName)
+	}
 	if key.Operation != SubnetOVNAllocateOperation && key.Operation != SubnetOVNCleanupOperation {
 		return SubnetOVNMutationStateUnknown, fmt.Errorf("%w: unsupported mutation operation %q", ErrSubnetOVNResolverUnknown, key.Operation)
 	}
-	row := &ovnnb.LogicalSwitch{Name: key.Name}
+	row := &ovnnb.LogicalSwitch{Name: receipt.Intent.LogicalSwitchName}
 	handle := r.provider.Table(&ovnnb.LogicalSwitch{})
 	if handle == nil {
 		return SubnetOVNMutationStateUnknown, errors.New("subnet OVN mutation resolver table is not configured")

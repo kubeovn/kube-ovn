@@ -20,6 +20,9 @@ func prepareSubnetOVNReceipt(ctx context.Context, store subnetOVNMutationReceipt
 		return marker, SubnetOVNMutationReceipt{}, err
 	}
 	if found {
+		if err := receipt.valid(); err != nil {
+			return marker, SubnetOVNMutationReceipt{}, err
+		}
 		if receipt.Phase != SubnetOVNReceiptPhaseActive || receipt.Key != marker.Key ||
 			receipt.Key.UID != identity.UID || receipt.Generation != identity.Generation || receipt.WriterEpoch != identity.WriterEpoch {
 			return marker, SubnetOVNMutationReceipt{}, ErrSubnetOVNReceiptChanged
@@ -37,6 +40,7 @@ func prepareSubnetOVNReceipt(ctx context.Context, store subnetOVNMutationReceipt
 	}
 	receipt = SubnetOVNMutationReceipt{
 		Key:             marker.Key,
+		Intent:          SubnetOVNMutationIntent{LogicalSwitchName: marker.Key.Name, Generation: identity.Generation},
 		Token:           marker.Owner.Token,
 		Generation:      identity.Generation,
 		ResourceVersion: identity.ResourceVersion,
@@ -109,11 +113,12 @@ func (a *SubnetControllerWriterAdapter) recoverSubnetOVNReceipts(ctx context.Con
 		operation = SubnetOVNCleanupOperation
 	}
 	key := subnetOVNMutationKey(snapshot, operation)
+	legacyKey := legacySubnetOVNMutationKey(snapshot, operation)
 	for _, receipt := range receipts {
 		if receipt.Key.UID != snapshot.UID {
 			return ErrSubnetOVNReceiptStale
 		}
-		if !snapshot.Deleting && receipt.Key != key {
+		if !snapshot.Deleting && receipt.Key != key && receipt.Key != legacyKey {
 			return ErrSubnetOVNReceiptStale
 		}
 		if receipt.Generation == snapshot.Generation {

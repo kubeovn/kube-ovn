@@ -52,17 +52,27 @@ const (
 // mutation. It is intentionally independent from OVSDB marker state; the two
 // stores form a retryable saga rather than a two-phase commit.
 type SubnetOVNMutationReceipt struct {
-	Key             SubnetOVNMutationKey  `json:"key"`
-	Token           uint64                `json:"token"`
-	Generation      int64                 `json:"generation"`
-	ResourceVersion string                `json:"resourceVersion"`
-	WriterEpoch     string                `json:"writerEpoch"`
-	Phase           SubnetOVNReceiptPhase `json:"phase"`
+	Key             SubnetOVNMutationKey    `json:"key"`
+	Intent          SubnetOVNMutationIntent `json:"intent"`
+	Token           uint64                  `json:"token"`
+	Generation      int64                   `json:"generation"`
+	ResourceVersion string                  `json:"resourceVersion"`
+	WriterEpoch     string                  `json:"writerEpoch"`
+	Phase           SubnetOVNReceiptPhase   `json:"phase"`
 }
 
 func (r SubnetOVNMutationReceipt) valid() error {
 	if r.Key.Name == "" || r.Key.UID == "" || r.Key.IntentHash == "" || r.Token == 0 ||
 		r.ResourceVersion == "" || r.WriterEpoch == "" {
+		return ErrSubnetOVNReceiptInvalid
+	}
+	if err := r.Intent.valid(); err != nil {
+		return err
+	}
+	if r.Intent.LogicalSwitchName != r.Key.Name || r.Intent.Generation != r.Generation {
+		return ErrSubnetOVNReceiptInvalid
+	}
+	if r.Intent.hash() != r.Key.IntentHash && !isLegacySubnetOVNMutationKey(r.Key, r.Generation) {
 		return ErrSubnetOVNReceiptInvalid
 	}
 	if r.Key.Operation != SubnetOVNAllocateOperation && r.Key.Operation != SubnetOVNCleanupOperation {
@@ -75,7 +85,7 @@ func (r SubnetOVNMutationReceipt) valid() error {
 }
 
 func (r SubnetOVNMutationReceipt) ownerEqual(other SubnetOVNMutationReceipt) bool {
-	return r.Key == other.Key && r.Token == other.Token && r.Generation == other.Generation &&
+	return r.Key == other.Key && r.Intent == other.Intent && r.Token == other.Token && r.Generation == other.Generation &&
 		r.ResourceVersion == other.ResourceVersion && r.WriterEpoch == other.WriterEpoch
 }
 
@@ -422,6 +432,9 @@ func unmarshalSubnetOVNMutationReceipt(data string) (SubnetOVNMutationReceipt, e
 	var receipt SubnetOVNMutationReceipt
 	if err := json.Unmarshal([]byte(data), &receipt); err != nil {
 		return SubnetOVNMutationReceipt{}, fmt.Errorf("decode Subnet OVN receipt: %w", err)
+	}
+	if receipt.Intent == (SubnetOVNMutationIntent{}) && isLegacySubnetOVNMutationKey(receipt.Key, receipt.Generation) {
+		receipt.Intent = SubnetOVNMutationIntent{LogicalSwitchName: receipt.Key.Name, Generation: receipt.Generation}
 	}
 	if err := receipt.valid(); err != nil {
 		return SubnetOVNMutationReceipt{}, err

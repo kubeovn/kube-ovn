@@ -2,6 +2,8 @@ package controllerruntime
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -74,14 +76,17 @@ func (b *OVSDBSubnetOVNMarkerBackend) row(ctx context.Context, key SubnetOVNMuta
 	if err := contextError(ctx); err != nil {
 		return nil, false, err
 	}
-	row := &ovnnb.AddressSet{Name: markerName(key)}
-	if err := b.provider.Table(&ovnnb.AddressSet{}).Get(ctx, row); err != nil {
-		if errors.Is(err, table.ErrNotFound) {
-			return nil, false, nil
+	for _, name := range []string{markerName(key), legacyMarkerName(key)} {
+		row := &ovnnb.AddressSet{Name: name}
+		if err := b.provider.Table(&ovnnb.AddressSet{}).Get(ctx, row); err != nil {
+			if errors.Is(err, table.ErrNotFound) {
+				continue
+			}
+			return nil, false, err
 		}
-		return nil, false, err
+		return row, true, nil
 	}
-	return row, true, nil
+	return nil, false, nil
 }
 
 func (b *OVSDBSubnetOVNMarkerBackend) Acquire(ctx context.Context, marker SubnetOVNOwnerMarker) error {
@@ -203,7 +208,7 @@ func (b *OVSDBSubnetOVNMarkerBackend) Rebind(ctx context.Context, previous, repl
 	if !current.equal(previous) {
 		return ErrSubnetOVNMarkerChanged
 	}
-	return b.conditionalUpdate(ctx, previous, replacement)
+	return b.conditionalUpdate(ctx, row.Name, previous, replacement)
 }
 
 func (b *OVSDBSubnetOVNMarkerBackend) Release(ctx context.Context, marker SubnetOVNOwnerMarker) error {
@@ -224,8 +229,9 @@ func (b *OVSDBSubnetOVNMarkerBackend) Release(ctx context.Context, marker Subnet
 	if !current.equal(marker) {
 		return ErrSubnetOVNMarkerChanged
 	}
-	selector := &ovnnb.AddressSet{Name: markerName(marker.Key)}
+	selector := &ovnnb.AddressSet{Name: row.Name}
 	expected := b.markerRow(marker)
+	expected.Name = row.Name
 	wait, err := b.provider.Table(&ovnnb.AddressSet{}).Where(selector).Wait(ovsdb.WaitConditionEqual, new(0), expected, &expected.Name, &expected.ExternalIDs)
 	if err != nil {
 		return err
@@ -244,11 +250,13 @@ func (b *OVSDBSubnetOVNMarkerBackend) Release(ctx context.Context, marker Subnet
 	return nil
 }
 
-func (b *OVSDBSubnetOVNMarkerBackend) conditionalUpdate(ctx context.Context, previous, replacement SubnetOVNOwnerMarker) error {
+func (b *OVSDBSubnetOVNMarkerBackend) conditionalUpdate(ctx context.Context, name string, previous, replacement SubnetOVNOwnerMarker) error {
 	tableHandle := b.provider.Table(&ovnnb.AddressSet{})
-	selector := &ovnnb.AddressSet{Name: markerName(previous.Key)}
+	selector := &ovnnb.AddressSet{Name: name}
 	update := b.markerRow(replacement)
+	update.Name = name
 	expected := b.markerRow(previous)
+	expected.Name = name
 	wait, err := tableHandle.Where(selector).Wait(ovsdb.WaitConditionEqual, new(0), expected, &expected.Name, &expected.ExternalIDs)
 	if err != nil {
 		return err
@@ -291,13 +299,22 @@ func markerFromRow(row *ovnnb.AddressSet) (SubnetOVNOwnerMarker, error) {
 		return SubnetOVNOwnerMarker{}, err
 	}
 	expectedKey := subnetOVNMutationKey(SubnetWriteSnapshot{Name: marker.Key.Name, UID: marker.Key.UID, Generation: marker.Owner.Generation}, marker.Key.Operation)
-	if expectedKey.IntentHash != marker.Key.IntentHash {
+	if expectedKey.IntentHash != marker.Key.IntentHash && !isLegacySubnetOVNMutationKey(marker.Key, marker.Owner.Generation) {
+		return SubnetOVNOwnerMarker{}, ErrSubnetOVNMarkerInvalid
+	}
+	if row.Name != markerName(marker.Key) && row.Name != legacyMarkerName(marker.Key) {
 		return SubnetOVNOwnerMarker{}, ErrSubnetOVNMarkerInvalid
 	}
 	return marker, nil
 }
 
 func markerName(key SubnetOVNMutationKey) string {
+	identity := string(key.UID) + "\x00" + key.Name + "\x00" + string(key.Operation) + "\x00" + key.IntentHash
+	hash := sha256.Sum256([]byte(identity))
+	return subnetOVNMarkerNamePrefix + hex.EncodeToString(hash[:16])
+}
+
+func legacyMarkerName(key SubnetOVNMutationKey) string {
 	return subnetOVNMarkerNamePrefix + key.IntentHash
 }
 

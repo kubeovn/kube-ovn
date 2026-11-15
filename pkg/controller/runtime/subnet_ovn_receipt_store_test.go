@@ -101,6 +101,39 @@ func TestKubernetesSubnetOVNMutationReceiptStoreRejectsMalformedRecord(t *testin
 	require.ErrorIs(t, err, ErrSubnetOVNReceiptInvalid)
 }
 
+func TestKubernetesSubnetOVNMutationReceiptStoreReadsLegacyRecord(t *testing.T) {
+	snapshot := SubnetWriteSnapshot{Name: "subnet-a", UID: types.UID("subnet-uid"), Generation: 3}
+	key := legacySubnetOVNMutationKey(snapshot, SubnetOVNAllocateOperation)
+	type legacyReceipt struct {
+		Key             SubnetOVNMutationKey  `json:"key"`
+		Token           uint64                `json:"token"`
+		Generation      int64                 `json:"generation"`
+		ResourceVersion string                `json:"resourceVersion"`
+		WriterEpoch     string                `json:"writerEpoch"`
+		Phase           SubnetOVNReceiptPhase `json:"phase"`
+	}
+	record, err := json.Marshal(legacyReceipt{
+		Key:             key,
+		Token:           7,
+		Generation:      snapshot.Generation,
+		ResourceVersion: "9",
+		WriterEpoch:     "epoch-a",
+	})
+	require.NoError(t, err)
+	client := kubernetesfake.NewSimpleClientset(&corev1.ConfigMap{
+		Name:      subnetOVNReceiptConfigMapName(key),
+		Namespace: "kube-system",
+		Labels:    map[string]string{subnetOVNReceiptLabel: "true"},
+		Data:      map[string]string{subnetOVNReceiptDataKey: string(record)},
+	})
+	store, err := newKubernetesSubnetOVNMutationReceiptStore(client.CoreV1().ConfigMaps("kube-system"))
+	require.NoError(t, err)
+	receipt, found, err := store.Lookup(t.Context(), key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, subnetOVNMutationIntentForSnapshot(snapshot), receipt.Intent)
+}
+
 func TestSubnetOVNMutationReceiptJSONRoundTrip(t *testing.T) {
 	receipt := testSubnetOVNMutationReceipt()
 	receipt.Phase = SubnetOVNReceiptPhaseReleasing
@@ -116,14 +149,30 @@ func TestSubnetOVNMutationReceiptStoreRequiresClient(t *testing.T) {
 	require.EqualError(t, err, "subnet OVN receipt store requires a ConfigMap client")
 }
 
-func testSubnetOVNMutationReceipt() SubnetOVNMutationReceipt {
-	return SubnetOVNMutationReceipt{
-		Key: SubnetOVNMutationKey{
-			Name:       "subnet-a",
-			UID:        types.UID("subnet-uid"),
-			Operation:  SubnetOVNAllocateOperation,
-			IntentHash: "intent-a",
+func TestSubnetOVNMutationReceiptRejectsIntentOwnerMismatch(t *testing.T) {
+	tests := map[string]func(*SubnetOVNMutationReceipt){
+		"logical switch": func(receipt *SubnetOVNMutationReceipt) {
+			receipt.Intent.LogicalSwitchName = "other-subnet"
 		},
+		"generation": func(receipt *SubnetOVNMutationReceipt) {
+			receipt.Intent.Generation++
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			receipt := testSubnetOVNMutationReceipt()
+			mutate(&receipt)
+			require.ErrorIs(t, receipt.valid(), ErrSubnetOVNReceiptInvalid)
+		})
+	}
+}
+
+func testSubnetOVNMutationReceipt() SubnetOVNMutationReceipt {
+	snapshot := SubnetWriteSnapshot{Name: "subnet-a", UID: types.UID("subnet-uid"), Generation: 3}
+	intent := subnetOVNMutationIntentForSnapshot(snapshot)
+	return SubnetOVNMutationReceipt{
+		Key:             subnetOVNMutationKey(snapshot, SubnetOVNAllocateOperation),
+		Intent:          intent,
 		Token:           7,
 		Generation:      3,
 		ResourceVersion: "9",
