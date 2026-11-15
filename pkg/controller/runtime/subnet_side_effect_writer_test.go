@@ -257,6 +257,23 @@ func TestSubnetSideEffectWriterCompensatesConfirmedMutation(t *testing.T) {
 	}
 }
 
+func TestSubnetSideEffectWriterRetainsReceiptWhenCompensationIsUnsafe(t *testing.T) {
+	w, _, snapshot := newSubnetSideEffectWriter(t)
+	applyErr := errors.New("OVN result is uncertain")
+	compensateCalls := 0
+	err := w.Execute(snapshot, SubnetOVNAllocateOperation, SubnetSideEffectPlan{
+		RetainReceiptOnError: true,
+		Apply: func(context.Context) (SubnetSideEffectReceipt, error) {
+			return sideEffectReceiptFunc(func(context.Context) error {
+				compensateCalls++
+				return nil
+			}), applyErr
+		},
+	})
+	require.ErrorIs(t, err, applyErr)
+	require.Zero(t, compensateCalls, "an uncertain backend result must retain its fence")
+}
+
 func TestSubnetSideEffectWriterCancellationNeverAuthorizesCompensation(t *testing.T) {
 	for _, applyErr := range []error{nil, errors.New("apply failed")} {
 		t.Run(fmt.Sprint(applyErr), func(t *testing.T) {

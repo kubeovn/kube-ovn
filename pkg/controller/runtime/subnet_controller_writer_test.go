@@ -232,6 +232,61 @@ func TestSubnetControllerWriterAdapterDelegatesDomainPath(t *testing.T) {
 	require.False(t, backend.deleting)
 }
 
+func TestSubnetControllerWriterAdapterRebindsOVNMarkerDuringRecovery(t *testing.T) {
+	subnet := testSubnet("")
+	subnet.UID = types.UID("subnet-uid")
+	subnet.Generation = 3
+	subnet.ResourceVersion = "7"
+	snapshot, err := NewSubnetWriteSnapshot(subnet, true)
+	require.NoError(t, err)
+	recovered := snapshot
+	recovered.ResourceVersion = "8"
+	markerBackend := newMemorySubnetOVNMarkerBackend()
+	key := subnetOVNMutationKey(snapshot, SubnetOVNAllocateOperation)
+	previous := SubnetOVNOwnerMarker{
+		Key: key,
+		Owner: SubnetOVNOwner{
+			Token:           4,
+			SubnetUID:       snapshot.UID,
+			Generation:      snapshot.Generation,
+			ResourceVersion: snapshot.ResourceVersion,
+			WriterEpoch:     "old-epoch",
+		},
+	}
+	require.NoError(t, markerBackend.Acquire(t.Context(), previous))
+	adapter := &SubnetControllerWriterAdapter{
+		Backend:   &recordingSubnetDataPlaneBackend{},
+		Gate:      SubnetWriterGate{Fence: staticSubnetWriterFence{}},
+		ovnMarker: markerBackend,
+	}
+
+	require.NoError(t, adapter.RecoverSubnet(t.Context(), recovered))
+	current, found, err := markerBackend.Read(t.Context(), key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, previous.Owner.Token, current.Owner.Token, "recovery must preserve the pending marker token")
+	require.Equal(t, "test-epoch", current.Owner.WriterEpoch)
+	require.Equal(t, snapshot.UID, current.Owner.SubnetUID)
+	require.Equal(t, recovered.ResourceVersion, current.Owner.ResourceVersion)
+}
+
+func TestSubnetControllerWriterAdapterFailsClosedOnStaleOVNMarker(t *testing.T) {
+	subnet := testSubnet("")
+	subnet.UID = types.UID("subnet-uid")
+	subnet.Generation = 3
+	subnet.ResourceVersion = "7"
+	snapshot, err := NewSubnetWriteSnapshot(subnet, true)
+	require.NoError(t, err)
+	markerBackend := newMemorySubnetOVNMarkerBackend()
+	stale := SubnetOVNOwnerMarker{
+		Key:   subnetOVNMutationKey(snapshot, SubnetOVNCleanupOperation),
+		Owner: SubnetOVNOwner{Token: 4, SubnetUID: snapshot.UID, Generation: snapshot.Generation, ResourceVersion: snapshot.ResourceVersion, WriterEpoch: "old-epoch"},
+	}
+	require.NoError(t, markerBackend.Acquire(t.Context(), stale))
+	adapter := &SubnetControllerWriterAdapter{Backend: &recordingSubnetDataPlaneBackend{}, Gate: SubnetWriterGate{Fence: staticSubnetWriterFence{}}, ovnMarker: markerBackend}
+	require.ErrorIs(t, adapter.RecoverSubnet(t.Context(), snapshot), ErrSubnetOVNMarkerChanged)
+}
+
 func TestSubnetControllerWriterAdapterInstallsExplicitRuntimeWriters(t *testing.T) {
 	backend := &legacycontroller.Controller{}
 	client := newRuntimeClient(t)
@@ -325,6 +380,131 @@ func TestSubnetControllerWriterAdapterWritersSyncResourceVersion(t *testing.T) {
 		return nil
 	}))
 	require.Equal(t, 3, mutationCalls)
+}
+
+func TestSubnetControllerWriterAdapterRetainsOVNMarkerAfterApplyError(t *testing.T) {
+	subnet := testSubnet("")
+	subnet.UID = types.UID("subnet-uid")
+	api := newRuntimeClient(t, subnet)
+	backend := &installingSubnetDataPlaneBackend{}
+	adapter := &SubnetControllerWriterAdapter{
+		Backend: backend,
+		Client:  api,
+		Reader:  api,
+		Gate:    SubnetWriterGate{Recovery: func(context.Context) error { return nil }, Fence: staticSubnetWriterFence{}},
+	}
+	require.NoError(t, adapter.InstallRuntimeWriters())
+	markerBackend := newMemorySubnetOVNMarkerBackend()
+	adapter.ovnMarker = markerBackend
+	applyErr := errors.New("OVN result is uncertain")
+	require.ErrorIs(t, backend.ovnMutation(t.Context(), subnet, legacycontroller.SubnetRuntimeOVNAllocateMutationOperation, func(context.Context) error {
+		return applyErr
+	}), applyErr)
+	snapshot, err := NewSubnetWriteSnapshot(subnet, true)
+	require.NoError(t, err)
+	marker, found, err := markerBackend.Read(t.Context(), subnetOVNMutationKey(snapshot, SubnetOVNAllocateOperation))
+	require.NoError(t, err)
+	require.True(t, found, "an uncertain OVN apply must retain its durable marker")
+	require.NotZero(t, marker.Owner.Token)
+}
+
+func TestSubnetControllerWriterAdapterReusesOVNMarkerAfterResourceVersionAdvance(t *testing.T) {
+	scheme, err := NewScheme()
+	require.NoError(t, err)
+	subnet := testSubnet("")
+	subnet.UID = types.UID("subnet-uid")
+	subnet.Generation = 3
+	subnet.ResourceVersion = "7"
+	api := fake.NewClientBuilder().WithScheme(scheme).WithObjects(subnet).Build()
+	backend := &installingSubnetDataPlaneBackend{}
+	adapter := &SubnetControllerWriterAdapter{
+		Backend: backend,
+		Client:  api,
+		Reader:  api,
+		Gate:    SubnetWriterGate{Recovery: func(context.Context) error { return nil }, Fence: staticSubnetWriterFence{}},
+	}
+	require.NoError(t, adapter.InstallRuntimeWriters())
+	markerBackend := newMemorySubnetOVNMarkerBackend()
+	adapter.ovnMarker = markerBackend
+
+	applyErr := errors.New("OVN result is uncertain")
+	require.ErrorIs(t, backend.ovnMutation(t.Context(), subnet, legacycontroller.SubnetRuntimeOVNAllocateMutationOperation, func(context.Context) error {
+		return applyErr
+	}), applyErr)
+
+	current := &kubeovnv1.Subnet{}
+	require.NoError(t, api.Get(t.Context(), client.ObjectKey{Name: subnet.Name}, current))
+	current.Annotations = map[string]string{"runtime.kube-ovn.io/status-write": "advanced"}
+	require.NoError(t, api.Update(t.Context(), current))
+	require.NotEqual(t, subnet.ResourceVersion, current.ResourceVersion)
+
+	applyCalls := 0
+	require.NoError(t, backend.ovnMutation(t.Context(), current, legacycontroller.SubnetRuntimeOVNAllocateMutationOperation, func(context.Context) error {
+		applyCalls++
+		return nil
+	}))
+	require.Equal(t, 1, applyCalls)
+	snapshot, err := NewSubnetWriteSnapshot(current, true)
+	require.NoError(t, err)
+	_, found, err := markerBackend.Read(t.Context(), subnetOVNMutationKey(snapshot, SubnetOVNAllocateOperation))
+	require.NoError(t, err)
+	require.False(t, found, "successful retry must release the retained marker")
+}
+
+func TestSubnetControllerWriterAdapterDeleteUsesMarkerOnlyRecovery(t *testing.T) {
+	subnet := testSubnet("")
+	subnet.UID = types.UID("subnet-uid")
+	subnet.Generation = 3
+	subnet.ResourceVersion = "7"
+	snapshot, err := NewSubnetDeleteSnapshot(subnet)
+	require.NoError(t, err)
+	markerBackend := newMemorySubnetOVNMarkerBackend()
+	key := subnetOVNMutationKey(snapshot, SubnetOVNCleanupOperation)
+	allocateKey := subnetOVNMutationKey(snapshot, SubnetOVNAllocateOperation)
+	oldSnapshot := snapshot
+	oldSnapshot.Generation = 2
+	oldSnapshot.ResourceVersion = "6"
+	oldAllocateKey := subnetOVNMutationKey(oldSnapshot, SubnetOVNAllocateOperation)
+	pending := SubnetOVNOwnerMarker{
+		Key: key,
+		Owner: SubnetOVNOwner{
+			Token:           9,
+			SubnetUID:       snapshot.UID,
+			Generation:      snapshot.Generation,
+			ResourceVersion: snapshot.ResourceVersion,
+			WriterEpoch:     "old-epoch",
+		},
+	}
+	require.NoError(t, markerBackend.Acquire(t.Context(), pending))
+	allocatePending := pending
+	allocatePending.Key = allocateKey
+	require.NoError(t, markerBackend.Acquire(t.Context(), allocatePending))
+	oldAllocatePending := allocatePending
+	oldAllocatePending.Key = oldAllocateKey
+	oldAllocatePending.Owner.Generation = oldSnapshot.Generation
+	oldAllocatePending.Owner.ResourceVersion = oldSnapshot.ResourceVersion
+	require.NoError(t, markerBackend.Acquire(t.Context(), oldAllocatePending))
+	backend := &recordingSubnetDataPlaneBackend{}
+	api := newRuntimeClient(t)
+	adapter := &SubnetControllerWriterAdapter{
+		Backend:   backend,
+		Reader:    api,
+		Gate:      SubnetWriterGate{Recovery: func(context.Context) error { return nil }, Fence: staticSubnetWriterFence{}},
+		ovnMarker: markerBackend,
+	}
+
+	require.NoError(t, adapter.ReconcileDeletedSubnet(t.Context(), snapshot))
+	require.Zero(t, backend.recover, "delete cleanup must not repeat full backend recovery")
+	require.Equal(t, 1, backend.reconcile)
+	_, found, err := markerBackend.Read(t.Context(), allocateKey)
+	require.NoError(t, err)
+	require.False(t, found, "successful delete cleanup must resolve an older allocation marker")
+	_, found, err = markerBackend.Read(t.Context(), oldAllocateKey)
+	require.NoError(t, err)
+	require.False(t, found, "successful delete cleanup must resolve an older-generation marker")
+	_, found, err = markerBackend.Read(t.Context(), key)
+	require.NoError(t, err)
+	require.False(t, found, "successful delete cleanup must resolve the cleanup marker")
 }
 
 func TestSubnetControllerWriterAdapterTypedIPAMAddressWriterPreservesRequest(t *testing.T) {

@@ -28,6 +28,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -876,6 +877,17 @@ func (c *Controller) SetSubnetRuntimeFence(check func(context.Context) error) er
 	}
 	c.subnetRuntimeFence = check
 	return nil
+}
+
+// SubnetRuntimeOVNMarkerTableProvider exposes the initialized OVN NB table
+// provider to the opt-in runtime marker adapter. Legacy workers never call
+// this seam, and an uninitialized controller returns nil so tests and legacy
+// construction paths retain their existing behavior.
+func (c *Controller) SubnetRuntimeOVNMarkerTableProvider() table.Provider {
+	if c == nil {
+		return nil
+	}
+	return c.OVNNbTables
 }
 
 // SubnetRuntimeStatusWriter persists a complete status projection for the

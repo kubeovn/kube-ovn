@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -12,6 +13,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	legacycontroller "github.com/kubeovn/kube-ovn/pkg/controller"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 var (
@@ -50,6 +52,8 @@ type SubnetControllerWriterAdapter struct {
 	Reader      client.Reader
 	Gate        SubnetWriterGate
 	ipamAdapter *subnetIPAMAdapter
+	ovnMarker   SubnetOVNMarkerBackend
+	ovnToken    atomic.Uint64
 }
 
 type subnetRuntimeWriterInstaller interface {
@@ -75,6 +79,10 @@ type subnetRuntimeOVNMutationWriterInstaller interface {
 	SetSubnetRuntimeOVNMutationWriter(legacycontroller.SubnetRuntimeOVNMutationWriter) error
 }
 
+type subnetRuntimeOVNMarkerTableProvider interface {
+	SubnetRuntimeOVNMarkerTableProvider() table.Provider
+}
+
 type subnetRuntimeIPAMAddressWriterInstaller interface {
 	SetSubnetRuntimeIPAMAddressWriter(legacycontroller.SubnetRuntimeIPAMAddressWriter) error
 }
@@ -89,6 +97,15 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 	}
 	if a.Client == nil || a.Reader == nil {
 		return ErrSubnetRuntimeReaderMissing
+	}
+	if provider, ok := a.Backend.(subnetRuntimeOVNMarkerTableProvider); ok {
+		if tableProvider := provider.SubnetRuntimeOVNMarkerTableProvider(); tableProvider != nil {
+			marker, err := NewOVSDBSubnetOVNMarkerBackend(tableProvider)
+			if err != nil {
+				return err
+			}
+			a.ovnMarker = marker
+		}
 	}
 	installer, ok := a.Backend.(subnetRuntimeWriterInstaller)
 	if !ok {
@@ -188,10 +205,54 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 			return err
 		}
 		writer := &subnetSideEffectWriter{ctx: ctx, reader: a.Reader, gate: a.Gate}
+		if a.ovnMarker == nil {
+			return writer.Execute(snapshot, SubnetWriteOperation(operation), SubnetSideEffectPlan{
+				Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
+					return nil, apply(ctx)
+				},
+			})
+		}
 		return writer.Execute(snapshot, SubnetWriteOperation(operation), SubnetSideEffectPlan{
 			Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
-				return nil, apply(ctx)
+				identity, ok := SubnetMutationIdentityFromContext(ctx)
+				if !ok || identity.WriterEpoch == "" {
+					return nil, ErrSubnetWriterEpochUnavailable
+				}
+				key := subnetOVNMutationKey(snapshot, SubnetWriteOperation(operation))
+				marker := SubnetOVNOwnerMarker{Key: key, Owner: SubnetOVNOwner{
+					Token: a.ovnToken.Add(1), SubnetUID: identity.UID, Generation: identity.Generation,
+					ResourceVersion: identity.ResourceVersion, WriterEpoch: identity.WriterEpoch,
+				}}
+				if pending, found, err := a.ovnMarker.Read(ctx, key); err != nil {
+					return nil, err
+				} else if found {
+					if pending.Owner.SubnetUID != identity.UID || pending.Owner.Generation != identity.Generation || pending.Owner.WriterEpoch != identity.WriterEpoch {
+						return nil, ErrSubnetOVNMarkerChanged
+					}
+					if pending.Owner.ResourceVersion != identity.ResourceVersion {
+						replacement := pending
+						replacement.Owner.ResourceVersion = identity.ResourceVersion
+						if err := a.ovnMarker.Rebind(ctx, pending, replacement); err != nil {
+							return nil, err
+						}
+						pending = replacement
+					}
+					marker = pending
+				}
+				if err := a.ovnMarker.Acquire(ctx, marker); err != nil {
+					return nil, err
+				}
+				receipt := &subnetOVNMarkerReceipt{backend: a.ovnMarker, marker: marker, identity: identity}
+				if err := apply(ctx); err != nil {
+					return receipt, err
+				}
+				if err := a.ovnMarker.Release(ctx, marker); err != nil {
+					return receipt, err
+				}
+				return nil, nil
 			},
+			RequireReceiptIdentity: true,
+			RetainReceiptOnError:   true,
 		})
 	}
 	virtualPortWriter := func(ctx context.Context, name string) error {
@@ -383,12 +444,110 @@ func (a *SubnetControllerWriterAdapter) RecoverSubnet(ctx context.Context, snaps
 	if a == nil || a.Backend == nil {
 		return errors.New("subnet controller writer backend is not configured")
 	}
+	if _, err := a.recoverSubnetOVNMarkers(ctx, snapshot); err != nil {
+		return err
+	}
 	if a.ipamAdapter != nil {
 		if err := a.ipamAdapter.Recover(ctx, snapshot); err != nil {
 			return err
 		}
 	}
 	return a.Backend.RecoverSubnetRuntime(ctx, subnetFromSnapshot(snapshot))
+}
+
+func (a *SubnetControllerWriterAdapter) recoverSubnetOVNMarkers(ctx context.Context, snapshot SubnetWriteSnapshot) ([]SubnetOVNOwnerMarker, error) {
+	if a.ovnMarker == nil {
+		return nil, nil
+	}
+	operation := SubnetOVNAllocateOperation
+	if snapshot.Deleting {
+		operation = SubnetOVNCleanupOperation
+	}
+	identity, err := newSubnetMutationIdentity(ctx, snapshot, operation, a.Gate.Fence)
+	if err != nil {
+		return nil, err
+	}
+	if identity.WriterEpoch == "" {
+		return nil, ErrSubnetWriterEpochUnavailable
+	}
+	key := subnetOVNMutationKey(snapshot, operation)
+	markers := make([]SubnetOVNOwnerMarker, 0, 1)
+	if lister, ok := a.ovnMarker.(SubnetOVNMarkerLister); ok {
+		if snapshot.Deleting {
+			markers, err = lister.List(ctx, snapshot.Name, snapshot.UID)
+		} else {
+			listed, listErr := lister.List(ctx, snapshot.Name, snapshot.UID)
+			err = listErr
+			for _, marker := range listed {
+				if marker.Key != key {
+					err = fmt.Errorf("%w: stale marker for Subnet %s", ErrSubnetOVNMarkerChanged, snapshot.Name)
+					break
+				}
+			}
+			if err == nil {
+				markers = listed
+			}
+		}
+		if err != nil {
+			return nil, err
+		}
+	} else if snapshot.Deleting {
+		return nil, errors.New("subnet OVN marker deletion recovery requires a marker lister")
+	}
+	if len(markers) == 0 {
+		previous, found, readErr := a.ovnMarker.Read(ctx, key)
+		if readErr != nil {
+			return nil, readErr
+		}
+		if found {
+			markers = append(markers, previous)
+		}
+	}
+	for index, previous := range markers {
+		if previous.Owner.Generation != snapshot.Generation {
+			// A delete cleanup supersedes every generation of this UID. Keep an
+			// older marker under its original owner until cleanup succeeds, then
+			// release it with the same CAS tuple.
+			if !snapshot.Deleting {
+				return nil, fmt.Errorf("%w: stale marker for Subnet %s", ErrSubnetOVNMarkerChanged, snapshot.Name)
+			}
+			continue
+		}
+		replacement := SubnetOVNOwnerMarker{
+			Key: previous.Key,
+			Owner: SubnetOVNOwner{
+				Token:           previous.Owner.Token,
+				SubnetUID:       identity.UID,
+				Generation:      identity.Generation,
+				ResourceVersion: identity.ResourceVersion,
+				WriterEpoch:     identity.WriterEpoch,
+			},
+		}
+		if err := a.ovnMarker.Rebind(ctx, previous, replacement); err != nil {
+			return nil, err
+		}
+		markers[index] = replacement
+	}
+	return markers, nil
+}
+
+func (a *SubnetControllerWriterAdapter) releaseSubnetOVNMarkers(ctx context.Context, markers []SubnetOVNOwnerMarker) error {
+	if a.ovnMarker == nil {
+		return nil
+	}
+	for _, marker := range markers {
+		_, found, err := a.ovnMarker.Read(ctx, marker.Key)
+		if err != nil {
+			return err
+		}
+		if !found {
+			continue
+		}
+		if err := a.ovnMarker.Release(ctx, marker); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (a *SubnetControllerWriterAdapter) ReconcileSubnet(ctx context.Context, snapshot SubnetWriteSnapshot, _ SubnetShadowObservation) error {
@@ -454,7 +613,14 @@ func (a *SubnetControllerWriterAdapter) ReconcileDeletedSubnet(ctx context.Conte
 	if err := a.Gate.WaitForRecovery(ctx); err != nil {
 		return err
 	}
-	return a.reconcileRuntime(ctx, snapshot, snapshot.AllocationAllowed)
+	markers, err := a.recoverSubnetOVNMarkers(ctx, snapshot)
+	if err != nil {
+		return err
+	}
+	if err := a.reconcileRuntime(ctx, snapshot, snapshot.AllocationAllowed); err != nil {
+		return err
+	}
+	return a.releaseSubnetOVNMarkers(ctx, markers)
 }
 
 func (a *SubnetControllerWriterAdapter) reconcileRuntime(ctx context.Context, snapshot SubnetWriteSnapshot, allocationAllowed bool) error {

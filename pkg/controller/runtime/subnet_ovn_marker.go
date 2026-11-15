@@ -2,7 +2,10 @@ package controllerruntime
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"sync"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -12,6 +15,16 @@ var (
 	ErrSubnetOVNMarkerInvalid = errors.New("invalid Subnet OVN owner marker")
 	ErrSubnetOVNMarkerChanged = errors.New("subnet OVN owner marker changed")
 )
+
+func subnetOVNMutationKey(snapshot SubnetWriteSnapshot, operation SubnetWriteOperation) SubnetOVNMutationKey {
+	// ResourceVersion belongs to the owner tuple, not the intent identity. API
+	// status/finalizer updates can advance it while the same Subnet generation
+	// and OVN operation are still in flight; keeping it out of the key lets
+	// recovery find and rebind a marker left by an earlier snapshot.
+	intent := fmt.Sprintf("%s\x00%s\x00%d\x00%s", snapshot.Name, snapshot.UID, snapshot.Generation, operation)
+	hash := sha256.Sum256([]byte(intent))
+	return SubnetOVNMutationKey{Name: snapshot.Name, UID: snapshot.UID, Operation: operation, IntentHash: hex.EncodeToString(hash[:16])}
+}
 
 // SubnetOVNOwner identifies the runtime writer that may mutate one OVN
 // operation. The marker is deliberately separate from the durable receipt;
@@ -64,6 +77,34 @@ type SubnetOVNMarkerBackend interface {
 	Release(context.Context, SubnetOVNOwnerMarker) error
 }
 
+// SubnetOVNMarkerLister is an optional recovery capability. Implementations
+// must return every marker for a Subnet identity so active recovery can fail
+// closed when an older generation or intent still owns a durable fence. Delete
+// recovery uses the same complete view to resolve all markers after cleanup.
+type SubnetOVNMarkerLister interface {
+	List(context.Context, string, types.UID) ([]SubnetOVNOwnerMarker, error)
+}
+
+type subnetOVNMarkerReceipt struct {
+	backend  SubnetOVNMarkerBackend
+	marker   SubnetOVNOwnerMarker
+	identity SubnetMutationIdentity
+}
+
+func (r *subnetOVNMarkerReceipt) SubnetMutationIdentity() SubnetMutationIdentity {
+	if r == nil {
+		return SubnetMutationIdentity{}
+	}
+	return r.identity
+}
+
+func (r *subnetOVNMarkerReceipt) Compensate(ctx context.Context) error {
+	if r == nil || r.backend == nil {
+		return ErrSubnetOVNMarkerInvalid
+	}
+	return r.backend.Release(ctx, r.marker)
+}
+
 type memorySubnetOVNMarkerBackend struct {
 	mu      sync.Mutex
 	markers map[SubnetOVNMutationKey]SubnetOVNOwnerMarker
@@ -101,6 +142,24 @@ func (b *memorySubnetOVNMarkerBackend) Read(ctx context.Context, key SubnetOVNMu
 	defer b.mu.Unlock()
 	marker, ok := b.markers[key]
 	return marker, ok, nil
+}
+
+func (b *memorySubnetOVNMarkerBackend) List(ctx context.Context, name string, uid types.UID) ([]SubnetOVNOwnerMarker, error) {
+	if name == "" || uid == "" {
+		return nil, ErrSubnetOVNMarkerInvalid
+	}
+	if err := contextError(ctx); err != nil {
+		return nil, err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	markers := make([]SubnetOVNOwnerMarker, 0)
+	for _, marker := range b.markers {
+		if marker.Key.Name == name && marker.Key.UID == uid {
+			markers = append(markers, marker)
+		}
+	}
+	return markers, nil
 }
 
 func (b *memorySubnetOVNMarkerBackend) Rebind(ctx context.Context, previous, replacement SubnetOVNOwnerMarker) error {
@@ -143,4 +202,7 @@ func (b *memorySubnetOVNMarkerBackend) Release(ctx context.Context, marker Subne
 	return nil
 }
 
-var _ SubnetOVNMarkerBackend = (*memorySubnetOVNMarkerBackend)(nil)
+var (
+	_ SubnetOVNMarkerBackend = (*memorySubnetOVNMarkerBackend)(nil)
+	_ SubnetOVNMarkerLister  = (*memorySubnetOVNMarkerBackend)(nil)
+)

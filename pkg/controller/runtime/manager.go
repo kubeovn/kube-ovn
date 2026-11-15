@@ -231,6 +231,9 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 		}
 	}
 	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeSubnetWriter {
+		if backend.SubnetRuntimeOVNMarkerTableProvider() == nil {
+			return errors.New("subnet writer runtime requires an initialized OVN NB table provider")
+		}
 		fence, err := newSubnetWriterFence(config)
 		if err != nil {
 			return err
