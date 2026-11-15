@@ -131,6 +131,49 @@ func (s *kubernetesSubnetIPAMReceiptStore) Lookup(ctx context.Context, key subne
 	return s.lookup(ctx, key)
 }
 
+func (s *kubernetesSubnetIPAMReceiptStore) Claim(ctx context.Context, allocation subnetIPAMAllocation) (subnetIPAMAllocation, error) {
+	if err := validateSubnetIPAMAllocation(allocation); err != nil {
+		return subnetIPAMAllocation{}, err
+	}
+	if err := contextError(ctx); err != nil {
+		return subnetIPAMAllocation{}, err
+	}
+	current, found, err := s.lookupConfigMap(ctx, allocation.key)
+	if err != nil {
+		return subnetIPAMAllocation{}, err
+	}
+	if !found {
+		return subnetIPAMAllocation{}, ErrSubnetIPAMReceiptChanged
+	}
+	currentAllocation, err := unmarshalSubnetIPAMAllocation(current.Data[subnetIPAMReceiptDataKey])
+	if err != nil {
+		return subnetIPAMAllocation{}, err
+	}
+	if !sameSubnetIPAMAllocationOwner(currentAllocation, allocation) {
+		return subnetIPAMAllocation{}, ErrSubnetIPAMReceiptChanged
+	}
+	if currentAllocation.phase != subnetIPAMReceiptPhaseActive || allocation.phase != subnetIPAMReceiptPhaseActive {
+		return subnetIPAMAllocation{}, ErrSubnetIPAMReceiptChanged
+	}
+	claimed := currentAllocation
+	claimed.phase = subnetIPAMReceiptPhaseReleasing
+	record, err := marshalSubnetIPAMAllocation(claimed)
+	if err != nil {
+		return subnetIPAMAllocation{}, err
+	}
+	updated := current.DeepCopy()
+	if updated.Data == nil {
+		updated.Data = make(map[string]string)
+	}
+	updated.Data[subnetIPAMReceiptDataKey] = string(record)
+	if _, err := s.configMaps.Update(ctx, updated, metav1.UpdateOptions{}); apierrors.IsConflict(err) || apierrors.IsNotFound(err) {
+		return subnetIPAMAllocation{}, ErrSubnetIPAMReceiptChanged
+	} else if err != nil {
+		return subnetIPAMAllocation{}, err
+	}
+	return claimed, nil
+}
+
 func (s *kubernetesSubnetIPAMReceiptStore) Delete(ctx context.Context, allocation subnetIPAMAllocation) error {
 	if err := validateSubnetIPAMAllocation(allocation); err != nil {
 		return err
@@ -219,6 +262,7 @@ type subnetIPAMAllocationRecord struct {
 	UID      string                       `json:"uid"`
 	Address  subnetIPAMAddressRecord      `json:"address"`
 	Identity subnetMutationIdentityRecord `json:"identity"`
+	Phase    string                       `json:"phase"`
 }
 
 type subnetIPAMKeyRecord struct {
@@ -247,16 +291,24 @@ func validateSubnetIPAMAllocation(allocation subnetIPAMAllocation) error {
 		(allocation.address.v4 == "" && allocation.address.v6 == "" && allocation.address.mac == "") {
 		return errSubnetIPAMReceiptInvalid
 	}
+	if allocation.phase != subnetIPAMReceiptPhaseActive && allocation.phase != subnetIPAMReceiptPhaseReleasing {
+		return errSubnetIPAMReceiptInvalid
+	}
 	return allocation.identity.Validate()
 }
 
 func marshalSubnetIPAMAllocation(allocation subnetIPAMAllocation) ([]byte, error) {
+	phase := string(allocation.phase)
+	if allocation.phase == subnetIPAMReceiptPhaseActive {
+		phase = "active"
+	}
 	record := subnetIPAMAllocationRecord{
 		Key:      subnetIPAMKeyRecord{Subnet: allocation.key.subnet, Pod: allocation.key.pod, NIC: allocation.key.nic},
 		Token:    allocation.token,
 		UID:      allocation.uid,
 		Address:  subnetIPAMAddressRecord{V4: allocation.address.v4, V6: allocation.address.v6, MAC: allocation.address.mac},
 		Identity: subnetMutationIdentityRecord{Name: allocation.identity.Name, UID: string(allocation.identity.UID), Generation: allocation.identity.Generation, ResourceVersion: allocation.identity.ResourceVersion, Operation: allocation.identity.Operation, WriterEpoch: allocation.identity.WriterEpoch},
+		Phase:    phase,
 	}
 	return json.Marshal(record)
 }
@@ -269,12 +321,17 @@ func unmarshalSubnetIPAMAllocation(data string) (subnetIPAMAllocation, error) {
 	if err := json.Unmarshal([]byte(data), &record); err != nil {
 		return subnetIPAMAllocation{}, fmt.Errorf("decode Subnet IPAM receipt: %w", err)
 	}
+	phase := subnetIPAMReceiptPhase(record.Phase)
+	if record.Phase == "" || record.Phase == "active" {
+		phase = subnetIPAMReceiptPhaseActive
+	}
 	allocation := subnetIPAMAllocation{
 		key:      subnetIPAMKey{subnet: record.Key.Subnet, pod: record.Key.Pod, nic: record.Key.NIC},
 		token:    record.Token,
 		uid:      record.UID,
 		address:  subnetIPAMAddress{v4: record.Address.V4, v6: record.Address.V6, mac: record.Address.MAC},
 		identity: SubnetMutationIdentity{Name: record.Identity.Name, UID: types.UID(record.Identity.UID), Generation: record.Identity.Generation, ResourceVersion: record.Identity.ResourceVersion, Operation: record.Identity.Operation, WriterEpoch: record.Identity.WriterEpoch},
+		phase:    phase,
 	}
 	if err := validateSubnetIPAMAllocation(allocation); err != nil {
 		return subnetIPAMAllocation{}, err

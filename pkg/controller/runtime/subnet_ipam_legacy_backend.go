@@ -75,6 +75,7 @@ func (b *subnetRuntimeIPAMBackend) Recover(ctx context.Context, snapshot SubnetW
 	if err != nil {
 		return nil, err
 	}
+	recovered := make([]subnetIPAMAllocation, 0, len(allocations))
 	for _, allocation := range allocations {
 		if allocation.uid != string(snapshot.UID) || allocation.identity.Name != snapshot.Name || allocation.identity.UID != snapshot.UID ||
 			allocation.identity.Operation != SubnetIPAMAddressAllocateOperation {
@@ -85,10 +86,17 @@ func (b *subnetRuntimeIPAMBackend) Recover(ctx context.Context, snapshot SubnetW
 			return nil, err
 		}
 		if !found || current != allocation.address {
+			if !found && allocation.phase == subnetIPAMReceiptPhaseReleasing {
+				if err := lister.Delete(ctx, allocation); err != nil {
+					return nil, err
+				}
+				continue
+			}
 			return nil, ErrSubnetIPAMRecoveryUnsafe
 		}
+		recovered = append(recovered, allocation)
 	}
-	return allocations, nil
+	return recovered, nil
 }
 
 var _ subnetIPAMAddressBackend = (*subnetRuntimeIPAMBackend)(nil)
