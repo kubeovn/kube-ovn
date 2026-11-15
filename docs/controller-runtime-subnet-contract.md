@@ -157,11 +157,12 @@ their original CAS owner, and releases all of them only after cleanup
 succeeds. This lets a previously uncertain allocation marker converge during
 deletion without releasing a fence before the data-plane cleanup. Legacy mode
 keeps the existing callback without this marker. IPAM allocation and release
-now have concrete per-mutation receipts and owner fencing. The OVN receipt model
-and ConfigMap
-CAS store remain available as a future persistence seam; production strict mode
-currently uses the OVSDB marker as the durable fence. A memory OVN owner-marker
-CAS seam is also available for tests. The queued virtual-port parent worker
+now have concrete per-mutation receipts and owner fencing. OVN mutations also
+persist an Active/Releasing receipt in a ConfigMap around the OVSDB marker saga:
+uncertain apply/release outcomes retain both records for recovery, while a
+confirmed marker release deletes the receipt. The ConfigMap and OVSDB steps are
+retryable and are not a two-phase commit. A memory OVN owner-marker CAS seam is
+also available for tests. The queued virtual-port parent worker
 is also wired through a runtime hook: it reads the Subnet with the uncached API reader,
 revalidates UID, generation, spec, resource version, and deletion state, and
 only then invokes the OVN backend. Legacy mode keeps the informer-backed
