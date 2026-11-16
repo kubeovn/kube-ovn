@@ -11,7 +11,7 @@ import (
 // marker is acquired. The two stores are deliberately coordinated as a
 // retryable saga: a receipt that survives a process crash is resolved by
 // recovery rather than being silently discarded.
-func prepareSubnetOVNReceipt(ctx context.Context, store subnetOVNMutationReceiptStore, marker SubnetOVNOwnerMarker, identity SubnetMutationIdentity) (SubnetOVNOwnerMarker, SubnetOVNMutationReceipt, error) {
+func prepareSubnetOVNReceipt(ctx context.Context, store subnetOVNMutationReceiptStore, marker SubnetOVNOwnerMarker, identity SubnetMutationIdentity, intent SubnetOVNMutationIntent) (SubnetOVNOwnerMarker, SubnetOVNMutationReceipt, error) {
 	if store == nil {
 		return marker, SubnetOVNMutationReceipt{}, errors.New("subnet OVN receipt store is not configured")
 	}
@@ -28,9 +28,12 @@ func prepareSubnetOVNReceipt(ctx context.Context, store subnetOVNMutationReceipt
 			return marker, SubnetOVNMutationReceipt{}, ErrSubnetOVNReceiptChanged
 		}
 		marker.Owner.Token = receipt.Token
+		replacement := receipt
+		replacement.Intent = intent
 		if receipt.ResourceVersion != identity.ResourceVersion {
-			replacement := receipt
 			replacement.ResourceVersion = identity.ResourceVersion
+		}
+		if !replacement.equal(receipt) {
 			if err := store.Rebind(ctx, receipt, replacement); err != nil {
 				return marker, SubnetOVNMutationReceipt{}, err
 			}
@@ -40,7 +43,7 @@ func prepareSubnetOVNReceipt(ctx context.Context, store subnetOVNMutationReceipt
 	}
 	receipt = SubnetOVNMutationReceipt{
 		Key:             marker.Key,
-		Intent:          SubnetOVNMutationIntent{LogicalSwitchName: marker.Key.Name, Generation: identity.Generation},
+		Intent:          intent,
 		Token:           marker.Owner.Token,
 		Generation:      identity.Generation,
 		ResourceVersion: identity.ResourceVersion,
@@ -108,95 +111,110 @@ func (a *SubnetControllerWriterAdapter) recoverSubnetOVNReceipts(ctx context.Con
 	if err != nil {
 		return err
 	}
-	operation := SubnetOVNAllocateOperation
-	if snapshot.Deleting {
-		operation = SubnetOVNCleanupOperation
-	}
-	key := subnetOVNMutationKey(snapshot, operation)
-	legacyKey := legacySubnetOVNMutationKey(snapshot, operation)
 	for _, receipt := range receipts {
-		if receipt.Key.UID != snapshot.UID {
-			return ErrSubnetOVNReceiptStale
+		if err := validateSubnetOVNReceiptForRecovery(snapshot, receipt); err != nil {
+			return err
 		}
-		if !snapshot.Deleting && receipt.Key != key && receipt.Key != legacyKey {
-			return ErrSubnetOVNReceiptStale
-		}
-		if receipt.Generation == snapshot.Generation {
-			receiptIdentity, identityErr := newSubnetMutationIdentity(ctx, snapshot, receipt.Key.Operation, a.Gate.Fence)
-			if identityErr != nil {
-				return identityErr
-			}
-			replacementReceipt, rebindErr := rebindSubnetOVNReceiptIdentity(receipt, receiptIdentity.UID, receiptIdentity.Generation, receiptIdentity.ResourceVersion, receiptIdentity.WriterEpoch)
-			if rebindErr != nil {
-				return rebindErr
-			}
-			if replacementReceipt != receipt {
-				if err := a.ovnReceipts.Rebind(ctx, receipt, replacementReceipt); err != nil {
-					return err
-				}
-				receipt = replacementReceipt
-			}
-		}
-		state, err := a.resolveSubnetOVNReceipt(ctx, snapshot, receipt)
+		receipt, err = a.rebindSubnetOVNReceiptForRecovery(ctx, snapshot, receipt)
 		if err != nil {
 			return err
 		}
-		marker, found, err := a.ovnMarker.Read(ctx, receipt.Key)
-		if err != nil {
+		if err := a.recoverSubnetOVNReceipt(ctx, snapshot, receipt); err != nil {
 			return err
-		}
-		if receipt.Phase == SubnetOVNReceiptPhaseReleasing {
-			if !subnetOVNResolverAllowsRelease(receipt.Key.Operation, state) && !subnetOVNResolverAllowsTombstoneRelease(snapshot, receipt.Key.Operation, state) {
-				return ErrSubnetOVNResolverPending
-			}
-			if found {
-				if !subnetOVNReceiptOwnerMatchesMarker(receipt, marker) {
-					return ErrSubnetOVNReceiptChanged
-				}
-				if err := a.ovnMarker.Release(ctx, marker); err != nil {
-					return err
-				}
-			}
-			if err := a.ovnReceipts.Delete(ctx, receipt); err != nil {
-				return err
-			}
-			continue
-		}
-		if subnetOVNResolverAllowsRelease(receipt.Key.Operation, state) || subnetOVNResolverAllowsTombstoneRelease(snapshot, receipt.Key.Operation, state) {
-			if found {
-				if !subnetOVNReceiptOwnerMatchesMarker(receipt, marker) {
-					return ErrSubnetOVNReceiptChanged
-				}
-				if err := a.ovnMarker.Release(ctx, marker); err != nil {
-					return err
-				}
-			}
-			if err := a.ovnReceipts.Delete(ctx, receipt); err != nil {
-				return err
-			}
-			continue
-		}
-		if !found {
-			if snapshot.Deleting && receipt.Generation != snapshot.Generation {
-				continue
-			}
-			marker = SubnetOVNOwnerMarker{Key: receipt.Key, Owner: SubnetOVNOwner{
-				Token: receipt.Token, SubnetUID: receipt.Key.UID, Generation: receipt.Generation,
-				ResourceVersion: receipt.ResourceVersion, WriterEpoch: receipt.WriterEpoch,
-			}}
-			if err := a.ovnMarker.Acquire(ctx, marker); err != nil {
-				return err
-			}
-			continue
-		}
-		if !subnetOVNReceiptOwnerMatchesMarker(receipt, marker) {
-			return ErrSubnetOVNReceiptChanged
-		}
-		if snapshot.Deleting || receipt.Key != key {
-			continue
 		}
 	}
 	return nil
+}
+
+func validateSubnetOVNReceiptForRecovery(snapshot SubnetWriteSnapshot, receipt SubnetOVNMutationReceipt) error {
+	if receipt.Key.UID != snapshot.UID {
+		return ErrSubnetOVNReceiptStale
+	}
+	if !snapshot.Deleting && receipt.Key.Operation != SubnetOVNAllocateOperation {
+		return ErrSubnetOVNReceiptStale
+	}
+	if !snapshot.Deleting && receipt.Generation != snapshot.Generation {
+		return ErrSubnetOVNReceiptStale
+	}
+	return nil
+}
+
+func (a *SubnetControllerWriterAdapter) rebindSubnetOVNReceiptForRecovery(ctx context.Context, snapshot SubnetWriteSnapshot, receipt SubnetOVNMutationReceipt) (SubnetOVNMutationReceipt, error) {
+	if receipt.Generation != snapshot.Generation {
+		return receipt, nil
+	}
+	receiptIdentity, err := newSubnetMutationIdentity(ctx, snapshot, receipt.Key.Operation, a.Gate.Fence)
+	if err != nil {
+		return SubnetOVNMutationReceipt{}, err
+	}
+	replacement, err := rebindSubnetOVNReceiptIdentity(receipt, receiptIdentity.UID, receiptIdentity.Generation, receiptIdentity.ResourceVersion, receiptIdentity.WriterEpoch)
+	if err != nil {
+		return SubnetOVNMutationReceipt{}, err
+	}
+	if replacement.equal(receipt) {
+		return receipt, nil
+	}
+	if err := a.ovnReceipts.Rebind(ctx, receipt, replacement); err != nil {
+		return SubnetOVNMutationReceipt{}, err
+	}
+	return replacement, nil
+}
+
+func (a *SubnetControllerWriterAdapter) recoverSubnetOVNReceipt(ctx context.Context, snapshot SubnetWriteSnapshot, receipt SubnetOVNMutationReceipt) error {
+	state, err := a.resolveSubnetOVNReceipt(ctx, snapshot, receipt)
+	if err != nil {
+		return err
+	}
+	marker, found, err := a.ovnMarker.Read(ctx, receipt.Key)
+	if err != nil {
+		return err
+	}
+	canRelease := subnetOVNResolverAllowsRecoveryRelease(snapshot, receipt.Key.Operation, state)
+	if !snapshot.Deleting && receipt.Key.Operation == SubnetOVNAllocateOperation && state == SubnetOVNMutationStateAbsent && isCoarseOrLegacySubnetOVNMutationKey(receipt.Key, snapshot.Generation) {
+		return a.releaseRecoveredSubnetOVNReceipt(ctx, receipt, marker, found)
+	}
+	if receipt.Phase == SubnetOVNReceiptPhaseReleasing {
+		keepDeletionAllocation := snapshot.Deleting && receipt.Key.Operation == SubnetOVNAllocateOperation
+		if canRelease {
+			return a.releaseRecoveredSubnetOVNReceipt(ctx, receipt, marker, found)
+		}
+		if !keepDeletionAllocation {
+			return ErrSubnetOVNResolverPending
+		}
+	}
+	if canRelease {
+		return a.releaseRecoveredSubnetOVNReceipt(ctx, receipt, marker, found)
+	}
+	if !found {
+		return a.acquireRecoveredSubnetOVNMarker(ctx, snapshot, receipt)
+	}
+	if !subnetOVNReceiptOwnerMatchesMarker(receipt, marker) {
+		return ErrSubnetOVNReceiptChanged
+	}
+	return nil
+}
+
+func (a *SubnetControllerWriterAdapter) releaseRecoveredSubnetOVNReceipt(ctx context.Context, receipt SubnetOVNMutationReceipt, marker SubnetOVNOwnerMarker, found bool) error {
+	if found {
+		if !subnetOVNReceiptOwnerMatchesMarker(receipt, marker) {
+			return ErrSubnetOVNReceiptChanged
+		}
+		if err := a.ovnMarker.Release(ctx, marker); err != nil {
+			return err
+		}
+	}
+	return a.ovnReceipts.Delete(ctx, receipt)
+}
+
+func (a *SubnetControllerWriterAdapter) acquireRecoveredSubnetOVNMarker(ctx context.Context, snapshot SubnetWriteSnapshot, receipt SubnetOVNMutationReceipt) error {
+	if snapshot.Deleting && receipt.Generation != snapshot.Generation {
+		return nil
+	}
+	marker := SubnetOVNOwnerMarker{Key: receipt.Key, Owner: SubnetOVNOwner{
+		Token: receipt.Token, SubnetUID: receipt.Key.UID, Generation: receipt.Generation,
+		ResourceVersion: receipt.ResourceVersion, WriterEpoch: receipt.WriterEpoch,
+	}}
+	return a.ovnMarker.Acquire(ctx, marker)
 }
 
 func (a *SubnetControllerWriterAdapter) releaseSubnetOVNReceipts(ctx context.Context, snapshot SubnetWriteSnapshot) error {

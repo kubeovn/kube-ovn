@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+
+	"github.com/ovn-kubernetes/libovsdb/model"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
@@ -22,6 +25,7 @@ type SubnetOVNMutationState string
 const (
 	SubnetOVNMutationStateCommitted SubnetOVNMutationState = "committed"
 	SubnetOVNMutationStateAbsent    SubnetOVNMutationState = "absent"
+	SubnetOVNMutationStatePending   SubnetOVNMutationState = "pending"
 	SubnetOVNMutationStateUnknown   SubnetOVNMutationState = "unknown"
 )
 
@@ -65,24 +69,103 @@ func (r *OVSDBSubnetOVNMutationResolver) ResolveSubnetOVNMutation(ctx context.Co
 	if key.Operation != SubnetOVNAllocateOperation && key.Operation != SubnetOVNCleanupOperation {
 		return SubnetOVNMutationStateUnknown, fmt.Errorf("%w: unsupported mutation operation %q", ErrSubnetOVNResolverUnknown, key.Operation)
 	}
-	row := &ovnnb.LogicalSwitch{Name: receipt.Intent.LogicalSwitchName}
-	handle := r.provider.Table(&ovnnb.LogicalSwitch{})
-	if handle == nil {
+	intent := receipt.Intent
+	lsHandle := r.provider.Table(&ovnnb.LogicalSwitch{})
+	if lsHandle == nil {
 		return SubnetOVNMutationStateUnknown, errors.New("subnet OVN mutation resolver table is not configured")
 	}
-	if err := handle.Get(ctx, row); err != nil {
-		if errors.Is(err, table.ErrNotFound) {
-			return SubnetOVNMutationStateAbsent, nil
-		}
+	ls := &ovnnb.LogicalSwitch{Name: intent.LogicalSwitchName}
+	lsExists, err := readSubnetOVNRow(ctx, lsHandle, ls)
+	if err != nil {
 		return SubnetOVNMutationStateUnknown, err
 	}
+	if !intent.RequirePatchPorts {
+		if key.Operation == SubnetOVNAllocateOperation {
+			if lsExists {
+				return SubnetOVNMutationStateCommitted, nil
+			}
+			return SubnetOVNMutationStateAbsent, nil
+		}
+		if lsExists {
+			return SubnetOVNMutationStatePending, nil
+		}
+		return SubnetOVNMutationStateAbsent, nil
+	}
+
+	lrpHandle := r.provider.Table(&ovnnb.LogicalRouterPort{})
+	lspHandle := r.provider.Table(&ovnnb.LogicalSwitchPort{})
+	routerHandle := r.provider.Table(&ovnnb.LogicalRouter{})
+	if lrpHandle == nil || lspHandle == nil || routerHandle == nil {
+		return SubnetOVNMutationStateUnknown, errors.New("subnet OVN patch-port resolver tables are not configured")
+	}
+	router := &ovnnb.LogicalRouter{Name: intent.LogicalRouterName}
+	routerExists, err := readSubnetOVNRow(ctx, routerHandle, router)
+	if err != nil {
+		return SubnetOVNMutationStateUnknown, err
+	}
+	lrp := &ovnnb.LogicalRouterPort{Name: intent.LogicalRouterPortName}
+	lsp := &ovnnb.LogicalSwitchPort{Name: intent.LogicalSwitchPortName}
+	lrpExists, err := readSubnetOVNRow(ctx, lrpHandle, lrp)
+	if err != nil {
+		return SubnetOVNMutationStateUnknown, err
+	}
+	lspExists, err := readSubnetOVNRow(ctx, lspHandle, lsp)
+	if err != nil {
+		return SubnetOVNMutationStateUnknown, err
+	}
+	if key.Operation == SubnetOVNCleanupOperation {
+		if !lsExists && !lrpExists && !lspExists {
+			return SubnetOVNMutationStateAbsent, nil
+		}
+		return SubnetOVNMutationStatePending, nil
+	}
+	if !lsExists && !lrpExists && !lspExists {
+		return SubnetOVNMutationStateAbsent, nil
+	}
+	if !lsExists || !routerExists || !lrpExists || !lspExists || !subnetOVNLogicalRouterPortMatches(intent, router, lrp) || !subnetOVNLogicalSwitchPortMatches(intent, ls, lsp) {
+		return SubnetOVNMutationStatePending, nil
+	}
 	return SubnetOVNMutationStateCommitted, nil
+}
+
+func readSubnetOVNRow(ctx context.Context, handle table.Handle, row model.Model) (bool, error) {
+	if err := handle.Get(ctx, row); err != nil {
+		if errors.Is(err, table.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+func subnetOVNLogicalRouterPortMatches(intent SubnetOVNMutationIntent, router *ovnnb.LogicalRouter, row *ovnnb.LogicalRouterPort) bool {
+	if router == nil || row == nil || !slices.Contains(router.Ports, row.UUID) {
+		return false
+	}
+	if intent.GatewayMAC != "" && row.MAC != intent.GatewayMAC {
+		return false
+	}
+	actualNetworks := slices.Clone(row.Networks)
+	expectedNetworks := slices.Clone(intent.LogicalRouterNetworks)
+	slices.Sort(actualNetworks)
+	slices.Sort(expectedNetworks)
+	if len(expectedNetworks) > 0 && !slices.Equal(actualNetworks, expectedNetworks) {
+		return false
+	}
+	return true
+}
+
+func subnetOVNLogicalSwitchPortMatches(intent SubnetOVNMutationIntent, ls *ovnnb.LogicalSwitch, row *ovnnb.LogicalSwitchPort) bool {
+	return ls != nil && row != nil && slices.Contains(ls.Ports, row.UUID) &&
+		row.Type == "router" && row.Options["router-port"] == intent.LogicalRouterPortName
 }
 
 func validateSubnetOVNMutationState(state SubnetOVNMutationState) error {
 	switch state {
 	case SubnetOVNMutationStateCommitted, SubnetOVNMutationStateAbsent:
 		return nil
+	case SubnetOVNMutationStatePending:
+		return ErrSubnetOVNResolverPending
 	case SubnetOVNMutationStateUnknown:
 		return ErrSubnetOVNResolverUnknown
 	default:
@@ -107,4 +190,15 @@ func subnetOVNResolverAllowsRelease(operation SubnetWriteOperation, state Subnet
 // receipt and reacquires its marker so the allocation can be retried.
 func subnetOVNResolverAllowsTombstoneRelease(snapshot SubnetWriteSnapshot, operation SubnetWriteOperation, state SubnetOVNMutationState) bool {
 	return snapshot.Deleting && operation == SubnetOVNAllocateOperation && state == SubnetOVNMutationStateAbsent
+}
+
+// subnetOVNResolverAllowsRecoveryRelease keeps an allocation marker fenced
+// during deletion until the cleanup readback proves that its OVN rows are
+// absent. A committed allocation still owns live rows and must be retained
+// while the delete reconciler removes them.
+func subnetOVNResolverAllowsRecoveryRelease(snapshot SubnetWriteSnapshot, operation SubnetWriteOperation, state SubnetOVNMutationState) bool {
+	if snapshot.Deleting && operation == SubnetOVNAllocateOperation {
+		return state == SubnetOVNMutationStateAbsent
+	}
+	return subnetOVNResolverAllowsRelease(operation, state) || subnetOVNResolverAllowsTombstoneRelease(snapshot, operation, state)
 }

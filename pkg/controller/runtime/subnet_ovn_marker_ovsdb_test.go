@@ -26,6 +26,33 @@ func TestOVSDBSubnetOVNMarkerRowRoundTrip(t *testing.T) {
 	require.Equal(t, markerName(marker.Key), markerName(equivalent))
 }
 
+func TestOVSDBSubnetOVNMarkerRowRoundTripWithTypedIntent(t *testing.T) {
+	snapshot := SubnetWriteSnapshot{Name: "subnet-a", UID: types.UID("uid-a"), Generation: 3}
+	intent := SubnetOVNMutationIntent{
+		LogicalSwitchName:     snapshot.Name,
+		Generation:            snapshot.Generation,
+		LogicalRouterName:     "ovn-cluster",
+		LogicalRouterPortName: "ovn-cluster-subnet-a",
+		LogicalSwitchPortName: "subnet-a-ovn-cluster",
+		LogicalRouterNetworks: []string{"10.0.0.1/24"},
+		RequirePatchPorts:     true,
+	}
+	marker := SubnetOVNOwnerMarker{
+		Key: subnetOVNMutationKeyForIntent(snapshot, SubnetOVNAllocateOperation, intent),
+		Owner: SubnetOVNOwner{
+			Token:           7,
+			SubnetUID:       snapshot.UID,
+			Generation:      snapshot.Generation,
+			ResourceVersion: "9",
+			WriterEpoch:     "epoch-a",
+		},
+	}
+	row := (&OVSDBSubnetOVNMarkerBackend{}).markerRow(marker)
+	decoded, err := markerFromRow(row)
+	require.NoError(t, err)
+	require.Equal(t, marker, decoded)
+}
+
 func TestOVSDBSubnetOVNMarkerNamesAreUniquePerMutationKey(t *testing.T) {
 	marker := testOVSDBSubnetOVNMarker()
 	cleanup := marker.Key
@@ -128,10 +155,13 @@ type markerTestProvider struct {
 func (p *markerTestProvider) Table(model.Model) table.Handle { return p.handle }
 
 type markerTestHandle struct {
-	row           *ovnnb.AddressSet
-	logicalSwitch *ovnnb.LogicalSwitch
-	pending       *ovnnb.AddressSet
-	transactions  [][]ovsdb.Operation
+	row               *ovnnb.AddressSet
+	logicalSwitch     *ovnnb.LogicalSwitch
+	logicalRouter     *ovnnb.LogicalRouter
+	logicalRouterPort *ovnnb.LogicalRouterPort
+	logicalSwitchPort *ovnnb.LogicalSwitchPort
+	pending           *ovnnb.AddressSet
+	transactions      [][]ovsdb.Operation
 }
 
 func (h *markerTestHandle) Get(_ context.Context, result model.Model) error {
@@ -147,6 +177,24 @@ func (h *markerTestHandle) Get(_ context.Context, result model.Model) error {
 			return table.ErrNotFound
 		}
 		*result = *h.logicalSwitch
+		return nil
+	case *ovnnb.LogicalRouter:
+		if h.logicalRouter == nil {
+			return table.ErrNotFound
+		}
+		*result = *h.logicalRouter
+		return nil
+	case *ovnnb.LogicalRouterPort:
+		if h.logicalRouterPort == nil {
+			return table.ErrNotFound
+		}
+		*result = *h.logicalRouterPort
+		return nil
+	case *ovnnb.LogicalSwitchPort:
+		if h.logicalSwitchPort == nil {
+			return table.ErrNotFound
+		}
+		*result = *h.logicalSwitchPort
 		return nil
 	default:
 		return table.ErrInvalidModel

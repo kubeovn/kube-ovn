@@ -72,7 +72,7 @@ func (r SubnetOVNMutationReceipt) valid() error {
 	if r.Intent.LogicalSwitchName != r.Key.Name || r.Intent.Generation != r.Generation {
 		return ErrSubnetOVNReceiptInvalid
 	}
-	if r.Intent.hash() != r.Key.IntentHash && !isLegacySubnetOVNMutationKey(r.Key, r.Generation) {
+	if r.Intent.hash() != r.Key.IntentHash && !isLegacySubnetOVNMutationKey(r.Key, r.Generation) && !isCoarseSubnetOVNMutationKey(r.Key, r.Generation) {
 		return ErrSubnetOVNReceiptInvalid
 	}
 	if r.Key.Operation != SubnetOVNAllocateOperation && r.Key.Operation != SubnetOVNCleanupOperation {
@@ -85,8 +85,12 @@ func (r SubnetOVNMutationReceipt) valid() error {
 }
 
 func (r SubnetOVNMutationReceipt) ownerEqual(other SubnetOVNMutationReceipt) bool {
-	return r.Key == other.Key && r.Intent == other.Intent && r.Token == other.Token && r.Generation == other.Generation &&
+	return r.Key == other.Key && r.Intent.equal(other.Intent) && r.Token == other.Token && r.Generation == other.Generation &&
 		r.ResourceVersion == other.ResourceVersion && r.WriterEpoch == other.WriterEpoch
+}
+
+func (r SubnetOVNMutationReceipt) equal(other SubnetOVNMutationReceipt) bool {
+	return r.ownerEqual(other) && r.Phase == other.Phase
 }
 
 type subnetOVNMutationReceiptStore interface {
@@ -120,7 +124,7 @@ func (s *memorySubnetOVNMutationReceiptStore) Remember(ctx context.Context, rece
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if current, ok := s.receipts[receipt.Key]; ok && current != receipt {
+	if current, ok := s.receipts[receipt.Key]; ok && !current.equal(receipt) {
 		return ErrSubnetOVNReceiptStale
 	}
 	s.receipts[receipt.Key] = receipt
@@ -142,7 +146,7 @@ func (s *memorySubnetOVNMutationReceiptStore) Rebind(ctx context.Context, previo
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if current, ok := s.receipts[previous.Key]; !ok || current != previous {
+	if current, ok := s.receipts[previous.Key]; !ok || !current.equal(previous) {
 		return ErrSubnetOVNReceiptChanged
 	}
 	s.receipts[previous.Key] = replacement
@@ -186,7 +190,7 @@ func (s *memorySubnetOVNMutationReceiptStore) Delete(ctx context.Context, receip
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if current, ok := s.receipts[receipt.Key]; !ok || current != receipt {
+	if current, ok := s.receipts[receipt.Key]; !ok || !current.equal(receipt) {
 		return ErrSubnetOVNReceiptChanged
 	}
 	delete(s.receipts, receipt.Key)
@@ -251,7 +255,7 @@ func (s *kubernetesSubnetOVNMutationReceiptStore) Remember(ctx context.Context, 
 	if err != nil {
 		return err
 	}
-	if !found || current != receipt {
+	if !found || !current.equal(receipt) {
 		return ErrSubnetOVNReceiptStale
 	}
 	return nil
@@ -281,7 +285,7 @@ func (s *kubernetesSubnetOVNMutationReceiptStore) Rebind(ctx context.Context, pr
 	if err != nil {
 		return err
 	}
-	if current != previous {
+	if !current.equal(previous) {
 		return ErrSubnetOVNReceiptChanged
 	}
 	record, err := json.Marshal(replacement)
@@ -364,7 +368,7 @@ func (s *kubernetesSubnetOVNMutationReceiptStore) Delete(ctx context.Context, re
 	if err != nil {
 		return err
 	}
-	if current != receipt {
+	if !current.equal(receipt) {
 		return ErrSubnetOVNReceiptChanged
 	}
 	preconditions := &metav1.Preconditions{UID: &cm.UID, ResourceVersion: &cm.ResourceVersion}
@@ -433,7 +437,7 @@ func unmarshalSubnetOVNMutationReceipt(data string) (SubnetOVNMutationReceipt, e
 	if err := json.Unmarshal([]byte(data), &receipt); err != nil {
 		return SubnetOVNMutationReceipt{}, fmt.Errorf("decode Subnet OVN receipt: %w", err)
 	}
-	if receipt.Intent == (SubnetOVNMutationIntent{}) && isLegacySubnetOVNMutationKey(receipt.Key, receipt.Generation) {
+	if receipt.Intent.isZero() && isLegacySubnetOVNMutationKey(receipt.Key, receipt.Generation) {
 		receipt.Intent = SubnetOVNMutationIntent{LogicalSwitchName: receipt.Key.Name, Generation: receipt.Generation}
 	}
 	if err := receipt.valid(); err != nil {

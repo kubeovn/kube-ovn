@@ -158,6 +158,49 @@ func TestSubnetRuntimeOVNMutationWriterOverridesGenericDomainWriter(t *testing.T
 	require.Equal(t, 2, applyCalls)
 }
 
+func TestSubnetRuntimeOVNMutationIntentUsesPatchPortRows(t *testing.T) {
+	subnet := &kubeovnv1.Subnet{
+		ObjectMeta: metav1.ObjectMeta{Name: "subnet-a", Generation: 3},
+		Spec: kubeovnv1.SubnetSpec{
+			Vpc:       util.DefaultVpc,
+			CIDRBlock: "10.0.0.0/24,fd00::/64",
+			Gateway:   "10.0.0.1,fd00::1",
+		},
+	}
+	vpc := &kubeovnv1.Vpc{Name: util.DefaultVpc, Status: kubeovnv1.VpcStatus{Default: true, Standby: true, Router: "ovn-cluster"}}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Vpcs: []*kubeovnv1.Vpc{vpc}, Subnets: []*kubeovnv1.Subnet{subnet}})
+	require.NoError(t, err)
+
+	intent, err := fc.fakeController.SubnetRuntimeOVNMutationIntent(t.Context(), subnet)
+	require.NoError(t, err)
+	require.Equal(t, "subnet-a", intent.LogicalSwitchName)
+	require.Equal(t, "ovn-cluster", intent.LogicalRouterName)
+	require.Equal(t, "ovn-cluster-subnet-a", intent.LogicalRouterPortName)
+	require.Equal(t, "subnet-a-ovn-cluster", intent.LogicalSwitchPortName)
+	require.Equal(t, []string{"10.0.0.1/24", "fd00::1/64"}, intent.LogicalRouterNetworks)
+	require.True(t, intent.RequirePatchPorts)
+
+	subnet.Spec.U2OInterconnection = true
+	subnet.Spec.Vlan = "vlan-a"
+	subnet.Status.U2OInterconnectionIP = ""
+	subnet.Status.U2OInterconnectionMAC = ""
+	pendingIntent, err := fc.fakeController.SubnetRuntimeOVNMutationIntent(t.Context(), subnet)
+	require.NoError(t, err)
+	require.True(t, pendingIntent.RequirePatchPorts)
+	require.Empty(t, pendingIntent.LogicalRouterNetworks)
+	require.Empty(t, pendingIntent.GatewayMAC)
+
+	subnet.Spec.U2OInterconnection = false
+	subnet.Spec.Vlan = "vlan-a"
+	plainIntent, err := fc.fakeController.SubnetRuntimeOVNMutationIntent(t.Context(), subnet)
+	require.NoError(t, err)
+	require.False(t, plainIntent.RequirePatchPorts)
+	require.Empty(t, plainIntent.LogicalRouterName)
+	require.Empty(t, plainIntent.LogicalRouterPortName)
+	require.Empty(t, plainIntent.LogicalSwitchPortName)
+	require.Empty(t, plainIntent.LogicalRouterNetworks)
+}
+
 func TestSubnetRuntimeIPAMMutationWriterIsExplicitAndSingleInstall(t *testing.T) {
 	controller := &Controller{}
 	var calls int

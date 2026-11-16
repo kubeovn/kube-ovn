@@ -920,6 +920,92 @@ type SubnetRuntimeDomainWriter func(context.Context, *kubeovnv1.Subnet, SubnetRu
 // backend ownership without changing the legacy callback.
 type SubnetRuntimeOVNMutationWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeOVNMutationOperation, func(context.Context) error) error
 
+// SubnetRuntimeOVNMutationIntent describes the OVN rows and stable values
+// owned by one Subnet mutation. Dynamic gateway allocation and generated MACs
+// remain unconstrained so recovery does not compare values it could not know
+// before the mutation ran.
+type SubnetRuntimeOVNMutationIntent struct {
+	LogicalSwitchName     string
+	LogicalRouterName     string
+	LogicalRouterPortName string
+	LogicalSwitchPortName string
+	LogicalRouterNetworks []string
+	GatewayMAC            string
+	RequirePatchPorts     bool
+}
+
+// SubnetRuntimeOVNMutationIntentProvider supplies the concrete intent used by
+// the runtime receipt and resolver. Legacy workers do not call this seam.
+type SubnetRuntimeOVNMutationIntentProvider interface {
+	SubnetRuntimeOVNMutationIntent(context.Context, *kubeovnv1.Subnet) (SubnetRuntimeOVNMutationIntent, error)
+}
+
+// SubnetRuntimeOVNMutationIntent derives the rows created by
+// CreateLogicalSwitch without performing any OVN write.
+func (c *Controller) SubnetRuntimeOVNMutationIntent(ctx context.Context, subnet *kubeovnv1.Subnet) (SubnetRuntimeOVNMutationIntent, error) {
+	if ctx == nil {
+		return SubnetRuntimeOVNMutationIntent{}, errors.New("subnet OVN mutation intent context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeOVNMutationIntent{}, err
+	}
+	if c == nil || c.config == nil || subnet == nil {
+		return SubnetRuntimeOVNMutationIntent{}, errors.New("subnet OVN mutation intent requires an initialized Controller and Subnet")
+	}
+	var vpc *kubeovnv1.Vpc
+	if subnet.DeletionTimestamp.IsZero() {
+		var err error
+		vpc, err = c.validateVpcBySubnet(subnet)
+		if err != nil {
+			return SubnetRuntimeOVNMutationIntent{}, err
+		}
+	} else {
+		var err error
+		vpc, err = c.vpcsLister.Get(subnet.Spec.Vpc)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				return SubnetRuntimeOVNMutationIntent{}, fmt.Errorf("failed to get subnet's vpc %q: %w", subnet.Spec.Vpc, err)
+			}
+			vpc = &kubeovnv1.Vpc{}
+		}
+	}
+	intent := SubnetRuntimeOVNMutationIntent{
+		LogicalSwitchName: subnet.Name,
+	}
+	needRouter := subnet.Spec.CIDRBlock != "" &&
+		(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway || subnet.Spec.U2OInterconnection)
+	randomAllocateGW := !subnet.Spec.LogicalGateway && vpc.Spec.EnableExternal && subnet.Name == c.config.ExternalGatewaySwitch
+	if !needRouter {
+		return intent, nil
+	}
+	intent.LogicalRouterName = vpc.Status.Router
+	if intent.LogicalRouterName == "" {
+		intent.LogicalRouterName = c.config.ClusterRouter
+	}
+	intent.RequirePatchPorts = true
+	intent.LogicalRouterPortName = ovs.LogicalRouterPortName(intent.LogicalRouterName, subnet.Name)
+	intent.LogicalSwitchPortName = ovs.LogicalSwitchPortName(intent.LogicalRouterName, subnet.Name)
+	// U2O acquisition can fill the gateway and MAC after this provider runs.
+	// Leave both unconstrained until the status has recorded the acquired tuple.
+	if subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP == "" {
+		return intent, nil
+	}
+	gateway := subnet.Spec.Gateway
+	if subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection {
+		gateway = subnet.Status.U2OInterconnectionIP
+		intent.GatewayMAC = subnet.Status.U2OInterconnectionMAC
+	}
+	if randomAllocateGW || gateway == "" || subnet.Spec.CIDRBlock == "" {
+		return intent, nil
+	}
+	networks, err := util.GetIPAddrWithMask(gateway, subnet.Spec.CIDRBlock)
+	if err != nil {
+		return SubnetRuntimeOVNMutationIntent{}, err
+	}
+	intent.LogicalRouterNetworks = strings.Split(networks, ",")
+	return intent, nil
+}
+
 // SubnetRuntimeIPAMMutationWriter wraps one concrete Subnet-owned IPAM
 // registration, address allocation/release, or deletion. It is deliberately narrower than
 // SubnetRuntimeDomainWriter so a later receipt can identify one mutation

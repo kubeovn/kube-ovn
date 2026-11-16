@@ -298,10 +298,6 @@ func markerFromRow(row *ovnnb.AddressSet) (SubnetOVNOwnerMarker, error) {
 	if err := marker.valid(); err != nil {
 		return SubnetOVNOwnerMarker{}, err
 	}
-	expectedKey := subnetOVNMutationKey(SubnetWriteSnapshot{Name: marker.Key.Name, UID: marker.Key.UID, Generation: marker.Owner.Generation}, marker.Key.Operation)
-	if expectedKey.IntentHash != marker.Key.IntentHash && !isLegacySubnetOVNMutationKey(marker.Key, marker.Owner.Generation) {
-		return SubnetOVNOwnerMarker{}, ErrSubnetOVNMarkerInvalid
-	}
 	if row.Name != markerName(marker.Key) && row.Name != legacyMarkerName(marker.Key) {
 		return SubnetOVNOwnerMarker{}, ErrSubnetOVNMarkerInvalid
 	}
