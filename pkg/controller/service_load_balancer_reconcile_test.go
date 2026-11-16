@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -498,11 +499,13 @@ func TestServiceLoadBalancerProtocolChangeRollsBack(t *testing.T) {
 	require.Nil(t, udp)
 	tcp, err := nbClient.GetLoadBalancer(serviceScopedLBName(svc, corev1.ProtocolTCP), false)
 	require.NoError(t, err)
-	require.Equal(t, map[string]string{"10.96.0.10:80": "10.0.0.3:8080", "10.96.0.10:81": "10.0.0.3:8081"}, tcp.Vips)
+	require.Equal(t, map[string]string{
+		"10.96.0.10:80": "10.0.0.3:8080", "10.96.0.10:81": "10.0.0.3:8081", "[fd00::10]:80": "", "[fd00::10]:81": "",
+	}, tcp.Vips)
 	require.Equal(t, "10800", tcp.Options["affinity_timeout"])
 	sctp, err := nbClient.GetLoadBalancer(serviceScopedLBName(svc, corev1.ProtocolSCTP), false)
 	require.NoError(t, err)
-	require.Equal(t, map[string]string{"10.96.0.10:9000": "10.0.0.3:9000"}, sctp.Vips)
+	require.Equal(t, map[string]string{"10.96.0.10:9000": "10.0.0.3:9000", "[fd00::10]:9000": ""}, sctp.Vips)
 	recorder.transactions = nil
 	require.NoError(t, ctrl.handleDeleteService(&vpcService{Svc: svc, Vpc: "vpc"}))
 	require.Len(t, recorder.transactions, 1, "Service deletion must delete all protocol LBs together")
@@ -558,10 +561,119 @@ func TestServiceLoadBalancerEmptyEndpointsIsAtomic(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, lbs, 2)
 	for _, lb := range lbs {
-		require.Empty(t, lb.Vips)
+		require.Equal(t, "true", lb.Options["reject"])
+		require.NotEmpty(t, lb.Vips)
+		for _, backends := range lb.Vips {
+			require.Empty(t, backends)
+		}
 		require.Empty(t, lb.IPPortMappings)
 		require.Empty(t, lb.HealthCheck)
 	}
+}
+
+func TestServiceLoadBalancerEmptyBackendLifecycle(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		serviceType corev1.ServiceType
+		template    bool
+		affinity    corev1.ServiceAffinity
+	}{
+		{"ClusterIP", corev1.ServiceTypeClusterIP, false, corev1.ServiceAffinityNone},
+		{"session affinity", corev1.ServiceTypeClusterIP, false, corev1.ServiceAffinityClientIP},
+		{"traffic distribution", corev1.ServiceTypeClusterIP, true, corev1.ServiceAffinityNone},
+		{"NodePort ClusterIP", corev1.ServiceTypeNodePort, false, corev1.ServiceAffinityNone},
+		{"LoadBalancer ClusterIP", corev1.ServiceTypeLoadBalancer, false, corev1.ServiceAffinityNone},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl, nbClient, svc, endpoints := serviceLBReconcileFixture(t, tc.serviceType, tc.template)
+			svc.Spec.SessionAffinity = tc.affinity
+			svc.Spec.Ports = append(svc.Spec.Ports, corev1.ServicePort{Name: "sctp", Protocol: corev1.ProtocolSCTP, Port: 9000})
+			for _, slice := range endpoints {
+				slice.Ports = append(slice.Ports, discoveryv1.EndpointPort{Name: new("sctp"), Protocol: new(corev1.ProtocolSCTP), Port: new(int32(9000))})
+			}
+			unready := []*discoveryv1.EndpointSlice{endpoints[0].DeepCopy(), endpoints[1].DeepCopy()}
+			for _, slice := range unready {
+				slice.Endpoints[0].Conditions.Ready = new(false)
+			}
+			for _, stage := range []struct {
+				name      string
+				endpoints []*discoveryv1.EndpointSlice
+				empty     bool
+			}{
+				{"initially empty", nil, true},
+				{"ready", endpoints, false},
+				{"all unready", unready, true},
+				{"removed", nil, true},
+				{"restored", endpoints, false},
+			} {
+				t.Run(stage.name, func(t *testing.T) {
+					require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, stage.endpoints))
+					assertServiceClusterVIPBackends(t, nbClient, svc, stage.empty)
+				})
+			}
+			require.NoError(t, ctrl.handleDeleteService(&vpcService{Svc: svc, Vpc: "vpc"}))
+			remaining, err := nbClient.ListLoadBalancers(serviceScopedLBOwner(svc).ownsLoadBalancer)
+			require.NoError(t, err)
+			require.Empty(t, remaining)
+		})
+	}
+}
+
+func assertServiceClusterVIPBackends(t *testing.T, nbClient *ovs.OVNNbClient, svc *corev1.Service, empty bool) {
+	t.Helper()
+	var variables []ovnnb.ChassisTemplateVar
+	require.NoError(t, nbClient.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(t.Context(), &variables))
+	for _, port := range svc.Spec.Ports {
+		for _, ip := range svc.Spec.ClusterIPs {
+			family := ""
+			if serviceUsesTemplateLB(svc) {
+				family = strings.ToLower(util.CheckProtocol(ip))
+			}
+			lb, err := nbClient.GetLoadBalancer(serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBInternalTraffic, family), false)
+			require.NoError(t, err)
+			require.Equal(t, "true", lb.Options["reject"])
+			vip := util.JoinHostPort(ip, port.Port)
+			if serviceUsesTemplateLB(svc) {
+				require.Len(t, variables, 1)
+				base := fmt.Sprintf("%s%s_%s", serviceTrafficDistributionVariablePrefix(svc), strings.ToLower(string(port.Protocol)), util.Sha256Hash([]byte(vip))[:8])
+				vip = "^" + base + "_vip:" + strconv.Itoa(int(port.Port))
+				require.Equal(t, ip, variables[0].Variables[base+"_vip"])
+				value, exists := lb.Vips[vip]
+				require.True(t, exists)
+				if empty {
+					require.Empty(t, value, "northd must see empty backends before chassis variables are resolved")
+				} else {
+					require.Equal(t, "^"+base+"_backends", value)
+				}
+				_, exists = variables[0].Variables[base+"_backends"]
+				require.True(t, exists)
+				require.Equal(t, empty, variables[0].Variables[base+"_backends"] == "")
+			} else {
+				backends, exists := lb.Vips[vip]
+				require.True(t, exists, "VIP %s must remain while its Service exists", vip)
+				require.Equal(t, empty, backends == "", vip)
+			}
+		}
+	}
+}
+
+func TestServiceLoadBalancerRejectPolicyTransitions(t *testing.T) {
+	ctrl, nbClient, svc, _ := serviceLBReconcileFixture(t, corev1.ServiceTypeClusterIP, false)
+	svc.Spec.Selector = map[string]string{"app": "no-matching-backend"}
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, nil))
+	assertServiceClusterVIPBackends(t, nbClient, svc, true)
+	svc.Spec.InternalTrafficPolicy = new(corev1.ServiceInternalTrafficPolicyLocal)
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, nil))
+	lbs, err := nbClient.ListLoadBalancers(serviceScopedLBOwner(svc).ownsLoadBalancer)
+	require.NoError(t, err)
+	require.NotEmpty(t, lbs)
+	for _, lb := range lbs {
+		require.NotContains(t, lb.Options, "reject")
+		require.Empty(t, lb.Vips)
+	}
+	svc.Spec.InternalTrafficPolicy = new(corev1.ServiceInternalTrafficPolicyCluster)
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, nil))
+	assertServiceClusterVIPBackends(t, nbClient, svc, true)
 }
 
 func TestRuleServiceLoadBalancersAreAtomic(t *testing.T) {

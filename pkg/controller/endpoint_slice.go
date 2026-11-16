@@ -616,10 +616,9 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 			state.lb = serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBInternalTraffic, family)
 		}
 	}
-
 	candidates := serviceEndpointCandidates(reconcileCtx.endpointSlices, port, lbVip, state.distributed)
 	state.backends = endpointBackends(candidates)
-	if len(state.backends) == 0 {
+	if len(state.backends) == 0 && !serviceRejectsEmptyBackends(svc, state.trafficClass) {
 		return c.deleteServiceEndpointVIP(reconcileCtx, state)
 	}
 	if err := c.reconcileServiceVIPHealthCheck(reconcileCtx, state, candidates); err != nil {
@@ -1541,18 +1540,24 @@ func (c *Controller) reconcileServiceTrafficDistribution(svc *v1.Service, endpoi
 				vipVariable, backendVariable := base+"_vip", base+"_backends"
 				templateVIP := "^" + vipVariable + ":" + strconv.Itoa(int(port.Port))
 				candidates := c.serviceLBMigrationCandidates(svc, port.Protocol, vpc, serviceLBInternalTraffic)
+				backends := topologyBackends(endpointSlices, port, lbVip)
+				templateBackends := []string{"^" + backendVariable}
+				if len(backends) == 0 {
+					// Northd must see an empty backend list to generate reject;
+					// an empty chassis variable is only resolved later.
+					templateBackends = nil
+				}
 				migrations = append(migrations, ovs.TemplateVIPMigration{
 					LoadBalancer:     lbName,
 					VIP:              templateVIP,
-					Backends:         []string{"^" + backendVariable},
+					Backends:         templateBackends,
 					OldVIP:           vip,
 					OldLoadBalancers: candidates,
 				})
 				if desiredTemplateVIPs[lbName] == nil {
 					desiredTemplateVIPs[lbName] = make(map[string]string)
 				}
-				desiredTemplateVIPs[lbName][templateVIP] = "^" + backendVariable
-				backends := topologyBackends(endpointSlices, port, lbVip)
+				desiredTemplateVIPs[lbName][templateVIP] = strings.Join(templateBackends, ",")
 				for _, chassis := range *chassises {
 					nodeName, zoneName := chassis.Hostname, ""
 					for _, node := range nodes {
