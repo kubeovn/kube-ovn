@@ -131,6 +131,9 @@ func TestSubnetRuntimeWritersReplaceDirectStatusAndFinalizerPatches(t *testing.T
 func TestSubnetRuntimeOVNMutationWriterOverridesGenericDomainWriter(t *testing.T) {
 	controller := &Controller{}
 	var genericCalls, mutationCalls int
+	require.NoError(t, controller.SetSubnetRuntimePhaseWriter(func(_ context.Context, _ *kubeovnv1.Subnet, _ SubnetRuntimeDomainOperation, _ SubnetRuntimePhase, apply func(context.Context) error) error {
+		return apply(t.Context())
+	}))
 	require.NoError(t, controller.SetSubnetRuntimeOVNMutationWriter(func(_ context.Context, subnet *kubeovnv1.Subnet, operation SubnetRuntimeOVNMutationOperation, apply func(context.Context) error) error {
 		require.Equal(t, "subnet-a", subnet.Name)
 		require.Equal(t, SubnetRuntimeOVNAllocateMutationOperation, operation)
@@ -156,6 +159,30 @@ func TestSubnetRuntimeOVNMutationWriterOverridesGenericDomainWriter(t *testing.T
 	require.Equal(t, 2, mutationCalls)
 	require.Zero(t, genericCalls)
 	require.Equal(t, 2, applyCalls)
+}
+
+func TestSubnetRuntimeDomainWritersRejectOVNMutationWithoutPhaseWriter(t *testing.T) {
+	controller := &Controller{}
+	require.NoError(t, controller.SetSubnetRuntimeOVNMutationWriter(func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeOVNMutationOperation, func(context.Context) error) error {
+		return nil
+	}))
+
+	err := controller.runSubnetRuntimeDomainWriters(t.Context(), &kubeovnv1.Subnet{Name: "subnet-a"}, func(context.Context) error {
+		return nil
+	})
+	require.EqualError(t, err, "subnet runtime OVN mutation writer requires a phase writer")
+}
+
+func TestSubnetRuntimePhaseRejectsOVNMutationWithoutPhaseWriter(t *testing.T) {
+	controller := &Controller{}
+	require.NoError(t, controller.SetSubnetRuntimeOVNMutationWriter(func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeOVNMutationOperation, func(context.Context) error) error {
+		return nil
+	}))
+
+	err := controller.runSubnetRuntimePhase(t.Context(), &kubeovnv1.Subnet{Name: "subnet-a"}, SubnetRuntimeOVNPreparePhase, func(context.Context) error {
+		return nil
+	})
+	require.EqualError(t, err, "subnet runtime OVN mutation writer requires a phase writer")
 }
 
 func TestSubnetRuntimePhaseWriterCarriesPhaseAndOperation(t *testing.T) {
@@ -191,6 +218,125 @@ func TestSubnetRuntimePhaseWriterCarriesPhaseAndOperation(t *testing.T) {
 	require.Equal(t, SubnetRuntimeOVNCleanupOperation, gotOperation)
 	require.Equal(t, SubnetRuntimeDeleteFinalizerPhase, gotPhase)
 	require.Equal(t, 2, applyCalls)
+}
+
+func TestSubnetRuntimePhaseRoutesOVNMutationWriter(t *testing.T) {
+	tests := []struct {
+		name          string
+		phase         SubnetRuntimePhase
+		deleting      bool
+		wantMutation  bool
+		wantOperation SubnetRuntimeOVNMutationOperation
+	}{
+		{
+			name:         "validation does not use OVN mutation",
+			phase:        SubnetRuntimeValidationPhase,
+			wantMutation: false,
+		},
+		{
+			name:         "IPAM does not use OVN mutation",
+			phase:        SubnetRuntimeIPAMPhase,
+			wantMutation: false,
+		},
+		{
+			name:         "finalizer does not use OVN mutation",
+			phase:        SubnetRuntimeFinalizerPhase,
+			wantMutation: false,
+		},
+		{
+			name:         "non OVN status does not use OVN mutation",
+			phase:        SubnetRuntimeNonOVNStatusPhase,
+			wantMutation: false,
+		},
+		{
+			name:          "OVN prepare uses allocation mutation",
+			phase:         SubnetRuntimeOVNPreparePhase,
+			wantMutation:  true,
+			wantOperation: SubnetRuntimeOVNAllocateMutationOperation,
+		},
+		{
+			name:          "OVN finish uses allocation mutation",
+			phase:         SubnetRuntimeOVNFinishPhase,
+			wantMutation:  true,
+			wantOperation: SubnetRuntimeOVNAllocateMutationOperation,
+		},
+		{
+			name:          "delete cleanup uses cleanup mutation",
+			phase:         SubnetRuntimeDeleteCleanupPhase,
+			deleting:      true,
+			wantMutation:  true,
+			wantOperation: SubnetRuntimeOVNCleanupMutationOperation,
+		},
+		{
+			name:         "delete finalizer does not use OVN mutation",
+			phase:        SubnetRuntimeDeleteFinalizerPhase,
+			deleting:     true,
+			wantMutation: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			controller := &Controller{}
+			var mutationCalls, phaseCalls, applyCalls int
+			var gotMutation SubnetRuntimeOVNMutationOperation
+			var gotPhase SubnetRuntimePhase
+			require.NoError(t, controller.SetSubnetRuntimePhaseWriter(func(_ context.Context, _ *kubeovnv1.Subnet, _ SubnetRuntimeDomainOperation, phase SubnetRuntimePhase, apply func(context.Context) error) error {
+				phaseCalls++
+				gotPhase = phase
+				return apply(t.Context())
+			}))
+			require.NoError(t, controller.SetSubnetRuntimeOVNMutationWriter(func(_ context.Context, _ *kubeovnv1.Subnet, operation SubnetRuntimeOVNMutationOperation, apply func(context.Context) error) error {
+				mutationCalls++
+				gotMutation = operation
+				return apply(t.Context())
+			}))
+
+			subnet := &kubeovnv1.Subnet{Name: "subnet-a"}
+			if test.deleting {
+				deletionTimestamp := metav1.Now()
+				subnet.DeletionTimestamp = &deletionTimestamp
+			}
+			require.NoError(t, controller.runSubnetRuntimePhase(t.Context(), subnet, test.phase, func(context.Context) error {
+				applyCalls++
+				return nil
+			}))
+
+			require.Equal(t, 1, phaseCalls)
+			if test.wantMutation {
+				require.Equal(t, 1, mutationCalls)
+			} else {
+				require.Zero(t, mutationCalls)
+			}
+			if test.wantMutation {
+				require.Equal(t, test.wantOperation, gotMutation)
+			}
+			require.Equal(t, test.phase, gotPhase)
+			require.Equal(t, 1, applyCalls)
+		})
+	}
+}
+
+func TestSubnetRuntimePhaseOVNMutationWriterStopsBeforePhase(t *testing.T) {
+	controller := &Controller{}
+	multiplexErr := errors.New("OVN mutation rejected")
+	phaseCalls := 0
+	applyCalls := 0
+	require.NoError(t, controller.SetSubnetRuntimePhaseWriter(func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeDomainOperation, SubnetRuntimePhase, func(context.Context) error) error {
+		phaseCalls++
+		return nil
+	}))
+	require.NoError(t, controller.SetSubnetRuntimeOVNMutationWriter(func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeOVNMutationOperation, func(context.Context) error) error {
+		return multiplexErr
+	}))
+
+	err := controller.runSubnetRuntimePhase(t.Context(), &kubeovnv1.Subnet{Name: "subnet-a"}, SubnetRuntimeOVNPreparePhase, func(context.Context) error {
+		applyCalls++
+		return nil
+	})
+	require.ErrorIs(t, err, multiplexErr)
+	require.Zero(t, phaseCalls)
+	require.Zero(t, applyCalls)
 }
 
 func TestSubnetRuntimeOVNMutationIntentUsesPatchPortRows(t *testing.T) {

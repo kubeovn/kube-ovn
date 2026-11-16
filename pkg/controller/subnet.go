@@ -814,6 +814,9 @@ func (c *Controller) runSubnetRuntimeDomainWriters(ctx context.Context, subnet *
 	if c.subnetRuntimeOVNWriter == nil && c.subnetRuntimeOVNMutationWriter == nil && c.subnetRuntimeIPAMWriter == nil {
 		return operation(ctx)
 	}
+	if c.subnetRuntimeOVNMutationWriter != nil && c.subnetRuntimePhaseWriter == nil {
+		return errors.New("subnet runtime OVN mutation writer requires a phase writer")
+	}
 	operationKind := SubnetRuntimeOVNAllocateOperation
 	if !subnet.DeletionTimestamp.IsZero() {
 		operationKind = SubnetRuntimeOVNCleanupOperation
@@ -852,13 +855,35 @@ func (c *Controller) runSubnetRuntimePhase(ctx context.Context, subnet *kubeovnv
 		return errors.New("subnet runtime phase operation is nil")
 	}
 	if c.subnetRuntimePhaseWriter == nil {
+		if c.subnetRuntimeOVNMutationWriter != nil {
+			return errors.New("subnet runtime OVN mutation writer requires a phase writer")
+		}
 		return operation(ctx)
 	}
 	operationKind := SubnetRuntimeOVNAllocateOperation
 	if subnet != nil && !subnet.DeletionTimestamp.IsZero() {
 		operationKind = SubnetRuntimeOVNCleanupOperation
 	}
-	return c.subnetRuntimePhaseWriter(ctx, subnet, operationKind, phase, operation)
+	phaseOperation := func(ctx context.Context) error {
+		return c.subnetRuntimePhaseWriter(ctx, subnet, operationKind, phase, operation)
+	}
+	if c.subnetRuntimeOVNMutationWriter == nil || !subnetRuntimePhaseUsesOVNMutation(phase) {
+		return phaseOperation(ctx)
+	}
+	mutationOperation := SubnetRuntimeOVNAllocateMutationOperation
+	if operationKind == SubnetRuntimeOVNCleanupOperation {
+		mutationOperation = SubnetRuntimeOVNCleanupMutationOperation
+	}
+	return c.subnetRuntimeOVNMutationWriter(ctx, subnet, mutationOperation, phaseOperation)
+}
+
+func subnetRuntimePhaseUsesOVNMutation(phase SubnetRuntimePhase) bool {
+	switch phase {
+	case SubnetRuntimeOVNPreparePhase, SubnetRuntimeOVNFinishPhase, SubnetRuntimeDeleteCleanupPhase:
+		return true
+	default:
+		return false
+	}
 }
 
 // validateSubnetRuntimeDeleteTarget prevents a stale deletion snapshot from
