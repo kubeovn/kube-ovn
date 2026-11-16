@@ -59,7 +59,7 @@ var _ = framework.Describe("[group:service]", func() {
 	})
 
 	framework.ConformanceIt("should reject ClusterIP connections when no ready endpoints exist", func() {
-		f.SkipVersionPriorTo(1, 18, "empty backend ClusterIP rejection was fixed in v1.18")
+		f.SkipVersionPriorTo(1, 17, "empty backend ClusterIP rejection was fixed in v1.17")
 		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
 		subnet.Spec.EnableLb = new(true)
 		_ = subnetClient.CreateSync(subnet)
