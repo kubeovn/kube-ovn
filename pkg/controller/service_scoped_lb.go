@@ -73,7 +73,7 @@ func serviceRejectsEmptyBackends(svc *v1.Service, trafficClass serviceLBTrafficC
 	// Keep distributed and external-local template load balancers' drop semantics.
 	// Other service-scoped load balancers reject an empty backend set so their VIP
 	// remains present and OVN rejects new connections until an endpoint returns.
-	if serviceUsesDistributedLB(svc) ||
+	if (trafficClass == serviceLBInternalTraffic && serviceUsesDistributedLB(svc)) ||
 		(trafficClass == serviceLBExternalTraffic && serviceUsesExternalLocalTemplate(svc)) {
 		return false
 	}
