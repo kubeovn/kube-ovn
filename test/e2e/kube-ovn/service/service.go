@@ -58,6 +58,50 @@ var _ = framework.Describe("[group:service]", func() {
 		subnetClient.DeleteSync(subnetName)
 	})
 
+	framework.ConformanceIt("should reject ClusterIP connections when no ready endpoints exist", func() {
+		f.SkipVersionPriorTo(1, 18, "empty backend ClusterIP rejection was fixed in v1.18")
+		subnet := framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil)
+		subnet.Spec.EnableLb = new(true)
+		_ = subnetClient.CreateSync(subnet)
+		annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
+		probe := framework.MakePod(namespaceName, podName, nil, annotations, framework.AgnhostImage, nil, []string{"pause"})
+		_ = podClient.CreateSync(probe)
+		selector := map[string]string{"app": hostPodName}
+		ports := []corev1.ServicePort{{Name: "tcp", Protocol: corev1.ProtocolTCP, Port: 80, TargetPort: intstr.FromInt32(8080)}}
+		service := framework.MakeService(serviceName, corev1.ServiceTypeClusterIP, nil, selector, ports, corev1.ServiceAffinityNone)
+		service = serviceClient.Create(service)
+		checkConnections := func(refused bool) {
+			ginkgo.GinkgoHelper()
+			for _, ip := range util.ServiceClusterIPs(*service) {
+				address := util.JoinHostPort(ip, ports[0].Port)
+				framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
+					_, err := e2epodoutput.RunHostCmd(namespaceName, podName, "/agnhost connect --timeout=3s "+address)
+					if refused {
+						return err != nil && strings.Contains(err.Error(), "REFUSED"), nil
+					}
+					return err == nil, nil
+				}, fmt.Sprintf("ClusterIP %s connection refused=%t", address, refused))
+			}
+		}
+
+		ginkgo.By("Rejecting connections to a Service that has never had endpoints")
+		checkConnections(true)
+		ginkgo.By("Connecting after a ready backend appears")
+		backend := framework.MakePod(namespaceName, hostPodName, selector, annotations, framework.AgnhostImage, nil, []string{"netexec", "--http-port=8080"})
+		_ = podClient.CreateSync(backend)
+		checkConnections(false)
+		ginkgo.By("Rejecting connections after the last endpoint disappears")
+		modified := service.DeepCopy()
+		modified.Spec.Selector = map[string]string{"app": "no-matching-backend"}
+		service = serviceClient.Patch(service, modified)
+		checkConnections(true)
+		ginkgo.By("Connecting again after endpoints are restored")
+		modified = service.DeepCopy()
+		modified.Spec.Selector = selector
+		service = serviceClient.Patch(service, modified)
+		checkConnections(false)
+	})
+
 	framework.ConformanceIt("should be able to connect to NodePort service with external traffic policy set to Local from other nodes", func() {
 		f.SkipVersionPriorTo(1, 9, "This case is not adapted before v1.9")
 		ginkgo.By("Creating subnet " + subnetName)
