@@ -70,6 +70,12 @@ func serviceUsesScopedLB(svc *v1.Service) bool {
 }
 
 func serviceRejectsEmptyBackends(svc *v1.Service, trafficClass serviceLBTrafficClass) bool {
+	// Legacy VPC load balancers are shared across services and do not carry the
+	// service-scoped reject option. Keep their headless Service behavior, which
+	// removes an empty VIP instead of retaining it without a rejection action.
+	if !serviceUsesScopedLB(svc) {
+		return false
+	}
 	// Keep distributed and external-local template load balancers' drop semantics.
 	// Other service-scoped load balancers reject an empty backend set so their VIP
 	// remains present and OVN rejects new connections until an endpoint returns.

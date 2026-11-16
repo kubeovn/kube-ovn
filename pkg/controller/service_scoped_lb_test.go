@@ -216,6 +216,38 @@ func TestServiceScopedLBIdentityAndPolicy(t *testing.T) {
 	}
 }
 
+func TestServiceRejectsEmptyBackendsScopesLegacyLoadBalancers(t *testing.T) {
+	tests := []struct {
+		name         string
+		svc          *corev1.Service
+		trafficClass serviceLBTrafficClass
+		wantReject   bool
+	}{
+		{
+			name: "headless ordinary load balancer keeps legacy behavior",
+			svc: &corev1.Service{Spec: corev1.ServiceSpec{
+				Type: corev1.ServiceTypeLoadBalancer, ClusterIP: corev1.ClusterIPNone,
+			}},
+			trafficClass: serviceLBExternalTraffic,
+		},
+		{
+			name: "cluster ip load balancer uses service scoped reject",
+			svc: &corev1.Service{Spec: corev1.ServiceSpec{
+				Type: corev1.ServiceTypeLoadBalancer, ClusterIP: "10.96.0.10",
+			}},
+			trafficClass: serviceLBExternalTraffic,
+			wantReject:   true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := serviceRejectsEmptyBackends(tt.svc, tt.trafficClass); got != tt.wantReject {
+				t.Fatalf("serviceRejectsEmptyBackends() = %t, want %t", got, tt.wantReject)
+			}
+		})
+	}
+}
+
 func TestRuleScopedLBIdentity(t *testing.T) {
 	for _, tt := range []struct {
 		kind string
