@@ -54,6 +54,11 @@ func (c *Controller) serviceScopedLBConfig(svc *v1.Service, protocol v1.Protocol
 		ExternalIDs:     serviceScopedLBExternalIDs(svc, serviceVPCName(svc, c.config.ClusterRouter), trafficClass),
 		Options:         make(map[string]string),
 	}
+	if serviceRejectsEmptyBackends(svc, trafficClass) {
+		config.Options["reject"] = "true"
+	} else {
+		config.DeleteOptions = append(config.DeleteOptions, "reject")
+	}
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
 		config.Options["affinity_timeout"] = strconv.Itoa(timeout)
 	} else {
@@ -157,10 +162,12 @@ func (c *Controller) serviceLoadBalancerParents(ctx *endpointSliceReconcileConte
 func (c *Controller) planServiceEndpointVIP(ctx *endpointSliceReconcileContext, state *serviceEndpointVIPState) {
 	plan := ctx.lbReconciliation
 	lb := plan.desired[state.lb]
-	if len(state.backends) != 0 {
+	if len(state.backends) != 0 || serviceRejectsEmptyBackends(ctx.service, state.trafficClass) {
 		backends := slices.Clone(state.backends)
 		slices.Sort(backends)
 		lb.VIPs[state.vip] = strings.Join(backends, ",")
+	}
+	if len(state.backends) != 0 {
 		maps.Copy(lb.IPPortMappings, state.mapping)
 		if !ctx.profile.ignoreHealthCheck {
 			lb.HealthChecks[state.vip] = maps.Clone(state.externals)

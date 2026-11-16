@@ -69,6 +69,12 @@ func serviceUsesScopedLB(svc *v1.Service) bool {
 	return svc.Spec.Type != v1.ServiceTypeExternalName && svc.Spec.ClusterIP != v1.ClusterIPNone
 }
 
+func serviceRejectsEmptyBackends(svc *v1.Service, trafficClass serviceLBTrafficClass) bool {
+	// Keep local-only and rule-owned load balancers' existing drop semantics.
+	return trafficClass == serviceLBInternalTraffic && !serviceUsesDistributedLB(svc) &&
+		serviceScopedLBOwner(svc).kind == serviceLBOwnerKind
+}
+
 func serviceScopedLBOwner(svc *v1.Service) serviceLBOwner {
 	owner := serviceLBOwner{
 		kind:      serviceLBOwnerKind,
@@ -398,6 +404,11 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	distributed := trafficClass == serviceLBInternalTraffic && serviceUsesDistributedLB(svc)
 	options := make(map[string]string)
 	deleteOptions := make([]string, 0, 2)
+	if serviceRejectsEmptyBackends(svc, trafficClass) {
+		options["reject"] = "true"
+	} else {
+		deleteOptions = append(deleteOptions, "reject")
+	}
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
 		options["affinity_timeout"] = strconv.Itoa(timeout)
 	} else {
