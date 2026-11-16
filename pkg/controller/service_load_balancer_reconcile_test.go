@@ -732,6 +732,19 @@ func TestServiceLoadBalancerRejectPolicyTransitions(t *testing.T) {
 	assertServiceClusterVIPBackends(t, nbClient, svc, true)
 }
 
+func TestServiceLoadBalancerExternalRejectWithDistributedInternalTraffic(t *testing.T) {
+	ctrl, nbClient, svc, _ := serviceLBReconcileFixture(t, corev1.ServiceTypeLoadBalancer, false)
+	svc.Spec.InternalTrafficPolicy = new(corev1.ServiceInternalTrafficPolicyLocal)
+	svc.Spec.Selector = map[string]string{"app": "backend"}
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, nil))
+	assertServiceExternalVIPBackends(t, nbClient, svc, true)
+
+	internal, err := nbClient.GetLoadBalancer(serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBInternalTraffic, ""), false)
+	require.NoError(t, err)
+	require.NotContains(t, internal.Options, "reject")
+	require.Empty(t, internal.Vips)
+}
+
 func TestRuleServiceLoadBalancersAreAtomic(t *testing.T) {
 	for _, kind := range []string{switchLBRuleLBOwnerKind, routerLBRuleLBOwnerKind} {
 		t.Run(kind, func(t *testing.T) {
