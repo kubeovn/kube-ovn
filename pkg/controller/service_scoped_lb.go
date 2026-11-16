@@ -71,9 +71,19 @@ func serviceUsesScopedLB(svc *v1.Service) bool {
 }
 
 func serviceRejectsEmptyBackends(svc *v1.Service, trafficClass serviceLBTrafficClass) bool {
-	// Keep local-only and rule-owned load balancers' existing drop semantics.
-	return trafficClass == serviceLBInternalTraffic && !serviceUsesDistributedLB(svc) &&
-		serviceScopedLBOwner(svc).kind == serviceLBOwnerKind
+	// Keep distributed and external-local template load balancers' drop semantics.
+	// Other service-scoped load balancers reject an empty backend set so their VIP
+	// remains present and OVN rejects new connections until an endpoint returns.
+	if serviceUsesDistributedLB(svc) ||
+		(trafficClass == serviceLBExternalTraffic && serviceUsesExternalLocalTemplate(svc)) {
+		return false
+	}
+	switch serviceScopedLBOwner(svc).kind {
+	case serviceLBOwnerKind, switchLBRuleLBOwnerKind, routerLBRuleLBOwnerKind:
+		return true
+	default:
+		return false
+	}
 }
 
 func serviceScopedLBOwner(svc *v1.Service) serviceLBOwner {
