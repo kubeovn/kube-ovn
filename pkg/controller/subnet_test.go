@@ -158,6 +158,41 @@ func TestSubnetRuntimeOVNMutationWriterOverridesGenericDomainWriter(t *testing.T
 	require.Equal(t, 2, applyCalls)
 }
 
+func TestSubnetRuntimePhaseWriterCarriesPhaseAndOperation(t *testing.T) {
+	controller := &Controller{}
+	var gotPhase SubnetRuntimePhase
+	var gotOperation SubnetRuntimeDomainOperation
+	applyCalls := 0
+	require.NoError(t, controller.SetSubnetRuntimePhaseWriter(func(_ context.Context, subnet *kubeovnv1.Subnet, operation SubnetRuntimeDomainOperation, phase SubnetRuntimePhase, apply func(context.Context) error) error {
+		require.Equal(t, "subnet-a", subnet.Name)
+		gotOperation = operation
+		gotPhase = phase
+		return apply(t.Context())
+	}))
+	require.Error(t, controller.SetSubnetRuntimePhaseWriter(func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeDomainOperation, SubnetRuntimePhase, func(context.Context) error) error {
+		return nil
+	}))
+
+	subnet := &kubeovnv1.Subnet{Name: "subnet-a"}
+	require.NoError(t, controller.runSubnetRuntimePhase(t.Context(), subnet, SubnetRuntimeOVNPreparePhase, func(context.Context) error {
+		applyCalls++
+		return nil
+	}))
+	require.Equal(t, SubnetRuntimeOVNAllocateOperation, gotOperation)
+	require.Equal(t, SubnetRuntimeOVNPreparePhase, gotPhase)
+	require.Equal(t, 1, applyCalls)
+
+	deletionTimestamp := metav1.Now()
+	subnet.DeletionTimestamp = &deletionTimestamp
+	require.NoError(t, controller.runSubnetRuntimePhase(t.Context(), subnet, SubnetRuntimeDeleteFinalizerPhase, func(context.Context) error {
+		applyCalls++
+		return nil
+	}))
+	require.Equal(t, SubnetRuntimeOVNCleanupOperation, gotOperation)
+	require.Equal(t, SubnetRuntimeDeleteFinalizerPhase, gotPhase)
+	require.Equal(t, 2, applyCalls)
+}
+
 func TestSubnetRuntimeOVNMutationIntentUsesPatchPortRows(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
 		Name:       "subnet-a",

@@ -137,6 +137,7 @@ type installingSubnetDataPlaneBackend struct {
 	ipam             legacycontroller.SubnetRuntimeDomainWriter
 	ipamMutation     legacycontroller.SubnetRuntimeIPAMMutationWriter
 	ipamAddress      legacycontroller.SubnetRuntimeIPAMAddressWriter
+	phase            legacycontroller.SubnetRuntimePhaseWriter
 	addressBackend   recordingSubnetIPAMAddressBackend
 	virtualPort      legacycontroller.SubnetRuntimeVirtualPortWriter
 	virtualPortCalls int
@@ -211,6 +212,11 @@ func (b *installingSubnetDataPlaneBackend) SetSubnetRuntimeOVNMutationWriter(wri
 
 func (b *installingSubnetDataPlaneBackend) SetSubnetRuntimeIPAMMutationWriter(writer legacycontroller.SubnetRuntimeIPAMMutationWriter) error {
 	b.ipamMutation = writer
+	return nil
+}
+
+func (b *installingSubnetDataPlaneBackend) SetSubnetRuntimePhaseWriter(writer legacycontroller.SubnetRuntimePhaseWriter) error {
+	b.phase = writer
 	return nil
 }
 
@@ -355,6 +361,55 @@ func TestSubnetControllerWriterAdapterInstallsExplicitRuntimeWriters(t *testing.
 	require.Error(t, adapter.InstallRuntimeWriters())
 }
 
+func TestSubnetRuntimePhaseWriteOperationMapsLifecycleGates(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		operation legacycontroller.SubnetRuntimeDomainOperation
+		phase     legacycontroller.SubnetRuntimePhase
+		want      SubnetWriteOperation
+	}{
+		{
+			name:      "validation uses status gate",
+			operation: legacycontroller.SubnetRuntimeOVNAllocateOperation,
+			phase:     legacycontroller.SubnetRuntimeValidationPhase,
+			want:      SubnetStatusWriteOperation,
+		},
+		{
+			name:      "ipam registration uses ipam gate",
+			operation: legacycontroller.SubnetRuntimeOVNAllocateOperation,
+			phase:     legacycontroller.SubnetRuntimeIPAMPhase,
+			want:      SubnetIPAMRegisterOperation,
+		},
+		{
+			name:      "cleanup uses ovn cleanup gate",
+			operation: legacycontroller.SubnetRuntimeOVNCleanupOperation,
+			phase:     legacycontroller.SubnetRuntimeDeleteCleanupPhase,
+			want:      SubnetOVNCleanupOperation,
+		},
+		{
+			name:      "delete finalizer uses remove gate",
+			operation: legacycontroller.SubnetRuntimeOVNCleanupOperation,
+			phase:     legacycontroller.SubnetRuntimeDeleteFinalizerPhase,
+			want:      SubnetFinalizerRemoveOperation,
+		},
+		{
+			name:      "ovn prepare preserves allocation gate",
+			operation: legacycontroller.SubnetRuntimeOVNAllocateOperation,
+			phase:     legacycontroller.SubnetRuntimeOVNPreparePhase,
+			want:      SubnetOVNAllocateOperation,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			require.Equal(t, test.want, subnetRuntimePhaseWriteOperation(test.operation, test.phase))
+		})
+	}
+}
+
 func TestSubnetControllerWriterAdapterFailsClosedWithoutTypedIPAMAddressWriter(t *testing.T) {
 	backend := &legacySubnetDataPlaneBackend{}
 	client := newRuntimeClient(t)
@@ -372,6 +427,7 @@ func TestSubnetControllerWriterAdapterWritersSyncResourceVersion(t *testing.T) {
 	require.NoError(t, err)
 	subnet := testSubnet("")
 	subnet.UID = types.UID("subnet-uid")
+	subnet.ResourceVersion = "1"
 	api := fake.NewClientBuilder().WithScheme(scheme).WithStatusSubresource(&kubeovnv1.Subnet{}).WithObjects(subnet).Build()
 	backend := &installingSubnetDataPlaneBackend{}
 	adapter := &SubnetControllerWriterAdapter{
@@ -389,6 +445,16 @@ func TestSubnetControllerWriterAdapterWritersSyncResourceVersion(t *testing.T) {
 	require.NotNil(t, backend.ipamMutation)
 	require.NotNil(t, backend.ipamAddress)
 	require.NotNil(t, backend.virtualPort)
+	require.NotNil(t, backend.phase)
+
+	phaseCalls := 0
+	phaseSubnet := subnet.DeepCopy()
+	require.NoError(t, backend.phase(t.Context(), phaseSubnet, legacycontroller.SubnetRuntimeOVNAllocateOperation, legacycontroller.SubnetRuntimeValidationPhase, func(context.Context) error {
+		phaseCalls++
+		return nil
+	}))
+	require.Equal(t, 1, phaseCalls)
+
 	current := &kubeovnv1.Subnet{}
 	require.NoError(t, api.Get(t.Context(), client.ObjectKey{Name: subnet.Name}, current))
 	require.NoError(t, backend.virtualPort(t.Context(), current.Name))

@@ -103,7 +103,10 @@ func (w *subnetSideEffectWriter) Execute(snapshot SubnetWriteSnapshot, operation
 
 func (w *subnetSideEffectWriter) executePlan(snapshot SubnetWriteSnapshot, operation SubnetWriteOperation, plan SubnetSideEffectPlan) (SubnetSideEffectReceipt, error) {
 	switch operation {
-	case SubnetOVNAllocateOperation, SubnetOVNCleanupOperation, SubnetIPAMAllocateOperation, SubnetIPAMReleaseOperation, SubnetIPAMRegisterOperation, SubnetIPAMDeleteOperation, SubnetIPAMAddressAllocateOperation, SubnetIPAMAddressReleaseOperation:
+	case SubnetStatusWriteOperation, SubnetFinalizerAddOperation, SubnetFinalizerRemoveOperation,
+		SubnetOVNAllocateOperation, SubnetOVNCleanupOperation,
+		SubnetIPAMAllocateOperation, SubnetIPAMReleaseOperation, SubnetIPAMRegisterOperation,
+		SubnetIPAMDeleteOperation, SubnetIPAMAddressAllocateOperation, SubnetIPAMAddressReleaseOperation:
 	default:
 		return nil, fmt.Errorf("unsupported Subnet side effect operation %q", operation)
 	}

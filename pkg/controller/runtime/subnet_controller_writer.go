@@ -70,6 +70,10 @@ type subnetRuntimeWriterInstaller interface {
 	) error
 }
 
+type subnetRuntimePhaseWriterInstaller interface {
+	SetSubnetRuntimePhaseWriter(legacycontroller.SubnetRuntimePhaseWriter) error
+}
+
 type subnetRuntimeVirtualPortWriterInstaller interface {
 	SetSubnetRuntimeVirtualPortWriter(legacycontroller.SubnetRuntimeVirtualPortWriter) error
 }
@@ -92,6 +96,32 @@ type subnetRuntimeOVNMutationIntentProvider interface {
 
 type subnetRuntimeIPAMAddressWriterInstaller interface {
 	SetSubnetRuntimeIPAMAddressWriter(legacycontroller.SubnetRuntimeIPAMAddressWriter) error
+}
+
+func subnetRuntimePhaseWriteOperation(
+	operation legacycontroller.SubnetRuntimeDomainOperation,
+	phase legacycontroller.SubnetRuntimePhase,
+) SubnetWriteOperation {
+	switch phase {
+	case legacycontroller.SubnetRuntimeValidationPhase, legacycontroller.SubnetRuntimeNonOVNStatusPhase:
+		return SubnetStatusWriteOperation
+	case legacycontroller.SubnetRuntimeFinalizerPhase:
+		if operation == legacycontroller.SubnetRuntimeOVNCleanupOperation {
+			return SubnetFinalizerRemoveOperation
+		}
+		return SubnetFinalizerAddOperation
+	case legacycontroller.SubnetRuntimeIPAMPhase:
+		if operation == legacycontroller.SubnetRuntimeOVNCleanupOperation {
+			return SubnetIPAMDeleteOperation
+		}
+		return SubnetIPAMRegisterOperation
+	case legacycontroller.SubnetRuntimeDeleteCleanupPhase:
+		return SubnetOVNCleanupOperation
+	case legacycontroller.SubnetRuntimeDeleteFinalizerPhase:
+		return SubnetFinalizerRemoveOperation
+	default:
+		return SubnetWriteOperation(operation)
+	}
 }
 
 func (a *SubnetControllerWriterAdapter) subnetOVNMutationIntent(ctx context.Context, subnet *kubeovnv1.Subnet, snapshot SubnetWriteSnapshot) (SubnetOVNMutationIntent, error) {
@@ -225,6 +255,27 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 				return nil, apply(ctx)
 			},
 		})
+	}
+	phaseWriter := func(ctx context.Context, subnet *kubeovnv1.Subnet, operation legacycontroller.SubnetRuntimeDomainOperation, phase legacycontroller.SubnetRuntimePhase, apply func(context.Context) error) error {
+		if subnet == nil {
+			return errors.New("subnet runtime phase requires a Subnet")
+		}
+		if apply == nil {
+			return errors.New("subnet runtime phase operation is not configured")
+		}
+		snapshot, err := NewSubnetWriteSnapshot(subnet, subnet.DeletionTimestamp.IsZero())
+		if err != nil {
+			return err
+		}
+		writer := &subnetSideEffectWriter{ctx: ctx, reader: a.Reader, gate: a.Gate}
+		if err := writer.Execute(snapshot, subnetRuntimePhaseWriteOperation(operation, phase), SubnetSideEffectPlan{
+			Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
+				return nil, apply(ctx)
+			},
+		}); err != nil {
+			return fmt.Errorf("subnet %s runtime phase %s: %w", subnet.Name, phase, err)
+		}
+		return nil
 	}
 	ovnMutationWriter := func(ctx context.Context, subnet *kubeovnv1.Subnet, operation legacycontroller.SubnetRuntimeOVNMutationOperation, apply func(context.Context) error) error {
 		if subnet == nil {
@@ -374,6 +425,11 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 	}
 	if err := installer.SetSubnetRuntimeWriters(statusWriter, ipStatusWriter, gatewayMACWriter, finalizerWriter, domainWriter, domainWriter); err != nil {
 		return err
+	}
+	if phaseInstaller, ok := a.Backend.(subnetRuntimePhaseWriterInstaller); ok {
+		if err := phaseInstaller.SetSubnetRuntimePhaseWriter(phaseWriter); err != nil {
+			return err
+		}
 	}
 	if ovnInstaller, ok := a.Backend.(subnetRuntimeOVNMutationWriterInstaller); ok {
 		if err := ovnInstaller.SetSubnetRuntimeOVNMutationWriter(ovnMutationWriter); err != nil {

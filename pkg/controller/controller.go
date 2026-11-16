@@ -77,6 +77,7 @@ type Controller struct {
 	subnetRuntimeIPStatusWriter     SubnetRuntimeIPStatusWriter
 	subnetRuntimeGatewayMACWriter   SubnetRuntimeGatewayMACWriter
 	subnetRuntimeFinalizerWriter    SubnetRuntimeFinalizerWriter
+	subnetRuntimePhaseWriter        SubnetRuntimePhaseWriter
 	subnetRuntimeOVNWriter          SubnetRuntimeDomainWriter
 	subnetRuntimeOVNMutationWriter  SubnetRuntimeOVNMutationWriter
 	subnetRuntimeIPAMWriter         SubnetRuntimeDomainWriter

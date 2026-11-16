@@ -308,19 +308,35 @@ func TestSubnetSideEffectWriterGateFailureSkipsPlan(t *testing.T) {
 	require.Zero(t, calls)
 }
 
-func TestSubnetSideEffectWriterRejectsUnrelatedOperations(t *testing.T) {
-	for _, operation := range []SubnetWriteOperation{SubnetStatusWriteOperation, SubnetFinalizerAddOperation, SubnetFinalizerRemoveOperation, "unknown"} {
-		t.Run(string(operation), func(t *testing.T) {
-			w, _, snapshot := newSubnetSideEffectWriter(t)
-			snapshot.AllocationAllowed = false
+func TestSubnetSideEffectWriterAcceptsLifecycleOperations(t *testing.T) {
+	tests := []struct {
+		name      string
+		operation SubnetWriteOperation
+		deleting  bool
+	}{
+		{name: "status", operation: SubnetStatusWriteOperation},
+		{name: "finalizer add", operation: SubnetFinalizerAddOperation},
+		{name: "finalizer remove", operation: SubnetFinalizerRemoveOperation, deleting: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			w, _, _, snapshot := newSubnetSideEffectWriterAPI(t, test.deleting)
 			calls := 0
-			err := w.Execute(snapshot, operation, SubnetSideEffectPlan{
+			err := w.Execute(snapshot, test.operation, SubnetSideEffectPlan{
 				Apply: func(context.Context) (SubnetSideEffectReceipt, error) { calls++; return nil, nil },
 			})
-			require.ErrorContains(t, err, "unsupported Subnet side effect operation")
-			require.Zero(t, calls)
+			require.NoError(t, err)
+			require.Equal(t, 1, calls)
 		})
 	}
+}
+
+func TestSubnetSideEffectWriterRejectsUnknownOperation(t *testing.T) {
+	w, _, snapshot := newSubnetSideEffectWriter(t)
+	err := w.Execute(snapshot, "unknown", SubnetSideEffectPlan{
+		Apply: func(context.Context) (SubnetSideEffectReceipt, error) { return nil, nil },
+	})
+	require.ErrorContains(t, err, "unsupported Subnet side effect operation")
 }
 
 func TestSubnetSideEffectWriterReportsCompensationTimeout(t *testing.T) {

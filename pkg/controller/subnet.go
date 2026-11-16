@@ -742,7 +742,7 @@ func (c *Controller) ReconcileSubnetRuntimeWithGate(ctx context.Context, subnet 
 		return ErrSubnetRuntimeAllocationNotAllowed
 	}
 	if !subnet.DeletionTimestamp.IsZero() {
-		return c.runSubnetRuntimeDomainWriters(ctx, subnet, func(ctx context.Context) error {
+		preflightDelete := func(ctx context.Context) error {
 			preflightLive, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(ctx, subnet.Name, metav1.GetOptions{})
 			if err == nil {
 				if err := validateSubnetRuntimeDeleteTarget(subnet, preflightLive); err != nil {
@@ -757,6 +757,9 @@ func (c *Controller) ReconcileSubnetRuntimeWithGate(ctx context.Context, subnet 
 			if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 				return err
 			}
+			return nil
+		}
+		deleteFinalizer := func(ctx context.Context) error {
 			// The legacy delete queue and the add/update path normally converge on
 			// handleSubnetFinalizer independently. Runtime mode has no such second
 			// worker, so the fenced writer must perform the finalizer gate itself
@@ -773,13 +776,31 @@ func (c *Controller) ReconcileSubnetRuntimeWithGate(ctx context.Context, subnet 
 			}
 			_, _, err = c.handleSubnetFinalizerWithContext(ctx, live)
 			return err
-		})
+		}
+		if c.subnetRuntimePhaseWriter == nil {
+			return c.runSubnetRuntimeDomainWriters(ctx, subnet, func(ctx context.Context) error {
+				if err := preflightDelete(ctx); err != nil {
+					return err
+				}
+				return deleteFinalizer(ctx)
+			})
+		}
+		if err := c.runSubnetRuntimePhase(ctx, subnet, SubnetRuntimeDeleteCleanupPhase, preflightDelete); err != nil {
+			return err
+		}
+		return c.runSubnetRuntimePhase(ctx, subnet, SubnetRuntimeDeleteFinalizerPhase, deleteFinalizer)
 	}
-	return c.runSubnetRuntimeDomainWriters(ctx, subnet, func(ctx context.Context) error {
+	reconcile := func(ctx context.Context) error {
 		c.subnetKeyMutex.LockKey(subnet.Name)
 		defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
-		return c.reconcileSubnetObject(ctx, subnet)
-	})
+		return c.reconcileSubnetObjectWithPhase(ctx, subnet, func(ctx context.Context, current *kubeovnv1.Subnet, phase SubnetRuntimePhase, operation func(context.Context) error) error {
+			return c.runSubnetRuntimePhase(ctx, current, phase, operation)
+		})
+	}
+	if c.subnetRuntimePhaseWriter == nil {
+		return c.runSubnetRuntimeDomainWriters(ctx, subnet, reconcile)
+	}
+	return reconcile(ctx)
 }
 
 // runSubnetRuntimeDomainWriters gives the explicit runtime OVN and IPAM
@@ -824,6 +845,20 @@ func (c *Controller) runSubnetRuntimeDomainWriters(ctx context.Context, subnet *
 		}
 	}
 	return wrapped(ctx)
+}
+
+func (c *Controller) runSubnetRuntimePhase(ctx context.Context, subnet *kubeovnv1.Subnet, phase SubnetRuntimePhase, operation func(context.Context) error) error {
+	if operation == nil {
+		return errors.New("subnet runtime phase operation is nil")
+	}
+	if c.subnetRuntimePhaseWriter == nil {
+		return operation(ctx)
+	}
+	operationKind := SubnetRuntimeOVNAllocateOperation
+	if subnet != nil && !subnet.DeletionTimestamp.IsZero() {
+		operationKind = SubnetRuntimeOVNCleanupOperation
+	}
+	return c.subnetRuntimePhaseWriter(ctx, subnet, operationKind, phase, operation)
 }
 
 // validateSubnetRuntimeDeleteTarget prevents a stale deletion snapshot from
@@ -913,6 +948,28 @@ type SubnetRuntimeFinalizerWriter func(context.Context, *kubeovnv1.Subnet, bool)
 // installed writer supplies the uncached identity check and durable fence
 // immediately before OVN or IPAM side effects.
 type SubnetRuntimeDomainWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeDomainOperation, func(context.Context) error) error
+
+// SubnetRuntimePhase identifies one independently fenced part of a Subnet
+// reconcile. Runtime mode uses these boundaries to avoid treating a complete
+// legacy domain pass as one opaque mutation.
+type SubnetRuntimePhase string
+
+const (
+	SubnetRuntimeValidationPhase      SubnetRuntimePhase = "validation"
+	SubnetRuntimeIPAMPhase            SubnetRuntimePhase = "ipam"
+	SubnetRuntimeFinalizerPhase       SubnetRuntimePhase = "finalizer"
+	SubnetRuntimeOVNPreparePhase      SubnetRuntimePhase = "ovn-prepare"
+	SubnetRuntimeOVNFinishPhase       SubnetRuntimePhase = "ovn-finish"
+	SubnetRuntimeNonOVNStatusPhase    SubnetRuntimePhase = "non-ovn-status"
+	SubnetRuntimeDeleteCleanupPhase   SubnetRuntimePhase = "delete-cleanup"
+	SubnetRuntimeDeleteFinalizerPhase SubnetRuntimePhase = "delete-finalizer"
+)
+
+// SubnetRuntimePhaseWriter wraps one phase with the runtime identity and
+// durable fence. The phase value is intentionally separate from the broad
+// allocation/cleanup operation so receipts can become phase-specific without
+// changing the legacy domain callback.
+type SubnetRuntimePhaseWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeDomainOperation, SubnetRuntimePhase, func(context.Context) error) error
 
 // SubnetRuntimeOVNMutationWriter is the explicit OVN adapter seam used by the
 // opt-in Subnet writer. It separates OVN admission from the generic domain
@@ -1156,6 +1213,19 @@ func (c *Controller) SetSubnetRuntimeWriters(statusWriter SubnetRuntimeStatusWri
 	c.subnetRuntimeFinalizerWriter = finalizerWriter
 	c.subnetRuntimeOVNWriter = ovnWriter
 	c.subnetRuntimeIPAMWriter = ipamWriter
+	return nil
+}
+
+// SetSubnetRuntimePhaseWriter installs the phase-aware runtime boundary.
+// Legacy workers leave it unset and retain the single domain callback path.
+func (c *Controller) SetSubnetRuntimePhaseWriter(writer SubnetRuntimePhaseWriter) error {
+	if c == nil || writer == nil {
+		return errors.New("subnet runtime phase writer is not configured")
+	}
+	if c.subnetRuntimePhaseWriter != nil {
+		return errors.New("subnet runtime phase writer is already configured")
+	}
+	c.subnetRuntimePhaseWriter = writer
 	return nil
 }
 
@@ -1547,6 +1617,18 @@ func (c *Controller) RecoverSubnetRuntime(ctx context.Context, subnet *kubeovnv1
 }
 
 func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *kubeovnv1.Subnet) error {
+	return c.reconcileSubnetObjectWithPhase(ctx, cachedSubnet, nil)
+}
+
+type subnetRuntimePhaseRunner func(context.Context, *kubeovnv1.Subnet, SubnetRuntimePhase, func(context.Context) error) error
+
+func (c *Controller) reconcileSubnetObjectWithPhase(ctx context.Context, cachedSubnet *kubeovnv1.Subnet, phaseRunner subnetRuntimePhaseRunner) error {
+	phase := func(current *kubeovnv1.Subnet, name SubnetRuntimePhase, operation func(context.Context) error) error {
+		if phaseRunner == nil {
+			return operation(ctx)
+		}
+		return phaseRunner(ctx, current, name, operation)
+	}
 	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
 	}
@@ -1587,14 +1669,18 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		}
 		return err
 	}
-	if err = c.patchSubnetStatusWithContext(ctx, subnet, "ValidateLogicalSwitchSuccess", ""); err != nil {
+	if err = phase(subnet, SubnetRuntimeValidationPhase, func(ctx context.Context) error {
+		return c.patchSubnetStatusWithContext(ctx, subnet, "ValidateLogicalSwitchSuccess", "")
+	}); err != nil {
 		klog.Error(err)
 		return c.recordResourceError(subnet, "UpdateStatusFailed", err)
 	}
 
 	if subnet.Spec.CIDRBlock != "" {
-		if err := c.runSubnetRuntimeIPAMMutation(ctx, subnet, SubnetRuntimeIPAMRegisterOperation, func(context.Context) error {
-			return c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps)
+		if err := phase(subnet, SubnetRuntimeIPAMPhase, func(ctx context.Context) error {
+			return c.runSubnetRuntimeIPAMMutation(ctx, subnet, SubnetRuntimeIPAMRegisterOperation, func(context.Context) error {
+				return c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps)
+			})
 		}); err != nil {
 			klog.Error(err)
 			return c.recordResourceError(subnet, "UpdateIPAMFailed", err)
@@ -1612,8 +1698,10 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		// lightweight IPAM entry so MAC allocations are tracked and the GC does not
 		// clean the subnet's mac-only IP/LSP resources. It has no IP ranges, so there
 		// is no subnet IP status to calculate.
-		if err := c.runSubnetRuntimeIPAMMutation(ctx, subnet, SubnetRuntimeIPAMRegisterOperation, func(context.Context) error {
-			return c.ipam.AddOrUpdateSubnet(subnet.Name, "", "", nil)
+		if err := phase(subnet, SubnetRuntimeIPAMPhase, func(ctx context.Context) error {
+			return c.runSubnetRuntimeIPAMMutation(ctx, subnet, SubnetRuntimeIPAMRegisterOperation, func(context.Context) error {
+				return c.ipam.AddOrUpdateSubnet(subnet.Name, "", "", nil)
+			})
 		}); err != nil {
 			klog.Error(err)
 			return c.recordResourceError(subnet, "UpdateIPAMFailed", err)
@@ -1624,8 +1712,13 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		return err
 	}
 
-	updatedSubnet, deleted, err := c.handleSubnetFinalizerWithContext(ctx, subnet)
-	if err != nil {
+	var updatedSubnet *kubeovnv1.Subnet
+	var deleted bool
+	if err := phase(subnet, SubnetRuntimeFinalizerPhase, func(ctx context.Context) error {
+		var err error
+		updatedSubnet, deleted, err = c.handleSubnetFinalizerWithContext(ctx, subnet)
+		return err
+	}); err != nil {
 		klog.Errorf("handle subnet finalizer failed %v", err)
 		return c.recordResourceError(subnet, "UpdateFinalizerFailed", err)
 	}
@@ -1638,17 +1731,26 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			return err
 		}
-		return c.finishNonOvnSubnetReconcile(ctx, subnet)
+		return phase(subnet, SubnetRuntimeNonOVNStatusPhase, func(ctx context.Context) error {
+			return c.finishNonOvnSubnetReconcile(ctx, subnet)
+		})
 	}
 	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
 	}
 
-	vpc, err := c.prepareOvnSubnet(ctx, subnet)
+	var vpc *kubeovnv1.Vpc
+	err = phase(subnet, SubnetRuntimeOVNPreparePhase, func(ctx context.Context) error {
+		var err error
+		vpc, err = c.prepareOvnSubnet(ctx, subnet)
+		return err
+	})
 	if err != nil {
 		return err
 	}
-	return c.finishOvnSubnetReconcile(ctx, subnet, vpc)
+	return phase(subnet, SubnetRuntimeOVNFinishPhase, func(ctx context.Context) error {
+		return c.finishOvnSubnetReconcile(ctx, subnet, vpc)
+	})
 }
 
 func (c *Controller) finishNonOvnSubnetReconcile(ctx context.Context, subnet *kubeovnv1.Subnet) error {
