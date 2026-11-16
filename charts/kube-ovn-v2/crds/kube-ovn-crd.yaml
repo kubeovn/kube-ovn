@@ -2693,6 +2693,12 @@ spec:
               externalEgressGateway:
                 description: External egress gateway IPs.
                 type: string
+              externalLBInterface:
+                description: |-
+                  ExternalLBInterface creates an addressless, ARP-only internal interface on
+                  eligible nodes for external L2 LoadBalancer speakers. Requires an IPv4
+                  underlay subnet with enableExternalLBAddress and no logical gateway.
+                type: string
               gateway:
                 description: Gateway IP address for the subnet.
                 type: string

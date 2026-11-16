@@ -15,6 +15,9 @@ import (
 )
 
 func ValidateSubnet(subnet kubeovnv1.Subnet) error {
+	if err := ValidateExternalLBInterface(subnet); err != nil {
+		return err
+	}
 	// Allow underlay subnets (with vlan) to be created without a CIDRBlock.
 	// Such subnets only allocate a MAC address and rely on an external DHCP
 	// server (BYO-DHCP) for IP assignment.

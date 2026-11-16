@@ -60,6 +60,7 @@ ADD patches/set-dl-src-for-packets-redirected-by-router-port.patch $SRC_DIR
 ADD patches/ovn-controller-do-not-send-garp-on-localnet-for-kube-ovn-ports.patch $SRC_DIR
 ADD patches/scope-ecmp-source-hashing-to-policy-routes.patch $SRC_DIR
 ADD patches/northd-bcast-arp-nd-req-flood-default-false.patch $SRC_DIR
+ADD patches/ovn-controller-localport-arp-only.patch $SRC_DIR
 ADD patches/ovn-controller-propagate-ipsec-protection.patch $SRC_DIR
 
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
@@ -118,6 +119,8 @@ RUN cd /usr/src/ && git clone -b branch-26.03 --depth=1 https://github.com/ovn-o
     git apply --unidiff-zero $SRC_DIR/scope-ecmp-source-hashing-to-policy-routes.patch && \
     # northd: skip underlay ARP/ND request flood by default
     git apply --unidiff-zero $SRC_DIR/northd-bcast-arp-nd-req-flood-default-false.patch && \
+    # allow only ARP between opted-in localports and the physical network
+    git apply $SRC_DIR/ovn-controller-localport-arp-only.patch && \
     # retain marked IPsec output protection through IKE and SB transitions
     git apply $SRC_DIR/ovn-controller-propagate-ipsec-protection.patch && \
     ovn_commit=$(git rev-parse --short=12 HEAD) && \

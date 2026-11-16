@@ -1,0 +1,127 @@
+diff --git a/controller/binding.c b/controller/binding.c
+index 56aa904be9..bd08646008 100644
+--- a/controller/binding.c
++++ b/controller/binding.c
+@@ -1981,6 +1981,19 @@ consider_localport(const struct sbrec_port_binding *pb,
+         remove_related_lport(pb, b_ctx_out);
+     }
+
++    if (smap_get_bool(&pb->options, "localnet-arp-only", false) &&
++        is_lbinding_set(lbinding)) {
++        /* An ARP-only speaker must work on a provider node even when this
++         * switch has no ordinary VIF on the node.  Do not claim the shared
++         * port binding or change the default localport behavior. */
++        add_local_datapath(b_ctx_in->sbrec_datapath_binding_by_key,
++                           b_ctx_in->sbrec_port_binding_by_datapath,
++                           b_ctx_in->sbrec_port_binding_by_name,
++                           pb->datapath, b_ctx_in->chassis_rec,
++                           b_ctx_out->local_datapaths,
++                           b_ctx_out->tracked_dp_bindings);
++    }
++
+     /* Add all localnet ports to local_ifaces so that we allocate ct zones
+      * for them. */
+     update_local_lports(pb->logical_port, b_ctx_out, LPORT_STATUS_BOUND);
+diff --git a/controller/physical.c b/controller/physical.c
+index fd8a4be7f6..1005f40ce4 100644
+--- a/controller/physical.c
++++ b/controller/physical.c
+@@ -2478,7 +2478,9 @@ consider_port_binding(const struct physical_ctx *ctx,
+         load_logical_ingress_metadata(binding, &zone_ids, ctx->n_encap_ips,
+                                       ctx->encap_ips, ofpacts_p, true);
+
+-        if (type == LP_LOCALPORT) {
++        bool localnet_arp_only = type == LP_LOCALPORT &&
++            smap_get_bool(&binding->options, "localnet-arp-only", false);
++        if (type == LP_LOCALPORT && !localnet_arp_only) {
+             /* mark the packet as incoming from a localport */
+             put_load(1, MFF_LOG_FLAGS, MLF_LOCALPORT_BIT, 1, ofpacts_p);
+         }
+@@ -2489,6 +2491,23 @@ consider_port_binding(const struct physical_ctx *ctx,
+                         tag ? 150 : 100, binding->header_.uuid.parts[0],
+                         &match, ofpacts_p, &binding->header_.uuid);
+
++        if (localnet_arp_only) {
++            /* An addressless L2 speaker may advertise its per-chassis MAC on
++             * the physical network. Never admit IP traffic from this port.
++             * Keep the localport REMOTE_OUTPUT rule to avoid tunnel copies. */
++            match_set_dl_type(&match, htons(ETH_TYPE_ARP));
++            ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 200,
++                            binding->header_.uuid.parts[0], &match,
++                            ofpacts_p, &binding->header_.uuid);
++            match_init_catchall(&match);
++            match_set_in_port(&match, ofport);
++            ofpbuf_clear(ofpacts_p);
++            put_drop(&ctx->debug, OFTABLE_PHY_TO_LOG, ofpacts_p);
++            ofctrl_add_flow(flow_table, OFTABLE_PHY_TO_LOG, 190,
++                            binding->header_.uuid.parts[0], &match,
++                            ofpacts_p, &binding->header_.uuid);
++        }
++
+         if (!tag && (type == LP_LOCALNET || type == LP_L2GATEWAY)) {
+
+             /* Add a second flow for frames that lack any 802.1Q
+@@ -2532,6 +2551,21 @@ consider_port_binding(const struct physical_ctx *ctx,
+                         binding->header_.uuid.parts[0],
+                         &match, ofpacts_p, &binding->header_.uuid);
+
++        if (localnet_arp_only) {
++            /* Unknown addresses must not deliver flooded service data to the
++             * host stack. Only raw ARP reaches the L2 speaker. */
++            match_set_dl_type(&match, htons(ETH_TYPE_ARP));
++            ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 120,
++                            binding->header_.uuid.parts[0], &match,
++                            ofpacts_p, &binding->header_.uuid);
++            match_outport_dp_and_port_keys(&match, dp_key, port_key);
++            ofpbuf_clear(ofpacts_p);
++            put_drop(&ctx->debug, OFTABLE_LOG_TO_PHY, ofpacts_p);
++            ofctrl_add_flow(flow_table, OFTABLE_LOG_TO_PHY, 110,
++                            binding->header_.uuid.parts[0], &match,
++                            ofpacts_p, &binding->header_.uuid);
++        }
++
+         if (type == LP_LOCALNET) {
+             put_replace_router_port_mac_flows(ctx, binding, ofpacts_p,
+                                               ofport, flow_table);
+diff --git a/tests/ovn.at b/tests/ovn.at
+index 22d0e21766..b6d87d1add 100644
+--- a/tests/ovn.at
++++ b/tests/ovn.at
+@@ -14392,6 +14392,37 @@ AT_CHECK([tcpdump -vnne -r hv1/br-phys_n1-tx.pcap arp[[24:4]]=0x0a000064 | wc -l
+ 0
+ ],[ignore])
+
++dnl The explicit ARP-only option allows an addressless L2 speaker to use
++dnl a per-chassis MAC, without changing default localport behavior.
++check ovn-nbctl lsp-set-addresses lp unknown
++check ovn-nbctl set Logical_Switch_Port lp options:localnet-arp-only=true
++check ovn-nbctl --wait=hv sync
++send_garp hv1 vif1 1 "00:00:00:00:00:01" "ff:ff:ff:ff:ff:ff" $spa $tpa
++OVS_WAIT_FOR_OUTPUT([tcpdump -vnne -r hv1/br-phys_n1-tx.pcap arp[[24:4]]=0x0a000064 2>/dev/null | wc -l], [0], [dnl
++1
++])
++
++dnl Exercise the bidirectional IP guard with actual unknown unicast frames.
++check ovs-appctl netdev-dummy/receive vif1 00000000009900000000000108004500001400000000400100000a0000010a000064
++OVS_WAIT_FOR_OUTPUT([ovs-ofctl dump-flows br-int table=OFTABLE_PHY_TO_LOG | grep 'n_packets=1,.*priority=190' | wc -l], [0], [dnl
++1
++])
++check ovs-appctl netdev-dummy/receive vif2 00000000009900000000000208004500001400000000400100000a0000020a000064
++OVS_WAIT_FOR_OUTPUT([ovs-ofctl dump-flows br-int table=OFTABLE_LOG_TO_PHY | grep 'n_packets=1,.*priority=110' | wc -l], [0], [dnl
++1
++])
++dnl An ARP sent to the same unknown localport MAC is delivered to the speaker.
++send_garp hv1 vif2 1 "00:00:00:00:00:02" "00:00:00:00:00:01" 10.0.0.2 $tpa
++OVS_WAIT_FOR_OUTPUT([ovs-ofctl dump-flows br-int table=OFTABLE_LOG_TO_PHY | grep 'n_packets=1,.*priority=120' | wc -l], [0], [dnl
++1
++])
++check ovn-nbctl remove Logical_Switch_Port lp options localnet-arp-only
++check ovn-nbctl --wait=hv sync
++send_garp hv1 vif1 1 "00:00:00:00:00:01" "ff:ff:ff:ff:ff:ff" $spa $tpa
++AT_CHECK([tcpdump -vnne -r hv1/br-phys_n1-tx.pcap arp[[24:4]]=0x0a000064 | wc -l], [0], [dnl
++1
++], [ignore])
++
+ OVN_CLEANUP([hv1])
+ AT_CLEANUP
+ ])

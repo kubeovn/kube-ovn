@@ -156,6 +156,11 @@ type SubnetSpec struct {
 	EnableMulticastSnoop bool `json:"enableMulticastSnoop,omitempty"`
 	// Enable external LB address support.
 	EnableExternalLBAddress bool `json:"enableExternalLBAddress,omitempty"`
+	// ExternalLBInterface creates an addressless, ARP-only internal interface on
+	// eligible nodes for external L2 LoadBalancer speakers. Requires an IPv4
+	// underlay subnet with enableExternalLBAddress and no logical gateway.
+	// +optional
+	ExternalLBInterface string `json:"externalLBInterface,omitempty"`
 
 	// Route table associated with the subnet.
 	RouteTable string `json:"routeTable,omitempty"`

@@ -75,10 +75,11 @@ type ControllerRuntime struct {
 	nmSyncer  *networkManagerSyncer
 	ovsClient *ovsutil.Client
 
-	flowCache      map[string]map[string]LbServiceRules // key: bridgeName -> flowKey -> service rule
-	flowCacheMutex sync.RWMutex
-	flowChan       chan struct{} // channel to trigger immediate flow sync
-	podQoSOps      podQoSOperations
+	flowCache       map[string]map[string]LbServiceRules // key: bridgeName -> flowKey -> service rule
+	flowCacheMutex  sync.RWMutex
+	flowChan        chan struct{} // channel to trigger immediate flow sync
+	podQoSOps       podQoSOperations
+	externalLBMutex sync.Mutex
 }
 
 type LbServiceRules struct {
@@ -205,9 +206,9 @@ func (c *Controller) handleEnableExternalLBAddressChange(oldSubnet, newSubnet *k
 	switch {
 	case oldSubnet != nil && newSubnet != nil:
 		subnetName = oldSubnet.Name
-		if oldSubnet.Spec.EnableExternalLBAddress != newSubnet.Spec.EnableExternalLBAddress {
+		if oldSubnet.Spec.EnableExternalLBAddress != newSubnet.Spec.EnableExternalLBAddress || oldSubnet.Spec.ExternalLBInterface != newSubnet.Spec.ExternalLBInterface {
 			klog.Infof("EnableExternalLBAddress changed for subnet %s", newSubnet.Name)
-			if newSubnet.Spec.EnableExternalLBAddress {
+			if newSubnet.Spec.EnableExternalLBAddress && newSubnet.Spec.ExternalLBInterface == "" {
 				action = "add"
 			} else {
 				action = "remove"
@@ -221,7 +222,7 @@ func (c *Controller) handleEnableExternalLBAddressChange(oldSubnet, newSubnet *k
 		}
 	case newSubnet != nil:
 		subnetName = newSubnet.Name
-		if newSubnet.Spec.EnableExternalLBAddress {
+		if newSubnet.Spec.EnableExternalLBAddress && newSubnet.Spec.ExternalLBInterface == "" {
 			klog.Infof("EnableExternalLBAddress added for subnet %s", newSubnet.Name)
 			action = "add"
 		}
@@ -480,15 +481,8 @@ func genLBServiceRules(service *v1.Service, bridgeName, underlayNic, dstMac, sub
 func (c *Controller) diffExternalLBServiceRules(oldService, newService *v1.Service, isSubnetExternalLBEnabled bool) (lbServiceRulesToAdd, lbServiceRulesToDel []LbServiceRules, err error) {
 	var oldlbServiceRules, newlbServiceRules []LbServiceRules
 
-	if oldService != nil && oldService.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
-		oldSubnetName := oldService.Annotations[util.ServiceExternalIPFromSubnetAnnotation]
-		oldBridgeName, underlayNic, dstMac, err := c.getExtInfoBySubnet(oldSubnetName)
-		if err != nil {
-			klog.Errorf("failed to get provider network by subnet %s: %v", oldSubnetName, err)
-			return nil, nil, err
-		}
-
-		oldlbServiceRules = genLBServiceRules(oldService, oldBridgeName, underlayNic, dstMac, oldSubnetName)
+	if oldService != nil {
+		oldlbServiceRules = c.cachedExternalLBServiceRules(oldService)
 	}
 
 	if isSubnetExternalLBEnabled && newService != nil && newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation] != "" {
@@ -595,7 +589,7 @@ func (c *Controller) reconcileServices(event *serviceEvent) error {
 			klog.Errorf("failed to get subnet %s: %v", newService.Annotations[util.ServiceExternalIPFromSubnetAnnotation], err)
 			return err
 		}
-		isSubnetExternalLBEnabled = subnet.Spec.EnableExternalLBAddress
+		isSubnetExternalLBEnabled = subnet.Spec.EnableExternalLBAddress && subnet.Spec.ExternalLBInterface == ""
 	}
 
 	lbServiceRulesToAdd, lbServiceRulesToDel, err := c.diffExternalLBServiceRules(oldService, newService, isSubnetExternalLBEnabled)

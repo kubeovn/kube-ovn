@@ -1522,6 +1522,20 @@ func (mr *MockLogicalSwitchPortMockRecorder) LogicalSwitchPortExists(name any) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LogicalSwitchPortExists", reflect.TypeOf((*MockLogicalSwitchPort)(nil).LogicalSwitchPortExists), name)
 }
 
+// ReconcileExternalLBLocalPort mocks base method.
+func (m *MockLogicalSwitchPort) ReconcileExternalLBLocalPort(subnet, uid string, enabled bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileExternalLBLocalPort", subnet, uid, enabled)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileExternalLBLocalPort indicates an expected call of ReconcileExternalLBLocalPort.
+func (mr *MockLogicalSwitchPortMockRecorder) ReconcileExternalLBLocalPort(subnet, uid, enabled any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileExternalLBLocalPort", reflect.TypeOf((*MockLogicalSwitchPort)(nil).ReconcileExternalLBLocalPort), subnet, uid, enabled)
+}
+
 // ReconcilePortDHCPOptions mocks base method.
 func (m *MockLogicalSwitchPort) ReconcilePortDHCPOptions(lsName, portName string, subnetDHCP *ovs.DHCPOptionsUUIDs, cidrBlock, gateway, v4Options, v6Options string, mtu int) (*ovs.DHCPOptionsUUIDs, bool, error) {
 	m.ctrl.T.Helper()
@@ -6004,6 +6018,20 @@ func (m *MockNbClient) ReconcileChassisTemplateVariables(chassis, prefix string,
 func (mr *MockNbClientMockRecorder) ReconcileChassisTemplateVariables(chassis, prefix, variables any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileChassisTemplateVariables", reflect.TypeOf((*MockNbClient)(nil).ReconcileChassisTemplateVariables), chassis, prefix, variables)
+}
+
+// ReconcileExternalLBLocalPort mocks base method.
+func (m *MockNbClient) ReconcileExternalLBLocalPort(subnet, uid string, enabled bool) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ReconcileExternalLBLocalPort", subnet, uid, enabled)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ReconcileExternalLBLocalPort indicates an expected call of ReconcileExternalLBLocalPort.
+func (mr *MockNbClientMockRecorder) ReconcileExternalLBLocalPort(subnet, uid, enabled any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ReconcileExternalLBLocalPort", reflect.TypeOf((*MockNbClient)(nil).ReconcileExternalLBLocalPort), subnet, uid, enabled)
 }
 
 // ReconcileGatewayChassises mocks base method.
