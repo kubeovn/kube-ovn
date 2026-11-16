@@ -507,6 +507,18 @@ func TestControllerProviderRouterPortRA(t *testing.T) {
 	require.Equal(t, 2, backend.transactCalls)
 }
 
+func TestParseIPv6RAConfigsListValues(t *testing.T) {
+	require.Equal(t, map[string]string{
+		"address_mode":  "dhcpv6_stateful",
+		"route_info":    "MEDIUM-fd78::/48,MEDIUM-fd79::/48,HIGH-fd7a::/48",
+		"dnssl":         "a.example,b.example",
+		"send_periodic": "true",
+	}, parseIPv6RAConfigs("address_mode=dhcpv6_stateful,route_info=MEDIUM-fd78::/48,MEDIUM-fd79::/48, HIGH-fd7a::/48,dnssl=a.example,b.example,send_periodic=true"))
+	require.Equal(t, map[string]string{
+		"send_periodic": "true",
+	}, parseIPv6RAConfigs("route_info=,MEDIUM-fd78::/48,=x,MEDIUM-fd79::/48,send_periodic=true"))
+}
+
 func TestControllerProviderLogicalSwitchAndDHCP(t *testing.T) {
 	client := newInMemoryOVNNbClient(t)
 	controller := &Controller{OVNNbTables: client}

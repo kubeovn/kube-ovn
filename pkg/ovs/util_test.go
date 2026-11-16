@@ -39,6 +39,25 @@ func Test_parseIpv6RaConfigs(t *testing.T) {
 		config := parseIpv6RaConfigs("send_periodic=,test")
 		require.Empty(t, config)
 	})
+
+	t.Run("keep comma separated list values", func(t *testing.T) {
+		t.Parallel()
+		config := parseIpv6RaConfigs("address_mode=dhcpv6_stateful,route_info=MEDIUM-fd78::/48,MEDIUM-fd79::/48, HIGH-fd7a::/48,dnssl=a.example,b.example,send_periodic=true")
+		require.Equal(t, map[string]string{
+			"address_mode":  "dhcpv6_stateful",
+			"route_info":    "MEDIUM-fd78::/48,MEDIUM-fd79::/48,HIGH-fd7a::/48",
+			"dnssl":         "a.example,b.example",
+			"send_periodic": "true",
+		}, config)
+	})
+
+	t.Run("list item after a dropped option is dropped", func(t *testing.T) {
+		t.Parallel()
+		config := parseIpv6RaConfigs("route_info=,MEDIUM-fd78::/48,a=b=c,MEDIUM-fd79::/48,send_periodic=true")
+		require.Equal(t, map[string]string{
+			"send_periodic": "true",
+		}, config)
+	})
 }
 
 func Test_parseDHCPOptions(t *testing.T) {
