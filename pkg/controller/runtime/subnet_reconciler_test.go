@@ -114,7 +114,7 @@ func TestSubnetReconcilerDelegatesImmutableSnapshot(t *testing.T) {
 	require.Equal(t, 1, reader.subnetGets, "reconcile must reuse the snapshot Subnet read")
 }
 
-func TestSubnetReconcilerRecoversBeforeReconcileAndOnlyOncePerUID(t *testing.T) {
+func TestSubnetReconcilerRecoversBeforeReconcileOncePerUIDAndGeneration(t *testing.T) {
 	subnet := testSubnet("")
 	subnet.UID = types.UID("subnet-uid-1")
 	reader := newRuntimeClient(t, subnet)
@@ -140,7 +140,54 @@ func TestSubnetReconcilerRecoversBeforeReconcileAndOnlyOncePerUID(t *testing.T) 
 	require.NoError(t, err)
 	_, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: subnet.Name})
 	require.NoError(t, err)
-	require.Equal(t, []string{"recover:" + subnet.Name, "reconcile:" + subnet.Name, "reconcile:" + subnet.Name}, calls)
+	updated := subnet.DeepCopy()
+	updated.Generation++
+	require.NoError(t, reader.Update(t.Context(), updated))
+	_, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: subnet.Name})
+	require.NoError(t, err)
+	require.Equal(t, []string{
+		"recover:" + subnet.Name,
+		"reconcile:" + subnet.Name,
+		"reconcile:" + subnet.Name,
+		"recover:" + subnet.Name,
+		"reconcile:" + subnet.Name,
+	}, calls)
+	require.Len(t, reconciler.recovered, 1, "old generation recovery entries must be pruned")
+}
+
+func TestSubnetReconcilerRetriesRecoveryAfterReconcileReleaseError(t *testing.T) {
+	subnet := testSubnet("")
+	subnet.UID = types.UID("subnet-uid-1")
+	reader := newRuntimeClient(t, subnet)
+	releaseErr := errors.New("marker release failed")
+	recoverCalls := 0
+	reconcileCalls := 0
+	adapter := &recordingSubnetWriterAdapter{
+		recover: func(context.Context, SubnetWriteSnapshot) error {
+			recoverCalls++
+			return nil
+		},
+		reconcile: func(context.Context, SubnetWriteSnapshot, SubnetShadowObservation) error {
+			reconcileCalls++
+			if reconcileCalls == 1 {
+				return releaseErr
+			}
+			return nil
+		},
+	}
+	reconciler := &SubnetReconciler{
+		Reader:       reader,
+		RecoveryGate: func(context.Context) error { return nil },
+		Adapter:      adapter,
+		Lease:        testSubnetWriterLease(t),
+	}
+
+	_, err := reconciler.Reconcile(t.Context(), ctrl.Request{Name: subnet.Name})
+	require.ErrorIs(t, err, releaseErr)
+	_, err = reconciler.Reconcile(t.Context(), ctrl.Request{Name: subnet.Name})
+	require.NoError(t, err)
+	require.Equal(t, 2, recoverCalls, "a failed release must invalidate the recovery cache")
+	require.Equal(t, 2, reconcileCalls)
 }
 
 func TestSubnetReconcilerPropagatesAdapterRecoveryError(t *testing.T) {

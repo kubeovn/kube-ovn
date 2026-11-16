@@ -69,8 +69,9 @@ type SubnetReconciler struct {
 }
 
 type subnetRecoveryKey struct {
-	name string
-	uid  types.UID
+	name       string
+	uid        types.UID
+	generation int64
 }
 
 func subnetSpecOrLifecycleChanged(e event.UpdateEvent) bool {
@@ -204,6 +205,7 @@ func (r *SubnetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 				r.removeDeleteSnapshot(req.Name, snapshot.UID)
 				hasMore := len(r.deletes[req.Name]) > 0
 				r.deleteMu.Unlock()
+				r.forgetSubnetRecovery(snapshot)
 				if hasMore {
 					result.RequeueAfter = time.Nanosecond
 				}
@@ -225,13 +227,27 @@ func (r *SubnetReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctr
 		if err := r.recoverSubnet(ctx, snapshot); err != nil {
 			return err
 		}
-		return r.Adapter.ReconcileSubnet(ctx, snapshot, observation)
+		if err := r.Adapter.ReconcileSubnet(ctx, snapshot, observation); err != nil {
+			// Recovery may have succeeded while the domain write left a durable
+			// receipt in a retryable state (for example after a marker release
+			// error). Do not let the cache suppress recovery on the next attempt.
+			r.forgetSubnetRecovery(snapshot)
+			return err
+		}
+		return nil
 	})
 	return result, err
 }
 
+func (r *SubnetReconciler) forgetSubnetRecovery(snapshot SubnetWriteSnapshot) {
+	key := subnetRecoveryKey{name: snapshot.Name, uid: snapshot.UID, generation: snapshot.Generation}
+	r.recoveryMu.Lock()
+	defer r.recoveryMu.Unlock()
+	delete(r.recovered, key)
+}
+
 func (r *SubnetReconciler) recoverSubnet(ctx context.Context, snapshot SubnetWriteSnapshot) error {
-	key := subnetRecoveryKey{name: snapshot.Name, uid: snapshot.UID}
+	key := subnetRecoveryKey{name: snapshot.Name, uid: snapshot.UID, generation: snapshot.Generation}
 	r.recoveryMu.Lock()
 	defer r.recoveryMu.Unlock()
 	if r.recovered == nil {
@@ -242,6 +258,11 @@ func (r *SubnetReconciler) recoverSubnet(ctx context.Context, snapshot SubnetWri
 	}
 	if err := r.Adapter.RecoverSubnet(ctx, snapshot); err != nil {
 		return err
+	}
+	for recoveredKey := range r.recovered {
+		if recoveredKey.name == key.name && recoveredKey.uid == key.uid && recoveredKey.generation != key.generation {
+			delete(r.recovered, recoveredKey)
+		}
 	}
 	r.recovered[key] = struct{}{}
 	return nil

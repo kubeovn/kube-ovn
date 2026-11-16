@@ -47,15 +47,16 @@ type SubnetVirtualPortBackend interface {
 // the runtime reconciler. The facade carries the immutable API snapshot into
 // the existing status, finalizer, IPAM, and OVN sequence.
 type SubnetControllerWriterAdapter struct {
-	Backend     SubnetDataPlaneBackend
-	Client      client.Client
-	Reader      client.Reader
-	Gate        SubnetWriterGate
-	ipamAdapter *subnetIPAMAdapter
-	ovnMarker   SubnetOVNMarkerBackend
-	ovnReceipts subnetOVNMutationReceiptStore
-	ovnResolver SubnetOVNMutationResolver
-	ovnToken    atomic.Uint64
+	Backend           SubnetDataPlaneBackend
+	Client            client.Client
+	Reader            client.Reader
+	Gate              SubnetWriterGate
+	ipamAdapter       *subnetIPAMAdapter
+	ovnMarker         SubnetOVNMarkerBackend
+	ovnReceipts       subnetOVNMutationReceiptStore
+	ovnResolver       SubnetOVNMutationResolver
+	ovnIntentProvider subnetRuntimeOVNMutationIntentProvider
+	ovnToken          atomic.Uint64
 }
 
 type subnetRuntimeWriterInstaller interface {
@@ -85,8 +86,36 @@ type subnetRuntimeOVNMarkerTableProvider interface {
 	SubnetRuntimeOVNMarkerTableProvider() table.Provider
 }
 
+type subnetRuntimeOVNMutationIntentProvider interface {
+	SubnetRuntimeOVNMutationIntent(context.Context, *kubeovnv1.Subnet) (legacycontroller.SubnetRuntimeOVNMutationIntent, error)
+}
+
 type subnetRuntimeIPAMAddressWriterInstaller interface {
 	SetSubnetRuntimeIPAMAddressWriter(legacycontroller.SubnetRuntimeIPAMAddressWriter) error
+}
+
+func (a *SubnetControllerWriterAdapter) subnetOVNMutationIntent(ctx context.Context, subnet *kubeovnv1.Subnet, snapshot SubnetWriteSnapshot) (SubnetOVNMutationIntent, error) {
+	if a == nil {
+		return SubnetOVNMutationIntent{}, errors.New("subnet OVN mutation writer adapter is not configured")
+	}
+	if a.ovnIntentProvider == nil {
+		if a.ovnMarker != nil {
+			return SubnetOVNMutationIntent{}, errors.New("subnet OVN mutation intent provider is not configured")
+		}
+		return subnetOVNMutationIntentForSnapshot(snapshot), nil
+	}
+	legacyIntent, err := a.ovnIntentProvider.SubnetRuntimeOVNMutationIntent(ctx, subnet)
+	if err != nil {
+		return SubnetOVNMutationIntent{}, err
+	}
+	intent := subnetOVNMutationIntentFromLegacy(legacyIntent, snapshot.Generation)
+	if err := intent.valid(); err != nil {
+		return SubnetOVNMutationIntent{}, err
+	}
+	if intent.LogicalSwitchName != snapshot.Name {
+		return SubnetOVNMutationIntent{}, fmt.Errorf("%w: mutation intent targets logical switch %q instead of %q", ErrSubnetOVNReceiptInvalid, intent.LogicalSwitchName, snapshot.Name)
+	}
+	return intent, nil
 }
 
 // InstallRuntimeWriters connects the explicit API writers to the legacy domain
@@ -108,6 +137,9 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 			}
 			a.ovnMarker = marker
 		}
+	}
+	if provider, ok := a.Backend.(subnetRuntimeOVNMutationIntentProvider); ok {
+		a.ovnIntentProvider = provider
 	}
 	installer, ok := a.Backend.(subnetRuntimeWriterInstaller)
 	if !ok {
@@ -220,7 +252,15 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 				if !ok || identity.WriterEpoch == "" {
 					return nil, ErrSubnetWriterEpochUnavailable
 				}
-				key := subnetOVNMutationKey(snapshot, SubnetWriteOperation(operation))
+				intent, err := a.subnetOVNMutationIntent(ctx, subnet, snapshot)
+				if err != nil {
+					return nil, err
+				}
+				key := subnetOVNMutationKeyForIntent(snapshot, SubnetWriteOperation(operation), intent)
+				key, err = a.validateSubnetOVNMutationAdmission(ctx, snapshot, key, intent)
+				if err != nil {
+					return nil, err
+				}
 				marker := SubnetOVNOwnerMarker{Key: key, Owner: SubnetOVNOwner{
 					Token: a.ovnToken.Add(1), SubnetUID: identity.UID, Generation: identity.Generation,
 					ResourceVersion: identity.ResourceVersion, WriterEpoch: identity.WriterEpoch,
@@ -243,7 +283,7 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 				}
 				var receipt SubnetOVNMutationReceipt
 				if a.ovnReceipts != nil {
-					marker, receipt, err = prepareSubnetOVNReceipt(ctx, a.ovnReceipts, marker, identity)
+					marker, receipt, err = prepareSubnetOVNReceipt(ctx, a.ovnReceipts, marker, identity, intent)
 					if err != nil {
 						return nil, err
 					}
@@ -420,6 +460,86 @@ func (a *SubnetControllerWriterAdapter) InstallRuntimeWriters() error {
 	return virtualPortInstaller.SetSubnetRuntimeVirtualPortWriter(virtualPortWriter)
 }
 
+func (a *SubnetControllerWriterAdapter) validateSubnetOVNMutationAdmission(ctx context.Context, snapshot SubnetWriteSnapshot, key SubnetOVNMutationKey, intent SubnetOVNMutationIntent) (SubnetOVNMutationKey, error) {
+	if a == nil {
+		return SubnetOVNMutationKey{}, errors.New("subnet OVN mutation writer adapter is not configured")
+	}
+	effectiveKey := key
+	var coarseReceipt *SubnetOVNMutationReceipt
+	var currentReceipt bool
+	if a.ovnReceipts != nil {
+		lister, ok := a.ovnReceipts.(subnetOVNMutationReceiptLister)
+		if !ok {
+			return SubnetOVNMutationKey{}, errors.New("subnet OVN mutation admission requires a receipt lister")
+		}
+		receipts, err := lister.List(ctx, snapshot.Name)
+		if err != nil {
+			return SubnetOVNMutationKey{}, err
+		}
+		for _, receipt := range receipts {
+			if receipt.Key.UID == snapshot.UID && receipt.Generation == snapshot.Generation {
+				if receipt.Key == key {
+					if !receipt.Intent.equal(intent) {
+						return SubnetOVNMutationKey{}, ErrSubnetOVNReceiptChanged
+					}
+					currentReceipt = true
+					continue
+				}
+				if !snapshot.Deleting && receipt.Key.Operation == key.Operation && receipt.Phase == SubnetOVNReceiptPhaseActive && isCoarseOrLegacySubnetOVNMutationKey(receipt.Key, snapshot.Generation) {
+					if coarseReceipt != nil {
+						return SubnetOVNMutationKey{}, ErrSubnetOVNReceiptStale
+					}
+					state, resolveErr := a.resolveSubnetOVNReceipt(ctx, snapshot, receipt)
+					if resolveErr != nil {
+						return SubnetOVNMutationKey{}, resolveErr
+					}
+					if state == SubnetOVNMutationStateAbsent {
+						marker, found, readErr := a.ovnMarker.Read(ctx, receipt.Key)
+						if readErr != nil {
+							return SubnetOVNMutationKey{}, readErr
+						}
+						if releaseErr := a.releaseRecoveredSubnetOVNReceipt(ctx, receipt, marker, found); releaseErr != nil {
+							return SubnetOVNMutationKey{}, releaseErr
+						}
+						continue
+					}
+					if state != SubnetOVNMutationStateCommitted {
+						return SubnetOVNMutationKey{}, ErrSubnetOVNResolverPending
+					}
+					candidate := receipt
+					coarseReceipt = &candidate
+					continue
+				}
+				if snapshot.Deleting && key.Operation == SubnetOVNCleanupOperation && receipt.Key.Operation == SubnetOVNAllocateOperation {
+					continue
+				}
+				return SubnetOVNMutationKey{}, ErrSubnetOVNReceiptStale
+			}
+		}
+	}
+	if currentReceipt && coarseReceipt != nil {
+		return SubnetOVNMutationKey{}, ErrSubnetOVNReceiptStale
+	}
+	if coarseReceipt != nil {
+		effectiveKey = coarseReceipt.Key
+	}
+	if lister, ok := a.ovnMarker.(SubnetOVNMarkerLister); ok {
+		markers, err := lister.List(ctx, snapshot.Name, snapshot.UID)
+		if err != nil {
+			return SubnetOVNMutationKey{}, err
+		}
+		for _, marker := range markers {
+			if marker.Owner.Generation == snapshot.Generation && marker.Key != effectiveKey {
+				if snapshot.Deleting && effectiveKey.Operation == SubnetOVNCleanupOperation && marker.Key.Operation == SubnetOVNAllocateOperation {
+					continue
+				}
+				return SubnetOVNMutationKey{}, ErrSubnetOVNMarkerChanged
+			}
+		}
+	}
+	return effectiveKey, nil
+}
+
 func (a *SubnetControllerWriterAdapter) typedIPAMAddressWriter(adapter *subnetIPAMAdapter) legacycontroller.SubnetRuntimeIPAMAddressWriter {
 	return func(ctx context.Context, subnet *kubeovnv1.Subnet, request legacycontroller.SubnetRuntimeIPAMAddressRequest) (legacycontroller.SubnetRuntimeIPAMAddressResult, error) {
 		if subnet == nil {
@@ -475,10 +595,7 @@ func (a *SubnetControllerWriterAdapter) recoverSubnetOVNMarkers(ctx context.Cont
 	if a.ovnMarker == nil {
 		return nil, nil
 	}
-	operation := SubnetOVNAllocateOperation
-	if snapshot.Deleting {
-		operation = SubnetOVNCleanupOperation
-	}
+	operation := subnetOVNMarkerRecoveryOperation(snapshot)
 	identity, err := newSubnetMutationIdentity(ctx, snapshot, operation, a.Gate.Fence)
 	if err != nil {
 		return nil, err
@@ -486,16 +603,52 @@ func (a *SubnetControllerWriterAdapter) recoverSubnetOVNMarkers(ctx context.Cont
 	if identity.WriterEpoch == "" {
 		return nil, ErrSubnetWriterEpochUnavailable
 	}
-	key := subnetOVNMutationKey(snapshot, operation)
+	markers, err := a.listSubnetOVNMarkersForRecovery(ctx, snapshot, operation)
+	if err != nil {
+		return nil, err
+	}
+	return a.rebindSubnetOVNRecoveryMarkers(ctx, snapshot, identity, markers)
+}
+
+func subnetOVNMarkerRecoveryOperation(snapshot SubnetWriteSnapshot) SubnetWriteOperation {
+	if snapshot.Deleting {
+		return SubnetOVNCleanupOperation
+	}
+	return SubnetOVNAllocateOperation
+}
+
+func (a *SubnetControllerWriterAdapter) listSubnetOVNMarkersForRecovery(ctx context.Context, snapshot SubnetWriteSnapshot, operation SubnetWriteOperation) ([]SubnetOVNOwnerMarker, error) {
 	markers := make([]SubnetOVNOwnerMarker, 0, 1)
+	var receiptKeys map[SubnetOVNMutationKey]struct{}
+	if !snapshot.Deleting && a.ovnReceipts != nil {
+		receiptLister, ok := a.ovnReceipts.(subnetOVNMutationReceiptLister)
+		if !ok {
+			return nil, errors.New("subnet OVN live marker recovery requires a receipt lister")
+		}
+		receipts, listErr := receiptLister.List(ctx, snapshot.Name)
+		if listErr != nil {
+			return nil, listErr
+		}
+		receiptKeys = make(map[SubnetOVNMutationKey]struct{}, len(receipts))
+		for _, receipt := range receipts {
+			if receipt.Key.UID != snapshot.UID {
+				return nil, ErrSubnetOVNReceiptStale
+			}
+			receiptKeys[receipt.Key] = struct{}{}
+		}
+	}
 	if lister, ok := a.ovnMarker.(SubnetOVNMarkerLister); ok {
+		var err error
 		if snapshot.Deleting {
 			markers, err = lister.List(ctx, snapshot.Name, snapshot.UID)
 		} else {
 			listed, listErr := lister.List(ctx, snapshot.Name, snapshot.UID)
 			err = listErr
 			for _, marker := range listed {
-				if marker.Key != key {
+				// A live Subnet may retain a marker whose intent hash was
+				// computed from an earlier status snapshot, but a cleanup marker
+				// belongs to a terminating object and must fail closed here.
+				if marker.Key.Operation != SubnetOVNAllocateOperation {
 					err = fmt.Errorf("%w: stale marker for Subnet %s", ErrSubnetOVNMarkerChanged, snapshot.Name)
 					break
 				}
@@ -511,6 +664,7 @@ func (a *SubnetControllerWriterAdapter) recoverSubnetOVNMarkers(ctx context.Cont
 		return nil, errors.New("subnet OVN marker deletion recovery requires a marker lister")
 	}
 	if len(markers) == 0 {
+		key := subnetOVNMutationKey(snapshot, operation)
 		previous, found, readErr := a.ovnMarker.Read(ctx, key)
 		if readErr != nil {
 			return nil, readErr
@@ -519,6 +673,17 @@ func (a *SubnetControllerWriterAdapter) recoverSubnetOVNMarkers(ctx context.Cont
 			markers = append(markers, previous)
 		}
 	}
+	if receiptKeys != nil {
+		for _, marker := range markers {
+			if _, found := receiptKeys[marker.Key]; !found {
+				return nil, ErrSubnetOVNReceiptStale
+			}
+		}
+	}
+	return markers, nil
+}
+
+func (a *SubnetControllerWriterAdapter) rebindSubnetOVNRecoveryMarkers(ctx context.Context, snapshot SubnetWriteSnapshot, identity SubnetMutationIdentity, markers []SubnetOVNOwnerMarker) ([]SubnetOVNOwnerMarker, error) {
 	for index, previous := range markers {
 		if previous.Owner.Generation != snapshot.Generation {
 			// A delete cleanup supersedes every generation of this UID. Keep an
