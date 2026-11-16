@@ -609,6 +609,13 @@ func TestServiceLoadBalancerEmptyBackendLifecycle(t *testing.T) {
 				t.Run(stage.name, func(t *testing.T) {
 					require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, stage.endpoints))
 					assertServiceClusterVIPBackends(t, nbClient, svc, stage.empty)
+					if tc.serviceType == corev1.ServiceTypeLoadBalancer {
+						if tc.template {
+							assertServiceExternalLocalTemplateState(t, nbClient, svc)
+						} else {
+							assertServiceExternalVIPBackends(t, nbClient, svc, stage.empty)
+						}
+					}
 				})
 			}
 			require.NoError(t, ctrl.handleDeleteService(&vpcService{Svc: svc, Vpc: "vpc"}))
@@ -653,6 +660,55 @@ func assertServiceClusterVIPBackends(t *testing.T, nbClient *ovs.OVNNbClient, sv
 				require.True(t, exists, "VIP %s must remain while its Service exists", vip)
 				require.Equal(t, empty, backends == "", vip)
 			}
+		}
+	}
+}
+
+func assertServiceExternalVIPBackends(t *testing.T, nbClient *ovs.OVNNbClient, svc *corev1.Service, empty bool) {
+	t.Helper()
+	var vips []string
+	switch {
+	case svc.Annotations[util.SwitchLBRuleVipsAnnotation] != "":
+		vips = []string{svc.Annotations[util.SwitchLBRuleVipsAnnotation]}
+	case svc.Annotations[util.RouterLBRuleVipsAnnotation] != "":
+		vips = strings.Split(svc.Annotations[util.RouterLBRuleVipsAnnotation], ",")
+	default:
+		for _, ingress := range svc.Status.LoadBalancer.Ingress {
+			if ingress.IP != "" {
+				vips = append(vips, ingress.IP)
+			}
+		}
+	}
+	for _, lbVip := range vips {
+		lbVip = strings.TrimSpace(lbVip)
+		if lbVip == "" {
+			continue
+		}
+		for _, port := range svc.Spec.Ports {
+			lbName := serviceScopedExternalLBName(svc, port.Protocol, lbVip)
+			lb, err := nbClient.GetLoadBalancer(lbName, false)
+			require.NoError(t, err)
+			require.Equal(t, "true", lb.Options["reject"], lbName)
+			vip := util.JoinHostPort(lbVip, port.Port)
+			backends, exists := lb.Vips[vip]
+			require.True(t, exists, "VIP %s must remain while its Service exists", vip)
+			require.Equal(t, empty, backends == "", vip)
+		}
+	}
+}
+
+func assertServiceExternalLocalTemplateState(t *testing.T, nbClient *ovs.OVNNbClient, svc *corev1.Service) {
+	t.Helper()
+	for _, ingress := range svc.Status.LoadBalancer.Ingress {
+		if ingress.IP == "" {
+			continue
+		}
+		for _, port := range svc.Spec.Ports {
+			lbName := serviceScopedExternalLBName(svc, port.Protocol, ingress.IP)
+			lb, err := nbClient.GetLoadBalancer(lbName, false)
+			require.NoError(t, err)
+			require.NotContains(t, lb.Options, "reject", lbName)
+			require.NotEmpty(t, lb.Vips, lbName)
 		}
 	}
 }
@@ -715,6 +771,9 @@ func TestRuleServiceLoadBalancersAreAtomic(t *testing.T) {
 			} else {
 				require.Empty(t, lr.LoadBalancer)
 			}
+
+			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, nil))
+			assertServiceExternalVIPBackends(t, nbClient, svc, true)
 		})
 	}
 }
