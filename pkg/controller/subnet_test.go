@@ -160,7 +160,8 @@ func TestSubnetRuntimeOVNMutationWriterOverridesGenericDomainWriter(t *testing.T
 
 func TestSubnetRuntimeOVNMutationIntentUsesPatchPortRows(t *testing.T) {
 	subnet := &kubeovnv1.Subnet{
-		ObjectMeta: metav1.ObjectMeta{Name: "subnet-a", Generation: 3},
+		Name:       "subnet-a",
+		Generation: 3,
 		Spec: kubeovnv1.SubnetSpec{
 			Vpc:       util.DefaultVpc,
 			CIDRBlock: "10.0.0.0/24,fd00::/64",
