@@ -672,150 +672,20 @@ func Test_chooseNftableLbOwner(t *testing.T) {
 	require.Equal(t, "ns/only", chooseNftableLbOwner(map[string]struct{}{"ns/only": {}}))
 }
 
-func Test_desiredNatGwVipStateForService(t *testing.T) {
+func TestNftableLbSvcVipsOf(t *testing.T) {
 	t.Parallel()
 
-	const gwName = "gw0"
-	ruleIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	eipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	controller := &Controller{
-		iptablesDnatRulesLister: kubeovnlister.NewIptablesDnatRuleLister(ruleIndexer),
-		iptablesEipsLister:      kubeovnlister.NewIptablesEIPLister(eipIndexer),
+	rules := map[string]*kubeovnv1.IptablesDnatRule{
+		"a":  ownedShareRule("a", "eip0", "10.96.1.5"),
+		"b":  ownedShareRule("b", "eip0", "10.96.1.5"),
+		"v6": ownedShareRule("v6", "", "fd00::1"),
 	}
-
-	owned := func(name, eip, clusterIP string) *kubeovnv1.IptablesDnatRule {
-		rule := &kubeovnv1.IptablesDnatRule{
-			Name: name,
-			Labels: map[string]string{
-				util.NftableLbSvcNsLabel:     "default",
-				util.NftableLbSvcNameLabel:   "web",
-				util.NftableLbSvcRecordLabel: "true",
-				util.VpcNatGatewayNameLabel:  gwName,
-			},
-			Spec: kubeovnv1.IptablesDnatRuleSpec{
-				EIP: eip, ExternalPort: "80", Protocol: "tcp",
-				InternalIP: "10.0.0.1", InternalPort: "8080", Type: kubeovnv1.DnatRuleTypeShare,
-			},
-		}
-		rule.Spec.ClusterIP = clusterIP
-		return rule
-	}
-
-	require.NoError(t, eipIndexer.Add(&kubeovnv1.IptablesEIP{
-		Name:   "eip0",
-		Status: kubeovnv1.IptablesEIPStatus{IP: "203.0.113.10"},
-	}))
-	require.NoError(t, eipIndexer.Add(&kubeovnv1.IptablesEIP{
-		Name: "not-ready",
-	}))
-
-	// both VIPs of a generated rule are routed, once per VIP even with two backends
-	require.NoError(t, ruleIndexer.Add(owned("a", "eip0", "10.96.1.5")))
-	require.NoError(t, ruleIndexer.Add(owned("b", "eip0", "10.96.1.5")))
-	// a terminating rule must not keep a route alive
-	terminating := owned("terminating", "eip0", "10.96.1.9")
-	now := metav1.Now()
-	terminating.DeletionTimestamp = &now
-	terminating.Finalizers = []string{"keep"}
-	require.NoError(t, ruleIndexer.Add(terminating))
-	// an EIP that is not ready yet has no address to route. Its ClusterIP is still routed: the
-	// internal VIP does not depend on the EIP.
-	require.NoError(t, ruleIndexer.Add(owned("not-ready", "not-ready", "10.96.1.7")))
-
-	vips, clusterIPs, err := controller.desiredNatGwVipStateForService(gwName, "", nil, "")
-	require.NoError(t, err)
-	require.Equal(t, map[string]string{
-		"ip4.dst == 203.0.113.10": "203.0.113.10",
-		"ip4.dst == 10.96.1.5":    "10.96.1.5",
-		"ip4.dst == 10.96.1.7":    "10.96.1.7",
-	}, vips)
-	// only the ClusterIPs are held on lo: the EIP already lives on the external interface, and a
-	// terminating rule's ClusterIP is released
-	require.Equal(t, []string{"10.96.1.5", "10.96.1.7"}, clusterIPs)
-
-	// an IPv6-only ClusterIP has no IPv4 route (share DNAT is IPv4 only)
-	require.NoError(t, ruleIndexer.Add(owned("v6", "eip0", "fd00::1")))
-	vips, clusterIPs, err = controller.desiredNatGwVipStateForService(gwName, "", nil, "")
-	require.NoError(t, err)
-	require.NotContains(t, vips, "ip4.dst == fd00::1")
-	require.Len(t, vips, 3)
-	require.NotContains(t, clusterIPs, "fd00::1")
-
-	// A Service-driven rule carries its ClusterIP in the spec (the field replaces the annotation):
-	// both of its addresses belong to the gateway state, the ingress IP and the internal VIP. The
-	// rule is listed on its own so the counts above stay independent of this case.
-	viaSpec := ownedShareRule("viaspec", "eip0", "")
-	viaSpec.Spec.ClusterIP = "10.96.1.8"
-	require.NoError(t, ruleIndexer.Add(viaSpec))
-	vips, clusterIPs, err = controller.desiredNatGwVipStateForService(gwName, "", nil, "")
-	require.NoError(t, err)
-	require.Equal(t, "10.96.1.8", vips["ip4.dst == 10.96.1.8"], "the internal VIP of the rule is routed")
-	require.Contains(t, clusterIPs, "10.96.1.8", "and held on lo")
-	require.Equal(t, "203.0.113.10", vips["ip4.dst == 203.0.113.10"], "next to the ingress IP it aligns with")
-}
-
-// A Service that just created its accounting records is invisible to the informer for a moment.
-// Another Service of the same gateway reconciling in that window computes the gateway-wide VIP set
-// and overwrites the data plane with it, so it must keep the VIPs of the Service it cannot see:
-// nothing would re-enqueue that Service to restore them (the informers run without resync).
-func TestDesiredNatGwVipStateKeepsUnobservedServiceVips(t *testing.T) {
-	t.Parallel()
-
-	const gwName = "gw0"
-	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	controller := &Controller{
-		iptablesDnatRulesLister: kubeovnlister.NewIptablesDnatRuleLister(indexer),
-		iptablesEipsLister:      kubeovnlister.NewIptablesEIPLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})),
-	}
-	peerRecord := clusterIPServedRule("peer", gwName, "10.96.1.6")
-	peerRecord.Labels[util.NftableLbSvcNameLabel] = "peer"
-	const peer = "default/peer"
-	peerVips := nftableLbSvcVips{clusterIPs: []string{"10.96.1.6"}}
-
-	self := map[string]*kubeovnv1.IptablesDnatRule{"self": clusterIPServedRule("self", gwName, "10.96.1.5")}
-	selfOwner := "default/web"
-
-	// The peer programmed its VIP but its record has not reached the cache yet.
-	controller.rememberNatGwVipState(gwName, peer, peerVips)
-	vips, clusterIPs, err := controller.desiredNatGwVipStateForService(gwName, selfOwner, self, "")
-	require.NoError(t, err)
-	require.Equal(t, []string{"10.96.1.5", "10.96.1.6"}, clusterIPs)
-	require.Equal(t, map[string]string{
-		"ip4.dst == 10.96.1.5": "10.96.1.5",
-		"ip4.dst == 10.96.1.6": "10.96.1.6",
-	}, vips)
-
-	// Once the record is observed the cache is authoritative; the floor adds nothing.
-	require.NoError(t, indexer.Add(peerRecord))
-	_, clusterIPs, err = controller.desiredNatGwVipStateForService(gwName, selfOwner, self, "")
-	require.NoError(t, err)
-	require.Equal(t, []string{"10.96.1.5", "10.96.1.6"}, clusterIPs)
-
-	// A record deleted from outside stays terminating while its Service still programs the identity,
-	// and nothing re-enqueues that Service (record events are ignored). Such a record must therefore
-	// not make its owner look authoritative: the floor keeps speaking for it.
-	now := metav1.Now()
-	peerRecord.DeletionTimestamp = &now
-	peerRecord.Finalizers = []string{"keep"}
-	require.NoError(t, indexer.Update(peerRecord))
-	_, clusterIPs, err = controller.desiredNatGwVipStateForService(gwName, selfOwner, self, "")
-	require.NoError(t, err)
-	require.Equal(t, []string{"10.96.1.5", "10.96.1.6"}, clusterIPs,
-		"an externally deleted record must not drop the vips its owner still programs")
-
-	// An owner that is really leaving drops its floor first (cleanupNftableLbSvcGateway calls
-	// forgetNatGwVipState before it deletes the records), which is what releases its VIPs.
-	controller.forgetNatGwVipState(gwName, peer)
-	_, clusterIPs, err = controller.desiredNatGwVipStateForService(gwName, selfOwner, self, "")
-	require.NoError(t, err)
-	require.Equal(t, []string{"10.96.1.5"}, clusterIPs)
-
-	// And the state stays released once the records are gone.
-	require.NoError(t, indexer.Delete(peerRecord))
-	require.Empty(t, controller.nftableLbVipSnapshot)
-	_, clusterIPs, err = controller.desiredNatGwVipStateForService(gwName, selfOwner, self, "")
-	require.NoError(t, err)
-	require.Equal(t, []string{"10.96.1.5"}, clusterIPs)
+	require.Equal(t, nftableLbSvcVips{eipIP: "203.0.113.10", clusterIPs: []string{"10.96.1.5"}},
+		nftableLbSvcVipsOf(rules, "203.0.113.10"))
+	require.Equal(t, nftableLbSvcVips{clusterIPs: []string{"10.96.1.5"}}, nftableLbSvcVipsOf(rules, ""))
+	state := nftableLbSvcVipsOf(nil, "203.0.113.10")
+	require.Empty(t, state.eipIP)
+	require.Empty(t, state.clusterIPs)
 }
 
 // Test_natGwVipRouteNextHops_pendingInit pins that an instance which still needs initialization is
@@ -917,8 +787,7 @@ var (
 	vipRouteEip = &kubeovnv1.IptablesEIP{Name: "eip0", Status: kubeovnv1.IptablesEIPStatus{IP: "172.20.0.5"}}
 )
 
-// newVipRouteController builds a controller serving gw0 with the share DNAT feature on, which is
-// the only state syncNatGwVipStateForService reads besides the pods and rules given here.
+// newVipRouteController builds a controller serving gw0 with the share DNAT feature on.
 func newVipRouteController(t *testing.T, pods []*v1.Pod, rules ...*kubeovnv1.IptablesDnatRule) *fakeController {
 	t.Helper()
 	if len(rules) == 0 {
@@ -946,167 +815,87 @@ func expectVipRoutesAdded(fc *fakeController, times int) map[string][]string {
 	return added
 }
 
-func Test_syncNatGwVipStateForService(t *testing.T) {
+func TestSyncNatGwVipStateForService(t *testing.T) {
 	t.Parallel()
 
 	externalIDs := natGwVipRouteExternalIDs("gw0")
+	state := nftableLbSvcVips{eipIP: "172.20.0.5", clusterIPs: []string{"10.96.1.5"}}
 
 	t.Run("creates a route per VIP", func(t *testing.T) {
 		fc := newVipRouteController(t, gatewayPods("gw0", "10.0.7.254"))
 		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).Return(nil, nil)
 		added := expectVipRoutesAdded(fc, 2)
 
-		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
+		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "default/web", state, nil, nil))
 		require.Equal(t, map[string][]string{
 			"ip4.dst == 172.20.0.5": {"10.0.7.254"},
 			"ip4.dst == 10.96.1.5":  {"10.0.7.254"},
 		}, added)
 	})
 
-	t.Run("removes routes that no rule references and refreshes the next hops", func(t *testing.T) {
+	t.Run("removes its previous VIP and restores route action", func(t *testing.T) {
 		fc := newVipRouteController(t, gatewayPods("gw0", "10.0.7.254"))
-		stale := &ovnnb.LogicalRouterPolicy{UUID: "stale-uuid", Priority: util.NatGatewayVipPolicyPriority, Match: "ip4.dst == 10.96.1.9"}
-		// Keep the expected next hop but drift the action: comparing nexthops alone would leave
-		// this policy as "allow" forever and the VIP would bypass the gateway.
+		stale := &ovnnb.LogicalRouterPolicy{UUID: "stale-uuid", Match: "ip4.dst == 10.96.1.9"}
 		drifted := &ovnnb.LogicalRouterPolicy{
-			UUID: "drifted-uuid", Priority: util.NatGatewayVipPolicyPriority, Match: "ip4.dst == 10.96.1.5",
-			Action: "allow", Nexthops: []string{"10.0.7.254"},
+			UUID: "drifted-uuid", Match: "ip4.dst == 10.96.1.5", Action: "allow", Nexthops: []string{"10.0.7.254"},
 		}
 		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).
 			Return([]*ovnnb.LogicalRouterPolicy{stale, drifted}, nil)
 		fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyByUUID("vpc0", "stale-uuid").Return(nil)
-		updated := map[string][]string{}
 		fc.mockOvnClient.EXPECT().UpdateLogicalRouterPolicy(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 			DoAndReturn(func(policy *ovnnb.LogicalRouterPolicy, _ ...any) error {
-				require.Equal(t, string(kubeovnv1.PolicyRouteActionReroute), policy.Action)
-				updated[policy.Match] = policy.Nexthops
+				require.Equal(t, "reroute", policy.Action)
+				require.Equal(t, []string{"10.0.7.254"}, policy.Nexthops)
 				return nil
-			}).Times(1)
-		// the EIP's route did not exist yet
-		fc.mockOvnClient.EXPECT().AddLogicalRouterPolicy("vpc0", util.NatGatewayVipPolicyPriority, "ip4.dst == 172.20.0.5",
-			string(kubeovnv1.PolicyRouteActionReroute), []string{"10.0.7.254"}, nil, externalIDs).Return(nil)
-
-		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
-		require.Equal(t, 29210, util.NatGatewayVipPolicyPriority)
-		require.Equal(t, map[string][]string{"ip4.dst == 10.96.1.5": {"10.0.7.254"}}, updated)
+			})
+		expectVipRoutesAdded(fc, 1)
+		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "default/web", state, []string{"10.96.1.9"}, nil))
 	})
 
-	// This is what the gateway-move path in handleUpdateIptablesDnatRule relies on: once the rule's
-	// label points at its new gateway, reconciling the one it left drops the routes it was the last
-	// user of, instead of leaving them steering its addresses to a gateway that no longer serves it.
-	t.Run("a rule that moved to another gateway leaves no route behind", func(t *testing.T) {
-		moved := ownedShareRule("rule-a", "eip0", "10.96.1.5")
-		moved.Labels[util.VpcNatGatewayNameLabel] = "gw1"
-		fc := newVipRouteController(t, gatewayPods("gw0", "10.0.7.254"), moved)
-		left := []*ovnnb.LogicalRouterPolicy{
-			{UUID: "clusterip-uuid", Priority: util.NatGatewayVipPolicyPriority, Match: "ip4.dst == 10.96.1.5"},
-			{UUID: "eip-uuid", Priority: util.NatGatewayVipPolicyPriority, Match: "ip4.dst == 172.20.0.5"},
-		}
-		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).Return(left, nil)
-		var deleted []string
-		fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyByUUID("vpc0", gomock.Any()).
-			DoAndReturn(func(_, uuid string) error {
-				deleted = append(deleted, uuid)
-				return nil
-			}).Times(2)
-
-		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
-		require.ElementsMatch(t, []string{"clusterip-uuid", "eip-uuid"}, deleted)
+	t.Run("cleanup still deletes owned routes with the gates off", func(t *testing.T) {
+		fc := newVipRouteController(t, gatewayPods("gw0", "10.0.7.254"))
+		fc.fakeController.config.EnableGwNftableLbSvc = false
+		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).
+			Return([]*ovnnb.LogicalRouterPolicy{{UUID: "old", Match: "ip4.dst == 10.96.1.5"}}, nil)
+		fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyByUUID("vpc0", "old").Return(nil)
+		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "default/web", nftableLbSvcVips{}, state.clusterIPs, nil))
 	})
 }
 
-// Test_syncNatGwVipStateNextHops pins which gateway instances a VIP route points at: every ready
-// replica with an IPv4 address, and no route at all while there is none.
-func Test_syncNatGwVipStateNextHops(t *testing.T) {
+func TestSyncNatGwVipStateNextHops(t *testing.T) {
 	t.Parallel()
 
-	externalIDs := natGwVipRouteExternalIDs("gw0")
-
-	t.Run("routes a VIP to every ready instance (ECMP)", func(t *testing.T) {
-		// An HA gateway serves the VIP from any replica, so the route must carry all of them.
-		fc := newVipRouteController(t, gatewayPodsOnNodes("gw0", map[string]string{
-			"node0": "10.0.7.254",
-			"node1": "10.0.7.253",
-		}))
-		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).Return(nil, nil)
-		added := expectVipRoutesAdded(fc, 2)
-
-		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
-		require.Equal(t, map[string][]string{
-			"ip4.dst == 172.20.0.5": {"10.0.7.253", "10.0.7.254"},
-			"ip4.dst == 10.96.1.5":  {"10.0.7.253", "10.0.7.254"},
-		}, added)
-	})
-
-	t.Run("routes a VIP only to the ready instances", func(t *testing.T) {
-		pods := gatewayPodsOnNodes("gw0", map[string]string{
-			"node0": "10.0.7.254",
-			"node1": "10.0.7.253",
+	state := nftableLbSvcVips{clusterIPs: []string{"10.96.1.5"}}
+	partial := gatewayPodsOnNodes("gw0", map[string]string{"node0": "10.0.7.254", "node1": "10.0.7.253"})
+	partial[1].Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
+	for _, test := range []struct {
+		name string
+		pods []*v1.Pod
+		want []string
+	}{
+		{name: "all replicas", pods: gatewayPodsOnNodes("gw0", map[string]string{"node0": "10.0.7.254", "node1": "10.0.7.253"}), want: []string{"10.0.7.253", "10.0.7.254"}},
+		{name: "one replica lost readiness", pods: partial, want: []string{"10.0.7.254"}},
+		{name: "replacement instance", pods: gatewayPods("gw0", "10.0.7.252"), want: []string{"10.0.7.252"}},
+		{name: "no IPv4 instance", pods: gatewayPods("gw0", "fd00::10")},
+		{name: "no instances"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fc := newVipRouteController(t, test.pods)
+			policy := &ovnnb.LogicalRouterPolicy{UUID: "own", Match: "ip4.dst == 10.96.1.5", Action: "reroute", Nexthops: []string{"10.0.7.1"}}
+			fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, natGwVipRouteExternalIDs("gw0"), false).
+				Return([]*ovnnb.LogicalRouterPolicy{policy}, nil)
+			if len(test.want) == 0 {
+				fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyByUUID("vpc0", "own").Return(nil)
+			} else {
+				fc.mockOvnClient.EXPECT().UpdateLogicalRouterPolicy(policy, gomock.Any(), gomock.Any(), gomock.Any()).
+					DoAndReturn(func(policy *ovnnb.LogicalRouterPolicy, _ ...any) error {
+						require.Equal(t, test.want, policy.Nexthops)
+						return nil
+					})
+			}
+			require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "default/web", state, nil, nil))
 		})
-		pods[1].Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
-		fc := newVipRouteController(t, pods)
-		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).Return(nil, nil)
-		added := expectVipRoutesAdded(fc, 2)
-
-		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
-		ready := added["ip4.dst == 10.96.1.5"]
-		require.Equal(t, []string{"10.0.7.254"}, ready, "a not ready replica must not be a next hop")
-	})
-
-	t.Run("drops every route while no instance has an IPv4 address", func(t *testing.T) {
-		// a gateway whose VPC-side address is IPv6 only has no data plane for the IPv4 share DNAT,
-		// so an ip4.dst route must not be left pointing at its IPv6 address
-		v6Only := gatewayPods("gw0", "fd00::10")
-		v6Only[0].Status.PodIPs = []v1.PodIP{{IP: "fd00::10"}}
-		v6Only[0].Status.PodIP = "fd00::10"
-		fc := newVipRouteController(t, v6Only)
-		existing := &ovnnb.LogicalRouterPolicy{UUID: "u1", Priority: util.NatGatewayVipPolicyPriority, Match: "ip4.dst == 10.96.1.5"}
-		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).
-			Return([]*ovnnb.LogicalRouterPolicy{existing}, nil)
-		fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyByUUID("vpc0", "u1").Return(nil)
-
-		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
-	})
-
-	t.Run("drops every route while no instance is reachable", func(t *testing.T) {
-		notReady := gatewayPods("gw0", "10.0.7.254")
-		notReady[0].Status.Conditions = []v1.PodCondition{{Type: v1.PodReady, Status: v1.ConditionFalse}}
-		fc := newVipRouteController(t, notReady)
-		existing := &ovnnb.LogicalRouterPolicy{UUID: "u1", Priority: util.NatGatewayVipPolicyPriority, Match: "ip4.dst == 10.96.1.5"}
-		fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).
-			Return([]*ovnnb.LogicalRouterPolicy{existing}, nil)
-		fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicyByUUID("vpc0", "u1").Return(nil)
-
-		require.NoError(t, fc.fakeController.syncNatGwVipStateForService("gw0", "", nil, ""))
-	})
-}
-
-// Test_syncNatGwVipStateDisabled pins the feature gate: with --enable-gw-nftable-lb-svc off the
-// feature owns no VIP, so the sync must not touch OVN at all (the mock client fails any call).
-// Test_syncNatGwVipStateDisabled pins that the VIP routes are still reconciled with the feature
-// disabled: the disabled-mode drain calls this path to remove the routes of leftovers, so the
-// routes must converge instead of being skipped.
-func Test_syncNatGwVipStateDisabled(t *testing.T) {
-	t.Parallel()
-
-	gw := &kubeovnv1.VpcNatGateway{Name: "gw0", Spec: kubeovnv1.VpcNatGatewaySpec{Vpc: "vpc0", Subnet: "subnet0"}}
-	eip := &kubeovnv1.IptablesEIP{Name: "eip0", Status: kubeovnv1.IptablesEIPStatus{IP: "172.20.0.5"}}
-	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		VpcNatGateways:    []*kubeovnv1.VpcNatGateway{gw},
-		Pods:              gatewayPods("gw0", "10.0.7.254"),
-		IptablesEips:      []*kubeovnv1.IptablesEIP{eip},
-		IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{ownedShareRule("rule-a", "eip0", "10.96.1.5")},
-	})
-	require.NoError(t, err)
-	c := fc.fakeController
-	c.config.EnableGwNftableLbSvc = false
-
-	externalIDs := natGwVipRouteExternalIDs("gw0")
-	fc.mockOvnClient.EXPECT().ListLogicalRouterPolicies("vpc0", util.NatGatewayVipPolicyPriority, externalIDs, false).Return(nil, nil)
-	fc.mockOvnClient.EXPECT().AddLogicalRouterPolicy("vpc0", util.NatGatewayVipPolicyPriority, gomock.Any(),
-		string(kubeovnv1.PolicyRouteActionReroute), gomock.Any(), nil, externalIDs).Return(nil).Times(2)
-
-	require.NoError(t, c.syncNatGwVipStateForService("gw0", "", nil, ""))
+	}
 }
 
 // TestHandleAddOrUpdateVpcNatGwSyncsVipRoutes pins the gateway side convergence of the share DNAT
@@ -1390,46 +1179,6 @@ func clusterIPServedRule(name, gateway, clusterIP string) *kubeovnv1.IptablesDna
 			InternalIP: "10.0.7.2", InternalPort: "8080", Type: kubeovnv1.DnatRuleTypeShare,
 		},
 	}
-}
-
-// Test_desiredNatGwVipStateForService_clusterIPServedRules pins that a rule serving a ClusterIP owns its
-// address on its own: without an owner label it still contributes the VIP route and the address to
-// hold on lo, otherwise the rule would program a share DNAT identity nothing routes to.
-func Test_desiredNatGwVipStateForService_clusterIPServedRules(t *testing.T) {
-	t.Parallel()
-
-	const gwName = "gw0"
-	ruleIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	eipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	require.NoError(t, eipIndexer.Add(&kubeovnv1.IptablesEIP{
-		Name:   "eip0",
-		Status: kubeovnv1.IptablesEIPStatus{IP: "203.0.113.10"},
-	}))
-	controller := &Controller{
-		iptablesDnatRulesLister: kubeovnlister.NewIptablesDnatRuleLister(ruleIndexer),
-		iptablesEipsLister:      kubeovnlister.NewIptablesEIPLister(eipIndexer),
-	}
-	require.NoError(t, ruleIndexer.Add(clusterIPServedRule("c1", gwName, "10.96.1.5")))
-	require.NoError(t, ruleIndexer.Add(clusterIPServedRule("c2", gwName, "10.96.1.6")))
-
-	vips, clusterIPs, err := controller.desiredNatGwVipStateForService(gwName, "", nil, "")
-	require.NoError(t, err)
-	require.Equal(t, map[string]string{
-		"ip4.dst == 10.96.1.5": "10.96.1.5",
-		"ip4.dst == 10.96.1.6": "10.96.1.6",
-	}, vips)
-	require.Equal(t, []string{"10.96.1.5", "10.96.1.6"}, clusterIPs)
-
-	// A terminating rule releases its address again.
-	terminating := clusterIPServedRule("c1", gwName, "10.96.1.5")
-	now := metav1.Now()
-	terminating.DeletionTimestamp = &now
-	terminating.Finalizers = []string{"keep"}
-	require.NoError(t, ruleIndexer.Update(terminating))
-	vips, clusterIPs, err = controller.desiredNatGwVipStateForService(gwName, "", nil, "")
-	require.NoError(t, err)
-	require.NotContains(t, vips, "ip4.dst == 10.96.1.5")
-	require.Equal(t, []string{"10.96.1.6"}, clusterIPs)
 }
 
 // Test_buildDesiredNftableLbDnatRules_clusterIPService pins the rule shape of the two Service
@@ -2221,53 +1970,6 @@ func TestSyncNftableLbRecordsIsScopedToItsService(t *testing.T) {
 		"a peer keeps its finalizer, and with it its claim on the shared eip")
 }
 
-// TestDesiredNatGwVipStateIsTheUnionOfCoexistingServices pins the gateway-wide half: the VIP
-// addresses and routes of one gateway are the union of what every Service on it asks for, so a
-// reconcile of one Service publishes its own VIP without dropping a peer's, whether the peer shares
-// the EIP or uses another one.
-func TestDesiredNatGwVipStateIsTheUnionOfCoexistingServices(t *testing.T) {
-	t.Parallel()
-
-	const gwName = "gw0"
-	ruleIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	eipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	for name, ip := range map[string]string{"eip0": "203.0.113.10", "eip1": "203.0.113.11"} {
-		require.NoError(t, eipIndexer.Add(&kubeovnv1.IptablesEIP{
-			Name: name, Status: kubeovnv1.IptablesEIPStatus{IP: ip},
-		}))
-	}
-	controller := &Controller{
-		iptablesDnatRulesLister: kubeovnlister.NewIptablesDnatRuleLister(ruleIndexer),
-		iptablesEipsLister:      kubeovnlister.NewIptablesEIPLister(eipIndexer),
-	}
-	// Two peers of the same gateway: one shares the EIP on another port, one uses another EIP.
-	require.NoError(t, ruleIndexer.Add(nftableLbPeerRecord("peer-81", "peer", "eip0", "203.0.113.10", "10.96.1.6", "81")))
-	require.NoError(t, ruleIndexer.Add(nftableLbPeerRecord("peer2-80", "peer2", "eip1", "203.0.113.11", "10.96.1.7", "80")))
-
-	own := map[string]*kubeovnv1.IptablesDnatRule{
-		"own-80": nftableLbPeerRecord("own-80", "web", "eip0", "203.0.113.10", "10.96.1.5", "80"),
-	}
-	vips, clusterIPs, err := controller.desiredNatGwVipStateForService(gwName, "ns/web", own, "203.0.113.10")
-	require.NoError(t, err)
-	require.Equal(t, []string{"10.96.1.5", "10.96.1.6", "10.96.1.7"}, clusterIPs,
-		"every service of the gateway keeps its internal VIP on lo")
-	require.Equal(t, map[string]string{
-		"ip4.dst == 203.0.113.10": "203.0.113.10",
-		"ip4.dst == 203.0.113.11": "203.0.113.11",
-		"ip4.dst == 10.96.1.5":    "10.96.1.5",
-		"ip4.dst == 10.96.1.6":    "10.96.1.6",
-		"ip4.dst == 10.96.1.7":    "10.96.1.7",
-	}, vips)
-
-	// The same Service releasing everything only removes its own VIP; the peers keep theirs,
-	// including the EIP they share with it.
-	vips, clusterIPs, err = controller.desiredNatGwVipStateForService(gwName, "ns/web", nil, "")
-	require.NoError(t, err)
-	require.Equal(t, []string{"10.96.1.6", "10.96.1.7"}, clusterIPs)
-	require.Contains(t, vips, "ip4.dst == 203.0.113.10", "the peer still serves the shared eip")
-	require.NotContains(t, vips, "ip4.dst == 10.96.1.5")
-}
-
 // TestVpcNatGwTerminationNotifiesServices pins the gateway half of the reference contract: when
 // the gateway a Service is bound to starts terminating or disappears, that Service is enqueued so
 // it can release its records, its published ingress IP and its finalizer. Nothing else would wake
@@ -2400,9 +2102,6 @@ func TestGwNftableLbServiceReleasesWhenGatewayIsGone(t *testing.T) {
 	require.NoError(t, err)
 	c := fc.fakeController
 	c.config.EnableGwNftableLbSvc = true
-	c.nftableLbVipSnapshot = map[string]map[string]nftableLbSvcVips{
-		f.gw.Name: {f.namespace + "/" + f.svc.Name: {eipIP: f.eip.Status.IP}},
-	}
 
 	require.NoError(t, c.handleAddOrUpdateGwNftableLbService(f.namespace+"/"+f.svc.Name))
 
@@ -2413,7 +2112,6 @@ func TestGwNftableLbServiceReleasesWhenGatewayIsGone(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, updated.Status.LoadBalancer.Ingress, "the ingress ip of a gone gateway must not stay published")
 	require.NotContains(t, updated.Finalizers, util.KubeOVNControllerFinalizer, "the service must be released")
-	require.Empty(t, c.nftableLbVipSnapshot, "the gateway floor must be dropped with the service")
 }
 
 // TestNftableLbIdentityKeyIsSingleSourced pins the invariant the desired/existing comparison rests
