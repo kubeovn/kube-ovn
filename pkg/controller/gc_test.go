@@ -368,6 +368,29 @@ func TestGetVMLsps(t *testing.T) {
 			ovs.PodNameToPortName("vm-attached", "ns2", nadProvider),
 		}, lsps)
 	})
+
+	t.Run("non-primary cni mode with default multus network", func(t *testing.T) {
+		vms := &kubevirtv1.VirtualMachineList{Items: []kubevirtv1.VirtualMachine{
+			{
+				Name: "vm-default-multus", Namespace: "ns1",
+				Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate([]kubevirtv1.Network{{
+					Name:   "default",
+					Multus: &kubevirtv1.MultusNetwork{Default: true, NetworkName: "ns1/net1"},
+				}}, nil)},
+			},
+		}}
+		c := &Controller{config: &Configuration{
+			EnableKeepVMIP:      true,
+			EnableNonPrimaryCNI: true,
+			KubevirtClient:      mockKubevirtList(t, vms, nil),
+		}}
+
+		lsps, err := c.getVMLsps()
+		require.NoError(t, err)
+
+		net1Provider := fmt.Sprintf("%s.%s.%s", "net1", "ns1", util.OvnProvider)
+		require.Equal(t, []string{ovs.PodNameToPortName("vm-default-multus", "ns1", net1Provider)}, lsps)
+	})
 }
 
 func TestMarkAndCleanLSPEnqueuesMissingNodeLSP(t *testing.T) {
