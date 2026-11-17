@@ -15,7 +15,13 @@ func TestGetTProxyRulePorts(t *testing.T) {
 		Name: "probe", Namespace: "default", UID: "uid-probe",
 		Spec: corev1.PodSpec{Containers: []corev1.Container{
 			{
-				Ports: []corev1.ContainerPort{{Name: "tcp-port", ContainerPort: 8080}},
+				Ports: []corev1.ContainerPort{
+					{Name: "tcp-port", ContainerPort: 8080},
+					{Name: "startup-port", ContainerPort: 8085},
+				},
+				StartupProbe: &corev1.Probe{
+					HTTPGet: &corev1.HTTPGetAction{Port: intstr.FromString("startup-port")},
+				},
 				ReadinessProbe: &corev1.Probe{
 					TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromString("tcp-port")},
 				},
@@ -24,6 +30,9 @@ func TestGetTProxyRulePorts(t *testing.T) {
 				},
 			},
 			{
+				StartupProbe: &corev1.Probe{
+					TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt32(8086)},
+				},
 				ReadinessProbe: &corev1.Probe{
 					GRPC: &corev1.GRPCAction{Port: 8082},
 				},
@@ -32,6 +41,9 @@ func TestGetTProxyRulePorts(t *testing.T) {
 				},
 			},
 			{
+				StartupProbe: &corev1.Probe{
+					GRPC: &corev1.GRPCAction{Port: 8087},
+				},
 				ReadinessProbe: &corev1.Probe{
 					TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt32(8081)},
 				},
@@ -43,31 +55,33 @@ func TestGetTProxyRulePorts(t *testing.T) {
 	}
 	const podIP = "10.30.0.2"
 	t.Cleanup(func() { customVPCPodIPToNs.Delete(podIP) })
-	for _, port := range []int32{8080, 8081, 8083} {
+	for _, port := range []int32{8080, 8081, 8083, 8086} {
 		key := util.JoinHostPort(podIP, port)
 		t.Cleanup(func() { customVPCPodTCPProbeIPPort.Delete(key) })
 	}
 
 	allPorts, tcpPorts := getProbePorts(pod)
-	require.Equal(t, []int32{8080, 8081, 8082, 8083, 8084}, allPorts.SortedList())
-	require.Equal(t, []int32{8080, 8081, 8083}, tcpPorts.SortedList())
-	require.Equal(t, []int32{8082, 8084}, getTProxyRulePorts(pod, podIP).SortedList())
+	require.Equal(t, []int32{8080, 8081, 8082, 8083, 8084, 8085, 8086, 8087}, allPorts.SortedList())
+	require.Equal(t, []int32{8080, 8081, 8083, 8086}, tcpPorts.SortedList())
+	require.Equal(t, []int32{8082, 8084, 8085, 8087}, getTProxyRulePorts(pod, podIP).SortedList())
 
 	customVPCPodIPToNs.Store(podIP, podNetworkNamespace{podUID: "uid-old", namespace: "old-ns"})
 	require.Empty(t, getTProxyRulePorts(pod, podIP))
 	customVPCPodIPToNs.Store(podIP, podNetworkNamespace{podUID: pod.UID, namespace: "pod-ns"})
-	require.Equal(t, []int32{8082, 8084}, getTProxyRulePorts(pod, podIP).SortedList())
+	require.Equal(t, []int32{8082, 8084, 8085, 8087}, getTProxyRulePorts(pod, podIP).SortedList())
 
 	customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, 8080), tcpProbeResult{podUID: pod.UID, reachable: true})
 	customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, 8081), tcpProbeResult{podUID: pod.UID, reachable: true})
 	customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, 8083), tcpProbeResult{podUID: pod.UID})
-	require.Equal(t, []int32{8080, 8081, 8082, 8084}, getTProxyRulePorts(pod, podIP).SortedList())
+	customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, 8086), tcpProbeResult{podUID: pod.UID, reachable: true})
+	require.Equal(t, []int32{8080, 8081, 8082, 8084, 8085, 8086, 8087}, getTProxyRulePorts(pod, podIP).SortedList())
 
 	customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, 8080), tcpProbeResult{podUID: pod.UID})
 	customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, 8081), tcpProbeResult{podUID: pod.UID})
 	customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, 8083), tcpProbeResult{podUID: pod.UID, reachable: true})
-	require.Equal(t, []int32{8082, 8083, 8084}, getTProxyRulePorts(pod, podIP).SortedList())
-	require.Equal(t, []int32{8082, 8084}, getTProxyRulePorts(pod, "10.30.0.3").SortedList())
+	customVPCPodTCPProbeIPPort.Store(util.JoinHostPort(podIP, 8086), tcpProbeResult{podUID: pod.UID, reachable: true})
+	require.Equal(t, []int32{8082, 8083, 8084, 8085, 8086, 8087}, getTProxyRulePorts(pod, podIP).SortedList())
+	require.Equal(t, []int32{8082, 8084, 8085, 8087}, getTProxyRulePorts(pod, "10.30.0.3").SortedList())
 
 	oldUID := pod.UID
 	pod.UID = "uid-recreated"
