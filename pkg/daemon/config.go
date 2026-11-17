@@ -138,7 +138,7 @@ func ParseFlags() *Configuration {
 		argEnableVerboseConnCheck    = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check listen port")
 		argTCPConnectivityCheckPort  = pflag.Int32("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
 		argUDPConnectivityCheckPort  = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
-		argEnableTProxy              = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
+		argEnableTProxy              = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod probes")
 		argEnableRecompute           = pflag.Bool("enable-recompute", true, "Enable periodic ovn-controller recompute")
 		argSetGeneveTxOff            = pflag.Bool("set-geneve-tx-off", true, "Whether to set genev_sys_6081 tx off")
 		argOVSVsctlConcurrency       = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
