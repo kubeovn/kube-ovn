@@ -927,10 +927,22 @@ func parseIPv6RAConfigs(raw string) map[string]string {
 		}
 	}
 	configs := make(map[string]string)
+	// list values such as route_info are comma separated too, so a field
+	// without "=" is the next item of the last accepted option's value
+	var lastKey string
 	for option := range strings.SplitSeq(strings.ReplaceAll(raw, " ", ""), ",") {
 		key, value, ok := strings.Cut(option, "=")
-		if ok && key != "" && value != "" {
+		if !ok {
+			if lastKey != "" && option != "" {
+				configs[lastKey] += "," + option
+			}
+			continue
+		}
+		lastKey = ""
+		// same strict key=value check as pkg/ovs parseIpv6RaConfigs: a=b=c is dropped
+		if key != "" && value != "" && !strings.Contains(value, "=") {
 			configs[key] = value
+			lastKey = key
 		}
 	}
 	return configs
