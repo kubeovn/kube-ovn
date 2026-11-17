@@ -156,6 +156,23 @@ func TestHandleAddOrUpdateVMIMigrationEarlyReturns(t *testing.T) {
 		require.ErrorContains(t, f.ctrl.handleAddOrUpdateVMIMigration(testMigration), "boom")
 	})
 
+	t.Run("deleted migration is dropped without retry", func(t *testing.T) {
+		f := newKubevirtFixture(t, nil)
+		notFound := k8serrors.NewNotFound(schema.GroupResource{Group: "kubevirt.io", Resource: "virtualmachineinstancemigrations"}, "migration-cur")
+		f.mockVMIMigrations.EXPECT().Get(gomock.Any(), "migration-cur", gomock.Any()).Return(nil, notFound)
+		require.NoError(t, f.ctrl.handleAddOrUpdateVMIMigration(testMigration))
+	})
+
+	t.Run("pending migration of a deleted vmi is dropped without retry", func(t *testing.T) {
+		f := newKubevirtFixture(t, nil)
+		m := newTestVMIMigration("migration-cur", "uid-cur", testBaseTime, kubevirtv1.MigrationPending)
+		notFound := k8serrors.NewNotFound(schema.GroupResource{Group: "kubevirt.io", Resource: "virtualmachineinstances"}, testVMName)
+		f.mockVMIMigrations.EXPECT().Get(gomock.Any(), m.Name, gomock.Any()).Return(m, nil)
+		f.mockVMIs.EXPECT().Get(gomock.Any(), testVMName, gomock.Any()).Return(nil, notFound)
+		// no OVN call is expected; gomock fails the test on any other call
+		require.NoError(t, f.ctrl.handleAddOrUpdateVMIMigration(testMigration))
+	})
+
 	t.Run("migration without state does not touch ovn", func(t *testing.T) {
 		f := newKubevirtFixture(t, nil)
 		m := newTestVMIMigration("migration-cur", "uid-cur", testBaseTime, kubevirtv1.MigrationRunning)

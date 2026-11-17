@@ -120,6 +120,11 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 
 	vmiMigration, err := c.config.KubevirtClient.VirtualMachineInstanceMigration(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			// The migration was deleted (e.g. a cancelled pending migration); retrying cannot succeed.
+			klog.V(3).Infof("VirtualMachineInstanceMigration %s not found, skipping", key)
+			return nil
+		}
 		utilruntime.HandleError(fmt.Errorf("failed to get VMI migration by key %s: %w", key, err))
 		return err
 	}
@@ -150,8 +155,14 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 	vmi, err := c.config.KubevirtClient.VirtualMachineInstance(namespace).Get(context.TODO(), vmiMigration.Spec.VMIName, metav1.GetOptions{})
 	if err != nil {
 		// KubeVirt fills status.migrationState.sourcePod while Pending, so cleanup must not depend on it.
-		if k8serrors.IsNotFound(err) && vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
-			return c.cleanupFailedVMIMigrationWithoutVMI(vmiMigration)
+		if k8serrors.IsNotFound(err) {
+			if vmiMigration.Status.Phase == kubevirtv1.MigrationFailed {
+				return c.cleanupFailedVMIMigrationWithoutVMI(vmiMigration)
+			}
+			// The VMI is gone, so there is nothing to configure and retrying cannot succeed.
+			// KubeVirt moves such a migration to Failed, and that update runs the cleanup above.
+			klog.Infof("VMI %s of VirtualMachineInstanceMigration %s not found, skipping", vmiMigration.Spec.VMIName, key)
+			return nil
 		}
 		utilruntime.HandleError(fmt.Errorf("failed to get VMI by name %s: %w", vmiMigration.Spec.VMIName, err))
 		return err
