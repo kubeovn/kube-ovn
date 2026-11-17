@@ -91,6 +91,14 @@ func TestEnqueueEndpointSliceServicePriority(t *testing.T) {
 				Type: corev1.ServiceTypeClusterIP,
 			}},
 		},
+		{
+			name: "NodePort service",
+			service: &corev1.Service{Spec: corev1.ServiceSpec{
+				Type:  corev1.ServiceTypeNodePort,
+				Ports: []corev1.ServicePort{{NodePort: 30080}},
+			}},
+			priority: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -114,6 +122,88 @@ func TestEnqueueEndpointSliceServicePriority(t *testing.T) {
 			priorityQueue.ShutDown()
 		})
 	}
+}
+
+func TestNodePortNodeAddresses(t *testing.T) {
+	node := &corev1.Node{Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{
+		{Type: corev1.NodeExternalIP, Address: "203.0.113.10"},
+		{Type: corev1.NodeInternalIP, Address: "10.0.0.10"},
+		{Type: corev1.NodeInternalIP, Address: "10.0.0.10"},
+		{Type: corev1.NodeHostName, Address: "node-a"},
+	}}}
+	assert.Equal(t, []string{"10.0.0.10", "203.0.113.10"}, nodePortNodeAddresses(node))
+}
+
+func TestEndpointSliceServiceProfileIncludesNodePortAddresses(t *testing.T) {
+	nodes := []*corev1.Node{
+		{Name: "node-a", Labels: map[string]string{corev1.LabelTopologyZone: "zone-a"}, Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "10.0.0.10"}, {Type: corev1.NodeExternalIP, Address: "203.0.113.10"}}}},
+		{Name: "node-b", Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "10.0.0.11"}}}},
+	}
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Nodes: nodes})
+	require.NoError(t, err)
+	svc := &corev1.Service{Namespace: "default", Name: "nodeport", Spec: corev1.ServiceSpec{
+		Type: corev1.ServiceTypeNodePort, ClusterIP: "10.96.0.10", Ports: []corev1.ServicePort{{NodePort: 30080}},
+	}}
+	profile, err := fake.fakeController.endpointSliceServiceProfile(svc)
+	require.NoError(t, err)
+	assert.Equal(t, []serviceNodePortVIP{
+		{address: "10.0.0.10", nodeName: "node-a", zone: "zone-a"},
+		{address: "10.0.0.11", nodeName: "node-b"},
+		{address: "203.0.113.10", nodeName: "node-a", zone: "zone-a"},
+	}, profile.nodePortVIPs)
+	assert.Equal(t, serviceLBExternalTraffic, profile.trafficClasses["10.0.0.10"])
+}
+
+func TestEndpointSliceServiceProfileDeduplicatesNodePortAddressesAcrossNodes(t *testing.T) {
+	nodes := []*corev1.Node{
+		{Name: "node-a", Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "192.0.2.10"}}}},
+		{Name: "node-b", Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "192.0.2.10"}}}},
+	}
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Nodes: nodes})
+	require.NoError(t, err)
+	svc := &corev1.Service{Namespace: "default", Name: "nodeport", Spec: corev1.ServiceSpec{
+		Type: corev1.ServiceTypeNodePort, ClusterIP: "10.96.0.10", Ports: []corev1.ServicePort{{NodePort: 30080}},
+	}}
+	profile, err := fake.fakeController.endpointSliceServiceProfile(svc)
+	require.NoError(t, err)
+	require.Equal(t, []serviceNodePortVIP{{address: "192.0.2.10", nodeName: "node-a"}}, profile.nodePortVIPs)
+}
+
+func TestNodePortTrafficDistributionAnnotations(t *testing.T) {
+	svc := &corev1.Service{}
+	preferClose := string(corev1.ServiceTrafficDistributionPreferClose)
+
+	svc.Spec.TrafficDistribution = &preferClose
+	require.Equal(t, &preferClose, nodePortTrafficDistribution(svc))
+	svc.Spec.TrafficDistribution = nil
+	svc.Annotations = map[string]string{corev1.AnnotationTopologyMode: "Auto"}
+	require.Equal(t, &preferClose, nodePortTrafficDistribution(svc))
+	svc.Annotations = map[string]string{corev1.DeprecatedAnnotationTopologyAwareHints: "auto"}
+	require.Equal(t, &preferClose, nodePortTrafficDistribution(svc))
+	svc.Annotations = map[string]string{corev1.AnnotationTopologyMode: "Disabled", corev1.DeprecatedAnnotationTopologyAwareHints: "Auto"}
+	require.Nil(t, nodePortTrafficDistribution(svc))
+}
+
+func TestNodePortBackendsHonorsLocalFallbackAndTopologyHints(t *testing.T) {
+	localNode, remoteNode := "node-a", "node-b"
+	zoneA, zoneB := "zone-a", "zone-b"
+	ready := true
+	portName := "http"
+	endpointSlices := []*discoveryv1.EndpointSlice{{
+		Ports: []discoveryv1.EndpointPort{{Name: &portName, Port: new(int32(8080))}},
+		Endpoints: []discoveryv1.Endpoint{
+			{Addresses: []string{"10.0.0.1"}, NodeName: &localNode, Conditions: discoveryv1.EndpointConditions{Ready: &ready}, Hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: localNode}}, ForZones: []discoveryv1.ForZone{{Name: zoneA}}}},
+			{Addresses: []string{"10.0.0.2"}, NodeName: &remoteNode, Conditions: discoveryv1.EndpointConditions{Ready: &ready}, Hints: &discoveryv1.EndpointHints{ForNodes: []discoveryv1.ForNode{{Name: remoteNode}}, ForZones: []discoveryv1.ForZone{{Name: zoneB}}}},
+		},
+	}}
+	servicePort := corev1.ServicePort{Name: portName}
+	localVIP := serviceNodePortVIP{address: "10.0.0.10", nodeName: localNode, zone: zoneA}
+	assert.Equal(t, []string{"10.0.0.1:8080"}, nodePortBackends(endpointSlices, servicePort, localVIP, corev1.ServiceExternalTrafficPolicyTypeLocal, nil))
+	localVIP.nodeName = "node-c"
+	assert.Equal(t, []string{"10.0.0.1:8080", "10.0.0.2:8080"}, nodePortBackends(endpointSlices, servicePort, localVIP, corev1.ServiceExternalTrafficPolicyTypeLocal, nil))
+	localVIP.nodeName, localVIP.zone = localNode, zoneA
+	distribution := corev1.ServiceTrafficDistributionPreferSameNode
+	assert.Equal(t, []string{"10.0.0.1:8080"}, nodePortBackends(endpointSlices, servicePort, localVIP, corev1.ServiceExternalTrafficPolicyTypeCluster, &distribution))
 }
 
 func TestEnqueueEndpointSliceGatewayAddDelete(t *testing.T) {

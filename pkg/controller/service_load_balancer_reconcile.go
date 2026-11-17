@@ -36,7 +36,7 @@ func newServiceLoadBalancerReconciliation(svc *v1.Service) *serviceLoadBalancerR
 				serviceLBNamespaceID: owner.namespace, serviceLBNameExternalID: owner.name,
 				serviceLBVersionID: serviceLBVersion,
 			},
-			TemplateVariablePrefixes: []string{serviceTrafficDistributionVariablePrefix(svc), serviceExternalLocalTemplatePrefix(svc)},
+			TemplateVariablePrefixes: []string{serviceTrafficDistributionVariablePrefix(svc), serviceExternalLocalTemplatePrefix(svc), serviceNodePortTemplatePrefix(svc)},
 		},
 		desired: make(map[string]*ovs.LoadBalancerDesiredState),
 	}
@@ -66,7 +66,7 @@ func (c *Controller) serviceScopedLBConfig(svc *v1.Service, protocol v1.Protocol
 	}
 	config.Options["template"] = "false"
 	if (trafficClass == serviceLBInternalTraffic && serviceUsesTemplateLB(svc)) ||
-		(trafficClass == serviceLBExternalTraffic && serviceUsesExternalLocalTemplate(svc)) {
+		(trafficClass == serviceLBExternalTraffic && (serviceUsesExternalLocalTemplate(svc) || serviceUsesNodePortTemplate(svc))) {
 		config.Options["template"] = "true"
 		// Template LBs are per-Service and select a backend from chassis
 		// variables. Flush conntrack entries when an endpoint is removed so a
@@ -90,7 +90,7 @@ func (c *Controller) planServiceScopedLoadBalancers(ctx *endpointSliceReconcileC
 	owner := serviceScopedLBOwner(svc)
 	if owner.kind == switchLBRuleLBOwnerKind || owner.kind == routerLBRuleLBOwnerKind {
 		classes = []serviceLBTrafficClass{serviceLBExternalTraffic}
-	} else if slices.ContainsFunc(ctx.profile.lbVips, func(vip string) bool { return ctx.profile.trafficClasses[vip] == serviceLBExternalTraffic }) {
+	} else if serviceUsesNodePortTemplate(svc) || slices.ContainsFunc(ctx.profile.lbVips, func(vip string) bool { return ctx.profile.trafficClasses[vip] == serviceLBExternalTraffic }) {
 		classes = append(classes, serviceLBExternalTraffic)
 	}
 	for _, port := range svc.Spec.Ports {

@@ -161,6 +161,16 @@ func serviceUsesTemplateLB(svc *v1.Service) bool {
 	return serviceUsesTrafficDistribution(svc) && !serviceUsesDistributedLB(svc)
 }
 
+// serviceUsesNodePortTemplate reports whether a NodePort service needs a
+// chassis-scoped backend set. NodePort VIPs are installed on every node
+// address, so one static backend list cannot implement the receiving-node
+// locality and topology rules.
+func serviceUsesNodePortTemplate(svc *v1.Service) bool {
+	return svc.Spec.Type == v1.ServiceTypeNodePort && slices.ContainsFunc(svc.Spec.Ports, func(port v1.ServicePort) bool {
+		return port.NodePort != 0
+	})
+}
+
 func serviceUsesTrafficDistribution(svc *v1.Service) bool {
 	return svc.Spec.Type == v1.ServiceTypeClusterIP && svc.Spec.TrafficDistribution != nil &&
 		svc.Annotations[util.SwitchLBRuleVipsAnnotation] == "" &&
@@ -274,6 +284,9 @@ func serviceScopedExternalLBName(svc *v1.Service, protocol v1.Protocol, vip stri
 }
 
 func serviceScopedExternalLBFamilies(svc *v1.Service) []string {
+	if serviceUsesNodePortTemplate(svc) {
+		return []string{"ipv4", "ipv6"}
+	}
 	if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
 		return []string{""}
 	}
@@ -418,7 +431,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 			if family != "" {
 				options["address-family"] = family
 			}
-		case serviceUsesExternalLocalTemplate(svc) && trafficClass == serviceLBExternalTraffic:
+		case (serviceUsesExternalLocalTemplate(svc) || serviceUsesNodePortTemplate(svc)) && trafficClass == serviceLBExternalTraffic:
 			options["template"] = "true"
 			if family != "" {
 				options["address-family"] = family
@@ -465,7 +478,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 		if err := c.OVNNbClient.SetLoadBalancerAddressFamily(name, family); err != nil {
 			return "", fmt.Errorf("set address family on service-scoped load balancer %s: %w", name, err)
 		}
-	case serviceUsesExternalLocalTemplate(svc) && trafficClass == serviceLBExternalTraffic:
+	case (serviceUsesExternalLocalTemplate(svc) || serviceUsesNodePortTemplate(svc)) && trafficClass == serviceLBExternalTraffic:
 		if err := c.OVNNbClient.SetLoadBalancerTemplate(name, true); err != nil {
 			return "", fmt.Errorf("set template mode on external local service-scoped load balancer %s: %w", name, err)
 		}
@@ -757,6 +770,11 @@ func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
 			return err
 		}
 	}
+	if serviceUsesNodePortTemplate(svc) {
+		if err := c.cleanupServiceNodePortTemplateState(svc); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -957,6 +975,9 @@ func (c *Controller) gcServiceTrafficDistributionVariables(services []*v1.Servic
 		if serviceUsesExternalLocalTemplate(svc) {
 			activePrefixes[serviceExternalLocalTemplatePrefix(svc)] = struct{}{}
 		}
+		if serviceUsesNodePortTemplate(svc) {
+			activePrefixes[serviceNodePortTemplatePrefix(svc)] = struct{}{}
+		}
 	}
 	if err := c.OVNNbClient.DeleteChassisTemplateVariables(func(name string) bool {
 		if !strings.HasPrefix(name, serviceTemplateVarRoot) {
@@ -1006,7 +1027,7 @@ func serviceScopedLBNames(svc *v1.Service) []string {
 		trafficClasses := []serviceLBTrafficClass{serviceLBInternalTraffic}
 		if ownerKind == switchLBRuleLBOwnerKind || ownerKind == routerLBRuleLBOwnerKind {
 			trafficClasses = []serviceLBTrafficClass{serviceLBExternalTraffic}
-		} else if svc.Spec.Type == v1.ServiceTypeLoadBalancer || serviceUsesDistributedLB(svc) {
+		} else if svc.Spec.Type == v1.ServiceTypeLoadBalancer || serviceUsesDistributedLB(svc) || serviceUsesNodePortTemplate(svc) {
 			trafficClasses = append(trafficClasses, serviceLBExternalTraffic)
 		}
 		for _, trafficClass := range trafficClasses {
