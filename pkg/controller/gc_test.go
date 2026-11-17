@@ -336,6 +336,61 @@ func TestGetVMLsps(t *testing.T) {
 			ovs.PodNameToPortName("vm-nad", "ns3", nadProvider),
 		}, lsps)
 	})
+
+	t.Run("non-primary cni mode keeps only attachment lsps", func(t *testing.T) {
+		vms := &kubevirtv1.VirtualMachineList{Items: []kubevirtv1.VirtualMachine{
+			{
+				// The default network is the primary CNI's: no default-provider lsp.
+				Name: "vm-primary", Namespace: "ns1",
+				Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate(nil, nil)},
+			},
+			{
+				Name: "vm-attached", Namespace: "ns2",
+				Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate([]kubevirtv1.Network{{
+					Name:   "secondary",
+					Multus: &kubevirtv1.MultusNetwork{NetworkName: "ns2/net2"},
+				}}, map[string]string{nadv1.NetworkAttachmentAnnot: "netx"})},
+			},
+		}}
+		c := &Controller{config: &Configuration{
+			EnableKeepVMIP:      true,
+			EnableNonPrimaryCNI: true,
+			KubevirtClient:      mockKubevirtList(t, vms, nil),
+		}}
+
+		lsps, err := c.getVMLsps()
+		require.NoError(t, err)
+
+		net2Provider := fmt.Sprintf("%s.%s.%s", "net2", "ns2", util.OvnProvider)
+		nadProvider := fmt.Sprintf("%s.%s.%s", "netx", "ns2", util.OvnProvider)
+		require.ElementsMatch(t, []string{
+			ovs.PodNameToPortName("vm-attached", "ns2", net2Provider),
+			ovs.PodNameToPortName("vm-attached", "ns2", nadProvider),
+		}, lsps)
+	})
+
+	t.Run("non-primary cni mode with default multus network", func(t *testing.T) {
+		vms := &kubevirtv1.VirtualMachineList{Items: []kubevirtv1.VirtualMachine{
+			{
+				Name: "vm-default-multus", Namespace: "ns1",
+				Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate([]kubevirtv1.Network{{
+					Name:   "default",
+					Multus: &kubevirtv1.MultusNetwork{Default: true, NetworkName: "ns1/net1"},
+				}}, nil)},
+			},
+		}}
+		c := &Controller{config: &Configuration{
+			EnableKeepVMIP:      true,
+			EnableNonPrimaryCNI: true,
+			KubevirtClient:      mockKubevirtList(t, vms, nil),
+		}}
+
+		lsps, err := c.getVMLsps()
+		require.NoError(t, err)
+
+		net1Provider := fmt.Sprintf("%s.%s.%s", "net1", "ns1", util.OvnProvider)
+		require.Equal(t, []string{ovs.PodNameToPortName("vm-default-multus", "ns1", net1Provider)}, lsps)
+	})
 }
 
 func TestMarkAndCleanLSPEnqueuesMissingNodeLSP(t *testing.T) {
