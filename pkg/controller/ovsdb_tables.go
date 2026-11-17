@@ -939,7 +939,8 @@ func parseIPv6RAConfigs(raw string) map[string]string {
 			continue
 		}
 		lastKey = ""
-		if key != "" && value != "" {
+		// same strict key=value check as pkg/ovs parseIpv6RaConfigs: a=b=c is dropped
+		if key != "" && value != "" && !strings.Contains(value, "=") {
 			configs[key] = value
 			lastKey = key
 		}

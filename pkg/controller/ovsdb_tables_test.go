@@ -517,6 +517,12 @@ func TestParseIPv6RAConfigsListValues(t *testing.T) {
 	require.Equal(t, map[string]string{
 		"send_periodic": "true",
 	}, parseIPv6RAConfigs("route_info=,MEDIUM-fd78::/48,=x,MEDIUM-fd79::/48,send_periodic=true"))
+	require.Equal(t, map[string]string{
+		"send_periodic": "true",
+	}, parseIPv6RAConfigs("route_info=,MEDIUM-fd78::/48,a=b=c,MEDIUM-fd79::/48,send_periodic=true"))
+	require.Equal(t, map[string]string{
+		"address_mode": "dhcpv6_stateful",
+	}, parseIPv6RAConfigs("address_mode=dhcpv6_stateful,a=b=c"))
 }
 
 func TestControllerProviderLogicalSwitchAndDHCP(t *testing.T) {
