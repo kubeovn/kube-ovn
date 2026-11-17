@@ -16,6 +16,7 @@ import (
 
 type Subnet struct {
 	Name         string
+	SubnetUID    string
 	Mutex        sync.RWMutex
 	CIDR         string
 	Protocol     string
@@ -34,6 +35,7 @@ type Subnet struct {
 	V6NicToIP    map[string]IP
 	V6IPToPod    map[string]string
 	NicToMac     map[string]string
+	NicToOwner   map[string]AllocationOwner
 	MacToPod     map[string]string
 	PodToNicList map[string][]string
 	V4Gw         string
@@ -85,6 +87,7 @@ func NewSubnet(name, cidrStr string, excludeIps []string) (*Subnet, error) {
 		V6IPToPod:    map[string]string{},
 		MacToPod:     map[string]string{},
 		NicToMac:     map[string]string{},
+		NicToOwner:   map[string]AllocationOwner{},
 		PodToNicList: map[string][]string{},
 		IPPools:      make(map[string]*IPPool, 0),
 	}
@@ -156,6 +159,7 @@ func NewMacOnlySubnet(name string) *Subnet {
 		V6IPToPod:    map[string]string{},
 		MacToPod:     map[string]string{},
 		NicToMac:     map[string]string{},
+		NicToOwner:   map[string]AllocationOwner{},
 		PodToNicList: map[string][]string{},
 		IPPools: map[string]*IPPool{"": {
 			V4IPs:       NewEmptyIPRangeList(),

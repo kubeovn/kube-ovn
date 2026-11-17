@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"time"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-// SubnetSideEffectAction is the operation-specific OVN or IPAM mutation that
-// a future Subnet writer wants to perform. The action is deliberately injected
-// so this contract can be tested without wiring a second production writer.
+// SubnetSideEffectAction is the operation-specific OVN or IPAM mutation passed
+// through the runtime writer's phase gate. The action is injected so the gate
+// can be tested without duplicating the legacy domain implementation.
 type SubnetSideEffectAction func(context.Context) error
 
 // SubnetSideEffectReceipt identifies a confirmed mutation made by one apply.
@@ -23,6 +24,13 @@ type SubnetSideEffectReceipt interface {
 	Compensate(context.Context) error
 }
 
+// SubnetSideEffectReceiptIdentity is implemented by receipts that can prove
+// which immutable mutation identity they own. Concrete adapters must expose it
+// when a plan requires receipt identity validation.
+type SubnetSideEffectReceiptIdentity interface {
+	SubnetMutationIdentity() SubnetMutationIdentity
+}
+
 // SubnetSideEffectPlan describes one gated backend mutation. Apply may return
 // a receipt only for a confirmed mutation that it owns. No-op and uncommitted
 // outcomes return a nil receipt. If cancellation races with a committed
@@ -31,12 +39,19 @@ type SubnetSideEffectReceipt interface {
 // readback cannot confirm the mutation, recovery must resolve it; cancellation
 // never authorizes speculative compensation.
 type SubnetSideEffectPlan struct {
-	Apply func(context.Context) (SubnetSideEffectReceipt, error)
+	Apply                  func(context.Context) (SubnetSideEffectReceipt, error)
+	RequireReceiptIdentity bool
+	// RetainReceiptOnError keeps a receipt-owned fence when Apply returns an
+	// error. A backend may have committed before reporting the error, so
+	// speculative compensation could release ownership before recovery has
+	// read back the actual data-plane state.
+	RetainReceiptOnError bool
 }
 
-// subnetSideEffectWriter gates OVN and IPAM side effects behind the immutable
-// Subnet snapshot and recovery barrier. It does not own or implement either
-// backend and remains unwired while the legacy controller is the sole writer.
+// subnetSideEffectWriter gates an OVN or IPAM domain phase behind the immutable
+// Subnet snapshot and recovery barrier. Runtime mode installs it around the
+// existing domain callback; concrete per-mutation receipts remain a follow-up
+// seam for the data-plane adapters.
 type subnetSideEffectWriter struct {
 	ctx context.Context
 	// reader must be an uncached APIReader, not a manager cache.
@@ -88,7 +103,10 @@ func (w *subnetSideEffectWriter) Execute(snapshot SubnetWriteSnapshot, operation
 
 func (w *subnetSideEffectWriter) executePlan(snapshot SubnetWriteSnapshot, operation SubnetWriteOperation, plan SubnetSideEffectPlan) (SubnetSideEffectReceipt, error) {
 	switch operation {
-	case SubnetOVNAllocateOperation, SubnetOVNCleanupOperation, SubnetIPAMAllocateOperation, SubnetIPAMReleaseOperation:
+	case SubnetStatusWriteOperation, SubnetFinalizerAddOperation, SubnetFinalizerRemoveOperation,
+		SubnetOVNAllocateOperation, SubnetOVNCleanupOperation,
+		SubnetIPAMAllocateOperation, SubnetIPAMReleaseOperation, SubnetIPAMRegisterOperation,
+		SubnetIPAMDeleteOperation, SubnetIPAMAddressAllocateOperation, SubnetIPAMAddressReleaseOperation:
 	default:
 		return nil, fmt.Errorf("unsupported Subnet side effect operation %q", operation)
 	}
@@ -98,12 +116,26 @@ func (w *subnetSideEffectWriter) executePlan(snapshot SubnetWriteSnapshot, opera
 	if err := w.gate.WaitForRecovery(w.ctx); err != nil {
 		return nil, err
 	}
+	identity, err := newSubnetMutationIdentity(w.ctx, snapshot, operation, w.gate.Fence)
+	if err != nil {
+		return nil, err
+	}
+	if plan.RequireReceiptIdentity && identity.WriterEpoch == "" {
+		return nil, ErrSubnetWriterEpochUnavailable
+	}
 	if w.reader == nil {
 		return nil, errors.New("subnet side effect API reader is not configured")
 	}
 	current, err := getSubnet(w.ctx, w.reader, snapshot.Name, subnetSideEffectReadTimeout)
 	if err != nil {
-		return nil, err
+		// A delete tombstone is an authoritative snapshot even after the API
+		// object has disappeared. The reconciler has already checked that no
+		// same-name replacement exists, so cleanup must still reach the backend.
+		if snapshot.Deleting && apierrors.IsNotFound(err) {
+			current = subnetFromSnapshot(snapshot)
+		} else {
+			return nil, err
+		}
 	}
 	if err := snapshot.Validate(current, operation); err != nil {
 		return nil, err
@@ -111,7 +143,13 @@ func (w *subnetSideEffectWriter) executePlan(snapshot SubnetWriteSnapshot, opera
 	if err := w.ctx.Err(); err != nil {
 		return nil, err
 	}
-	receipt, applyErr := plan.Apply(w.ctx)
+	receipt, applyErr := plan.Apply(withSubnetMutationIdentity(w.ctx, identity))
+	if receipt != nil && plan.RequireReceiptIdentity {
+		identityReceipt, ok := receipt.(SubnetSideEffectReceiptIdentity)
+		if !ok || !identity.Equal(identityReceipt.SubnetMutationIdentity()) {
+			return receipt, errors.Join(applyErr, ErrSubnetMutationIdentityChanged)
+		}
+	}
 	if err := w.ctx.Err(); err != nil {
 		// Preserve a confirmed receipt when cancellation races with a
 		// committed backend operation. The caller must retain the owner for
@@ -119,6 +157,9 @@ func (w *subnetSideEffectWriter) executePlan(snapshot SubnetWriteSnapshot, opera
 		return receipt, errors.Join(applyErr, err)
 	}
 	if applyErr != nil {
+		if plan.RetainReceiptOnError {
+			return receipt, applyErr
+		}
 		return nil, w.compensate(receipt, applyErr)
 	}
 	return receipt, nil

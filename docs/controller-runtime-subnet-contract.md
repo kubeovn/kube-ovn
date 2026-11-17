@@ -29,7 +29,9 @@ are rejected before entering the status queue.
 The explicit `subnet-writer` mode is opt-in production wiring: it acquires a
 dedicated Kubernetes Lease for durable fencing, disables legacy Subnet workers
 and startup Subnet syncs, and routes one runtime reconcile through the
-Controller's status, finalizer, IPAM, and OVN domain path.
+Controller's status, finalizer, IPAM, and OVN domain path. Its manager-owned
+Subnet queue also watches ProviderNetwork changes and fans them out through the
+VLAN-to-Subnet dependency map so readiness recovery causes an immediate retry.
 
 The event source returns an idempotent bridge handle. A controller-runtime
 source start reuses one active legacy subscription for the same context, while
@@ -105,9 +107,12 @@ The executable vocabulary for this map is in
 Subnet, its VLAN, and its ProviderNetwork. Missing dependencies are represented
 as an unready observation. `SubnetAllocationGate` is a read-only gate: a VLAN
 must exist without conflict, its ProviderNetwork must be Ready, and the VLAN
-must be present in `ProviderNetwork.status.vlans` before a future writer may
-allocate IPAM or create OVN objects. This is stricter than the current legacy
-validator and is intentionally not wired into production by this PR.
+must be present in `ProviderNetwork.status.vlans` before the opt-in runtime
+writer may enter the combined status, finalizer, IPAM, and OVN path. The
+runtime adapter re-checks this gate immediately before admission and the
+Controller facade rejects an active reconcile without the grant; terminating
+cleanup and startup recovery retain their separate semantics. The default
+modes continue to use the legacy Subnet writer.
 
 `pkg/controller/runtime/subnet_writer_gate.go` and
 `pkg/controller/runtime/subnet_writer_ownership.go` now make the writer gates
@@ -118,27 +123,95 @@ cleanup, and IPAM release require a terminating object; OVN/IPAM allocation
 requires `AllocationAllowed`. UID, generation, spec, resource-version, and
 deletion-state changes return a Kubernetes conflict. A missing recovery callback
 fails closed, so a restart cannot allocate or mutate OVN state before durable
-recovery completes. `subnet_status_writer.go` remains an isolated status-only implementation for a
-future split backend: it performs an uncached snapshot check, uses an
+recovery completes. Side-effect plans now propagate a `SubnetMutationIdentity`
+containing the Subnet UID, generation, resource version, operation, and (when
+the durable fence exposes it) writer epoch into the backend context. Concrete
+receipts can require and verify that identity; the production Controller facade
+still returns no per-mutation receipt, so backend atomic fencing remains a
+follow-up step. `subnet_status_writer.go` is the explicit status writer
+installed by `subnet-writer`. It performs an uncached snapshot check, uses an
 optimistic-lock status patch, preserves foreign condition types, and confirms a
-write that may have committed before its response was lost. The opt-in
-`subnet-writer` mode currently reaches status through the Controller facade,
-which is the production owner while the legacy Subnet workers are disabled.
-`subnet_finalizer_writer.go` provides the matching isolated metadata contract;
-the production mode delegates finalizer changes to the Controller facade. It
-migrates the deprecated finalizer on active objects, removes both owned
-finalizers during termination, preserves foreign finalizers, and confirms
-metadata writes after an uncertain response. `subnet_side_effect_writer.go`
-provides the isolated OVN/IPAM side-effect boundary for a future split backend;
-the production mode delegates those operations to the Controller facade behind
-the durable Lease. Each isolated invocation waits for recovery and performs a
-fresh Subnet GET with a five-second deadline before checking the immutable
-snapshot and operation gate. The writer requires an uncached API reader (the
-manager's `GetAPIReader()`); a missing reader, missing object, API error,
-timeout, cancellation, or changed identity/spec/resource-version/deletion state
-prevents the action from running. Callers cannot supply a previously read
-`current` object as authorization. State changed during recovery or between
-invocations is therefore checked against the API again.
+write that may have committed before its response was lost. The same
+implementation remains an isolated seam for a future split backend. The
+opt-in `subnet-writer` mode reaches status through this writer while the legacy
+Subnet workers are disabled. `subnet_finalizer_writer.go` provides the matching
+metadata writer and is installed at the finalizer patch boundary. It migrates
+the deprecated finalizer on active objects, removes both owned finalizers during
+termination, preserves foreign finalizers, and confirms metadata writes after
+an uncertain response. `subnet_side_effect_writer.go` is installed around the
+OVN/IPAM domain phases and gives them the same recovery, identity, and durable
+Lease gate. The production callback still delegates the complete phase to the
+Controller facade through an explicit OVN mutation writer seam. The seam
+preserves the legacy domain callback while isolating operation-specific OVN
+admission. In strict `subnet-writer` mode, that seam acquires a deterministic
+OVN `Address_Set` owner marker before the domain callback and conditionally
+releases it only after the callback succeeds. Apply or release errors retain the
+marker for recovery; they never speculate that an uncertain OVN mutation did
+not commit. Recovery rebinds a marker for the current Subnet revision to the
+new writer epoch while preserving its pending token, so the next retry takes
+over the same fence. Active recovery also enumerates markers for the same
+Subnet UID and fails closed on an older generation or operation marker. Delete
+recovery enumerates every marker for the UID, rebinds markers from the current
+generation to the new writer epoch, retains older-generation markers under
+their original CAS owner, and releases all of them only after cleanup
+succeeds. This lets a previously uncertain allocation marker converge during
+deletion without releasing a fence before the data-plane cleanup. Legacy mode
+keeps the existing callback without this marker. IPAM allocation and release
+now have concrete per-mutation receipts and owner fencing. OVN mutations also
+persist an Active/Releasing receipt in a ConfigMap around the OVSDB marker saga:
+uncertain apply/release outcomes retain both records for recovery, while a
+confirmed marker release deletes the receipt. Recovery must use the configured
+backend-aware `SubnetOVNMutationResolver` to read the concrete OVN mutation
+before changing either durable record; marker presence alone is not evidence
+that the mutation committed. An active allocation receipt is normally
+releasable only after the resolver reports `Committed`. For compatibility, a
+live receipt carrying the old coarse intent may be reused only when the
+resolver confirms `Committed`: the writer keeps the old durable key and marker
+fence, then atomically updates the receipt's intent in place before applying
+the typed mutation. If both the coarse and typed receipts or markers exist for
+the same generation, admission fails closed rather than choosing one. A live
+receipt carrying the old coarse intent is removed with its marker when the
+resolver confirms `Absent`, allowing the next reconcile to retry with the
+typed intent. Other live `Absent` allocations retain their fence. During
+deletion, an allocation receipt confirmed `Absent` is a tombstone terminal
+state and is removed with its marker. An active cleanup receipt is releasable only after
+`Absent` is confirmed. A receipt already in `Releasing` follows the same
+operation-specific terminal state before its marker and record are removed.
+Resolver errors and `Unknown` or pending states retain the receipt and any
+existing marker and fail closed, so a restart cannot issue a duplicate mutation
+or release ownership prematurely. The ConfigMap and OVSDB steps remain a
+retryable saga and are not a two-phase commit. A memory OVN owner-marker CAS
+seam is also available for tests. The queued virtual-port parent worker
+is also wired through a runtime hook: it reads the Subnet with the uncached API reader,
+revalidates UID, generation, spec, resource version, and deletion state, and
+only then invokes the OVN backend. Legacy mode keeps the informer-backed
+worker.
+
+The runtime writer also exposes concrete IPAM mutation seams for Subnet
+registration, address allocation/release, and deletion. `AddOrUpdateSubnet`,
+the Subnet-owned U2O/multicast address operations, and `DeleteSubnet` now pass
+through operation-specific identity and recovery gates instead of relying only
+on the enclosing domain-phase wrapper. Random and static address allocation,
+release by NIC, and release by Pod use a typed address request; runtime
+installation fails closed unless the backend exposes that typed writer and its
+initialized address backend. The typed adapter preserves the legacy release by
+Pod semantics while conditionalizing release by NIC on the expected address
+tuple. These seams delegate to the existing in-memory IPAM implementation;
+allocation receipts are persisted by the configured memory or ConfigMap store.
+Release first claims a receipt with a durable CAS (active to releasing)
+over the complete allocation, token, Subnet UID, identity, and address, so an
+old epoch or rebound receipt cannot invoke the backend.
+
+Each isolated invocation waits for recovery and performs a fresh Subnet GET
+with a five-second deadline before checking the immutable snapshot and
+operation gate. The writer requires an uncached API reader (the manager's
+`GetAPIReader()`); a missing reader, API error, timeout, cancellation, or
+changed identity/spec/resource-version/deletion state prevents the action from
+running. A terminating tombstone is the one missing-object exception: after
+the reconciler confirms that no same-name replacement exists, cleanup may use
+the immutable delete snapshot and continue. Callers cannot supply a previously
+read `current` object as authorization. State changed during recovery or
+between invocations is therefore checked against the API again.
 
 The ownership lease is process-local and epoch-bound: legacy and runtime claims
 are mutually exclusive, stale or wrong-owner releases fail closed, and an
@@ -161,7 +234,9 @@ resolved by bounded backend readback; when the address is confirmed, the
 adapter persists and returns a receipt together with the cancellation error so
 the caller can retain the owner for recovery. If readback cannot confirm the
 commit, the adapter fails closed and leaves the uncertainty for recovery. A
-receipt must bind the Subnet UID,
+OVN marker-backed plans retain their marker on any apply or release error,
+because releasing a fence before readback could allow a later writer to race
+the uncertain mutation. A receipt must bind the Subnet UID,
 mutation revision, and writer ownership epoch, and atomically check them in
 the backend before conditionally reverting only its own change. An idempotent
 delete by name alone is insufficient. Cancellation never authorizes rollback,
@@ -179,11 +254,19 @@ atomic commit is provided by `IPAM.WithTransaction`, so a failed allocation
 leaves no committed address and a retry can allocate again. An
 existing pod/NIC/subnet allocation is an explicit no-op and returns no receipt;
 transaction failures likewise return no receipt. Successful allocations carry
-a process-local owner token, Subnet UID, and the allocated address tuple. A
-receipt compensates only while that token and tuple still match the adapter's
-current owner, and refuses replay or a later owner. This check is process-local
-and cannot provide durable fencing or cross-process ownership; production wiring
-still needs a durable owner/revision protocol and an OVN adapter.
+an owner token, Subnet UID, writer epoch, and the allocated address tuple. The
+memory store preserves these checks only within a process; the production
+ConfigMap store persists them with create-if-absent records and
+resource-version guarded compare-and-swap operations. During startup recovery,
+a receipt whose Subnet UID, address tuple, and complete old identity still
+match is atomically rebound to a new token and the current writer epoch. The
+old receipt therefore cannot compensate after a restart; failure to compare
+and update the durable record fails closed. A `releasing` receipt is pending
+work: recovery removes it when the backend allocation is gone, or rebinds it
+to the current epoch so release can be retried when the allocation remains.
+An active receipt whose backend allocation is missing fails closed.
+Allocations discovered directly from IPAM without a durable receipt are legacy
+ownership and are published with `Remember` before further mutation is admitted.
 `IPAM.WithTransactionContext` checks cancellation before and after the atomic
 transaction, but cannot interrupt the IPAM mutex while a transaction is
 running. Cancellation observed after the action can therefore report an
@@ -195,8 +278,13 @@ the allocation untouched; cancellation during the transaction still requires
 readback because the atomic release may already have committed.
 
 If conditional release returns a backend error before ownership is cleared, the
-receipt remains available for recovery to retry; the adapter does not discard
-ownership after an unsuccessful release.
+receipt remains in releasing for recovery to retry; the adapter does not discard
+ownership after an unsuccessful release. A successful backend release is
+followed by a claimed-record CAS delete; if that delete is lost, retrying the
+pending receipt confirms the uncached backend state before cleanup. When the
+backend reports ErrAddressOwnershipChanged, cleanup is allowed only after an
+uncached read confirms no address remains; a replacement tuple keeps the
+receipt and returns the ownership error.
 The same rule applies when the release context is canceled while the backend
 operation is in progress: recovery must retry with a fresh context and resolve
 the resulting ownership state.
@@ -205,15 +293,14 @@ The adapter now consumes a narrow backend interface for exact allocation
 lookup, transactional allocation, and conditional release. Lookup receives
 the writer context and returns errors separately from the no-op result, so a
 durable backend read failure fails closed without attempting allocation or
-compensation. Receipt release passes the expected address tuple into the
-backend, which validates ownership and releases it in one IPAM transaction;
-this closes the lookup/release race for the current backend. A future durable
-backend must replace this with an atomic fencing check. The current
-implementation wraps the in-memory IPAM transaction API; a future durable
-backend can implement the same seam only after preserving the receipt,
-ownership, and uncertain-commit guarantees. This interface is testable in
-isolation; the opt-in production mode currently invokes the Controller's IPAM
-facade and keeps this receipt adapter available for a later split.
+compensation. Receipt release passes the claimed complete allocation into the
+backend, which validates ownership and releases it in one IPAM transaction.
+The owner-aware transaction backend fences the opt-in path by the complete
+allocation owner (token, Subnet UID, generation, resource version, and writer
+epoch) in addition to the address tuple. Legacy tuple APIs remain available for
+legacy mode. This interface is testable in isolation; the opt-in production
+mode invokes the Controller's owner-aware IPAM facade and keeps this receipt
+adapter available for a later split.
 
 ## Readiness and deletion gates
 
@@ -243,9 +330,17 @@ handler extraction and conflict-safe finalizer/OVN/IPAM receipts remain
 separate steps. IP is last because Pod, VM, LSP and `syncIPCR` paths depend on
 it. In `subnet-writer`, the Controller facade is the single Subnet domain
 writer while legacy Subnet workers and startup syncs are disabled; all other
-modes remain legacy-owned. Direct split adapters still require concrete durable
-receipts and an explicit rollback/ownership gate.
+modes remain legacy-owned. The OVN split adapter now has concrete durable
+receipts, owner markers, and a backend-aware resolver. Each new receipt stores
+a canonical, generation-scoped `SubnetOVNMutationIntent`; recovery rejects a
+receipt without that intent. When the intent requires patch ports, recovery
+also reads the named LogicalRouterPort and LogicalSwitchPort and compares the
+stable networks, optional gateway MAC, router-port type, and router-port
+option. Dynamic gateway allocation remains unconstrained. ACL, DHCP, routes,
+and related side-effects require additional typed intent fields and readback
+before they can be reported as committed.
 The plan compensation contract is also unwired and does not itself provide
-durable backend rollback or a fencing mechanism. Concrete adapters must
-implement atomic receipt checks, idempotency, uncertain-commit confirmation,
-and ownership fencing before this contract can be used in production.
+durable backend rollback or a fencing mechanism. Any future split adapter
+must provide the same atomic receipt checks, idempotency, uncertain-commit
+confirmation, and ownership fencing before its path can be used in
+production.

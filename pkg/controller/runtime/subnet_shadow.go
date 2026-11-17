@@ -192,6 +192,9 @@ func (r *SubnetShadowReconciler) requestsForProviderNetworkWithRetry(ctx context
 func (r *SubnetShadowReconciler) enqueueProviderNetworkStatusRequests(ctx context.Context, q workqueue.TypedRateLimitingInterface[ctrl.Request], objects ...client.Object) {
 	requests, err := r.providerNetworkStatusRequestsWithFallback(ctx, objects...)
 	if err != nil {
+		for _, request := range requests {
+			q.Add(request)
+		}
 		subnetShadowDependencyMappingFailures.WithLabelValues("provider_network", subnetShadowRetryResult(err)).Inc()
 		log.FromContext(ctx).Error(err, "retry list dependencies for ProviderNetwork shadow event")
 		return
@@ -202,11 +205,24 @@ func (r *SubnetShadowReconciler) enqueueProviderNetworkStatusRequests(ctx contex
 }
 
 func (r *SubnetShadowReconciler) providerNetworkStatusRequestsWithFallback(ctx context.Context, objects ...client.Object) ([]ctrl.Request, error) {
-	requests, err := r.retryProviderNetworkStatusRequests(ctx, objects...)
-	if err == nil || ctx.Err() != nil {
-		return requests, err
+	statusRequests, statusErr := r.retryProviderNetworkStatusRequests(ctx, objects...)
+	if ctx.Err() != nil {
+		return statusRequests, statusErr
 	}
-	return r.requestsForProviderNetworkBySubnetSpec(ctx, objects...)
+	specRequests, specErr := r.requestsForProviderNetworkBySubnetSpec(ctx, objects...)
+	if statusErr != nil && specErr != nil {
+		return nil, errors.Join(statusErr, specErr)
+	}
+	if statusErr != nil {
+		return specRequests, nil
+	}
+	if specErr != nil {
+		if len(statusRequests) == 0 {
+			return nil, specErr
+		}
+		return statusRequests, specErr
+	}
+	return unionSubnetRequests(statusRequests, specRequests), nil
 }
 
 func (r *SubnetShadowReconciler) retryProviderNetworkStatusRequests(ctx context.Context, objects ...client.Object) ([]ctrl.Request, error) {
@@ -250,7 +266,19 @@ func (r *SubnetShadowReconciler) requestsForProviderNetworkStatusWithError(ctx c
 }
 
 func (r *SubnetShadowReconciler) requestsForProviderNetworkBySubnetSpec(ctx context.Context, objects ...client.Object) ([]ctrl.Request, error) {
-	_, vlans := providerNetworkVlanNames(objects...)
+	providerName, vlans := providerNetworkVlanNames(objects...)
+	if providerName == "" {
+		return nil, nil
+	}
+	var vlanList kubeovnv1.VlanList
+	if err := r.List(ctx, &vlanList); err != nil {
+		return nil, fmt.Errorf("list VLANs for ProviderNetwork %s fallback: %w", providerName, err)
+	}
+	for _, vlan := range vlanList.Items {
+		if vlan.Spec.Provider == providerName {
+			vlans[vlan.Name] = struct{}{}
+		}
+	}
 	if len(vlans) == 0 {
 		return nil, nil
 	}
@@ -337,4 +365,16 @@ func subnetRequestsForNames(names map[string]struct{}) []ctrl.Request {
 		requests = append(requests, ctrl.Request{Name: name})
 	}
 	return requests
+}
+
+func unionSubnetRequests(requestLists ...[]ctrl.Request) []ctrl.Request {
+	names := make(map[string]struct{})
+	for _, requests := range requestLists {
+		for _, request := range requests {
+			if request.Name != "" {
+				names[request.Name] = struct{}{}
+			}
+		}
+	}
+	return subnetRequestsForNames(names)
 }

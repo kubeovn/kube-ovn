@@ -11,6 +11,49 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 )
 
+type ownedFakeSubnetIPAMBackend struct {
+	*fakeSubnetIPAMBackend
+	owner      subnetIPAMAllocation
+	ownerFound bool
+	rebound    subnetIPAMAllocation
+}
+
+func (b *ownedFakeSubnetIPAMBackend) OwnerFencingEnabled() bool { return true }
+
+func (b *ownedFakeSubnetIPAMBackend) ExistingAllocationOwner(_ context.Context, _, _, _ string) (subnetIPAMAllocation, bool, error) {
+	if !b.ownerFound {
+		return subnetIPAMAllocation{}, false, nil
+	}
+	return b.owner, true, nil
+}
+
+func (b *ownedFakeSubnetIPAMBackend) AllocateRandomOwned(_ context.Context, allocation subnetIPAMAllocation, _ string) (subnetIPAMAddress, error) {
+	b.allocated = true
+	b.owner = allocation
+	b.ownerFound = true
+	return subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"}, nil
+}
+
+func (b *ownedFakeSubnetIPAMBackend) AllocateStaticOwned(_ context.Context, allocation subnetIPAMAllocation, _ string, _ *string, _ bool) (subnetIPAMAddress, error) {
+	return b.AllocateRandomOwned(context.Background(), allocation, "")
+}
+
+func (b *ownedFakeSubnetIPAMBackend) BindOwnerIfUnowned(_ context.Context, allocation subnetIPAMAllocation) error {
+	if b.ownerFound && b.owner != allocation {
+		return ipam.ErrAddressOwnershipChanged
+	}
+	b.owner = allocation
+	b.ownerFound = true
+	return nil
+}
+
+func (b *ownedFakeSubnetIPAMBackend) RebindOwner(_ context.Context, _, replacement subnetIPAMAllocation) error {
+	b.rebound = replacement
+	b.owner = replacement
+	b.ownerFound = true
+	return nil
+}
+
 func newSubnetIPAMAdapterTest(t *testing.T) (*subnetIPAMAdapter, SubnetWriteSnapshot) {
 	t.Helper()
 	writer, _, live, snapshot := newSubnetSideEffectWriterAPI(t, false)
@@ -29,6 +72,16 @@ func TestSubnetIPAMAdapterAllocatesTransactionAndCompensatesByReceipt(t *testing
 	require.Empty(t, v6)
 	require.NotEmpty(t, mac)
 	require.NotNil(t, receipt)
+	identityReceipt, ok := receipt.(SubnetSideEffectReceiptIdentity)
+	require.True(t, ok)
+	require.Equal(t, SubnetMutationIdentity{
+		Name:            snapshot.Name,
+		UID:             snapshot.UID,
+		Generation:      snapshot.Generation,
+		ResourceVersion: snapshot.ResourceVersion,
+		Operation:       SubnetIPAMAllocateOperation,
+		WriterEpoch:     "test-epoch",
+	}, identityReceipt.SubnetMutationIdentity())
 
 	_, _, _, noOpReceipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
 	require.NoError(t, err)
@@ -39,6 +92,101 @@ func TestSubnetIPAMAdapterAllocatesTransactionAndCompensatesByReceipt(t *testing
 	require.NoError(t, err)
 	require.NotNil(t, replacementReceipt)
 	require.Error(t, receipt.Compensate(context.Background()), "receipt replay must be stale")
+}
+
+func TestSubnetIPAMAdapterOwnedAllocationUsesSameOwnerAsReceipt(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	backend := &ownedFakeSubnetIPAMBackend{fakeSubnetIPAMBackend: &fakeSubnetIPAMBackend{}}
+	adapter, err := newSubnetIPAMAdapterWithBackend(writer, backend)
+	require.NoError(t, err)
+	_, _, _, receipt, err := adapter.AllocateRandom(snapshot, "pod", "nic", "")
+	require.NoError(t, err)
+	require.NotNil(t, receipt)
+	stored := receipt.(*subnetIPAMReceipt).allocation
+	require.Equal(t, stored.token, backend.owner.token)
+	require.Equal(t, stored.uid, backend.owner.uid)
+	require.Equal(t, stored.identity, backend.owner.identity)
+}
+
+func TestSubnetIPAMAdapterOwnedRecoveryRebindsBackendOwner(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	previous := subnetIPAMAllocation{
+		key: subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"}, token: 7, uid: string(snapshot.UID),
+		address:  subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"},
+		identity: SubnetMutationIdentity{Name: snapshot.Name, UID: snapshot.UID, Generation: snapshot.Generation, ResourceVersion: snapshot.ResourceVersion, Operation: SubnetIPAMAddressAllocateOperation, WriterEpoch: "old-epoch"},
+	}
+	backend := &ownedFakeSubnetIPAMBackend{fakeSubnetIPAMBackend: &fakeSubnetIPAMBackend{
+		recoverAllocations:  []subnetIPAMAllocation{previous},
+		existingAllocations: []subnetIPAMAllocation{previous},
+		allocated:           true,
+	}, owner: previous, ownerFound: true}
+	store := newMemorySubnetIPAMReceiptStore()
+	require.NoError(t, store.Remember(t.Context(), previous))
+	adapter, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
+	require.NoError(t, err)
+	require.NoError(t, adapter.Recover(t.Context(), snapshot))
+	require.Equal(t, "test-epoch", backend.rebound.identity.WriterEpoch)
+	require.NotEqual(t, previous.token, backend.rebound.token)
+}
+
+func TestSubnetIPAMAdapterOwnedRecoveryRebindsOrphanedBackendOwner(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	previous := subnetIPAMAllocation{
+		key: subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"}, token: 7, uid: string(snapshot.UID),
+		address:  subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"},
+		identity: SubnetMutationIdentity{Name: snapshot.Name, UID: snapshot.UID, Generation: snapshot.Generation, ResourceVersion: snapshot.ResourceVersion, Operation: SubnetIPAMAddressAllocateOperation, WriterEpoch: "old-epoch"},
+	}
+	backend := &ownedFakeSubnetIPAMBackend{fakeSubnetIPAMBackend: &fakeSubnetIPAMBackend{
+		existingAllocations: []subnetIPAMAllocation{previous},
+		allocated:           true,
+	}, owner: previous, ownerFound: true}
+	adapter, err := newSubnetIPAMAdapterWithBackend(writer, backend)
+	require.NoError(t, err)
+	require.NoError(t, adapter.Recover(t.Context(), snapshot))
+	require.NotEqual(t, previous.token, backend.rebound.token)
+	require.Equal(t, backend.rebound, backend.owner)
+	stored, found, err := adapter.store.Lookup(t.Context(), previous.key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, backend.rebound, stored)
+}
+
+func TestSubnetIPAMAdapterOwnedRecoveryRebindsBackendToDurableOwner(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	backendOwner := subnetIPAMAllocation{
+		key: subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"}, token: 7, uid: string(snapshot.UID),
+		address:  subnetIPAMAddress{v4: "192.0.2.1"},
+		identity: SubnetMutationIdentity{Name: snapshot.Name, UID: snapshot.UID, Generation: snapshot.Generation, ResourceVersion: snapshot.ResourceVersion, Operation: SubnetIPAMAddressAllocateOperation, WriterEpoch: "backend-epoch"},
+	}
+	durable := backendOwner
+	durable.token = 9
+	durable.identity.WriterEpoch = "durable-epoch"
+	backend := &ownedFakeSubnetIPAMBackend{fakeSubnetIPAMBackend: &fakeSubnetIPAMBackend{
+		existingAllocations: []subnetIPAMAllocation{backendOwner},
+		allocated:           true,
+	}, owner: backendOwner, ownerFound: true}
+	store := newMemorySubnetIPAMReceiptStore()
+	require.NoError(t, store.Remember(t.Context(), durable))
+	adapter, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
+	require.NoError(t, err)
+	require.NoError(t, adapter.Recover(t.Context(), snapshot))
+	require.Equal(t, durable, backend.rebound)
+}
+
+func TestMemorySubnetIPAMReceiptStoreRebindsWithCAS(t *testing.T) {
+	store := newMemorySubnetIPAMReceiptStore()
+	previous := testDurableSubnetIPAMAllocation()
+	replacement := previous
+	replacement.token++
+	replacement.identity.WriterEpoch = "epoch-b"
+
+	require.NoError(t, store.Remember(t.Context(), previous))
+	require.NoError(t, store.Rebind(t.Context(), previous, replacement))
+	require.ErrorIs(t, store.Delete(t.Context(), previous), ErrSubnetIPAMReceiptChanged)
+	current, found, err := store.Lookup(t.Context(), previous.key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, replacement, current)
 }
 
 func TestSubnetIPAMAdapterExistingAllocationIsScopedToNIC(t *testing.T) {
@@ -69,6 +217,18 @@ func TestSubnetIPAMAdapterMacOnlyAllocationIsNoOp(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, mac, secondMAC)
 	require.Nil(t, secondReceipt, "existing MAC-only allocation must not create a second receipt")
+}
+
+func TestSubnetIPAMAdapterStaticAllocationRejectsSubnetMismatch(t *testing.T) {
+	adapter, snapshot := newSubnetIPAMAdapterTest(t)
+
+	_, _, _, receipt, err := adapter.AllocateStaticWithContext(
+		t.Context(), snapshot, "pod", "nic", "10.0.0.1", nil, "other-subnet", true,
+	)
+	require.ErrorIs(t, err, ErrSubnetIPAMIdentityMismatch)
+	require.Nil(t, receipt)
+	_, _, _, found := adapterIPAM(t, adapter).GetPodAddressByNic("pod", "nic", snapshot.Name)
+	require.False(t, found)
 }
 
 func TestSubnetIPAMAdapterConcurrentSameKeyHasOneOwner(t *testing.T) {
@@ -245,9 +405,155 @@ func TestSubnetIPAMAdapterRecoversDurableReceipt(t *testing.T) {
 	require.NoError(t, err)
 
 	require.NoError(t, adapter.Recover(t.Context(), snapshot))
-	receipt := &subnetIPAMReceipt{adapter: adapter, allocation: backend.recoverAllocations[0]}
+	allocation, found, err := adapter.store.Lookup(t.Context(), backend.recoverAllocations[0].key)
+	require.NoError(t, err)
+	require.True(t, found)
+	receipt := &subnetIPAMReceipt{adapter: adapter, allocation: allocation}
 	require.NoError(t, receipt.Compensate(t.Context()))
 	require.False(t, backend.allocated)
+}
+
+func TestSubnetIPAMAdapterRecoveryRebindsReceiptToCurrentEpoch(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	previous := subnetIPAMAllocation{
+		key:     subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"},
+		token:   7,
+		uid:     string(snapshot.UID),
+		address: subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"},
+		identity: SubnetMutationIdentity{
+			Name: snapshot.Name, UID: snapshot.UID, Generation: snapshot.Generation,
+			ResourceVersion: snapshot.ResourceVersion, Operation: SubnetIPAMAddressAllocateOperation,
+			WriterEpoch: "old-epoch",
+		},
+	}
+	backend := &fakeSubnetIPAMBackend{allocated: true, recoverAllocations: []subnetIPAMAllocation{previous}}
+	store := newMemorySubnetIPAMReceiptStore()
+	require.NoError(t, store.Remember(t.Context(), previous))
+	adapter, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
+	require.NoError(t, err)
+
+	require.NoError(t, adapter.Recover(t.Context(), snapshot))
+	rebound, found, err := store.Lookup(t.Context(), previous.key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.NotEqual(t, previous.token, rebound.token)
+	require.Equal(t, "test-epoch", rebound.identity.WriterEpoch)
+	require.ErrorIs(t, (&subnetIPAMReceipt{adapter: adapter, allocation: previous}).Compensate(t.Context()), ErrSubnetIPAMReceiptStale)
+	require.Zero(t, backend.releaseCalls, "a stale epoch must not reach the backend")
+	require.NoError(t, (&subnetIPAMReceipt{adapter: adapter, allocation: rebound}).Compensate(t.Context()))
+}
+
+func TestSubnetIPAMAdapterRecoveryRejectsReceiptFromOlderSubnetRevision(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	previous := subnetIPAMAllocation{
+		key:     subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"},
+		token:   7,
+		uid:     string(snapshot.UID),
+		address: subnetIPAMAddress{v4: "192.0.2.1"},
+		identity: SubnetMutationIdentity{
+			Name: snapshot.Name, UID: snapshot.UID, Generation: snapshot.Generation - 1,
+			ResourceVersion: snapshot.ResourceVersion, Operation: SubnetIPAMAddressAllocateOperation,
+			WriterEpoch: "old-epoch",
+		},
+	}
+	backend := &fakeSubnetIPAMBackend{allocated: true, recoverAllocations: []subnetIPAMAllocation{previous}}
+	store := newMemorySubnetIPAMReceiptStore()
+	require.NoError(t, store.Remember(t.Context(), previous))
+	adapter, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
+	require.NoError(t, err)
+
+	require.ErrorIs(t, adapter.Recover(t.Context(), snapshot), ErrSubnetIPAMRecoveryUnsafe)
+	recovered, found, err := store.Lookup(t.Context(), previous.key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, previous, recovered, "an older Subnet revision must not be rebound")
+}
+
+func TestSubnetIPAMAdapterRecoveryRejectsReceiptWithoutWriterEpoch(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	allocation := subnetIPAMAllocation{
+		key:     subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"},
+		token:   7,
+		uid:     string(snapshot.UID),
+		address: subnetIPAMAddress{v4: "192.0.2.1"},
+		identity: SubnetMutationIdentity{
+			Name: snapshot.Name, UID: snapshot.UID, Generation: snapshot.Generation,
+			ResourceVersion: snapshot.ResourceVersion, Operation: SubnetIPAMAddressAllocateOperation,
+		},
+	}
+	backend := &fakeSubnetIPAMBackend{allocated: true, recoverAllocations: []subnetIPAMAllocation{allocation}}
+	store := newMemorySubnetIPAMReceiptStore()
+	require.NoError(t, store.Remember(t.Context(), allocation))
+	adapter, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
+	require.NoError(t, err)
+
+	require.ErrorIs(t, adapter.Recover(t.Context(), snapshot), ErrSubnetIPAMRecoveryUnsafe)
+	recovered, found, err := store.Lookup(t.Context(), allocation.key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, allocation, recovered, "a receipt without an epoch must remain untouched")
+}
+
+func TestSubnetIPAMAdapterRecoveryRebindIsReplaySafe(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	previous := subnetIPAMAllocation{
+		key:     subnetIPAMKey{subnet: snapshot.Name, pod: "pod", nic: "nic"},
+		token:   7,
+		uid:     string(snapshot.UID),
+		address: subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"},
+		identity: SubnetMutationIdentity{
+			Name: snapshot.Name, UID: snapshot.UID, Generation: snapshot.Generation,
+			ResourceVersion: snapshot.ResourceVersion, Operation: SubnetIPAMAddressAllocateOperation,
+			WriterEpoch: "old-epoch",
+		},
+	}
+	backend := &fakeSubnetIPAMBackend{allocated: true, recoverAllocations: []subnetIPAMAllocation{previous}}
+	store := newMemorySubnetIPAMReceiptStore()
+	require.NoError(t, store.Remember(t.Context(), previous))
+	adapter, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
+	require.NoError(t, err)
+
+	require.NoError(t, adapter.Recover(t.Context(), snapshot))
+	first, found, err := store.Lookup(t.Context(), previous.key)
+	require.NoError(t, err)
+	require.True(t, found)
+	backend.recoverAllocations = []subnetIPAMAllocation{first}
+	require.NoError(t, adapter.Recover(t.Context(), snapshot))
+	second, found, err := store.Lookup(t.Context(), previous.key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, first.token, second.token, "replaying recovery in one writer epoch must be idempotent")
+	require.NoError(t, (&subnetIPAMReceipt{adapter: adapter, allocation: first}).Compensate(t.Context()))
+}
+
+func TestSubnetIPAMAdapterBootstrapsExistingAllocation(t *testing.T) {
+	writer, _, _, snapshot := newSubnetSideEffectWriterAPI(t, false)
+	backend := &fakeSubnetIPAMBackend{existingAllocations: []subnetIPAMAllocation{{
+		key:     subnetIPAMKey{subnet: snapshot.Name, pod: "legacy-pod", nic: "legacy-nic"},
+		uid:     string(snapshot.UID),
+		address: subnetIPAMAddress{v4: "192.0.2.10", mac: "00:00:5e:00:53:10"},
+	}}}
+	adapter, err := newSubnetIPAMAdapterWithBackend(writer, backend)
+	require.NoError(t, err)
+
+	require.NoError(t, adapter.Recover(t.Context(), snapshot))
+	allocation, found, err := adapter.store.Lookup(t.Context(), subnetIPAMKey{subnet: snapshot.Name, pod: "legacy-pod", nic: "legacy-nic"})
+	require.NoError(t, err)
+	require.True(t, found)
+	require.Equal(t, string(snapshot.UID), allocation.uid)
+	require.NotZero(t, allocation.token)
+	require.Equal(t, SubnetIPAMAddressAllocateOperation, allocation.identity.Operation)
+	require.Equal(t, snapshot.Name, allocation.identity.Name)
+	require.Equal(t, snapshot.UID, allocation.identity.UID)
+}
+
+func TestSubnetIPAMAdapterRejectsReplacedSubnetIdentity(t *testing.T) {
+	adapter, snapshot := newSubnetIPAMAdapterTest(t)
+	ipamBackend, ok := adapter.backend.(*transactionalSubnetIPAMBackend)
+	require.True(t, ok)
+	require.NoError(t, ipamBackend.ipam.BindSubnetUID(snapshot.Name, "old-subnet-uid"))
+
+	require.ErrorIs(t, adapter.Recover(t.Context(), snapshot), ipam.ErrSubnetIdentityChanged)
 }
 
 func TestSubnetIPAMAdapterRejectsStaleDurableReceipt(t *testing.T) {
@@ -314,17 +620,28 @@ func TestSubnetIPAMAdapterReceiptStoreSurvivesAdapterRecreation(t *testing.T) {
 		token:   7,
 		uid:     string(snapshot.UID),
 		address: subnetIPAMAddress{v4: "192.0.2.1", v6: "2001:db8::1", mac: "00:00:5e:00:53:01"},
+		identity: SubnetMutationIdentity{
+			Name: snapshot.Name, UID: snapshot.UID, Generation: snapshot.Generation,
+			ResourceVersion: snapshot.ResourceVersion, Operation: SubnetIPAMAddressAllocateOperation,
+			WriterEpoch: "old-epoch",
+		},
 	}
 	backend := &fakeSubnetIPAMBackend{allocated: true, recoverAllocations: []subnetIPAMAllocation{allocation}}
 	store := &fakeDurableSubnetIPAMReceiptStore{memorySubnetIPAMReceiptStore: newMemorySubnetIPAMReceiptStore()}
+	require.NoError(t, store.Remember(t.Context(), allocation))
 	adapter, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
 	require.NoError(t, err)
 	require.NoError(t, adapter.Recover(t.Context(), snapshot))
+	rebound, found, err := store.Lookup(t.Context(), allocation.key)
+	require.NoError(t, err)
+	require.True(t, found)
+	require.ErrorIs(t, (&subnetIPAMReceipt{adapter: adapter, allocation: allocation}).Compensate(t.Context()), ErrSubnetIPAMReceiptStale)
+	backend.recoverAllocations = []subnetIPAMAllocation{rebound}
 
 	restarted, err := newSubnetIPAMAdapterWithBackendAndStore(writer, backend, store)
 	require.NoError(t, err)
 	require.NoError(t, restarted.Recover(t.Context(), snapshot))
-	receipt := &subnetIPAMReceipt{adapter: restarted, allocation: allocation}
+	receipt := &subnetIPAMReceipt{adapter: restarted, allocation: rebound}
 	require.NoError(t, receipt.Compensate(t.Context()))
 	require.False(t, backend.allocated)
 }
@@ -428,6 +745,10 @@ func TestSubnetIPAMReceiptReleaseErrorPreservesOwnerForRetry(t *testing.T) {
 	require.NoError(t, err)
 	require.ErrorIs(t, receipt.Compensate(context.Background()), backend.releaseErr)
 	require.True(t, backend.allocated)
+	stored, found, lookupErr := adapter.store.Lookup(context.Background(), receipt.(*subnetIPAMReceipt).allocation.key)
+	require.NoError(t, lookupErr)
+	require.True(t, found)
+	require.Equal(t, subnetIPAMReceiptPhaseReleasing, stored.phase)
 
 	backend.releaseErr = nil
 	require.NoError(t, receipt.Compensate(context.Background()), "a recovered owner must be able to retry release")
@@ -470,8 +791,12 @@ func TestSubnetIPAMReceiptRetriesStoreDeleteAfterBackendRelease(t *testing.T) {
 	require.NoError(t, err)
 	require.ErrorIs(t, receipt.Compensate(context.Background()), store.deleteErr)
 	require.False(t, backend.allocated, "backend release committed before store delete failed")
+	stored, found, lookupErr := store.Lookup(context.Background(), receipt.(*subnetIPAMReceipt).allocation.key)
+	require.NoError(t, lookupErr)
+	require.True(t, found)
+	require.Equal(t, subnetIPAMReceiptPhaseReleasing, stored.phase)
 	require.NoError(t, receipt.Compensate(context.Background()), "retry should confirm release and delete the durable record")
-	_, found, err := store.Lookup(context.Background(), receipt.(*subnetIPAMReceipt).allocation.key)
+	_, found, err = store.Lookup(context.Background(), receipt.(*subnetIPAMReceipt).allocation.key)
 	require.NoError(t, err)
 	require.False(t, found)
 }
@@ -508,6 +833,7 @@ type fakeSubnetIPAMBackend struct {
 	releaseAllocation     subnetIPAMAllocation
 	releaseStarted        chan struct{}
 	recoverAllocations    []subnetIPAMAllocation
+	existingAllocations   []subnetIPAMAllocation
 }
 
 func (b *fakeSubnetIPAMBackend) ExistingAllocation(ctx context.Context, subnetName, podName, nicName string) (subnetIPAMAddress, bool, error) {
@@ -539,6 +865,10 @@ func (b *fakeSubnetIPAMBackend) AllocateRandom(ctx context.Context, podName, nic
 
 func (b *fakeSubnetIPAMBackend) Recover(context.Context, SubnetWriteSnapshot) ([]subnetIPAMAllocation, error) {
 	return b.recoverAllocations, nil
+}
+
+func (b *fakeSubnetIPAMBackend) ListExisting(context.Context, SubnetWriteSnapshot) ([]subnetIPAMAllocation, error) {
+	return b.existingAllocations, nil
 }
 
 type cancelAfterRememberStore struct {

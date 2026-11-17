@@ -16,8 +16,9 @@ import (
 
 const subnetFinalizerWriteTimeout = 5 * time.Second
 
-// subnetFinalizerWriter persists only Subnet finalizers. It is deliberately
-// unwired while the legacy Subnet controller remains the production writer.
+// subnetFinalizerWriter persists only Subnet finalizers. Subnet-writer mode
+// installs it at the finalizer patch boundary while legacy mode keeps the
+// existing direct patch path.
 type subnetFinalizerWriter struct {
 	ctx    context.Context
 	client client.Client

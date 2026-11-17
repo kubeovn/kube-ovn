@@ -142,21 +142,41 @@ func setupSubnetStatusReconciler(mgr ctrl.Manager, backend *controller.Controlle
 	return reconciler.SetupWithManager(mgr)
 }
 
-func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controller, lease SubnetWriterLease, fence SubnetWriterFence) error {
+func newSubnetWriterOVNResolver(backend *controller.Controller) (SubnetOVNMutationResolver, error) {
+	if backend == nil {
+		return nil, errors.New("subnet writer runtime backend is nil")
+	}
+	return NewOVSDBSubnetOVNMutationResolver(backend.SubnetRuntimeOVNMarkerTableProvider())
+}
+
+func setupSubnetWriterReconciler(mgr ctrl.Manager, backend *controller.Controller, lease SubnetWriterLease, fence SubnetWriterFence, ipamAdapter *subnetIPAMAdapter, ovnReceipts subnetOVNMutationReceiptStore, ovnResolver SubnetOVNMutationResolver) error {
 	if mgr == nil {
 		return errors.New("controller-runtime manager is nil")
 	}
 	if backend == nil {
 		return errors.New("subnet writer runtime backend is nil")
 	}
+	if ovnReceipts == nil {
+		return errors.New("subnet writer OVN receipt store is not configured")
+	}
+	if ovnResolver == nil {
+		return ErrSubnetOVNResolverMissing
+	}
 	adapter := &SubnetControllerWriterAdapter{
-		Backend: backend,
-		Reader:  mgr.GetAPIReader(),
-		Gate:    SubnetWriterGate{Recovery: fence.Check},
+		Backend:     backend,
+		Client:      mgr.GetClient(),
+		Reader:      mgr.GetAPIReader(),
+		Gate:        SubnetWriterGate{Recovery: backend.WaitForSubnetRuntimeRecovery, Fence: fence},
+		ipamAdapter: ipamAdapter,
+		ovnReceipts: ovnReceipts,
+		ovnResolver: ovnResolver,
+	}
+	if err := adapter.InstallRuntimeWriters(); err != nil {
+		return err
 	}
 	return (&SubnetReconciler{
 		Reader:       mgr.GetAPIReader(),
-		RecoveryGate: fence.Check,
+		RecoveryGate: backend.WaitForSubnetRuntimeRecovery,
 		Adapter:      adapter,
 		Lease:        lease,
 		Events:       backend,
@@ -226,6 +246,9 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 		}
 	}
 	if config.ControllerRuntimeMode == controller.ControllerRuntimeModeSubnetWriter {
+		if backend.SubnetRuntimeOVNMarkerTableProvider() == nil {
+			return errors.New("subnet writer runtime requires an initialized OVN NB table provider")
+		}
 		fence, err := newSubnetWriterFence(config)
 		if err != nil {
 			return err
@@ -237,13 +260,40 @@ func run(ctx context.Context, config *controller.Configuration, backend *control
 		if err := backend.SetSubnetRuntimeFence(fence.Check); err != nil {
 			return err
 		}
+		if config.KubeClient == nil || config.PodNamespace == "" {
+			return errors.New("subnet writer durable receipt configuration is incomplete")
+		}
+		receiptStore, err := newKubernetesSubnetIPAMReceiptStore(config.KubeClient.CoreV1().ConfigMaps(config.PodNamespace))
+		if err != nil {
+			return err
+		}
+		ovnReceiptStore, err := newKubernetesSubnetOVNMutationReceiptStore(config.KubeClient.CoreV1().ConfigMaps(config.PodNamespace))
+		if err != nil {
+			return err
+		}
+		ovnResolver, err := newSubnetWriterOVNResolver(backend)
+		if err != nil {
+			return err
+		}
+		ipamBackend, err := newStrictSubnetRuntimeIPAMBackend(backend.SubnetRuntimeIPAMAddressBackend(), receiptStore)
+		if err != nil {
+			return err
+		}
+		ipamAdapter, err := newSubnetIPAMAdapterWithBackendAndStore(&subnetSideEffectWriter{
+			ctx:    ctx,
+			reader: mgr.GetAPIReader(),
+			gate:   SubnetWriterGate{Recovery: backend.WaitForSubnetRuntimeRecovery, Fence: fence},
+		}, ipamBackend, receiptStore)
+		if err != nil {
+			return err
+		}
 		ownership := &SubnetWriterOwnership{}
 		lease, err := ownership.ClaimWithFence(ctx, SubnetWriterOwnerRuntime, fence)
 		if err != nil {
 			return err
 		}
 		defer func() { _ = lease.Release(context.WithoutCancel(ctx)) }()
-		if err := setupSubnetWriterReconciler(mgr, backend, lease, fence); err != nil {
+		if err := setupSubnetWriterReconciler(mgr, backend, lease, fence, ipamAdapter, ovnReceiptStore, ovnResolver); err != nil {
 			return err
 		}
 	}

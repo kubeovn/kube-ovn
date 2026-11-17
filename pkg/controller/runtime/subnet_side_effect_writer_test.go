@@ -18,6 +18,12 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
+type staticSubnetWriterFence struct{}
+
+func (staticSubnetWriterFence) Check(context.Context) error { return nil }
+
+func (staticSubnetWriterFence) Epoch(context.Context) (string, error) { return "test-epoch", nil }
+
 func newSubnetSideEffectWriterAPI(t *testing.T, terminating bool) (*subnetSideEffectWriter, client.WithWatch, *kubeovnv1.Subnet, SubnetWriteSnapshot) {
 	t.Helper()
 	scheme, err := NewScheme()
@@ -38,7 +44,7 @@ func newSubnetSideEffectWriterAPI(t *testing.T, terminating bool) (*subnetSideEf
 	w := &subnetSideEffectWriter{
 		ctx:    t.Context(),
 		reader: api,
-		gate:   SubnetWriterGate{Recovery: func(context.Context) error { return nil }},
+		gate:   SubnetWriterGate{Recovery: func(context.Context) error { return nil }, Fence: staticSubnetWriterFence{}},
 	}
 	return w, api, live, snapshot
 }
@@ -71,6 +77,21 @@ func TestSubnetSideEffectWriterRunsEachOperationAfterGate(t *testing.T) {
 			require.Equal(t, 1, calls)
 		})
 	}
+}
+
+func TestSubnetSideEffectWriterRunsCleanupForMissingTombstone(t *testing.T) {
+	w, api, subnet, snapshot := newSubnetSideEffectWriterAPI(t, true)
+	subnet.Finalizers = nil
+	require.NoError(t, api.Update(t.Context(), subnet))
+	err := api.Delete(t.Context(), subnet)
+	require.True(t, apierrors.IsNotFound(err), err)
+
+	called := false
+	require.NoError(t, w.CleanupOVN(snapshot, func(context.Context) error {
+		called = true
+		return nil
+	}))
+	require.True(t, called, "cleanup must run after a delete tombstone is gone from the API")
 }
 
 func TestSubnetSideEffectWriterRejectsInvalidOperationsBeforeCallback(t *testing.T) {
@@ -153,6 +174,57 @@ type sideEffectReceiptFunc func(context.Context) error
 
 func (f sideEffectReceiptFunc) Compensate(ctx context.Context) error { return f(ctx) }
 
+type identitySideEffectReceipt struct {
+	identity SubnetMutationIdentity
+}
+
+func (identitySideEffectReceipt) Compensate(context.Context) error { return nil }
+
+func (r identitySideEffectReceipt) SubnetMutationIdentity() SubnetMutationIdentity {
+	return r.identity
+}
+
+func TestSubnetSideEffectWriterPropagatesMutationIdentity(t *testing.T) {
+	w, _, snapshot := newSubnetSideEffectWriter(t)
+	var got SubnetMutationIdentity
+	require.NoError(t, w.Execute(snapshot, SubnetIPAMAllocateOperation, SubnetSideEffectPlan{
+		Apply: func(ctx context.Context) (SubnetSideEffectReceipt, error) {
+			var ok bool
+			got, ok = SubnetMutationIdentityFromContext(ctx)
+			require.True(t, ok)
+			return nil, nil
+		},
+	}))
+	require.Equal(t, SubnetMutationIdentity{
+		Name:            snapshot.Name,
+		UID:             snapshot.UID,
+		Generation:      snapshot.Generation,
+		ResourceVersion: snapshot.ResourceVersion,
+		Operation:       SubnetIPAMAllocateOperation,
+		WriterEpoch:     "test-epoch",
+	}, got)
+}
+
+func TestSubnetSideEffectWriterRejectsMismatchedReceiptIdentity(t *testing.T) {
+	w, _, snapshot := newSubnetSideEffectWriter(t)
+	identity := SubnetMutationIdentity{
+		Name:            snapshot.Name,
+		UID:             snapshot.UID,
+		Generation:      snapshot.Generation,
+		ResourceVersion: snapshot.ResourceVersion,
+		Operation:       SubnetIPAMAllocateOperation,
+		WriterEpoch:     "test-epoch",
+	}
+	identity.UID = "replacement"
+	err := w.Execute(snapshot, SubnetIPAMAllocateOperation, SubnetSideEffectPlan{
+		RequireReceiptIdentity: true,
+		Apply: func(context.Context) (SubnetSideEffectReceipt, error) {
+			return identitySideEffectReceipt{identity: identity}, nil
+		},
+	})
+	require.ErrorIs(t, err, ErrSubnetMutationIdentityChanged)
+}
+
 func TestSubnetSideEffectWriterCompensatesConfirmedMutation(t *testing.T) {
 	for _, compensationFails := range []bool{false, true} {
 		t.Run(strconv.FormatBool(compensationFails), func(t *testing.T) {
@@ -183,6 +255,23 @@ func TestSubnetSideEffectWriterCompensatesConfirmedMutation(t *testing.T) {
 			require.Equal(t, 1, compensateCalls)
 		})
 	}
+}
+
+func TestSubnetSideEffectWriterRetainsReceiptWhenCompensationIsUnsafe(t *testing.T) {
+	w, _, snapshot := newSubnetSideEffectWriter(t)
+	applyErr := errors.New("OVN result is uncertain")
+	compensateCalls := 0
+	err := w.Execute(snapshot, SubnetOVNAllocateOperation, SubnetSideEffectPlan{
+		RetainReceiptOnError: true,
+		Apply: func(context.Context) (SubnetSideEffectReceipt, error) {
+			return sideEffectReceiptFunc(func(context.Context) error {
+				compensateCalls++
+				return nil
+			}), applyErr
+		},
+	})
+	require.ErrorIs(t, err, applyErr)
+	require.Zero(t, compensateCalls, "an uncertain backend result must retain its fence")
 }
 
 func TestSubnetSideEffectWriterCancellationNeverAuthorizesCompensation(t *testing.T) {
@@ -219,19 +308,35 @@ func TestSubnetSideEffectWriterGateFailureSkipsPlan(t *testing.T) {
 	require.Zero(t, calls)
 }
 
-func TestSubnetSideEffectWriterRejectsUnrelatedOperations(t *testing.T) {
-	for _, operation := range []SubnetWriteOperation{SubnetStatusWriteOperation, SubnetFinalizerAddOperation, SubnetFinalizerRemoveOperation, "unknown"} {
-		t.Run(string(operation), func(t *testing.T) {
-			w, _, snapshot := newSubnetSideEffectWriter(t)
-			snapshot.AllocationAllowed = false
+func TestSubnetSideEffectWriterAcceptsLifecycleOperations(t *testing.T) {
+	tests := []struct {
+		name      string
+		operation SubnetWriteOperation
+		deleting  bool
+	}{
+		{name: "status", operation: SubnetStatusWriteOperation},
+		{name: "finalizer add", operation: SubnetFinalizerAddOperation},
+		{name: "finalizer remove", operation: SubnetFinalizerRemoveOperation, deleting: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			w, _, _, snapshot := newSubnetSideEffectWriterAPI(t, test.deleting)
 			calls := 0
-			err := w.Execute(snapshot, operation, SubnetSideEffectPlan{
+			err := w.Execute(snapshot, test.operation, SubnetSideEffectPlan{
 				Apply: func(context.Context) (SubnetSideEffectReceipt, error) { calls++; return nil, nil },
 			})
-			require.ErrorContains(t, err, "unsupported Subnet side effect operation")
-			require.Zero(t, calls)
+			require.NoError(t, err)
+			require.Equal(t, 1, calls)
 		})
 	}
+}
+
+func TestSubnetSideEffectWriterRejectsUnknownOperation(t *testing.T) {
+	w, _, snapshot := newSubnetSideEffectWriter(t)
+	err := w.Execute(snapshot, "unknown", SubnetSideEffectPlan{
+		Apply: func(context.Context) (SubnetSideEffectReceipt, error) { return nil, nil },
+	})
+	require.ErrorContains(t, err, "unsupported Subnet side effect operation")
 }
 
 func TestSubnetSideEffectWriterReportsCompensationTimeout(t *testing.T) {

@@ -6,6 +6,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"k8s.io/apimachinery/pkg/types"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func TestSubnetRuntimeEventFanoutReplaysPendingNames(t *testing.T) {
@@ -67,4 +70,52 @@ func TestSubnetRuntimeEventFanoutUnsubscribeStopsEvents(t *testing.T) {
 		t.Fatal("received event after unsubscribe")
 	default:
 	}
+}
+
+func TestSubnetRuntimeDeleteFanoutConsumesDeliveredSnapshot(t *testing.T) {
+	fanout := newSubnetRuntimeEventFanout()
+	events := make(chan string, 1)
+	unsubscribe := fanout.subscribeDelete(t.Context(), func(name string, _ *kubeovnv1.Subnet) {
+		events <- name
+	})
+	defer unsubscribe()
+
+	fanout.publishDelete(&kubeovnv1.Subnet{Name: "subnet-a"})
+	require.Equal(t, "subnet-a", <-events)
+	fanout.mu.Lock()
+	deferred := fanout.deletePending
+	fanout.mu.Unlock()
+	require.Empty(t, deferred)
+}
+
+func TestSubnetRuntimeDeleteFanoutNotifiesGenericSubscriber(t *testing.T) {
+	fanout := newSubnetRuntimeEventFanout()
+	events := make(chan string, 1)
+	unsubscribe := fanout.subscribe(t.Context(), func(name string) { events <- name })
+	defer unsubscribe()
+
+	fanout.publishDelete(&kubeovnv1.Subnet{Name: "subnet-a"})
+	require.Equal(t, "subnet-a", <-events)
+	fanout.mu.Lock()
+	pending := fanout.pending
+	fanout.mu.Unlock()
+	require.Empty(t, pending)
+}
+
+func TestSubnetRuntimeDeleteFanoutRetainsSameNameDifferentUIDs(t *testing.T) {
+	fanout := newSubnetRuntimeEventFanout()
+	first := &kubeovnv1.Subnet{Name: "subnet-a", UID: types.UID("uid-a")}
+	second := first.DeepCopy()
+	second.UID = types.UID("uid-b")
+	fanout.publishDelete(first)
+	fanout.publishDelete(first)
+	fanout.publishDelete(second)
+
+	var got []types.UID
+	unsubscribe := fanout.subscribeDelete(t.Context(), func(_ string, subnet *kubeovnv1.Subnet) {
+		got = append(got, subnet.UID)
+	})
+	defer unsubscribe()
+
+	require.Equal(t, []types.UID{"uid-a", "uid-b"}, got)
 }

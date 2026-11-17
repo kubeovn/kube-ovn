@@ -24,6 +24,7 @@ var (
 	ErrInvalidCIDR             = errors.New("CIDRInvalid")
 	ErrInvalidIPFamily         = errors.New("InvalidIPFamily")
 	ErrAddressOwnershipChanged = errors.New("AddressOwnershipChanged")
+	ErrSubnetIdentityChanged   = errors.New("subnet identity changed")
 	// ErrSelectionChanged rejects committing an ippool selection that is no longer
 	// reproducible, see Subnet.ActivateIPPoolIPs
 	ErrSelectionChanged = errors.New("SelectionChanged")
@@ -38,6 +39,37 @@ type SubnetAddress struct {
 	Subnet *Subnet
 	IP     string
 	Mac    string
+}
+
+// SubnetAddressAllocation is the complete ownership tuple for one Pod/NIC
+// allocation. It is intentionally detached from the mutable Subnet object so
+// callers can safely use a recovery snapshot after releasing IPAM locks.
+type SubnetAddressAllocation struct {
+	SubnetUID string
+	PodName   string
+	NICName   string
+	V4        string
+	V6        string
+	MAC       string
+	Owner     AllocationOwner
+}
+
+// AllocationOwner identifies the writer that owns a Pod/NIC allocation.
+// Zero-valued owners represent allocations created through the legacy tuple
+// APIs and cannot be released through owner-aware methods until explicitly
+// bound.
+type AllocationOwner struct {
+	Token           uint64
+	SubnetUID       string
+	Generation      int64
+	ResourceVersion string
+	WriterEpoch     string
+}
+
+func (o AllocationOwner) IsZero() bool { return o == (AllocationOwner{}) }
+
+func (o AllocationOwner) Valid() bool {
+	return o.Token != 0 && o.SubnetUID != "" && o.ResourceVersion != "" && o.WriterEpoch != ""
 }
 
 func NewIPAM() *IPAM {
@@ -91,6 +123,23 @@ func (ipam *IPAM) GetStaticAddressWithFamily(podName, nicName, ip string, mac *s
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
 	return getStaticAddressWithFamily(ipam.Subnets, podName, nicName, ip, mac, subnetName, ipFamily, checkConflict)
+}
+
+// GetPodAddressOwner returns the owner recorded for one Pod/NIC allocation.
+func (ipam *IPAM) GetPodAddressOwner(podName, nicName, subnetName string) (AllocationOwner, bool) {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+	subnet, ok := ipam.Subnets[subnetName]
+	if !ok {
+		return AllocationOwner{}, false
+	}
+	subnet.Mutex.RLock()
+	defer subnet.Mutex.RUnlock()
+	if _, _, _, found := subnet.getPodAddressByNic(podName, nicName); !found {
+		return AllocationOwner{}, false
+	}
+	owner, found := subnet.NicToOwner[nicName]
+	return owner, found
 }
 
 func getStaticAddressWithFamily(subnets map[string]*Subnet, podName, nicName, ip string, mac *string, subnetName, ipFamily string, checkConflict bool) (string, string, string, error) {
@@ -492,6 +541,58 @@ func (ipam *IPAM) GetPodAddressByNic(podName, nicName, subnetName string) (strin
 	subnet.Mutex.RLock()
 	defer subnet.Mutex.RUnlock()
 	return subnet.getPodAddressByNic(podName, nicName)
+}
+
+// ListSubnetAddressAllocations returns a stable snapshot of every owned
+// Pod/NIC tuple in one Subnet. The result is sorted to make recovery and tests
+// deterministic.
+func (ipam *IPAM) ListSubnetAddressAllocations(subnetName string) []SubnetAddressAllocation {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+
+	subnet, ok := ipam.Subnets[subnetName]
+	if !ok {
+		return nil
+	}
+	subnet.Mutex.RLock()
+	defer subnet.Mutex.RUnlock()
+
+	allocations := make([]SubnetAddressAllocation, 0)
+	for podName, nics := range subnet.PodToNicList {
+		for _, nicName := range nics {
+			v4, v6, mac, found := subnet.getPodAddressByNic(podName, nicName)
+			if found {
+				allocations = append(allocations, SubnetAddressAllocation{SubnetUID: subnet.SubnetUID, PodName: podName, NICName: nicName, V4: v4, V6: v6, MAC: mac, Owner: subnet.NicToOwner[nicName]})
+			}
+		}
+	}
+	slices.SortFunc(allocations, func(a, b SubnetAddressAllocation) int {
+		if a.PodName != b.PodName {
+			return strings.Compare(a.PodName, b.PodName)
+		}
+		return strings.Compare(a.NICName, b.NICName)
+	})
+	return allocations
+}
+
+// BindSubnetUID records the API identity associated with an initialized
+// Subnet. A different identity is rejected so same-name replacements cannot
+// inherit pre-replacement IPAM allocations.
+func (ipam *IPAM) BindSubnetUID(subnetName, uid string) error {
+	if uid == "" {
+		return ErrSubnetIdentityChanged
+	}
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+	subnet, ok := ipam.Subnets[subnetName]
+	if !ok {
+		return ErrNoSubnet
+	}
+	if subnet.SubnetUID != "" && subnet.SubnetUID != uid {
+		return ErrSubnetIdentityChanged
+	}
+	subnet.SubnetUID = uid
+	return nil
 }
 
 func (s *Subnet) getPodAddressByNic(podName, nicName string) (string, string, string, bool) {

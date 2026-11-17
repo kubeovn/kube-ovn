@@ -10,6 +10,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	v1 "k8s.io/api/core/v1"
@@ -27,6 +28,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -60,6 +62,9 @@ func (c *Controller) enqueueDeleteSubnet(obj any) {
 
 	if controllerRuntimeSubnetWriterEnabled(c.config) {
 		klog.V(3).Infof("skip legacy delete queue for subnet %s in runtime writer mode", subnet.Name)
+		if c.subnetRuntimeEvents != nil {
+			c.subnetRuntimeEvents.publishDelete(subnet)
+		}
 		return
 	}
 	klog.V(3).Infof("enqueue delete subnet %s", subnet.Name)
@@ -396,6 +401,13 @@ func (c *Controller) handleSubnetFinalizerWithContext(ctx context.Context, subne
 			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)
 			return newSubnet, false, err
 		}
+		if c.subnetRuntimeFinalizerWriter != nil {
+			patchedSubnet, err := c.subnetRuntimeFinalizerWriter(ctx, subnet, false)
+			if err != nil {
+				return patchedSubnet, false, err
+			}
+			return patchedSubnet, false, nil
+		}
 		patchSubnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnet.Name, types.MergePatchType, patch, metav1.PatchOptions{}, "")
 		if err != nil {
 			klog.Errorf("failed to add finalizer to subnet %s, %v", subnet.Name, err)
@@ -443,6 +455,10 @@ func (c *Controller) handleSubnetFinalizerWithContext(ctx context.Context, subne
 		if err != nil {
 			klog.Errorf("failed to generate patch payload for subnet '%s', %v", subnet.Name, err)
 			return newSubnet, false, err
+		}
+		if c.subnetRuntimeFinalizerWriter != nil {
+			patchedSubnet, err := c.subnetRuntimeFinalizerWriter(ctx, subnet, true)
+			return patchedSubnet, err == nil, err
 		}
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnet.Name,
 			types.MergePatchType, patch, metav1.PatchOptions{}, ""); err != nil {
@@ -667,6 +683,13 @@ func (c *Controller) updateSubnetDHCPOption(ctx context.Context, subnet *kubeovn
 			klog.Error(err)
 			return err
 		}
+		if c.subnetRuntimeStatusWriter != nil {
+			if err := c.subnetRuntimeStatusWriter(ctx, subnet); err != nil {
+				klog.Errorf("patch subnet %s dhcp options through runtime writer failed: %v", subnet.Name, err)
+				return err
+			}
+			return nil
+		}
 		if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 			klog.Errorf("patch subnet %s dhcp options failed: %v", subnet.Name, err)
 			return err
@@ -696,6 +719,13 @@ func (c *Controller) handleAddOrUpdateSubnet(key string) error {
 // mode disables the legacy Subnet workers, so this explicit facade is the only
 // path that performs the IPAM, OVN, status, and finalizer mutations there.
 func (c *Controller) ReconcileSubnetRuntime(ctx context.Context, subnet *kubeovnv1.Subnet) error {
+	return c.ReconcileSubnetRuntimeWithGate(ctx, subnet, true)
+}
+
+// Active snapshots must carry a dependency readiness grant before entering
+// the combined legacy path; terminating snapshots use the cleanup path and do
+// not require allocation readiness.
+func (c *Controller) ReconcileSubnetRuntimeWithGate(ctx context.Context, subnet *kubeovnv1.Subnet, allocationAllowed bool) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -708,33 +738,152 @@ func (c *Controller) ReconcileSubnetRuntime(ctx context.Context, subnet *kubeovn
 	if subnet == nil {
 		return errors.New("runtime Subnet reconcile requires a Subnet")
 	}
+	if subnet.DeletionTimestamp.IsZero() && !allocationAllowed {
+		return ErrSubnetRuntimeAllocationNotAllowed
+	}
 	if !subnet.DeletionTimestamp.IsZero() {
-		if err := c.handleDeleteSubnetWithContext(ctx, subnet); err != nil {
-			return err
-		}
-		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
-			return err
-		}
-		// The legacy delete queue and the add/update path normally converge on
-		// handleSubnetFinalizer independently. Runtime mode has no such second
-		// worker, so the fenced writer must perform the finalizer gate itself
-		// after data-plane cleanup has completed.
-		live, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(ctx, subnet.Name, metav1.GetOptions{})
-		if k8serrors.IsNotFound(err) {
+		preflightDelete := func(ctx context.Context) error {
+			preflightLive, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(ctx, subnet.Name, metav1.GetOptions{})
+			if err == nil {
+				if err := validateSubnetRuntimeDeleteTarget(subnet, preflightLive); err != nil {
+					return err
+				}
+			} else if !k8serrors.IsNotFound(err) {
+				return err
+			}
+			if err := c.handleDeleteSubnetWithContext(ctx, subnet); err != nil {
+				return err
+			}
+			if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+				return err
+			}
 			return nil
 		}
-		if err != nil {
+		deleteFinalizer := func(ctx context.Context) error {
+			// The legacy delete queue and the add/update path normally converge on
+			// handleSubnetFinalizer independently. Runtime mode has no such second
+			// worker, so the fenced writer must perform the finalizer gate itself
+			// after data-plane cleanup has completed.
+			live, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(ctx, subnet.Name, metav1.GetOptions{})
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if err := validateSubnetRuntimeDeleteTarget(subnet, live); err != nil {
+				return err
+			}
+			_, _, err = c.handleSubnetFinalizerWithContext(ctx, live)
 			return err
 		}
-		if err := validateSubnetRuntimeDeleteTarget(subnet, live); err != nil {
+		if c.subnetRuntimePhaseWriter == nil {
+			return c.runSubnetRuntimeDomainWriters(ctx, subnet, func(ctx context.Context) error {
+				if err := preflightDelete(ctx); err != nil {
+					return err
+				}
+				return deleteFinalizer(ctx)
+			})
+		}
+		if err := c.runSubnetRuntimePhase(ctx, subnet, SubnetRuntimeDeleteCleanupPhase, preflightDelete); err != nil {
 			return err
 		}
-		_, _, err = c.handleSubnetFinalizerWithContext(ctx, live)
-		return err
+		return c.runSubnetRuntimePhase(ctx, subnet, SubnetRuntimeDeleteFinalizerPhase, deleteFinalizer)
 	}
-	c.subnetKeyMutex.LockKey(subnet.Name)
-	defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
-	return c.reconcileSubnetObject(ctx, subnet)
+	reconcile := func(ctx context.Context) error {
+		c.subnetKeyMutex.LockKey(subnet.Name)
+		defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
+		return c.reconcileSubnetObjectWithPhase(ctx, subnet, func(ctx context.Context, current *kubeovnv1.Subnet, phase SubnetRuntimePhase, operation func(context.Context) error) error {
+			return c.runSubnetRuntimePhase(ctx, current, phase, operation)
+		})
+	}
+	if c.subnetRuntimePhaseWriter == nil {
+		return c.runSubnetRuntimeDomainWriters(ctx, subnet, reconcile)
+	}
+	return reconcile(ctx)
+}
+
+// runSubnetRuntimeDomainWriters gives the explicit runtime OVN and IPAM
+// writers one fenced boundary around the existing domain calculation. The
+// calculation remains shared with legacy mode, while runtime mode supplies
+// uncached identity checks and durable receipts before any backend mutation.
+func (c *Controller) runSubnetRuntimeDomainWriters(ctx context.Context, subnet *kubeovnv1.Subnet, operation func(context.Context) error) error {
+	if operation == nil {
+		return errors.New("subnet runtime domain operation is nil")
+	}
+	if c.subnetRuntimeOVNWriter == nil && c.subnetRuntimeOVNMutationWriter == nil && c.subnetRuntimeIPAMWriter == nil {
+		return operation(ctx)
+	}
+	if c.subnetRuntimeOVNMutationWriter != nil && c.subnetRuntimePhaseWriter == nil {
+		return errors.New("subnet runtime OVN mutation writer requires a phase writer")
+	}
+	operationKind := SubnetRuntimeOVNAllocateOperation
+	if !subnet.DeletionTimestamp.IsZero() {
+		operationKind = SubnetRuntimeOVNCleanupOperation
+	}
+	wrapped := operation
+	if c.subnetRuntimeIPAMWriter != nil {
+		ipamKind := SubnetRuntimeIPAMAllocateOperation
+		if !subnet.DeletionTimestamp.IsZero() {
+			ipamKind = SubnetRuntimeIPAMReleaseOperation
+		}
+		previous := wrapped
+		wrapped = func(ctx context.Context) error {
+			return c.subnetRuntimeIPAMWriter(ctx, subnet, ipamKind, previous)
+		}
+	}
+	if c.subnetRuntimeOVNMutationWriter != nil {
+		previous := wrapped
+		ovnKind := SubnetRuntimeOVNAllocateMutationOperation
+		if !subnet.DeletionTimestamp.IsZero() {
+			ovnKind = SubnetRuntimeOVNCleanupMutationOperation
+		}
+		wrapped = func(ctx context.Context) error {
+			return c.subnetRuntimeOVNMutationWriter(ctx, subnet, ovnKind, previous)
+		}
+	} else if c.subnetRuntimeOVNWriter != nil {
+		previous := wrapped
+		wrapped = func(ctx context.Context) error {
+			return c.subnetRuntimeOVNWriter(ctx, subnet, operationKind, previous)
+		}
+	}
+	return wrapped(ctx)
+}
+
+func (c *Controller) runSubnetRuntimePhase(ctx context.Context, subnet *kubeovnv1.Subnet, phase SubnetRuntimePhase, operation func(context.Context) error) error {
+	if operation == nil {
+		return errors.New("subnet runtime phase operation is nil")
+	}
+	if c.subnetRuntimePhaseWriter == nil {
+		if c.subnetRuntimeOVNMutationWriter != nil {
+			return errors.New("subnet runtime OVN mutation writer requires a phase writer")
+		}
+		return operation(ctx)
+	}
+	operationKind := SubnetRuntimeOVNAllocateOperation
+	if subnet != nil && !subnet.DeletionTimestamp.IsZero() {
+		operationKind = SubnetRuntimeOVNCleanupOperation
+	}
+	phaseOperation := func(ctx context.Context) error {
+		return c.subnetRuntimePhaseWriter(ctx, subnet, operationKind, phase, operation)
+	}
+	if c.subnetRuntimeOVNMutationWriter == nil || !subnetRuntimePhaseUsesOVNMutation(phase) {
+		return phaseOperation(ctx)
+	}
+	mutationOperation := SubnetRuntimeOVNAllocateMutationOperation
+	if operationKind == SubnetRuntimeOVNCleanupOperation {
+		mutationOperation = SubnetRuntimeOVNCleanupMutationOperation
+	}
+	return c.subnetRuntimeOVNMutationWriter(ctx, subnet, mutationOperation, phaseOperation)
+}
+
+func subnetRuntimePhaseUsesOVNMutation(phase SubnetRuntimePhase) bool {
+	switch phase {
+	case SubnetRuntimeOVNPreparePhase, SubnetRuntimeOVNFinishPhase, SubnetRuntimeDeleteCleanupPhase:
+		return true
+	default:
+		return false
+	}
 }
 
 // validateSubnetRuntimeDeleteTarget prevents a stale deletion snapshot from
@@ -790,6 +939,621 @@ func (c *Controller) SetSubnetRuntimeFence(check func(context.Context) error) er
 	return nil
 }
 
+// SubnetRuntimeOVNMarkerTableProvider exposes the initialized OVN NB table
+// provider to the opt-in runtime marker adapter. Legacy workers never call
+// this seam, and an uninitialized controller returns nil so tests and legacy
+// construction paths retain their existing behavior.
+func (c *Controller) SubnetRuntimeOVNMarkerTableProvider() table.Provider {
+	if c == nil {
+		return nil
+	}
+	return c.OVNNbTables
+}
+
+// SubnetRuntimeStatusWriter persists a complete status projection for the
+// runtime-owned Subnet writer. The callback receives the same context and
+// object that the legacy domain path is about to mutate.
+type SubnetRuntimeStatusWriter func(context.Context, *kubeovnv1.Subnet) error
+
+// SubnetRuntimeGatewayMACWriter persists the gateway MAC status field for the
+// runtime-owned Subnet writer.
+type SubnetRuntimeGatewayMACWriter func(context.Context, *kubeovnv1.Subnet, string) error
+
+// SubnetRuntimeIPStatusWriter persists only the IP usage and range fields of a
+// runtime-owned Subnet status, preserving fields updated by other handlers.
+type SubnetRuntimeIPStatusWriter func(context.Context, *kubeovnv1.Subnet) error
+
+// SubnetRuntimeFinalizerWriter applies one runtime-owned finalizer transition.
+// The bool is true when the finalizer must be removed; the returned object is
+// the API-confirmed copy used by the remaining domain path.
+type SubnetRuntimeFinalizerWriter func(context.Context, *kubeovnv1.Subnet, bool) (*kubeovnv1.Subnet, error)
+
+// SubnetRuntimeDomainWriter wraps one complete Subnet domain operation. The
+// operation callback contains the legacy domain calculation while the
+// installed writer supplies the uncached identity check and durable fence
+// immediately before OVN or IPAM side effects.
+type SubnetRuntimeDomainWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeDomainOperation, func(context.Context) error) error
+
+// SubnetRuntimePhase identifies one independently fenced part of a Subnet
+// reconcile. Runtime mode uses these boundaries to avoid treating a complete
+// legacy domain pass as one opaque mutation.
+type SubnetRuntimePhase string
+
+const (
+	SubnetRuntimeValidationPhase      SubnetRuntimePhase = "validation"
+	SubnetRuntimeIPAMPhase            SubnetRuntimePhase = "ipam"
+	SubnetRuntimeFinalizerPhase       SubnetRuntimePhase = "finalizer"
+	SubnetRuntimeOVNPreparePhase      SubnetRuntimePhase = "ovn-prepare"
+	SubnetRuntimeOVNFinishPhase       SubnetRuntimePhase = "ovn-finish"
+	SubnetRuntimeNonOVNStatusPhase    SubnetRuntimePhase = "non-ovn-status"
+	SubnetRuntimeDeleteCleanupPhase   SubnetRuntimePhase = "delete-cleanup"
+	SubnetRuntimeDeleteFinalizerPhase SubnetRuntimePhase = "delete-finalizer"
+)
+
+// SubnetRuntimePhaseWriter wraps one phase with the runtime identity and
+// durable fence. The phase value is intentionally separate from the broad
+// allocation/cleanup operation so receipts can become phase-specific without
+// changing the legacy domain callback.
+type SubnetRuntimePhaseWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeDomainOperation, SubnetRuntimePhase, func(context.Context) error) error
+
+// SubnetRuntimeOVNMutationWriter is the explicit OVN adapter seam used by the
+// opt-in Subnet writer. It separates OVN admission from the generic domain
+// wrapper so a later adapter can return per-mutation receipts and enforce
+// backend ownership without changing the legacy callback.
+type SubnetRuntimeOVNMutationWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeOVNMutationOperation, func(context.Context) error) error
+
+// SubnetRuntimeOVNMutationIntent describes the OVN rows and stable values
+// owned by one Subnet mutation. Dynamic gateway allocation and generated MACs
+// remain unconstrained so recovery does not compare values it could not know
+// before the mutation ran.
+type SubnetRuntimeOVNMutationIntent struct {
+	LogicalSwitchName     string
+	LogicalRouterName     string
+	LogicalRouterPortName string
+	LogicalSwitchPortName string
+	LogicalRouterNetworks []string
+	GatewayMAC            string
+	RequirePatchPorts     bool
+}
+
+// SubnetRuntimeOVNMutationIntentProvider supplies the concrete intent used by
+// the runtime receipt and resolver. Legacy workers do not call this seam.
+type SubnetRuntimeOVNMutationIntentProvider interface {
+	SubnetRuntimeOVNMutationIntent(context.Context, *kubeovnv1.Subnet) (SubnetRuntimeOVNMutationIntent, error)
+}
+
+// SubnetRuntimeOVNMutationIntent derives the rows created by
+// CreateLogicalSwitch without performing any OVN write.
+func (c *Controller) SubnetRuntimeOVNMutationIntent(ctx context.Context, subnet *kubeovnv1.Subnet) (SubnetRuntimeOVNMutationIntent, error) {
+	if ctx == nil {
+		return SubnetRuntimeOVNMutationIntent{}, errors.New("subnet OVN mutation intent context is nil")
+	}
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeOVNMutationIntent{}, err
+	}
+	if c == nil || c.config == nil || subnet == nil {
+		return SubnetRuntimeOVNMutationIntent{}, errors.New("subnet OVN mutation intent requires an initialized Controller and Subnet")
+	}
+	var vpc *kubeovnv1.Vpc
+	if subnet.DeletionTimestamp.IsZero() {
+		var err error
+		vpc, err = c.validateVpcBySubnet(subnet)
+		if err != nil {
+			return SubnetRuntimeOVNMutationIntent{}, err
+		}
+	} else {
+		var err error
+		vpc, err = c.vpcsLister.Get(subnet.Spec.Vpc)
+		if err != nil {
+			if !k8serrors.IsNotFound(err) {
+				return SubnetRuntimeOVNMutationIntent{}, fmt.Errorf("failed to get subnet's vpc %q: %w", subnet.Spec.Vpc, err)
+			}
+			vpc = &kubeovnv1.Vpc{}
+		}
+	}
+	intent := SubnetRuntimeOVNMutationIntent{
+		LogicalSwitchName: subnet.Name,
+	}
+	needRouter := subnet.Spec.CIDRBlock != "" &&
+		(subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway || subnet.Spec.U2OInterconnection)
+	randomAllocateGW := !subnet.Spec.LogicalGateway && vpc.Spec.EnableExternal && subnet.Name == c.config.ExternalGatewaySwitch
+	if !needRouter {
+		return intent, nil
+	}
+	intent.LogicalRouterName = vpc.Status.Router
+	if intent.LogicalRouterName == "" {
+		intent.LogicalRouterName = c.config.ClusterRouter
+	}
+	intent.RequirePatchPorts = true
+	intent.LogicalRouterPortName = ovs.LogicalRouterPortName(intent.LogicalRouterName, subnet.Name)
+	intent.LogicalSwitchPortName = ovs.LogicalSwitchPortName(intent.LogicalRouterName, subnet.Name)
+	// U2O acquisition can fill the gateway and MAC after this provider runs.
+	// Leave both unconstrained until the status has recorded the acquired tuple.
+	if subnet.Spec.U2OInterconnection && subnet.Status.U2OInterconnectionIP == "" {
+		return intent, nil
+	}
+	gateway := subnet.Spec.Gateway
+	if subnet.Status.U2OInterconnectionIP != "" && subnet.Spec.U2OInterconnection {
+		gateway = subnet.Status.U2OInterconnectionIP
+		intent.GatewayMAC = subnet.Status.U2OInterconnectionMAC
+	}
+	if randomAllocateGW || gateway == "" || subnet.Spec.CIDRBlock == "" {
+		return intent, nil
+	}
+	networks, err := util.GetIPAddrWithMask(gateway, subnet.Spec.CIDRBlock)
+	if err != nil {
+		return SubnetRuntimeOVNMutationIntent{}, err
+	}
+	intent.LogicalRouterNetworks = strings.Split(networks, ",")
+	return intent, nil
+}
+
+// SubnetRuntimeIPAMMutationWriter wraps one concrete Subnet-owned IPAM
+// registration, address allocation/release, or deletion. It is deliberately narrower than
+// SubnetRuntimeDomainWriter so a later receipt can identify one mutation
+// instead of claiming the whole reconcile phase.
+type SubnetRuntimeIPAMMutationWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeIPAMMutationOperation, func(context.Context) error) error
+
+// SubnetRuntimeIPAMAddressRequest identifies one Subnet-owned address
+// allocation or release. The runtime writer uses the key and expected
+// address tuple to make release conditional and retry-safe.
+type SubnetRuntimeIPAMAddressRequest struct {
+	Operation     SubnetRuntimeIPAMMutationOperation
+	SubnetName    string
+	PodName       string
+	NICName       string
+	PoolName      string
+	RequestedIP   string
+	MAC           *string
+	SkippedAddrs  []string
+	CheckConflict bool
+	ExpectedV4    string
+	ExpectedV6    string
+	ExpectedMAC   string
+}
+
+// SubnetRuntimeIPAMAddressResult contains the address tuple returned by an
+// allocation. Release operations return the zero value.
+type SubnetRuntimeIPAMAddressResult struct {
+	V4  string
+	V6  string
+	MAC string
+}
+
+// SubnetRuntimeIPAMOwner is the primitive ownership identity passed to the
+// initialized IPAM backend by the opt-in runtime writer.
+type SubnetRuntimeIPAMOwner struct {
+	Token           uint64
+	SubnetUID       string
+	Generation      int64
+	ResourceVersion string
+	WriterEpoch     string
+}
+
+// SubnetRuntimeIPAMAddressAllocation is one existing Subnet-owned Pod/NIC
+// allocation discovered during startup recovery.
+type SubnetRuntimeIPAMAddressAllocation struct {
+	SubnetUID string
+	PodName   string
+	NICName   string
+	V4        string
+	V6        string
+	MAC       string
+	Owner     SubnetRuntimeIPAMOwner
+}
+
+// SubnetRuntimeIPAMAddressWriter owns one typed Subnet IPAM address mutation.
+// It replaces the generic error-only hook for address operations so a runtime
+// adapter can persist and conditionally compensate a concrete allocation.
+type SubnetRuntimeIPAMAddressWriter func(context.Context, *kubeovnv1.Subnet, SubnetRuntimeIPAMAddressRequest) (SubnetRuntimeIPAMAddressResult, error)
+
+// SubnetRuntimeIPAMAddressBackend is the narrow initialized IPAM backend used
+// by the typed runtime address writer. It deliberately carries primitive
+// tuples so the runtime package does not depend on the controller's IPAM
+// implementation.
+type SubnetRuntimeIPAMAddressBackend interface {
+	ExistingSubnetRuntimeIPAMAddress(context.Context, string, string, string) (SubnetRuntimeIPAMAddressResult, bool, error)
+	ListSubnetRuntimeIPAMAddresses(context.Context, string) ([]SubnetRuntimeIPAMAddressAllocation, error)
+	AllocateSubnetRuntimeIPAMRandom(context.Context, string, string, string, string, []string, bool) (SubnetRuntimeIPAMAddressResult, error)
+	AllocateSubnetRuntimeIPAMStatic(context.Context, string, string, string, *string, string, bool) (SubnetRuntimeIPAMAddressResult, error)
+	ReleaseSubnetRuntimeIPAMByNicIfMatches(context.Context, string, string, string, string, string, string) error
+	ReleaseSubnetRuntimeIPAMByPod(context.Context, string, string) error
+}
+
+// SubnetRuntimeIPAMOwnedAddressBackend provides atomic backend ownership
+// fencing for the opt-in runtime address path. Legacy tuple methods remain
+// available for the legacy writer and older test doubles.
+type SubnetRuntimeIPAMOwnedAddressBackend interface {
+	SubnetRuntimeIPAMAddressBackend
+	ExistingSubnetRuntimeIPAMOwner(context.Context, string, string, string) (SubnetRuntimeIPAMOwner, bool, error)
+	ListSubnetRuntimeIPAMOwnedAddresses(context.Context, string) ([]SubnetRuntimeIPAMAddressAllocation, error)
+	AllocateSubnetRuntimeIPAMRandomOwned(context.Context, string, string, string, string, []string, bool, SubnetRuntimeIPAMOwner) (SubnetRuntimeIPAMAddressResult, error)
+	AllocateSubnetRuntimeIPAMStaticOwned(context.Context, string, string, string, *string, string, bool, SubnetRuntimeIPAMOwner) (SubnetRuntimeIPAMAddressResult, error)
+	ReleaseSubnetRuntimeIPAMByNicIfMatchesOwned(context.Context, string, string, string, string, string, string, SubnetRuntimeIPAMOwner) error
+	BindSubnetRuntimeIPAMOwnerIfUnowned(context.Context, string, string, string, string, string, string, SubnetRuntimeIPAMOwner) error
+	RebindSubnetRuntimeIPAMOwner(context.Context, string, string, string, string, string, string, SubnetRuntimeIPAMOwner, SubnetRuntimeIPAMOwner) error
+}
+
+// SubnetRuntimeIPAMIdentityBinder binds initialized IPAM state to the current
+// Subnet UID before runtime recovery can adopt existing allocations.
+type SubnetRuntimeIPAMIdentityBinder interface {
+	BindSubnetRuntimeIPAMIdentity(context.Context, string, string) error
+}
+
+// SubnetRuntimeIPAMAddressBackendProvider exposes the initialized IPAM backend
+// to the opt-in runtime writer without importing runtime types into the
+// legacy controller package.
+type SubnetRuntimeIPAMAddressBackendProvider interface {
+	SubnetRuntimeIPAMAddressBackend() SubnetRuntimeIPAMAddressBackend
+}
+
+// SubnetRuntimeIPAMMutationOperation identifies one concrete Subnet-owned
+// IPAM registration, address allocation/release, or deletion.
+type SubnetRuntimeIPAMMutationOperation string
+
+const (
+	SubnetRuntimeIPAMRegisterOperation        SubnetRuntimeIPAMMutationOperation = "ipam-register"
+	SubnetRuntimeIPAMDeleteOperation          SubnetRuntimeIPAMMutationOperation = "ipam-delete"
+	SubnetRuntimeIPAMAllocateAddressOperation SubnetRuntimeIPAMMutationOperation = "ipam-address-allocate"
+	SubnetRuntimeIPAMReleaseAddressOperation  SubnetRuntimeIPAMMutationOperation = "ipam-address-release"
+)
+
+// SubnetRuntimeVirtualPortWriter owns the fresh-snapshot admission for queued
+// virtual-port parent updates. The runtime mode installs it so the legacy
+// queue cannot write OVN from an informer-only object.
+type SubnetRuntimeVirtualPortWriter func(context.Context, string) error
+
+// SubnetRuntimeDomainOperation identifies the backend side-effect class being
+// fenced. A single reconcile may contain multiple concrete OVN/IPAM calls, so
+// the wrapper surrounds the complete domain phase and preserves one owner for
+// the whole operation.
+type SubnetRuntimeDomainOperation string
+
+// SubnetRuntimeOVNMutationOperation identifies one OVN data-plane mutation
+// phase. Legacy mode never installs this writer.
+type SubnetRuntimeOVNMutationOperation string
+
+const (
+	SubnetRuntimeOVNAllocateOperation         SubnetRuntimeDomainOperation      = "ovn-allocate"
+	SubnetRuntimeOVNCleanupOperation          SubnetRuntimeDomainOperation      = "ovn-cleanup"
+	SubnetRuntimeIPAMAllocateOperation        SubnetRuntimeDomainOperation      = "ipam-allocate"
+	SubnetRuntimeIPAMReleaseOperation         SubnetRuntimeDomainOperation      = "ipam-release"
+	SubnetRuntimeOVNAllocateMutationOperation SubnetRuntimeOVNMutationOperation = "ovn-allocate"
+	SubnetRuntimeOVNCleanupMutationOperation  SubnetRuntimeOVNMutationOperation = "ovn-cleanup"
+)
+
+// SetSubnetRuntimeWriters installs the explicit API status and finalizer
+// and OVN/IPAM domain writers used by subnet-writer mode. Legacy mode leaves
+// these hooks unset.
+func (c *Controller) SetSubnetRuntimeWriters(statusWriter SubnetRuntimeStatusWriter, ipStatusWriter SubnetRuntimeIPStatusWriter, gatewayMACWriter SubnetRuntimeGatewayMACWriter, finalizerWriter SubnetRuntimeFinalizerWriter, ovnWriter, ipamWriter SubnetRuntimeDomainWriter) error {
+	if c == nil || statusWriter == nil || ipStatusWriter == nil || gatewayMACWriter == nil || finalizerWriter == nil || ovnWriter == nil || ipamWriter == nil {
+		return errors.New("subnet runtime writers are not configured")
+	}
+	if c.subnetRuntimeStatusWriter != nil || c.subnetRuntimeIPStatusWriter != nil || c.subnetRuntimeGatewayMACWriter != nil || c.subnetRuntimeFinalizerWriter != nil || c.subnetRuntimeOVNWriter != nil || c.subnetRuntimeOVNMutationWriter != nil || c.subnetRuntimeIPAMWriter != nil {
+		return errors.New("subnet runtime writers are already configured")
+	}
+	c.subnetRuntimeStatusWriter = statusWriter
+	c.subnetRuntimeIPStatusWriter = ipStatusWriter
+	c.subnetRuntimeGatewayMACWriter = gatewayMACWriter
+	c.subnetRuntimeFinalizerWriter = finalizerWriter
+	c.subnetRuntimeOVNWriter = ovnWriter
+	c.subnetRuntimeIPAMWriter = ipamWriter
+	return nil
+}
+
+// SetSubnetRuntimePhaseWriter installs the phase-aware runtime boundary.
+// Legacy workers leave it unset and retain the single domain callback path.
+func (c *Controller) SetSubnetRuntimePhaseWriter(writer SubnetRuntimePhaseWriter) error {
+	if c == nil || writer == nil {
+		return errors.New("subnet runtime phase writer is not configured")
+	}
+	if c.subnetRuntimePhaseWriter != nil {
+		return errors.New("subnet runtime phase writer is already configured")
+	}
+	c.subnetRuntimePhaseWriter = writer
+	return nil
+}
+
+// SetSubnetRuntimeOVNMutationWriter installs the explicit OVN adapter seam for
+// the opt-in runtime writer. Existing generic domain writers remain available
+// as a compatibility fallback for older backends and tests.
+func (c *Controller) SetSubnetRuntimeOVNMutationWriter(writer SubnetRuntimeOVNMutationWriter) error {
+	if c == nil || writer == nil {
+		return errors.New("subnet runtime OVN mutation writer is not configured")
+	}
+	if c.subnetRuntimeOVNMutationWriter != nil {
+		return errors.New("subnet runtime OVN mutation writer is already configured")
+	}
+	c.subnetRuntimeOVNMutationWriter = writer
+	return nil
+}
+
+// SetSubnetRuntimeIPAMMutationWriter installs the concrete IPAM mutation seam
+// used by the opt-in runtime Subnet writer. Legacy workers leave it unset.
+func (c *Controller) SetSubnetRuntimeIPAMMutationWriter(writer SubnetRuntimeIPAMMutationWriter) error {
+	if c == nil || writer == nil {
+		return errors.New("subnet runtime IPAM mutation writer is not configured")
+	}
+	if c.subnetRuntimeIPAMMutationWriter != nil {
+		return errors.New("subnet runtime IPAM mutation writer is already configured")
+	}
+	c.subnetRuntimeIPAMMutationWriter = writer
+	return nil
+}
+
+// SetSubnetRuntimeIPAMAddressWriter installs the typed address mutation seam
+// used by the opt-in runtime Subnet writer. Legacy workers leave it unset.
+func (c *Controller) SetSubnetRuntimeIPAMAddressWriter(writer SubnetRuntimeIPAMAddressWriter) error {
+	if c == nil || writer == nil {
+		return errors.New("subnet runtime IPAM address writer is not configured")
+	}
+	if c.subnetRuntimeIPAMAddressWriter != nil {
+		return errors.New("subnet runtime IPAM address writer is already configured")
+	}
+	c.subnetRuntimeIPAMAddressWriter = writer
+	return nil
+}
+
+func (c *Controller) SubnetRuntimeIPAMAddressBackend() SubnetRuntimeIPAMAddressBackend {
+	if c == nil {
+		return nil
+	}
+	return c
+}
+
+func (c *Controller) ExistingSubnetRuntimeIPAMAddress(ctx context.Context, podName, nicName, subnetName string) (SubnetRuntimeIPAMAddressResult, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeIPAMAddressResult{}, false, err
+	}
+	if c == nil || c.ipam == nil {
+		return SubnetRuntimeIPAMAddressResult{}, false, errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	v4, v6, mac, found := c.ipam.GetPodAddressByNic(podName, nicName, subnetName)
+	return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, found, nil
+}
+
+func (c *Controller) ExistingSubnetRuntimeIPAMOwner(ctx context.Context, podName, nicName, subnetName string) (SubnetRuntimeIPAMOwner, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeIPAMOwner{}, false, err
+	}
+	if c == nil || c.ipam == nil {
+		return SubnetRuntimeIPAMOwner{}, false, errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	owner, found := c.ipam.GetPodAddressOwner(podName, nicName, subnetName)
+	return SubnetRuntimeIPAMOwner{Token: owner.Token, SubnetUID: owner.SubnetUID, Generation: owner.Generation, ResourceVersion: owner.ResourceVersion, WriterEpoch: owner.WriterEpoch}, found, nil
+}
+
+// ListSubnetRuntimeIPAMAddresses returns existing initialized allocations for
+// one Subnet so runtime recovery can bootstrap durable ownership receipts.
+func (c *Controller) ListSubnetRuntimeIPAMAddresses(ctx context.Context, subnetName string) ([]SubnetRuntimeIPAMAddressAllocation, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if c == nil || c.ipam == nil {
+		return nil, errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	allocations := c.ipam.ListSubnetAddressAllocations(subnetName)
+	result := make([]SubnetRuntimeIPAMAddressAllocation, 0, len(allocations))
+	for _, allocation := range allocations {
+		result = append(result, SubnetRuntimeIPAMAddressAllocation{
+			SubnetUID: allocation.SubnetUID,
+			PodName:   allocation.PodName,
+			NICName:   allocation.NICName,
+			V4:        allocation.V4,
+			V6:        allocation.V6,
+			MAC:       allocation.MAC,
+			Owner:     SubnetRuntimeIPAMOwner{Token: allocation.Owner.Token, SubnetUID: allocation.Owner.SubnetUID, Generation: allocation.Owner.Generation, ResourceVersion: allocation.Owner.ResourceVersion, WriterEpoch: allocation.Owner.WriterEpoch},
+		})
+	}
+	return result, nil
+}
+
+func (c *Controller) ListSubnetRuntimeIPAMOwnedAddresses(ctx context.Context, subnetName string) ([]SubnetRuntimeIPAMAddressAllocation, error) {
+	return c.ListSubnetRuntimeIPAMAddresses(ctx, subnetName)
+}
+
+// BindSubnetRuntimeIPAMIdentity records the current Subnet UID in initialized
+// IPAM state and rejects same-name replacement ownership changes.
+func (c *Controller) BindSubnetRuntimeIPAMIdentity(ctx context.Context, subnetName, uid string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c == nil || c.ipam == nil {
+		return errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	return c.ipam.BindSubnetUID(subnetName, uid)
+}
+
+func (c *Controller) AllocateSubnetRuntimeIPAMRandom(ctx context.Context, podName, nicName, subnetName, poolName string, skippedAddrs []string, checkConflict bool) (SubnetRuntimeIPAMAddressResult, error) {
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeIPAMAddressResult{}, err
+	}
+	if c == nil || c.ipam == nil {
+		return SubnetRuntimeIPAMAddressResult{}, errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	v4, v6, mac, err := c.ipam.GetRandomAddress(podName, nicName, nil, subnetName, poolName, skippedAddrs, checkConflict)
+	return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, err
+}
+
+func (c *Controller) AllocateSubnetRuntimeIPAMRandomOwned(ctx context.Context, podName, nicName, subnetName, poolName string, skippedAddrs []string, checkConflict bool, owner SubnetRuntimeIPAMOwner) (SubnetRuntimeIPAMAddressResult, error) {
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeIPAMAddressResult{}, err
+	}
+	if c == nil || c.ipam == nil {
+		return SubnetRuntimeIPAMAddressResult{}, errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	result := ipam.AllocationOwner{Token: owner.Token, SubnetUID: owner.SubnetUID, Generation: owner.Generation, ResourceVersion: owner.ResourceVersion, WriterEpoch: owner.WriterEpoch}
+	var v4, v6, mac string
+	err := c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		var err error
+		v4, v6, mac, err = tx.GetRandomAddressOwned(podName, nicName, nil, subnetName, poolName, skippedAddrs, checkConflict, result)
+		return err
+	})
+	return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, err
+}
+
+func (c *Controller) AllocateSubnetRuntimeIPAMStatic(ctx context.Context, podName, nicName, requestedIP string, mac *string, subnetName string, checkConflict bool) (SubnetRuntimeIPAMAddressResult, error) {
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeIPAMAddressResult{}, err
+	}
+	if c == nil || c.ipam == nil {
+		return SubnetRuntimeIPAMAddressResult{}, errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	v4, v6, resultMAC, err := c.ipam.GetStaticAddress(podName, nicName, requestedIP, mac, subnetName, checkConflict)
+	return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: resultMAC}, err
+}
+
+func (c *Controller) AllocateSubnetRuntimeIPAMStaticOwned(ctx context.Context, podName, nicName, requestedIP string, mac *string, subnetName string, checkConflict bool, owner SubnetRuntimeIPAMOwner) (SubnetRuntimeIPAMAddressResult, error) {
+	if err := ctx.Err(); err != nil {
+		return SubnetRuntimeIPAMAddressResult{}, err
+	}
+	if c == nil || c.ipam == nil {
+		return SubnetRuntimeIPAMAddressResult{}, errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	result := ipam.AllocationOwner{Token: owner.Token, SubnetUID: owner.SubnetUID, Generation: owner.Generation, ResourceVersion: owner.ResourceVersion, WriterEpoch: owner.WriterEpoch}
+	var v4, v6, resultMAC string
+	err := c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		var err error
+		v4, v6, resultMAC, err = tx.GetStaticAddressOwned(podName, nicName, requestedIP, mac, subnetName, checkConflict, result)
+		return err
+	})
+	return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: resultMAC}, err
+}
+
+func (c *Controller) ReleaseSubnetRuntimeIPAMByNicIfMatches(ctx context.Context, podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c == nil || c.ipam == nil {
+		return errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	return c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		return tx.ReleaseAddressByNicIfMatches(podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC)
+	})
+}
+
+func (c *Controller) ReleaseSubnetRuntimeIPAMByNicIfMatchesOwned(ctx context.Context, podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC string, owner SubnetRuntimeIPAMOwner) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c == nil || c.ipam == nil {
+		return errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	wanted := ipam.AllocationOwner{Token: owner.Token, SubnetUID: owner.SubnetUID, Generation: owner.Generation, ResourceVersion: owner.ResourceVersion, WriterEpoch: owner.WriterEpoch}
+	return c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		return tx.ReleaseAddressByNicIfMatchesOwned(podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC, wanted)
+	})
+}
+
+func (c *Controller) BindSubnetRuntimeIPAMOwnerIfUnowned(ctx context.Context, podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC string, owner SubnetRuntimeIPAMOwner) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c == nil || c.ipam == nil {
+		return errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	wanted := ipam.AllocationOwner{Token: owner.Token, SubnetUID: owner.SubnetUID, Generation: owner.Generation, ResourceVersion: owner.ResourceVersion, WriterEpoch: owner.WriterEpoch}
+	return c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		return tx.BindAddressOwnerIfUnowned(podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC, wanted)
+	})
+}
+
+func (c *Controller) RebindSubnetRuntimeIPAMOwner(ctx context.Context, podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC string, previous, replacement SubnetRuntimeIPAMOwner) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c == nil || c.ipam == nil {
+		return errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	oldOwner := ipam.AllocationOwner{Token: previous.Token, SubnetUID: previous.SubnetUID, Generation: previous.Generation, ResourceVersion: previous.ResourceVersion, WriterEpoch: previous.WriterEpoch}
+	newOwner := ipam.AllocationOwner{Token: replacement.Token, SubnetUID: replacement.SubnetUID, Generation: replacement.Generation, ResourceVersion: replacement.ResourceVersion, WriterEpoch: replacement.WriterEpoch}
+	return c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		return tx.RebindAddressOwnerIfMatches(podName, nicName, subnetName, expectedV4, expectedV6, expectedMAC, oldOwner, newOwner)
+	})
+}
+
+func (c *Controller) ReleaseSubnetRuntimeIPAMByPod(ctx context.Context, podName, subnetName string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if c == nil || c.ipam == nil {
+		return errors.New("subnet runtime IPAM backend is not initialized")
+	}
+	return c.ipam.WithTransactionContext(ctx, func(tx *ipam.Transaction) error {
+		return tx.ReleaseAddressByPod(podName, subnetName)
+	})
+}
+
+func (c *Controller) runSubnetRuntimeIPAMMutation(ctx context.Context, subnet *kubeovnv1.Subnet, operation SubnetRuntimeIPAMMutationOperation, apply func(context.Context) error) error {
+	if apply == nil {
+		return errors.New("subnet runtime IPAM mutation is nil")
+	}
+	if c.subnetRuntimeIPAMMutationWriter != nil {
+		return c.subnetRuntimeIPAMMutationWriter(ctx, subnet, operation, apply)
+	}
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
+	return apply(ctx)
+}
+
+func (c *Controller) runSubnetRuntimeIPAMAddressMutation(ctx context.Context, subnet *kubeovnv1.Subnet, request SubnetRuntimeIPAMAddressRequest, apply func(context.Context) (SubnetRuntimeIPAMAddressResult, error)) (SubnetRuntimeIPAMAddressResult, error) {
+	if apply == nil {
+		return SubnetRuntimeIPAMAddressResult{}, errors.New("subnet runtime IPAM address mutation is nil")
+	}
+	if subnet != nil && c.subnetRuntimeIPAMAddressWriter != nil {
+		return c.subnetRuntimeIPAMAddressWriter(ctx, subnet, request)
+	}
+	if subnet == nil {
+		return apply(ctx)
+	}
+	var result SubnetRuntimeIPAMAddressResult
+	err := c.runSubnetRuntimeIPAMMutation(ctx, subnet, request.Operation, func(ctx context.Context) error {
+		var err error
+		result, err = apply(ctx)
+		return err
+	})
+	return result, err
+}
+
+func (c *Controller) releaseSubnetRuntimeIPAMByNic(ctx context.Context, subnet *kubeovnv1.Subnet, podName, nicName, subnetName string) error {
+	_, err := c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMAddressRequest{
+		Operation:  SubnetRuntimeIPAMReleaseAddressOperation,
+		SubnetName: subnetName,
+		PodName:    podName,
+		NICName:    nicName,
+	}, func(context.Context) (SubnetRuntimeIPAMAddressResult, error) {
+		c.ipam.ReleaseAddressByNic(podName, nicName, subnetName)
+		return SubnetRuntimeIPAMAddressResult{}, nil
+	})
+	return err
+}
+
+func (c *Controller) releaseSubnetRuntimeIPAMByPod(ctx context.Context, subnet *kubeovnv1.Subnet, podName, subnetName string) error {
+	_, err := c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMAddressRequest{
+		Operation:  SubnetRuntimeIPAMReleaseAddressOperation,
+		SubnetName: subnetName,
+		PodName:    podName,
+	}, func(context.Context) (SubnetRuntimeIPAMAddressResult, error) {
+		c.ipam.ReleaseAddressByPod(podName, subnetName)
+		return SubnetRuntimeIPAMAddressResult{}, nil
+	})
+	return err
+}
+
+// SetSubnetRuntimeVirtualPortWriter installs the runtime admission hook for
+// the dedicated virtual-port worker. Legacy mode leaves it unset.
+func (c *Controller) SetSubnetRuntimeVirtualPortWriter(writer SubnetRuntimeVirtualPortWriter) error {
+	if c == nil || writer == nil {
+		return errors.New("subnet runtime virtual-port writer is not configured")
+	}
+	if c.subnetRuntimeVirtualPortWriter != nil {
+		return errors.New("subnet runtime virtual-port writer is already configured")
+	}
+	c.subnetRuntimeVirtualPortWriter = writer
+	return nil
+}
+
 func (c *Controller) checkSubnetRuntimeFence(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("subnet runtime context is nil")
@@ -807,17 +1571,89 @@ func (c *Controller) checkSubnetRuntimeFence(ctx context.Context) error {
 // available before the runtime writer accepts its first request. IPAM and OVN
 // are initialized before the runtime manager starts; a missing backend fails
 // closed instead of allowing a partial writer to mutate API state.
-func (c *Controller) RecoverSubnetRuntime(ctx context.Context, _ *kubeovnv1.Subnet) error {
+func (c *Controller) RecoverSubnetRuntime(ctx context.Context, subnet *kubeovnv1.Subnet) error {
+	if c == nil {
+		return errors.New("subnet runtime domain backends are not initialized")
+	}
+	if ctx == nil {
+		return errors.New("subnet runtime context is nil")
+	}
+	if err := c.waitForSubnetRuntimeRecovery(ctx); err != nil {
+		return err
+	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if c == nil || c.ipam == nil || c.OVNNbClient == nil {
+	if subnet == nil {
+		return errors.New("subnet runtime recovery requires a Subnet")
+	}
+	if c.ipam == nil || c.OVNNbClient == nil {
 		return errors.New("subnet runtime domain backends are not initialized")
+	}
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
+	var u2oMAC *string
+	if subnet.Status.U2OInterconnectionIP != "" {
+		if subnet.Status.U2OInterconnectionMAC != "" {
+			u2oMAC = new(subnet.Status.U2OInterconnectionMAC)
+		} else {
+			lrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
+			lrp, err := c.OVNNbClient.GetLogicalRouterPort(lrpName, true)
+			if err != nil {
+				return fmt.Errorf("failed to recover subnet %s U2O router port: %w", subnet.Name, err)
+			}
+			if lrp == nil || lrp.MAC == "" {
+				return fmt.Errorf("failed to recover subnet %s U2O router port: MAC is unavailable", subnet.Name)
+			}
+			u2oMAC = new(lrp.MAC)
+		}
+	}
+	if err := c.runSubnetRuntimeIPAMMutation(ctx, subnet, SubnetRuntimeIPAMRegisterOperation, func(context.Context) error {
+		return c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps)
+	}); err != nil {
+		return fmt.Errorf("failed to recover subnet %s in IPAM: %w", subnet.Name, err)
+	}
+	if subnet.Status.U2OInterconnectionIP != "" {
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
+		u2oName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
+		u2oNicName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
+		if _, err := c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMAddressRequest{
+			Operation:     SubnetRuntimeIPAMAllocateAddressOperation,
+			SubnetName:    subnet.Name,
+			PodName:       u2oName,
+			NICName:       u2oNicName,
+			RequestedIP:   subnet.Status.U2OInterconnectionIP,
+			MAC:           u2oMAC,
+			CheckConflict: true,
+		}, func(_ context.Context) (SubnetRuntimeIPAMAddressResult, error) {
+			v4, v6, mac, err := c.ipam.GetStaticAddress(u2oName, u2oNicName, subnet.Status.U2OInterconnectionIP, u2oMAC, subnet.Name, true)
+			return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, err
+		}); err != nil {
+			return fmt.Errorf("failed to recover subnet %s U2O address: %w", subnet.Name, err)
+		}
+	}
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
 	}
 	return nil
 }
 
 func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *kubeovnv1.Subnet) error {
+	return c.reconcileSubnetObjectWithPhase(ctx, cachedSubnet, nil)
+}
+
+type subnetRuntimePhaseRunner func(context.Context, *kubeovnv1.Subnet, SubnetRuntimePhase, func(context.Context) error) error
+
+func (c *Controller) reconcileSubnetObjectWithPhase(ctx context.Context, cachedSubnet *kubeovnv1.Subnet, phaseRunner subnetRuntimePhaseRunner) error {
+	phase := func(current *kubeovnv1.Subnet, name SubnetRuntimePhase, operation func(context.Context) error) error {
+		if phaseRunner == nil {
+			return operation(ctx)
+		}
+		return phaseRunner(ctx, current, name, operation)
+	}
 	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
 	}
@@ -858,13 +1694,19 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		}
 		return err
 	}
-	if err = c.patchSubnetStatusWithContext(ctx, subnet, "ValidateLogicalSwitchSuccess", ""); err != nil {
+	if err = phase(subnet, SubnetRuntimeValidationPhase, func(ctx context.Context) error {
+		return c.patchSubnetStatusWithContext(ctx, subnet, "ValidateLogicalSwitchSuccess", "")
+	}); err != nil {
 		klog.Error(err)
 		return c.recordResourceError(subnet, "UpdateStatusFailed", err)
 	}
 
 	if subnet.Spec.CIDRBlock != "" {
-		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps); err != nil {
+		if err := phase(subnet, SubnetRuntimeIPAMPhase, func(ctx context.Context) error {
+			return c.runSubnetRuntimeIPAMMutation(ctx, subnet, SubnetRuntimeIPAMRegisterOperation, func(context.Context) error {
+				return c.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, subnet.Spec.ExcludeIps)
+			})
+		}); err != nil {
 			klog.Error(err)
 			return c.recordResourceError(subnet, "UpdateIPAMFailed", err)
 		}
@@ -881,7 +1723,11 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		// lightweight IPAM entry so MAC allocations are tracked and the GC does not
 		// clean the subnet's mac-only IP/LSP resources. It has no IP ranges, so there
 		// is no subnet IP status to calculate.
-		if err := c.ipam.AddOrUpdateSubnet(subnet.Name, "", "", nil); err != nil {
+		if err := phase(subnet, SubnetRuntimeIPAMPhase, func(ctx context.Context) error {
+			return c.runSubnetRuntimeIPAMMutation(ctx, subnet, SubnetRuntimeIPAMRegisterOperation, func(context.Context) error {
+				return c.ipam.AddOrUpdateSubnet(subnet.Name, "", "", nil)
+			})
+		}); err != nil {
 			klog.Error(err)
 			return c.recordResourceError(subnet, "UpdateIPAMFailed", err)
 		}
@@ -891,8 +1737,13 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		return err
 	}
 
-	updatedSubnet, deleted, err := c.handleSubnetFinalizerWithContext(ctx, subnet)
-	if err != nil {
+	var updatedSubnet *kubeovnv1.Subnet
+	var deleted bool
+	if err := phase(subnet, SubnetRuntimeFinalizerPhase, func(ctx context.Context) error {
+		var err error
+		updatedSubnet, deleted, err = c.handleSubnetFinalizerWithContext(ctx, subnet)
+		return err
+	}); err != nil {
 		klog.Errorf("handle subnet finalizer failed %v", err)
 		return c.recordResourceError(subnet, "UpdateFinalizerFailed", err)
 	}
@@ -905,17 +1756,26 @@ func (c *Controller) reconcileSubnetObject(ctx context.Context, cachedSubnet *ku
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			return err
 		}
-		return c.finishNonOvnSubnetReconcile(ctx, subnet)
+		return phase(subnet, SubnetRuntimeNonOVNStatusPhase, func(ctx context.Context) error {
+			return c.finishNonOvnSubnetReconcile(ctx, subnet)
+		})
 	}
 	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
 	}
 
-	vpc, err := c.prepareOvnSubnet(ctx, subnet)
+	var vpc *kubeovnv1.Vpc
+	err = phase(subnet, SubnetRuntimeOVNPreparePhase, func(ctx context.Context) error {
+		var err error
+		vpc, err = c.prepareOvnSubnet(ctx, subnet)
+		return err
+	})
 	if err != nil {
 		return err
 	}
-	return c.finishOvnSubnetReconcile(ctx, subnet, vpc)
+	return phase(subnet, SubnetRuntimeOVNFinishPhase, func(ctx context.Context) error {
+		return c.finishOvnSubnetReconcile(ctx, subnet, vpc)
+	})
 }
 
 func (c *Controller) finishNonOvnSubnetReconcile(ctx context.Context, subnet *kubeovnv1.Subnet) error {
@@ -1166,10 +2026,26 @@ func (c *Controller) handleDeleteLogicalSwitch(key string, routerPortNames ...st
 }
 
 func (c *Controller) handleDeleteLogicalSwitchWithContext(ctx context.Context, key string, routerPortNames ...string) (err error) {
+	return c.handleDeleteLogicalSwitchForSubnetWithContext(ctx, nil, key, routerPortNames...)
+}
+
+func (c *Controller) handleDeleteLogicalSwitchForSubnetWithContext(ctx context.Context, subnet *kubeovnv1.Subnet, key string, routerPortNames ...string) (err error) {
 	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
 	}
-	c.ipam.DeleteSubnet(key)
+	deleteSubnet := func(context.Context) error {
+		c.ipam.DeleteSubnet(key)
+		return nil
+	}
+	if subnet != nil {
+		if err := c.runSubnetRuntimeIPAMMutation(ctx, subnet, SubnetRuntimeIPAMDeleteOperation, deleteSubnet); err != nil {
+			return err
+		}
+	} else {
+		if err := deleteSubnet(ctx); err != nil {
+			return err
+		}
+	}
 
 	exist, err := c.OVNNbClient.LogicalSwitchExists(key)
 	if err != nil {
@@ -1219,13 +2095,23 @@ func (c *Controller) handleDeleteSubnet(subnet *kubeovnv1.Subnet) (err error) {
 func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) (err error) {
 	c.subnetKeyMutex.LockKey(subnet.Name)
 	defer func() { _ = c.subnetKeyMutex.UnlockKey(subnet.Name) }()
-	checkFence := func() error {
+	checkDeleteTarget := func() error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		return c.checkSubnetRuntimeFence(ctx)
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
+		live, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(ctx, subnet.Name, metav1.GetOptions{})
+		if err == nil {
+			return validateSubnetRuntimeDeleteTarget(subnet, live)
+		}
+		if !k8serrors.IsNotFound(err) {
+			return err
+		}
+		return nil
 	}
-	if err := checkFence(); err != nil {
+	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
 	defer func() {
@@ -1236,7 +2122,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 
 	c.updateVpcStatusQueue.Add(subnet.Spec.Vpc)
 	klog.Infof("delete u2o interconnection policy route for subnet %s", subnet.Name)
-	if err := checkFence(); err != nil {
+	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
 	if err := c.deletePolicyRouteForU2OInterconn(subnet); err != nil {
@@ -1249,7 +2135,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 		return err
 	}
 	if subnet.Spec.Vpc != c.config.ClusterRouter {
-		if err := checkFence(); err != nil {
+		if err := checkDeleteTarget(); err != nil {
 			return err
 		}
 		if err := c.deleteStaticRouteForU2OInterconnExcept(subnet, ownership.staticV4, ownership.staticV6); err != nil {
@@ -1260,7 +2146,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 
 	u2oInterconnName := fmt.Sprintf(util.U2OInterconnName, subnet.Spec.Vpc, subnet.Name)
 	u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-	if err := checkFence(); err != nil {
+	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
 	if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(ctx, u2oInterconnName, metav1.DeleteOptions{}); err != nil {
@@ -1269,13 +2155,15 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 			return err
 		}
 	}
-	if err := checkFence(); err != nil {
+	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
-	c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
+	if err := c.releaseSubnetRuntimeIPAMByNic(ctx, subnet, u2oInterconnName, u2oInterconnLrpName, subnet.Name); err != nil {
+		return err
+	}
 
 	if subnet.Spec.Vpc != c.config.ClusterRouter {
-		if err := checkFence(); err != nil {
+		if err := checkDeleteTarget(); err != nil {
 			return err
 		}
 		if err := c.deleteCustomVPCPolicyRoutesForSubnetExcept(subnet, ownership.policyV4, ownership.policyV6); err != nil {
@@ -1285,7 +2173,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 	}
 
 	if subnet.Spec.Vlan == "" {
-		if err := checkFence(); err != nil {
+		if err := checkDeleteTarget(); err != nil {
 			return err
 		}
 		if _, _, err := c.syncU2OOverlayCIDRsAddressSet(subnet.Spec.Vpc, subnet.Name); err != nil {
@@ -1295,7 +2183,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 	}
 
 	klog.Infof("delete policy route for %s subnet %s", subnet.Spec.GatewayType, subnet.Name)
-	if err := checkFence(); err != nil {
+	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
 	if err := c.deletePolicyRouteByGatewayType(subnet, subnet.Spec.GatewayType, true); err != nil {
@@ -1316,10 +2204,10 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 	}
 
 	lrpName := fmt.Sprintf("%s-%s", router, subnet.Name)
-	if err := checkFence(); err != nil {
+	if err := checkDeleteTarget(); err != nil {
 		return err
 	}
-	if err = c.handleDeleteLogicalSwitchWithContext(ctx, subnet.Name, lrpName); err != nil {
+	if err = c.handleDeleteLogicalSwitchForSubnetWithContext(ctx, subnet, subnet.Name, lrpName); err != nil {
 		klog.Errorf("failed to delete logical switch %s resources: %v", subnet.Name, err)
 		return err
 	}
@@ -1331,7 +2219,7 @@ func (c *Controller) handleDeleteSubnetWithContext(ctx context.Context, subnet *
 	}
 
 	for _, vlan := range vlans {
-		if err = checkFence(); err != nil {
+		if err = checkDeleteTarget(); err != nil {
 			return err
 		}
 		if err = c.updateVlanStatusForSubnetDeletionWithContext(ctx, vlan, subnet.Name); err != nil {
@@ -1408,6 +2296,12 @@ func (c *Controller) reconcileSubnetWithContext(ctx context.Context, subnet *kub
 }
 
 func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
+	// VIP virtual-port reconciliation is an OVN write phase of the runtime
+	// Subnet writer. Keep direct callers fenced as well as the enclosing domain
+	// wrapper so a lost Lease cannot start a new OVN read/write sequence.
+	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+		return err
+	}
 	/* get all virtual port belongs to this logical switch */
 	lsps, err := c.OVNNbClient.ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name}, func(lsp *ovnnb.LogicalSwitchPort) bool {
 		return lsp.Type == "virtual"
@@ -1446,6 +2340,9 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 
 	// delete old virtual ports
 	for _, lspName := range existVips {
+		if err = c.checkSubnetRuntimeFence(context.Background()); err != nil {
+			return err
+		}
 		if err = c.OVNNbClient.DeleteLogicalSwitchPort(lspName); err != nil {
 			klog.Errorf("delete virtual port %s lspName from logical switch %s: %v", lspName, subnet.Name, err)
 			return err
@@ -1453,6 +2350,9 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 	}
 
 	// add new virtual port
+	if err = c.checkSubnetRuntimeFence(context.Background()); err != nil {
+		return err
+	}
 	if err = c.OVNNbClient.CreateVirtualLogicalSwitchPorts(subnet.Name, newVips...); err != nil {
 		klog.Errorf("create virtual port with vips %v from logical switch %s: %v", newVips, subnet.Name, err)
 		return err
@@ -1463,6 +2363,17 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 }
 
 func (c *Controller) syncVirtualPort(key string) error {
+	// syncVirtualPort runs on a dedicated worker because VIP parent updates can
+	// arrive after the Subnet reconcile has queued them. In subnet-writer mode
+	// the runtime installer replaces the lister path with a fresh API snapshot
+	// before it reaches this backend operation.
+	ctx := context.Background()
+	if c.subnetRuntimeVirtualPortWriter != nil {
+		return c.subnetRuntimeVirtualPortWriter(ctx, key)
+	}
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	subnet, err := c.subnetsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
@@ -1471,6 +2382,63 @@ func (c *Controller) syncVirtualPort(key string) error {
 		klog.Errorf("failed to get subnet %s, %v", key, err)
 		return err
 	}
+	return c.syncVirtualPortForSubnet(ctx, subnet)
+}
+
+// SyncSubnetVirtualPort applies the queued virtual-port parent update after
+// the runtime writer has authorized a fresh API snapshot. It is the only
+// backend entry used by the runtime virtual-port hook.
+func (c *Controller) SyncSubnetVirtualPort(ctx context.Context, subnet *kubeovnv1.Subnet) error {
+	if ctx == nil {
+		return errors.New("subnet virtual-port context is nil")
+	}
+	if subnet == nil {
+		return errors.New("subnet virtual-port Subnet is nil")
+	}
+	if err := c.waitForSubnetRuntimeRecovery(ctx); err != nil {
+		return err
+	}
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
+	if c.config == nil || c.config.KubeOvnClient == nil {
+		return errors.New("subnet runtime API client is not configured")
+	}
+	readCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	live, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Get(readCtx, subnet.Name, metav1.GetOptions{})
+	if k8serrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if err := validateSubnetRuntimeVirtualPortSnapshot(subnet, live); err != nil {
+		return err
+	}
+	if !live.DeletionTimestamp.IsZero() {
+		return nil
+	}
+	return c.syncVirtualPortForSubnet(readCtx, live)
+}
+
+func validateSubnetRuntimeVirtualPortSnapshot(expected, current *kubeovnv1.Subnet) error {
+	if expected == nil || current == nil {
+		return errors.New("subnet virtual-port snapshot is nil")
+	}
+	if expected.Name != current.Name || expected.UID != current.UID || expected.Generation != current.Generation ||
+		expected.ResourceVersion != current.ResourceVersion || !reflect.DeepEqual(expected.Spec, current.Spec) ||
+		(!expected.DeletionTimestamp.IsZero()) != (!current.DeletionTimestamp.IsZero()) {
+		return k8serrors.NewConflict(
+			schema.GroupResource{Group: kubeovnv1.SchemeGroupVersion.Group, Resource: "subnets"},
+			expected.Name,
+			errors.New("subnet changed since the virtual-port snapshot"),
+		)
+	}
+	return nil
+}
+
+func (c *Controller) syncVirtualPortForSubnet(ctx context.Context, subnet *kubeovnv1.Subnet) error {
 	if len(subnet.Spec.Vips) == 0 {
 		return nil
 	}
@@ -1509,6 +2477,9 @@ func (c *Controller) syncVirtualPort(key string) error {
 			continue
 		}
 
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
 		if err = c.OVNNbClient.SetLogicalSwitchPortVirtualParents(subnet.Name, strings.Join(virtualParents, ","), vip); err != nil {
 			klog.Errorf("set vip %s virtual parents %v: %v", vip, virtualParents, err)
 			return err
@@ -2213,7 +3184,7 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 	allocated := false
 	if subnet.Spec.U2OInterconnectionIP == "" && (subnet.Status.U2OInterconnectionIP == "" || subnet.Status.U2OInterconnectionMAC == "") {
 		_, _, _, hadAllocation := c.ipam.GetPodAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
-		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName)
+		v4ip, v6ip, mac, err = c.acquireIPAddressWithContext(ctx, subnet, subnet.Name, u2oInterconnName, u2oInterconnLrpName)
 		if err != nil {
 			klog.Errorf("failed to acquire underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
 			return "", "", "", err
@@ -2224,10 +3195,12 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 		_, _, _, hadAllocation := c.ipam.GetPodAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
 		if subnet.Status.U2OInterconnectionIP != "" {
 			klog.Infof("release underlay to overlay interconnection ip address %s for subnet %s", subnet.Status.U2OInterconnectionIP, subnet.Name)
-			c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
+			if releaseErr := c.releaseSubnetRuntimeIPAMByNic(ctx, subnet, u2oInterconnName, u2oInterconnLrpName, subnet.Name); releaseErr != nil {
+				return "", "", "", releaseErr
+			}
 			hadAllocation = false
 		}
-		v4ip, v6ip, mac, err = c.acquireStaticIPAddress(subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP, nil)
+		v4ip, v6ip, mac, err = c.acquireStaticIPAddressWithContext(ctx, subnet, subnet.Name, u2oInterconnName, u2oInterconnLrpName, subnet.Spec.U2OInterconnectionIP, nil)
 		if err != nil {
 			klog.Errorf("failed to acquire static underlay to overlay interconnection ip address for subnet %s, %v", subnet.Name, err)
 			return "", "", "", err
@@ -2237,7 +3210,9 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 	if v4ip != "" || v6ip != "" {
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
+				if releaseErr := c.releaseSubnetRuntimeIPAMByNic(ctx, subnet, u2oInterconnName, u2oInterconnLrpName, subnet.Name); releaseErr != nil {
+					err = errors.Join(err, releaseErr)
+				}
 			}
 			return "", "", "", err
 		}
@@ -2252,7 +3227,9 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 		}
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
+				if releaseErr := c.releaseSubnetRuntimeIPAMByNic(ctx, subnet, u2oInterconnName, u2oInterconnLrpName, subnet.Name); releaseErr != nil {
+					err = errors.Join(err, releaseErr)
+				}
 			}
 			subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionMAC, subnet.Status.U2OInterconnectionVPC = oldIP, oldMAC, oldVPC
 			return "", "", "", err
@@ -2260,7 +3237,9 @@ func (c *Controller) acquireU2OIPWithContext(ctx context.Context, subnet *kubeov
 		err = c.createOrUpdateIPCRWithContext(ctx, "", u2oInterconnName, subnet.Status.U2OInterconnectionIP, mac, subnet.Name, metav1.NamespaceDefault, "", "")
 		if err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
+				if releaseErr := c.releaseSubnetRuntimeIPAMByNic(ctx, subnet, u2oInterconnName, u2oInterconnLrpName, subnet.Name); releaseErr != nil {
+					err = errors.Join(err, releaseErr)
+				}
 			}
 			subnet.Status.U2OInterconnectionIP, subnet.Status.U2OInterconnectionMAC, subnet.Status.U2OInterconnectionVPC = oldIP, oldMAC, oldVPC
 			klog.Errorf("failed to create or update IPs of %s : %v", u2oInterconnLrpName, err)
@@ -2282,7 +3261,9 @@ func (c *Controller) releaseU2OIPWithContext(ctx context.Context, subnet *kubeov
 		return err
 	}
 	u2oInterconnLrpName := fmt.Sprintf("%s-%s", subnet.Spec.Vpc, subnet.Name)
-	c.ipam.ReleaseAddressByNic(u2oInterconnName, u2oInterconnLrpName, subnet.Name)
+	if err := c.releaseSubnetRuntimeIPAMByNic(ctx, subnet, u2oInterconnName, u2oInterconnLrpName, subnet.Name); err != nil {
+		return err
+	}
 	subnet.Status.U2OInterconnectionIP = ""
 	subnet.Status.U2OInterconnectionMAC = ""
 	subnet.Status.U2OInterconnectionVPC = ""
@@ -2302,7 +3283,7 @@ func (c *Controller) acquireMcastQuerierIPWithContext(ctx context.Context, subne
 
 	if subnet.Status.McastQuerierIP == "" || subnet.Status.McastQuerierMAC == "" {
 		_, _, _, hadAllocation := c.ipam.GetPodAddressByNic(mcastQuerierLspName, mcastQuerierLspName, subnet.Name)
-		v4ip, v6ip, mac, err = c.acquireIPAddress(subnet.Name, mcastQuerierLspName, mcastQuerierLspName)
+		v4ip, v6ip, mac, err = c.acquireIPAddressWithContext(ctx, subnet, subnet.Name, mcastQuerierLspName, mcastQuerierLspName)
 		if err != nil {
 			klog.Errorf("failed to acquire mcast querier ip address for subnet %s, %v", subnet.Name, err)
 			return isMcastQuerierChanged, err
@@ -2313,7 +3294,9 @@ func (c *Controller) acquireMcastQuerierIPWithContext(ctx context.Context, subne
 	if v4ip != "" || v6ip != "" {
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByPod(mcastQuerierLspName, subnet.Name)
+				if releaseErr := c.releaseSubnetRuntimeIPAMByPod(ctx, subnet, mcastQuerierLspName, subnet.Name); releaseErr != nil {
+					err = errors.Join(err, releaseErr)
+				}
 			}
 			return false, err
 		}
@@ -2328,7 +3311,9 @@ func (c *Controller) acquireMcastQuerierIPWithContext(ctx context.Context, subne
 		}
 		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByPod(mcastQuerierLspName, subnet.Name)
+				if releaseErr := c.releaseSubnetRuntimeIPAMByPod(ctx, subnet, mcastQuerierLspName, subnet.Name); releaseErr != nil {
+					err = errors.Join(err, releaseErr)
+				}
 			}
 			subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC = oldIP, oldMAC
 			return false, err
@@ -2337,7 +3322,9 @@ func (c *Controller) acquireMcastQuerierIPWithContext(ctx context.Context, subne
 		err := c.createOrUpdateIPCRWithContext(ctx, "", mcastQuerierLspName, subnet.Status.McastQuerierIP, mac, subnet.Name, metav1.NamespaceDefault, "", "")
 		if err != nil {
 			if allocated {
-				c.ipam.ReleaseAddressByPod(mcastQuerierLspName, subnet.Name)
+				if releaseErr := c.releaseSubnetRuntimeIPAMByPod(ctx, subnet, mcastQuerierLspName, subnet.Name); releaseErr != nil {
+					err = errors.Join(err, releaseErr)
+				}
 			}
 			subnet.Status.McastQuerierIP, subnet.Status.McastQuerierMAC = oldIP, oldMAC
 			klog.Errorf("failed to create or update IPs of %s : %v", mcastQuerierLspName, err)
@@ -2367,7 +3354,9 @@ func (c *Controller) releaseMcastQuerierIPWithContext(ctx context.Context, subne
 				return isMcastQuerierChanged, err
 			}
 		}
-		c.ipam.ReleaseAddressByPod(mcastQuerierLspName, subnet.Name)
+		if err := c.releaseSubnetRuntimeIPAMByPod(ctx, subnet, mcastQuerierLspName, subnet.Name); err != nil {
+			return isMcastQuerierChanged, err
+		}
 		subnet.Status.McastQuerierIP = ""
 		subnet.Status.McastQuerierMAC = ""
 		isMcastQuerierChanged = true
@@ -2631,6 +3620,9 @@ func (c *Controller) createPortGroupForDistributedSubnet(node *v1.Node, subnet *
 }
 
 func (c *Controller) updatePolicyRouteForCentralizedSubnet(subnetName, cidr string, nextHops []string, nameIPMap map[string]string) error {
+	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+		return err
+	}
 	ipSuffix := getIPSuffix(util.CheckProtocol(cidr))
 	match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
 	action := kubeovnv1.PolicyRouteActionReroute
@@ -2680,7 +3672,13 @@ func (c *Controller) addPolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Subnet
 }
 
 func (c *Controller) deletePolicyRouteForCentralizedSubnet(subnet *kubeovnv1.Subnet) error {
+	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+		return err
+	}
 	for cidr := range strings.SplitSeq(subnet.Spec.CIDRBlock, ",") {
+		if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+			return err
+		}
 		ipSuffix := getIPSuffix(util.CheckProtocol(cidr))
 		match := fmt.Sprintf("%s.src == %s", ipSuffix, cidr)
 		klog.Infof("delete policy route for router: %s, priority: %d, match %s", c.config.ClusterRouter, util.GatewayRouterPolicyPriority, match)
@@ -2750,6 +3748,9 @@ func (c *Controller) deletePolicyRouteForDistributedSubnet(subnet *kubeovnv1.Sub
 }
 
 func (c *Controller) deletePolicyRouteByGatewayType(subnet *kubeovnv1.Subnet, gatewayType string, isDelete bool) error {
+	if err := c.checkSubnetRuntimeFence(context.Background()); err != nil {
+		return err
+	}
 	if isDelete && subnet.Spec.Vpc == c.config.ClusterRouter {
 		for _, owner := range []string{"isServiceProxyFallbackDropPolicy", "isServiceProxyFallbackReroutePolicy"} {
 			if err := c.deleteServiceProxyFallbackPolicies(subnet, owner); err != nil {

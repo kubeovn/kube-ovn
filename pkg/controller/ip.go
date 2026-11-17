@@ -393,16 +393,29 @@ func (c *Controller) handleDelIPFinalizer(cachedIP *kubeovnv1.IP) error {
 }
 
 func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string, string, string, error) {
+	return c.acquireIPAddressWithContext(context.Background(), nil, subnetName, name, nicName)
+}
+
+func (c *Controller) acquireIPAddressWithContext(ctx context.Context, subnet *kubeovnv1.Subnet, subnetName, name, nicName string) (string, string, string, error) {
 	var skippedAddrs []string
-	var v4ip, v6ip, mac string
 	checkConflict := true
-	var err error
 	for {
-		v4ip, v6ip, mac, err = c.ipam.GetRandomAddress(name, nicName, nil, subnetName, "", skippedAddrs, checkConflict)
+		result, err := c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMAddressRequest{
+			Operation:     SubnetRuntimeIPAMAllocateAddressOperation,
+			SubnetName:    subnetName,
+			PodName:       name,
+			NICName:       nicName,
+			SkippedAddrs:  skippedAddrs,
+			CheckConflict: checkConflict,
+		}, func(_ context.Context) (SubnetRuntimeIPAMAddressResult, error) {
+			v4, v6, mac, err := c.ipam.GetRandomAddress(name, nicName, nil, subnetName, "", skippedAddrs, checkConflict)
+			return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, err
+		})
 		if err != nil {
 			klog.Error(err)
 			return "", "", "", err
 		}
+		v4ip, v6ip, mac := result.V4, result.V6, result.MAC
 
 		ipv4OK, ipv6OK, err := c.validatePodIP(name, subnetName, v4ip, v6ip)
 		if err != nil {
@@ -424,20 +437,34 @@ func (c *Controller) acquireIPAddress(subnetName, name, nicName string) (string,
 }
 
 func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string, macPointer *string) (string, string, string, error) {
+	return c.acquireStaticIPAddressWithContext(context.Background(), nil, subnetName, name, nicName, ip, macPointer)
+}
+
+func (c *Controller) acquireStaticIPAddressWithContext(ctx context.Context, subnet *kubeovnv1.Subnet, subnetName, name, nicName, ip string, macPointer *string) (string, string, string, error) {
 	checkConflict := true
-	var v4ip, v6ip, mac string
-	var err error
 	for ipStr := range strings.SplitSeq(ip, ",") {
 		if net.ParseIP(ipStr) == nil {
 			return "", "", "", fmt.Errorf("failed to parse vip ip %s", ipStr)
 		}
 	}
 
-	if v4ip, v6ip, mac, err = c.ipam.GetStaticAddress(name, nicName, ip, macPointer, subnetName, checkConflict); err != nil {
-		klog.Errorf("failed to get static virtual ip '%s', mac '%s', subnet '%s', %v", ip, mac, subnetName, err)
+	result, err := c.runSubnetRuntimeIPAMAddressMutation(ctx, subnet, SubnetRuntimeIPAMAddressRequest{
+		Operation:     SubnetRuntimeIPAMAllocateAddressOperation,
+		SubnetName:    subnetName,
+		PodName:       name,
+		NICName:       nicName,
+		RequestedIP:   ip,
+		MAC:           macPointer,
+		CheckConflict: checkConflict,
+	}, func(_ context.Context) (SubnetRuntimeIPAMAddressResult, error) {
+		v4, v6, mac, err := c.ipam.GetStaticAddress(name, nicName, ip, macPointer, subnetName, checkConflict)
+		return SubnetRuntimeIPAMAddressResult{V4: v4, V6: v6, MAC: mac}, err
+	})
+	if err != nil {
+		klog.Errorf("failed to get static virtual ip '%s', subnet '%s', %v", ip, subnetName, err)
 		return "", "", "", err
 	}
-	return v4ip, v6ip, mac, nil
+	return result.V4, result.V6, result.MAC, nil
 }
 
 func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string) error {
