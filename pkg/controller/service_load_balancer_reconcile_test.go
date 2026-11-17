@@ -544,6 +544,51 @@ func TestNodePortTemplateUsesNodeAddressAndLocalBackends(t *testing.T) {
 	}
 }
 
+func TestNodePortTemplateDefinesVariablesOnEveryChassis(t *testing.T) {
+	ctrl, nbClient, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeNodePort, false)
+	for index := range svc.Spec.Ports {
+		svc.Spec.Ports[index].NodePort = int32(30080 + index)
+	}
+	node, err := ctrl.nodesLister.Get("node")
+	require.NoError(t, err)
+	node.Status.Addresses = []corev1.NodeAddress{
+		{Type: corev1.NodeInternalIP, Address: "192.0.2.10"},
+		{Type: corev1.NodeInternalIP, Address: "2001:db8::10"},
+	}
+	chassises := []ovnsb.Chassis{
+		{Name: "node-chassis", Hostname: "node"},
+		{Name: "other-chassis", Hostname: "other-node"},
+	}
+	ctrl.OVNSbClient.(*mockovs.MockSbClient).EXPECT().ListChassis().Return(&chassises, nil).AnyTimes()
+
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
+	var variables []ovnnb.ChassisTemplateVar
+	require.NoError(t, nbClient.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(t.Context(), &variables))
+	require.Len(t, variables, len(chassises), "every chassis needs template variables for every NodePort VIP")
+	require.NotEmpty(t, variables[0].Variables)
+	for _, row := range variables {
+		require.Equal(t, variables[0].Variables, row.Variables, "template variables must be resolvable on %s", row.Chassis)
+	}
+}
+
+func TestNodePortTemplateOmitsVIPsWithoutBackends(t *testing.T) {
+	ctrl, nbClient, svc, _ := serviceLBReconcileFixture(t, corev1.ServiceTypeNodePort, false)
+	svc.Spec.Ports[0].NodePort = 30080
+	node, err := ctrl.nodesLister.Get("node")
+	require.NoError(t, err)
+	node.Status.Addresses = []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "192.0.2.10"}}
+	chassises := []ovnsb.Chassis{{Name: "node-chassis", Hostname: "node"}}
+	ctrl.OVNSbClient.(*mockovs.MockSbClient).EXPECT().ListChassis().Return(&chassises, nil).AnyTimes()
+
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, nil))
+	lb, err := nbClient.GetLoadBalancer(serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, "ipv4"), false)
+	require.NoError(t, err)
+	require.Empty(t, lb.Vips)
+	var variables []ovnnb.ChassisTemplateVar
+	require.NoError(t, nbClient.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(t.Context(), &variables))
+	require.Empty(t, variables)
+}
+
 func TestServiceLoadBalancerTemplateTransitionIsAtomic(t *testing.T) {
 	for _, serviceType := range []corev1.ServiceType{corev1.ServiceTypeClusterIP, corev1.ServiceTypeLoadBalancer} {
 		t.Run(string(serviceType), func(t *testing.T) {

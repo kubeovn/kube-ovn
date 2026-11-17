@@ -1618,6 +1618,10 @@ func (c *Controller) reconcileServiceNodePortTemplate(reconcileCtx *endpointSlic
 			base := fmt.Sprintf("%s%s_%s", prefix, strings.ToLower(string(port.Protocol)), util.Sha256Hash([]byte(vip))[:8])
 			vipVariable, backendVariable := base+"_vip", base+"_backends"
 			templateVIP := "^" + vipVariable + ":" + strconv.Itoa(int(port.NodePort))
+			backends := nodePortBackends(reconcileCtx.endpointSlices, port, nodeVIP, svc.Spec.ExternalTrafficPolicy, nodePortTrafficDistribution(svc))
+			if len(backends) == 0 {
+				continue
+			}
 			if desiredTemplateVIPs[lbName] == nil {
 				desiredTemplateVIPs[lbName] = make(map[string]string)
 			}
@@ -1630,14 +1634,10 @@ func (c *Controller) reconcileServiceNodePortTemplate(reconcileCtx *endpointSlic
 				OldLoadBalancers: c.serviceLBMigrationCandidates(svc, port.Protocol, reconcileCtx.vpc,
 					serviceLBExternalTraffic),
 			})
-			backends := nodePortBackends(reconcileCtx.endpointSlices, port, nodeVIP, svc.Spec.ExternalTrafficPolicy, nodePortTrafficDistribution(svc))
-			if len(backends) == 0 {
-				continue
-			}
+			// Logical router load-balancer flows are installed on every chassis.
+			// Keep every template variable resolvable everywhere, while deriving
+			// each backend list from the Node that owns its VIP.
 			for _, chassis := range *chassises {
-				if !chassisServesNode(chassis, nodeVIP.nodeName) {
-					continue
-				}
 				variablesByChassis[chassis.Name][vipVariable] = nodeVIP.address
 				variablesByChassis[chassis.Name][backendVariable] = strings.Join(backends, ",")
 			}
