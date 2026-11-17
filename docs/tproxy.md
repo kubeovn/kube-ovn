@@ -49,12 +49,13 @@ including across helper restarts. kubelet restarts the helper independently;
 startup or temporary helper failures are failed dials retried by later probes.
 There is no container startup order requirement.
 
-The daemon intercepts HTTP and gRPC probe ports so kubelet can reach custom VPC
-Pods. TCP probes only check whether a connection opens, so the daemon intercepts
-their ports only after a successful backend dial. An unreachable TCP port is
-removed from the interception rules on the next gateway reconciliation; a port
-shared with an HTTP or gRPC probe follows the same TCP rule. Probe results are
-scoped to the Pod UID so an IP reused by another Pod cannot inherit them.
+The daemon intercepts HTTP, gRPC, and TCP probe ports, including startup probes,
+so kubelet can reach custom VPC Pods. TCP probes only check whether a connection
+opens, so the daemon intercepts their ports only after a successful backend dial.
+An unreachable TCP port is removed from the interception rules on the next
+gateway reconciliation; a port shared with an HTTP or gRPC probe follows the
+same TCP rule. Probe results are scoped to the Pod UID so an IP reused by
+another Pod cannot inherit them.
 
 Enabling TProxy by manually changing only a daemon argument is insufficient:
 the helper container and its shared socket volume must also be present. Upgrade
@@ -62,8 +63,9 @@ the image and Pod template together. The custom VPC probe E2E covers this setup,
 while `python3 hack/test-tproxy-container.py` checks enabled/disabled rendering
 for both charts, DPDK and the installer without applying any cluster resources.
 The E2E adds the helper only for v1.17 and newer (`E2E_BRANCH` determines the
-tested release). For v1.12 through v1.16, it enables the original daemon flag
-and runs the same HTTP/TCP assertions without adding a missing helper binary.
+tested release). For v1.12 through v1.15, it enables the original daemon flag
+and runs the HTTP/TCP assertions without adding a missing helper binary. The
+startup-probe assertion runs from v1.16 onward.
 
 This refactor is a prerequisite for CNI privilege separation in PR #7593.
 Other daemon paths still require their existing capabilities; this change alone
