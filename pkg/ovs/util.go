@@ -59,7 +59,8 @@ func GetSgV6AssociatedName(sgName string) string {
 
 // parseIpv6RaConfigs parses the ipv6 ra config,
 // return default Ipv6RaConfigs when raw="",
-// the raw config's format is: address_mode=dhcpv6_stateful,max_interval=30,min_interval=5,send_periodic=true
+// the raw config's format is: address_mode=dhcpv6_stateful,max_interval=30,min_interval=5,send_periodic=true,
+// list values such as route_info and dnssl are comma separated too: route_info=HIGH-fd00::/64,LOW-fd01::/64
 func parseIpv6RaConfigs(raw string) map[string]string {
 	// return default Ipv6RaConfigs
 	if len(raw) == 0 {
@@ -75,14 +76,24 @@ func parseIpv6RaConfigs(raw string) map[string]string {
 
 	// trim blank
 	raw = strings.ReplaceAll(raw, " ", "")
-	options := strings.SplitSeq(raw, ",")
-	for option := range options {
+	// lastKey is the key of the last accepted option, a field without "="
+	// is the next item of its value, e.g. route_info=HIGH-fd00::/64,LOW-fd01::/64
+	var lastKey string
+	for option := range strings.SplitSeq(raw, ",") {
+		if !strings.Contains(option, "=") {
+			if lastKey != "" && option != "" {
+				Ipv6RaConfigs[lastKey] += "," + option
+			}
+			continue
+		}
+		lastKey = ""
 		kv := strings.Split(option, "=")
 		// TODO: ignore invalidate option, maybe need further validation
 		if len(kv) != 2 || len(kv[0]) == 0 || len(kv[1]) == 0 {
 			continue
 		}
 		Ipv6RaConfigs[kv[0]] = kv[1]
+		lastKey = kv[0]
 	}
 
 	return Ipv6RaConfigs
