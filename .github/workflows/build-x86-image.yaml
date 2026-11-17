@@ -334,6 +334,7 @@ jobs:
           GO_INSTALL: "go install -v -mod=mod -trimpath"
         run: |
           go mod tidy
+          go mod verify
           cat trivy-result.json
           dockerfile=${{ github.workspace }}/dist/images/Dockerfile
           export GOBIN=`dirname "$dockerfile"`
@@ -391,6 +392,7 @@ jobs:
       - name: Build
         run: |
           go mod tidy
+          go mod verify
           git diff --exit-code -- go.mod go.sum
           make verify-crd
           make lint
