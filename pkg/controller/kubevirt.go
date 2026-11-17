@@ -168,6 +168,24 @@ func (c *Controller) handleAddOrUpdateVMIMigration(key string) error {
 		return err
 	}
 
+	if ms := vmi.Status.MigrationState; ms != nil && ms.MigrationUID == vmiMigration.UID && ms.SourcePod != "" {
+		if _, err := c.podsLister.Pods(namespace).Get(ms.SourcePod); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to get source pod %s/%s of VirtualMachineInstanceMigration %s: %v", namespace, ms.SourcePod, key, err)
+				return err
+			}
+			if vmiMigration.IsFinal() {
+				klog.Infof("source pod %s/%s of VirtualMachineInstanceMigration %s in phase %s not found, skipping",
+					namespace, ms.SourcePod, key, vmiMigration.Status.Phase)
+				return nil
+			}
+			err = fmt.Errorf("source pod %s/%s of VirtualMachineInstanceMigration %s in phase %s not found",
+				namespace, ms.SourcePod, key, vmiMigration.Status.Phase)
+			klog.Error(err)
+			return err
+		}
+	}
+
 	srcNodeName, targetNodeName, skip, err := c.vmiMigrationNodes(vmiMigration, vmi, key)
 	if err != nil {
 		return err

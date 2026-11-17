@@ -216,6 +216,41 @@ func TestHandleAddOrUpdateVMIMigrationEarlyReturns(t *testing.T) {
 	})
 }
 
+func TestHandleAddOrUpdateVMIMigrationSourcePod(t *testing.T) {
+	const sourcePod = "virt-launcher-vm1-src"
+	vmiWithSourcePod := func() *kubevirtv1.VirtualMachineInstance {
+		vmi := newTestVMI(testTgtNode, "uid-cur")
+		vmi.Status.MigrationState.SourcePod = sourcePod
+		return vmi
+	}
+
+	for _, phase := range []kubevirtv1.VirtualMachineInstanceMigrationPhase{kubevirtv1.MigrationSucceeded, kubevirtv1.MigrationFailed} {
+		t.Run("missing source pod skips "+string(phase)+" migration", func(t *testing.T) {
+			f := newKubevirtFixture(t, nil)
+			m := newTestVMIMigration("migration-cur", "uid-cur", testBaseTime, phase)
+			f.expectMigrationAndVMI(m, vmiWithSourcePod())
+			// no OVN call is expected; gomock fails the test on any other call
+			require.NoError(t, f.ctrl.handleAddOrUpdateVMIMigration(testMigration))
+		})
+	}
+
+	t.Run("missing source pod retries active migration", func(t *testing.T) {
+		f := newKubevirtFixture(t, nil)
+		m := newTestVMIMigration("migration-cur", "uid-cur", testBaseTime, kubevirtv1.MigrationRunning)
+		f.expectMigrationAndVMI(m, vmiWithSourcePod())
+		require.ErrorContains(t, f.ctrl.handleAddOrUpdateVMIMigration(testMigration), "source pod default/"+sourcePod)
+	})
+
+	t.Run("existing source pod proceeds", func(t *testing.T) {
+		pod := &corev1.Pod{Name: sourcePod, Namespace: metav1.NamespaceDefault}
+		f := newKubevirtFixture(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}})
+		m := newTestVMIMigration("migration-cur", "uid-cur", testBaseTime, kubevirtv1.MigrationRunning)
+		f.expectMigrationAndVMI(m, vmiWithSourcePod())
+		f.expectPorts("vm1.default")
+		require.NoError(t, f.ctrl.handleAddOrUpdateVMIMigration(testMigration))
+	})
+}
+
 // The terminal branch resets the migrate options. Its guards are the subject of
 // several past regressions, so each is pinned here.
 func TestHandleAddOrUpdateVMIMigrationTerminal(t *testing.T) {
