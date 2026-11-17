@@ -1642,6 +1642,10 @@ func TestServiceScopedExternalLBFamilies(t *testing.T) {
 	if name := serviceScopedExternalLBName(ipv4svc, corev1.ProtocolTCP, "172.19.0.100"); name != wantName {
 		t.Fatalf("cluster etp external LB name = %q, want %q", name, wantName)
 	}
+	nodePort := &corev1.Service{Spec: corev1.ServiceSpec{Type: corev1.ServiceTypeNodePort, Ports: []corev1.ServicePort{{NodePort: 30080}}}}
+	if got = serviceScopedExternalLBFamilies(nodePort); !slices.Equal(got, []string{"ipv4", "ipv6"}) {
+		t.Fatalf("NodePort families = %v, want ipv4 and ipv6", got)
+	}
 }
 
 func TestEnsureServiceScopedLBExternalETPLocalIPv6SetsAddressFamily(t *testing.T) {
