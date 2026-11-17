@@ -271,6 +271,12 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 
 		switch rule.RemoteType {
 		case kubeovnv1.SgRemoteTypeAddress:
+			// remoteAddress is inserted verbatim into a single OVN ACL match, which does not
+			// accept a comma separated list, so reject one here instead of reporting the rule
+			// as synced while its ACL fails to install.
+			if strings.Contains(rule.RemoteAddress, ",") {
+				return fmt.Errorf("remoteAddress '%s' must be a single address, a comma separated list is not supported", rule.RemoteAddress)
+			}
 			if strings.Contains(rule.RemoteAddress, "/") {
 				if err := util.CheckCidrs(rule.RemoteAddress); err != nil {
 					return fmt.Errorf("invalid CIDR '%s'", rule.RemoteAddress)
@@ -290,6 +296,10 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 		}
 
 		if rule.LocalAddress != "" {
+			// localAddress is also inserted verbatim into a single OVN ACL match.
+			if strings.Contains(rule.LocalAddress, ",") {
+				return fmt.Errorf("localAddress '%s' must be a single address, a comma separated list is not supported", rule.LocalAddress)
+			}
 			if strings.Contains(rule.LocalAddress, "/") {
 				if err := util.CheckCidrs(rule.LocalAddress); err != nil {
 					return fmt.Errorf("invalid CIDR '%s'", rule.LocalAddress)

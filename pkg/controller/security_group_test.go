@@ -303,6 +303,40 @@ func Test_validateSgRule(t *testing.T) {
 		require.ErrorContains(t, err, "invalid CIDR")
 	})
 
+	t.Run("remote address list is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		// Each CIDR is valid on its own, but the list is inserted verbatim into a single
+		// OVN ACL match (ip4.src == a,b), which OVN cannot parse, so the rule must be rejected
+		// instead of being reported as synced while its ACL never installs.
+		sg := baseSG(kubeovnv1.SecurityGroupRule{
+			IPVersion:     "ipv4",
+			Priority:      1,
+			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress: "10.16.0.2/32,10.16.0.3/32",
+			Protocol:      "all",
+			Policy:        kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
+		})
+		err := ctrl.validateSgRule(sg)
+		require.ErrorContains(t, err, "must be a single address")
+	})
+
+	t.Run("local address list is rejected", func(t *testing.T) {
+		t.Parallel()
+
+		sg := baseSG(kubeovnv1.SecurityGroupRule{
+			IPVersion:     "ipv4",
+			Priority:      1,
+			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress: "10.0.0.1",
+			LocalAddress:  "192.168.1.1/32,192.168.1.2/32",
+			Protocol:      "all",
+			Policy:        kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
+		})
+		err := ctrl.validateSgRule(sg)
+		require.ErrorContains(t, err, "must be a single address")
+	})
+
 	t.Run("invalid local address IP", func(t *testing.T) {
 		t.Parallel()
 
