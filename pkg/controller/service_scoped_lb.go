@@ -53,6 +53,7 @@ type serviceLBTrafficClass string
 const (
 	serviceLBInternalTraffic serviceLBTrafficClass = "internal"
 	serviceLBExternalTraffic serviceLBTrafficClass = "external"
+	serviceLBNodePortTraffic serviceLBTrafficClass = "nodeport"
 )
 
 func subnetEnablesServiceLB(subnet *kubeovnv1.Subnet, defaultEnable bool) bool {
@@ -159,6 +160,13 @@ func serviceUsesDistributedLB(svc *v1.Service) bool {
 
 func serviceUsesTemplateLB(svc *v1.Service) bool {
 	return serviceUsesTrafficDistribution(svc) && !serviceUsesDistributedLB(svc)
+}
+
+// serviceHasNodePorts reports whether an ordinary Service has allocated NodePorts.
+func serviceHasNodePorts(svc *v1.Service) bool {
+	return serviceUsesScopedLB(svc) && serviceScopedLBOwner(svc).kind == serviceLBOwnerKind &&
+		(svc.Spec.Type == v1.ServiceTypeNodePort || svc.Spec.Type == v1.ServiceTypeLoadBalancer) &&
+		slices.ContainsFunc(svc.Spec.Ports, func(port v1.ServicePort) bool { return port.NodePort != 0 })
 }
 
 func serviceUsesTrafficDistribution(svc *v1.Service) bool {
@@ -522,6 +530,11 @@ func (c *Controller) serviceScopedLoadBalancerNamesForVPC(vpcName string) ([]str
 			continue
 		}
 		for _, name := range serviceScopedLBNames(svc) {
+			// NodePort attachments must be committed together with their
+			// ingress guards by the owning Service, including on new subnets.
+			if strings.HasSuffix(name, ":"+string(serviceLBNodePortTraffic)) {
+				continue
+			}
 			names[name] = struct{}{}
 		}
 	}
@@ -677,16 +690,10 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		if err := c.reconcileServiceScopedLoadBalancerAttachments(vpcName, lbNames...); err != nil {
 			return err
 		}
-		// ClusterIP services keep their internal LB switch-only so host-network
-		// requests preserve the node source address. NodePort traffic enters via
-		// the node's router port, so its LB must also be attached to the router.
-		// LoadBalancer Services also receive allocated NodePort values, but their
-		// internal and external traffic still use separate LB attachment scopes.
-		// Only a Service explicitly typed NodePort needs every scoped LB on the
-		// router for node-port ingress.
-		isNodePort := svc.Spec.Type == v1.ServiceTypeNodePort
-		if svc.Spec.Type != v1.ServiceTypeLoadBalancer && !isNodePort {
-			return nil
+		// Internal and NodePort LBs are switch-only. External ingress remains
+		// on the node/kube-proxy path rather than the Cluster NodePort LB.
+		if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
+			return c.detachServiceScopedLoadBalancersFromRouters(lbNames...)
 		}
 
 		// ClusterIP traffic is handled on each enabled logical switch, matching
@@ -703,9 +710,7 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		}
 		var routerLBNames, nonRouterLBNames []string
 		for _, name := range lbNames {
-			if isNodePort {
-				routerLBNames = append(routerLBNames, name)
-			} else if _, ok := externalNames[name]; ok {
+			if _, ok := externalNames[name]; ok {
 				routerLBNames = append(routerLBNames, name)
 			} else {
 				nonRouterLBNames = append(nonRouterLBNames, name)
@@ -740,6 +745,9 @@ func (c *Controller) serviceScopedVipAttachSubnets(svc *v1.Service, subnetName s
 }
 
 func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
+	if client, ok := c.OVNNbClient.(resourceLoadBalancerClient); ok {
+		return client.ReconcileLoadBalancers(newServiceLoadBalancerReconciliation(svc).batch)
+	}
 	owner := serviceScopedLBOwner(svc)
 	if owner.uid == "" {
 		return nil
@@ -1009,7 +1017,13 @@ func serviceScopedLBNames(svc *v1.Service) []string {
 		} else if svc.Spec.Type == v1.ServiceTypeLoadBalancer || serviceUsesDistributedLB(svc) {
 			trafficClasses = append(trafficClasses, serviceLBExternalTraffic)
 		}
+		if serviceHasNodePorts(svc) {
+			trafficClasses = append(trafficClasses, serviceLBNodePortTraffic)
+		}
 		for _, trafficClass := range trafficClasses {
+			if trafficClass == serviceLBNodePortTraffic && port.NodePort == 0 {
+				continue
+			}
 			families := []string{""}
 			switch trafficClass {
 			case serviceLBInternalTraffic:

@@ -161,6 +161,8 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 		oldSvc.Annotations[util.RouterLBRuleVipsAnnotation] == newSvc.Annotations[util.RouterLBRuleVipsAnnotation] &&
 		oldSvc.Annotations[util.VpcNatGatewayAnnotation] == newSvc.Annotations[util.VpcNatGatewayAnnotation] &&
 		oldSvc.Annotations[util.EipAnnotation] == newSvc.Annotations[util.EipAnnotation] &&
+		oldSvc.Annotations[v1.AnnotationTopologyMode] == newSvc.Annotations[v1.AnnotationTopologyMode] &&
+		oldSvc.Annotations[v1.DeprecatedAnnotationTopologyAwareHints] == newSvc.Annotations[v1.DeprecatedAnnotationTopologyAwareHints] &&
 		slices.Equal(oldClusterIps, newClusterIps) &&
 		reflect.DeepEqual(oldSvc.Spec, newSvc.Spec) {
 		return
@@ -198,7 +200,9 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 		oldSvc.Annotations[util.SwitchLBRuleVipsAnnotation] != newSvc.Annotations[util.SwitchLBRuleVipsAnnotation] ||
 		oldSvc.Annotations[util.RouterLBRuleVipsAnnotation] != newSvc.Annotations[util.RouterLBRuleVipsAnnotation] ||
 		oldSvc.Annotations[util.VpcNatGatewayAnnotation] != newSvc.Annotations[util.VpcNatGatewayAnnotation] ||
-		oldSvc.Annotations[util.EipAnnotation] != newSvc.Annotations[util.EipAnnotation]
+		oldSvc.Annotations[util.EipAnnotation] != newSvc.Annotations[util.EipAnnotation] ||
+		oldSvc.Annotations[v1.AnnotationTopologyMode] != newSvc.Annotations[v1.AnnotationTopologyMode] ||
+		oldSvc.Annotations[v1.DeprecatedAnnotationTopologyAwareHints] != newSvc.Annotations[v1.DeprecatedAnnotationTopologyAwareHints]
 	if endpointReconcile && (serviceUsesScopedLB(oldSvc) || serviceUsesScopedLB(newSvc)) && c.addOrUpdateEndpointSliceQueue != nil {
 		c.enqueueEndpointSliceService(cache.MetaObjectToName(newSvc).String(), oldSvc, newSvc)
 	}

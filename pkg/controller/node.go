@@ -53,7 +53,7 @@ func (c *Controller) enqueueTrafficDistributionServices() {
 		return
 	}
 	for _, svc := range services {
-		if serviceUsesTrafficDistribution(svc) {
+		if serviceUsesTrafficDistribution(svc) || serviceHasNodePorts(svc) {
 			c.enqueueEndpointSliceService(cache.MetaObjectToName(svc).String(), svc)
 		}
 	}
@@ -172,6 +172,7 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	}
 	nodeReadyChanged := nodeReady(oldNode) != nodeReady(newNode)
 	nodeLabelsChanged := !maps.Equal(oldNode.Labels, newNode.Labels)
+	nodeAddressesChanged := !slices.Equal(oldNode.Status.Addresses, newNode.Status.Addresses)
 
 	key := cache.MetaObjectToName(newNode).String()
 	if nodeReadyChanged || kubeOvnAnnotationsChanged(oldNode.Annotations, newNode.Annotations) {
@@ -192,7 +193,7 @@ func (c *Controller) enqueueUpdateNode(oldObj, newObj any) {
 	if nodeIsExternalGateway(oldNode) != nodeIsExternalGateway(newNode) {
 		c.enqueueExternalVpcsForReconcile()
 	}
-	if (nodeReadyChanged || nodeLabelsChanged) && c.config.EnableOvnLB {
+	if (nodeReadyChanged || nodeLabelsChanged || nodeAddressesChanged) && c.config.EnableOvnLB {
 		c.enqueueTrafficDistributionServices()
 	}
 }
