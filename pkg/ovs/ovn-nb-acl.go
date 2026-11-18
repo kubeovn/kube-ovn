@@ -13,7 +13,6 @@ import (
 	netv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/klog/v2"
-	"k8s.io/utils/ptr"
 
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
 	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
@@ -89,7 +88,7 @@ func (c *OVNNbClient) UpdateDefaultBlockACLOps(npName, pgName, direction string,
 		setNetworkPolicyACLName(acl, npName)
 		if loggingEnabled {
 			acl.Log = true
-			acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
+			acl.Severity = new(ovnnb.ACLSeverityWarning)
 			if loggingEnabled && logRate > 0 {
 				acl.Meter = new(meterName)
 			}
@@ -685,7 +684,7 @@ func (c *OVNNbClient) SetLogicalSwitchPrivate(lsName, cidrBlock, nodeSwitchCIDR 
 	options := func(acl *ovnnb.ACL) {
 		setACLName(acl, lsName)
 		acl.Log = true
-		acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
+		acl.Severity = new(ovnnb.ACLSeverityWarning)
 	}
 
 	defaultDropACL, err := c.newACL(lsName, ovnnb.ACLDirectionToLport, util.DefaultDropPriority, allIPMatch.String(), ovnnb.ACLActionDrop, util.NetpolACLTier, options)
@@ -1724,7 +1723,7 @@ func (c *OVNNbClient) UpdateAnpRuleACLOps(pgName, asName, protocol, aclName stri
 		if slices.Contains(logACLActions, aclAction) {
 			acl.Log = true
 			if aclAction == ovnnb.ACLActionDrop {
-				acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
+				acl.Severity = new(ovnnb.ACLSeverityWarning)
 			}
 		}
 	}
@@ -1784,7 +1783,7 @@ func (c *OVNNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName stri
 		if slices.Contains(logACLActions, aclAction) {
 			acl.Log = true
 			if aclAction == ovnnb.ACLActionDrop {
-				acl.Severity = ptr.To(ovnnb.ACLSeverityWarning)
+				acl.Severity = new(ovnnb.ACLSeverityWarning)
 			}
 		}
 	}
