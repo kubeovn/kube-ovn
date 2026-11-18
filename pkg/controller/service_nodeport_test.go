@@ -58,10 +58,8 @@ func TestServiceNodePortsUseStaticClusterBackends(t *testing.T) {
 				require.Contains(t, ls.LoadBalancer, lb.UUID)
 				var variables []ovnnb.ChassisTemplateVar
 				require.NoError(t, nb.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(t.Context(), &variables))
-				for _, row := range variables {
-					for key := range row.Variables {
-						require.NotContains(t, key, "_nport_")
-					}
+				if serviceType == corev1.ServiceTypeNodePort {
+					require.Empty(t, variables, "static NodePort LBs must not create chassis variables")
 				}
 			})
 		}
@@ -92,69 +90,54 @@ func TestServiceNodePortsSeparateProtocolsWithTheSamePort(t *testing.T) {
 	}
 }
 
-func nodePortMigrationFixture(t *testing.T) (*Controller, *ovs.OVNNbClient, *corev1.Service, []*discoveryv1.EndpointSlice) {
+func nodePortFixture(t *testing.T) (*Controller, *ovs.OVNNbClient, *corev1.Service, []*discoveryv1.EndpointSlice) {
 	t.Helper()
 	ctrl, nb, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeNodePort, false)
 	svc.Spec.Ports[0].NodePort = 30080
 	node, err := ctrl.nodesLister.Get("node")
 	require.NoError(t, err)
 	node.Status.Addresses = []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "192.0.2.10"}}
-	prefix := serviceNodePortTemplatePrefix(svc)
-	for _, family := range []string{"ipv4", "ipv6"} {
-		name := serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, family)
-		require.NoError(t, nb.ReconcileLoadBalancer(ovs.LoadBalancerConfig{
-			Name: name, Protocol: "tcp", ExternalIDs: serviceScopedLBExternalIDs(svc, "vpc", serviceLBExternalTraffic),
-			Options: map[string]string{"template": "true", "address-family": family},
-		}))
-		require.NoError(t, nb.LoadBalancerAddVip(name, "^"+prefix+"vip:30080", "^"+prefix+"backends"))
-		require.NoError(t, nb.LogicalRouterUpdateLoadBalancers("vpc", "insert", name))
-	}
-	require.NoError(t, nb.ReconcileChassisTemplateVariables("old-chassis", "", map[string]string{
-		prefix + "vip": "192.0.2.10", prefix + "backends": "10.0.0.2:8080", "other_controller": "preserve",
-	}))
 	return ctrl, nb, svc, endpoints
 }
 
-func TestServiceNodePortMigrationIsAtomic(t *testing.T) {
-	ctrl, nb, svc, endpoints := nodePortMigrationFixture(t)
+func TestServiceNodePortReconciliationIsAtomic(t *testing.T) {
+	ctrl, nb, svc, endpoints := nodePortFixture(t)
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 	before, err := nb.ListLoadBalancers(nil)
 	require.NoError(t, err)
+	guardsBefore, err := nb.ListAcls("", map[string]string{ovs.LoadBalancerIngressGuardExternalID: "true"})
+	require.NoError(t, err)
+	svc.Spec.Ports[0].NodePort = 30081
+	node, err := ctrl.nodesLister.Get("node")
+	require.NoError(t, err)
+	node.Status.Addresses[0].Address = "192.0.2.11"
 	recorder := &serviceLBTransactionClient{Client: nb.Client, fail: true}
 	nb.Database = table.NewDatabase(recorder, nb.Timeout, table.RetryPolicy{})
 	require.Error(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 	after, err := nb.ListLoadBalancers(nil)
 	require.NoError(t, err)
-	require.ElementsMatch(t, before, after, "a failed migration must preserve the old data plane")
-	var variables []ovnnb.ChassisTemplateVar
-	require.NoError(t, nb.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(t.Context(), &variables))
-	require.Contains(t, variables[0].Variables, serviceNodePortTemplatePrefix(svc)+"vip")
+	require.ElementsMatch(t, before, after, "a failed reconcile must preserve the old data plane")
 	guards, err := nb.ListAcls("", map[string]string{ovs.LoadBalancerIngressGuardExternalID: "true"})
 	require.NoError(t, err)
-	require.Empty(t, guards)
+	require.ElementsMatch(t, guardsBefore, guards, "a failed reconcile must preserve the ingress boundary")
 	recorder.fail = false
 	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 	require.Len(t, recorder.transactions, 2, "each complete attempt must be one transaction")
-	after, err = nb.ListLoadBalancers(nil)
+	lb, err := nb.GetLoadBalancer(serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBNodePortTraffic), false)
 	require.NoError(t, err)
-	for _, lb := range after {
-		require.NotEqual(t, "true", lb.Options["template"])
-	}
-	variables = nil
-	require.NoError(t, nb.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(t.Context(), &variables))
-	require.Len(t, variables, 1)
-	require.Equal(t, map[string]string{"other_controller": "preserve"}, variables[0].Variables)
+	require.Equal(t, map[string]string{"192.0.2.11:30081": "10.0.0.2:8080"}, lb.Vips)
 	guards, err = nb.ListAcls("", map[string]string{ovs.LoadBalancerIngressGuardExternalID: "true"})
 	require.NoError(t, err)
 	require.Len(t, guards, 1)
 	require.Equal(t, "drop", guards[0].Action)
 	require.Equal(t, "false", guards[0].Options["apply-after-lb"])
-	require.Equal(t, "inport == \"localnet.subnet\" && ((ip4.dst == 192.0.2.10 && tcp.dst == 30080))", guards[0].Match)
+	require.Equal(t, "inport == \"localnet.subnet\" && ((ip4.dst == 192.0.2.11 && tcp.dst == 30081))", guards[0].Match)
 	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 	require.Len(t, recorder.transactions, 2, "unchanged reconciliation must not write")
 }
 
 func TestServiceNodePortLifecycle(t *testing.T) {
-	ctrl, nb, svc, endpoints := nodePortMigrationFixture(t)
+	ctrl, nb, svc, endpoints := nodePortFixture(t)
 	svc.Spec.SessionAffinity = corev1.ServiceAffinityClientIP
 	svc.Spec.SessionAffinityConfig = &corev1.SessionAffinityConfig{ClientIP: &corev1.ClientIPConfig{TimeoutSeconds: new(int32(42))}}
 	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
@@ -198,7 +181,7 @@ func TestServiceNodePortLifecycle(t *testing.T) {
 func TestServiceNodePortGuardDeletionAndGC(t *testing.T) {
 	for _, useGC := range []bool{false, true} {
 		t.Run(map[bool]string{false: "deletion", true: "missed deletion GC"}[useGC], func(t *testing.T) {
-			ctrl, nb, svc, endpoints := nodePortMigrationFixture(t)
+			ctrl, nb, svc, endpoints := nodePortFixture(t)
 			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 			if useGC {
 				require.NoError(t, ctrl.gcServiceNodePortIngressGuards([]*corev1.Service{svc}))
@@ -221,7 +204,7 @@ func TestServiceNodePortGuardDeletionAndGC(t *testing.T) {
 }
 
 func TestServiceNodePortGuardSurvivesSubnetACLReset(t *testing.T) {
-	ctrl, nb, svc, endpoints := nodePortMigrationFixture(t)
+	ctrl, nb, svc, endpoints := nodePortFixture(t)
 	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 	before, err := nb.ListAcls("", map[string]string{ovs.LoadBalancerIngressGuardExternalID: "true"})
 	require.NoError(t, err)
@@ -234,7 +217,7 @@ func TestServiceNodePortGuardSurvivesSubnetACLReset(t *testing.T) {
 }
 
 func TestServiceNodePortNewSubnetAttachmentIsGuarded(t *testing.T) {
-	ctrl, nb, svc, endpoints := nodePortMigrationFixture(t)
+	ctrl, nb, svc, endpoints := nodePortFixture(t)
 	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 	name := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBNodePortTraffic)
 	lb, err := nb.GetLoadBalancer(name, false)

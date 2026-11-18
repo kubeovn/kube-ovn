@@ -719,15 +719,6 @@ func (c *Controller) gcLoadBalancer() error {
 	for _, svc := range svcs {
 		if serviceUsesScopedLB(svc) {
 			vpcLbs.Add(serviceScopedLBNames(svc)...)
-			if serviceHasNodePorts(svc) {
-				// Retain the old template representation until the Service
-				// installs its static replacement in the same transaction.
-				for _, port := range svc.Spec.Ports {
-					for _, family := range []string{"ipv4", "ipv6"} {
-						vpcLbs.Add(serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBExternalTraffic, family))
-					}
-				}
-			}
 		}
 	}
 

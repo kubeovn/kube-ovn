@@ -765,11 +765,6 @@ func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
 			return err
 		}
 	}
-	if serviceHasNodePorts(svc) {
-		if err := c.cleanupServiceNodePortTemplateState(svc); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -964,9 +959,6 @@ func (c *Controller) cleanupServiceScopedLBVIPs(svc *v1.Service, desired map[str
 func (c *Controller) gcServiceTrafficDistributionVariables(services []*v1.Service) error {
 	activePrefixes := make(map[string]struct{}, len(services))
 	for _, svc := range services {
-		// Keep legacy NodePort variables until the Service's atomic reconcile
-		// replaces its template LBs. GC must not break the old data plane first.
-		activePrefixes[serviceNodePortTemplatePrefix(svc)] = struct{}{}
 		if serviceUsesTemplateLB(svc) {
 			activePrefixes[serviceTrafficDistributionVariablePrefix(svc)] = struct{}{}
 		}
