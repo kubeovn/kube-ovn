@@ -53,6 +53,7 @@ type serviceLBTrafficClass string
 const (
 	serviceLBInternalTraffic serviceLBTrafficClass = "internal"
 	serviceLBExternalTraffic serviceLBTrafficClass = "external"
+	serviceLBNodePortTraffic serviceLBTrafficClass = "nodeport"
 )
 
 func subnetEnablesServiceLB(subnet *kubeovnv1.Subnet, defaultEnable bool) bool {
@@ -161,14 +162,11 @@ func serviceUsesTemplateLB(svc *v1.Service) bool {
 	return serviceUsesTrafficDistribution(svc) && !serviceUsesDistributedLB(svc)
 }
 
-// serviceUsesNodePortTemplate reports whether a NodePort service needs a
-// chassis-scoped backend set. NodePort VIPs are installed on every node
-// address, so one static backend list cannot implement the receiving-node
-// locality and topology rules.
-func serviceUsesNodePortTemplate(svc *v1.Service) bool {
-	return svc.Spec.Type == v1.ServiceTypeNodePort && slices.ContainsFunc(svc.Spec.Ports, func(port v1.ServicePort) bool {
-		return port.NodePort != 0
-	})
+// serviceHasNodePorts reports whether an ordinary Service has allocated NodePorts.
+func serviceHasNodePorts(svc *v1.Service) bool {
+	return serviceUsesScopedLB(svc) && serviceScopedLBOwner(svc).kind == serviceLBOwnerKind &&
+		(svc.Spec.Type == v1.ServiceTypeNodePort || svc.Spec.Type == v1.ServiceTypeLoadBalancer) &&
+		slices.ContainsFunc(svc.Spec.Ports, func(port v1.ServicePort) bool { return port.NodePort != 0 })
 }
 
 func serviceUsesTrafficDistribution(svc *v1.Service) bool {
@@ -284,9 +282,6 @@ func serviceScopedExternalLBName(svc *v1.Service, protocol v1.Protocol, vip stri
 }
 
 func serviceScopedExternalLBFamilies(svc *v1.Service) []string {
-	if serviceUsesNodePortTemplate(svc) {
-		return []string{"ipv4", "ipv6"}
-	}
 	if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
 		return []string{""}
 	}
@@ -431,7 +426,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 			if family != "" {
 				options["address-family"] = family
 			}
-		case (serviceUsesExternalLocalTemplate(svc) || serviceUsesNodePortTemplate(svc)) && trafficClass == serviceLBExternalTraffic:
+		case serviceUsesExternalLocalTemplate(svc) && trafficClass == serviceLBExternalTraffic:
 			options["template"] = "true"
 			if family != "" {
 				options["address-family"] = family
@@ -478,7 +473,7 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 		if err := c.OVNNbClient.SetLoadBalancerAddressFamily(name, family); err != nil {
 			return "", fmt.Errorf("set address family on service-scoped load balancer %s: %w", name, err)
 		}
-	case (serviceUsesExternalLocalTemplate(svc) || serviceUsesNodePortTemplate(svc)) && trafficClass == serviceLBExternalTraffic:
+	case serviceUsesExternalLocalTemplate(svc) && trafficClass == serviceLBExternalTraffic:
 		if err := c.OVNNbClient.SetLoadBalancerTemplate(name, true); err != nil {
 			return "", fmt.Errorf("set template mode on external local service-scoped load balancer %s: %w", name, err)
 		}
@@ -535,6 +530,11 @@ func (c *Controller) serviceScopedLoadBalancerNamesForVPC(vpcName string) ([]str
 			continue
 		}
 		for _, name := range serviceScopedLBNames(svc) {
+			// NodePort attachments must be committed together with their
+			// ingress guards by the owning Service, including on new subnets.
+			if strings.HasSuffix(name, ":"+string(serviceLBNodePortTraffic)) {
+				continue
+			}
 			names[name] = struct{}{}
 		}
 	}
@@ -690,16 +690,10 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		if err := c.reconcileServiceScopedLoadBalancerAttachments(vpcName, lbNames...); err != nil {
 			return err
 		}
-		// ClusterIP services keep their internal LB switch-only so host-network
-		// requests preserve the node source address. NodePort traffic enters via
-		// the node's router port, so its LB must also be attached to the router.
-		// LoadBalancer Services also receive allocated NodePort values, but their
-		// internal and external traffic still use separate LB attachment scopes.
-		// Only a Service explicitly typed NodePort needs every scoped LB on the
-		// router for node-port ingress.
-		isNodePort := svc.Spec.Type == v1.ServiceTypeNodePort
-		if svc.Spec.Type != v1.ServiceTypeLoadBalancer && !isNodePort {
-			return nil
+		// Internal and NodePort LBs are switch-only. External ingress remains
+		// on the node/kube-proxy path rather than the Cluster NodePort LB.
+		if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
+			return c.detachServiceScopedLoadBalancersFromRouters(lbNames...)
 		}
 
 		// ClusterIP traffic is handled on each enabled logical switch, matching
@@ -716,9 +710,7 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		}
 		var routerLBNames, nonRouterLBNames []string
 		for _, name := range lbNames {
-			if isNodePort {
-				routerLBNames = append(routerLBNames, name)
-			} else if _, ok := externalNames[name]; ok {
+			if _, ok := externalNames[name]; ok {
 				routerLBNames = append(routerLBNames, name)
 			} else {
 				nonRouterLBNames = append(nonRouterLBNames, name)
@@ -753,6 +745,9 @@ func (c *Controller) serviceScopedVipAttachSubnets(svc *v1.Service, subnetName s
 }
 
 func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
+	if client, ok := c.OVNNbClient.(resourceLoadBalancerClient); ok {
+		return client.ReconcileLoadBalancers(newServiceLoadBalancerReconciliation(svc).batch)
+	}
 	owner := serviceScopedLBOwner(svc)
 	if owner.uid == "" {
 		return nil
@@ -770,7 +765,7 @@ func (c *Controller) deleteServiceScopedLoadBalancers(svc *v1.Service) error {
 			return err
 		}
 	}
-	if serviceUsesNodePortTemplate(svc) {
+	if serviceHasNodePorts(svc) {
 		if err := c.cleanupServiceNodePortTemplateState(svc); err != nil {
 			return err
 		}
@@ -969,14 +964,14 @@ func (c *Controller) cleanupServiceScopedLBVIPs(svc *v1.Service, desired map[str
 func (c *Controller) gcServiceTrafficDistributionVariables(services []*v1.Service) error {
 	activePrefixes := make(map[string]struct{}, len(services))
 	for _, svc := range services {
+		// Keep legacy NodePort variables until the Service's atomic reconcile
+		// replaces its template LBs. GC must not break the old data plane first.
+		activePrefixes[serviceNodePortTemplatePrefix(svc)] = struct{}{}
 		if serviceUsesTemplateLB(svc) {
 			activePrefixes[serviceTrafficDistributionVariablePrefix(svc)] = struct{}{}
 		}
 		if serviceUsesExternalLocalTemplate(svc) {
 			activePrefixes[serviceExternalLocalTemplatePrefix(svc)] = struct{}{}
-		}
-		if serviceUsesNodePortTemplate(svc) {
-			activePrefixes[serviceNodePortTemplatePrefix(svc)] = struct{}{}
 		}
 	}
 	if err := c.OVNNbClient.DeleteChassisTemplateVariables(func(name string) bool {
@@ -1027,10 +1022,16 @@ func serviceScopedLBNames(svc *v1.Service) []string {
 		trafficClasses := []serviceLBTrafficClass{serviceLBInternalTraffic}
 		if ownerKind == switchLBRuleLBOwnerKind || ownerKind == routerLBRuleLBOwnerKind {
 			trafficClasses = []serviceLBTrafficClass{serviceLBExternalTraffic}
-		} else if svc.Spec.Type == v1.ServiceTypeLoadBalancer || serviceUsesDistributedLB(svc) || serviceUsesNodePortTemplate(svc) {
+		} else if svc.Spec.Type == v1.ServiceTypeLoadBalancer || serviceUsesDistributedLB(svc) {
 			trafficClasses = append(trafficClasses, serviceLBExternalTraffic)
 		}
+		if serviceHasNodePorts(svc) {
+			trafficClasses = append(trafficClasses, serviceLBNodePortTraffic)
+		}
 		for _, trafficClass := range trafficClasses {
+			if trafficClass == serviceLBNodePortTraffic && port.NodePort == 0 {
+				continue
+			}
 			families := []string{""}
 			switch trafficClass {
 			case serviceLBInternalTraffic:

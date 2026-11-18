@@ -51,7 +51,7 @@ func findServiceKey(endpointSlice *discoveryv1.EndpointSlice) string {
 
 func serviceNeedsPriorityEndpointReconcile(svc *v1.Service) bool {
 	return serviceUsesTrafficDistribution(svc) || serviceUsesDistributedLB(svc) ||
-		serviceUsesNodePortTemplate(svc) ||
+		serviceHasNodePorts(svc) ||
 		svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP ||
 		(svc.Spec.Type == v1.ServiceTypeLoadBalancer &&
 			svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal)
@@ -178,17 +178,11 @@ func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
 type endpointSliceServiceProfile struct {
 	lbVips               []string
 	trafficClasses       map[string]serviceLBTrafficClass
-	nodePortVIPs         []serviceNodePortVIP
+	nodePortVIPs         []string
 	externalVIPNode      string
 	serviceL2StatusReady bool
 	ignoreHealthCheck    bool
 	distributedLocal     bool
-}
-
-type serviceNodePortVIP struct {
-	address  string
-	nodeName string
-	zone     string
 }
 
 type serviceLoadBalancerSet struct {
@@ -299,8 +293,8 @@ func (c *Controller) reconcileServiceEndpointSlices(svc *v1.Service, endpointSli
 			return err
 		}
 	}
-	if serviceUsesNodePortTemplate(svc) {
-		if err := c.reconcileServiceNodePortTemplate(reconcileCtx); err != nil {
+	if serviceHasNodePorts(svc) {
+		if err := c.reconcileServiceNodePorts(reconcileCtx); err != nil {
 			return err
 		}
 	}
@@ -371,32 +365,18 @@ func (c *Controller) endpointSliceServiceProfile(svc *v1.Service) (endpointSlice
 			}
 		}
 	}
-	if serviceUsesNodePortTemplate(svc) {
+	if serviceHasNodePorts(svc) {
 		nodes, err := c.nodesLister.List(labels.Everything())
 		if err != nil {
 			return profile, fmt.Errorf("list nodes for NodePort service %s/%s: %w", svc.Namespace, svc.Name, err)
 		}
-		nodes = slices.Clone(nodes)
-		slices.SortFunc(nodes, func(a, b *v1.Node) int { return strings.Compare(a.Name, b.Name) })
-		seen := make(map[string]struct{})
+		addresses := make(map[string]struct{})
 		for _, node := range nodes {
 			for _, address := range nodePortNodeAddresses(node) {
-				if _, ok := seen[address]; ok {
-					continue
-				}
-				seen[address] = struct{}{}
-				profile.nodePortVIPs = append(profile.nodePortVIPs, serviceNodePortVIP{
-					address: address, nodeName: node.Name, zone: node.Labels[v1.LabelTopologyZone],
-				})
-				profile.addVIP(address, serviceLBExternalTraffic, svc, false)
+				addresses[address] = struct{}{}
 			}
 		}
-		slices.SortFunc(profile.nodePortVIPs, func(a, b serviceNodePortVIP) int {
-			if n := strings.Compare(a.address, b.address); n != 0 {
-				return n
-			}
-			return strings.Compare(a.nodeName, b.nodeName)
-		})
+		profile.nodePortVIPs = slices.Sorted(maps.Keys(addresses))
 	}
 	return profile, nil
 }
@@ -595,11 +575,7 @@ func (c *Controller) reconcileServiceEndpointVIPs(reconcileCtx *endpointSliceRec
 
 func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReconcileContext, lbVip string, port v1.ServicePort) error {
 	svc, profile := reconcileCtx.service, reconcileCtx.profile
-	if serviceUsesNodePortTemplate(svc) && profile.trafficClasses[lbVip] == serviceLBExternalTraffic {
-		// NodePort VIPs are represented by template variables below. The
-		// regular VIP reconciler must not install a single shared backend list.
-		return nil
-	}
+
 	state := &serviceEndpointVIPState{
 		port:         port,
 		lbVip:        lbVip,
@@ -1543,116 +1519,6 @@ func (c *Controller) reconcileServiceExternalLocalTemplate(reconcileCtx *endpoin
 
 	if err := c.reconcileServiceTemplateState(svc, prefix, migrations, desiredTemplateVIPs, variablesByChassis, reconcileCtx.lbReconciliation); err != nil {
 		return fmt.Errorf("reconcile external local template for service %s/%s: %w", svc.Namespace, svc.Name, err)
-	}
-	return nil
-}
-
-func nodePortBackends(endpointSlices []*discoveryv1.EndpointSlice, servicePort v1.ServicePort, vip serviceNodePortVIP, externalTrafficPolicy v1.ServiceExternalTrafficPolicy, trafficDistribution *string) []string {
-	candidates := serviceEndpointCandidates(endpointSlices, servicePort, vip.address, false)
-	if externalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal {
-		local := make([]serviceEndpointCandidate, 0, len(candidates))
-		fallback := make([]serviceEndpointCandidate, 0, len(candidates))
-		for _, candidate := range candidates {
-			if endpointNodeName(candidate.endpoint) == vip.nodeName {
-				local = append(local, candidate)
-			} else {
-				fallback = append(fallback, candidate)
-			}
-		}
-		if len(local) != 0 {
-			candidates = local
-		} else {
-			candidates = fallback
-		}
-	}
-	backends := make([]topologyBackend, 0, len(candidates))
-	for _, candidate := range candidates {
-		for _, address := range candidate.addresses {
-			backends = append(backends, topologyBackend{backend: util.JoinHostPort(address, candidate.targetPort), hints: candidate.endpoint.Hints})
-		}
-	}
-	if externalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal || trafficDistribution == nil {
-		result := make([]string, 0, len(backends))
-		for _, backend := range backends {
-			result = append(result, backend.backend)
-		}
-		return result
-	}
-	return topologyBackendSubset(backends, vip.nodeName, vip.zone, *trafficDistribution)
-}
-
-func nodePortTrafficDistribution(svc *v1.Service) *string {
-	if svc.Spec.TrafficDistribution != nil {
-		return svc.Spec.TrafficDistribution
-	}
-	if mode, ok := svc.Annotations[v1.AnnotationTopologyMode]; ok {
-		if strings.EqualFold(mode, "Auto") {
-			distribution := string(v1.ServiceTrafficDistributionPreferClose)
-			return &distribution
-		}
-		return nil
-	}
-	if hints, ok := svc.Annotations[v1.DeprecatedAnnotationTopologyAwareHints]; ok && strings.EqualFold(hints, "Auto") {
-		distribution := string(v1.ServiceTrafficDistributionPreferClose)
-		return &distribution
-	}
-	return nil
-}
-
-func (c *Controller) reconcileServiceNodePortTemplate(reconcileCtx *endpointSliceReconcileContext) error {
-	svc := reconcileCtx.service
-	if c.OVNSbClient == nil {
-		return errors.New("OVN southbound client is not initialized")
-	}
-	chassises, err := c.OVNSbClient.ListChassis()
-	if err != nil {
-		return fmt.Errorf("list OVN chassis for NodePort service %s/%s template: %w", svc.Namespace, svc.Name, err)
-	}
-	prefix := serviceNodePortTemplatePrefix(svc)
-	variablesByChassis := make(map[string]map[string]string, len(*chassises))
-	desiredTemplateVIPs := make(map[string]map[string]string)
-	migrations := make([]ovs.TemplateVIPMigration, 0)
-	for _, chassis := range *chassises {
-		variablesByChassis[chassis.Name] = make(map[string]string)
-	}
-	for _, port := range svc.Spec.Ports {
-		if port.NodePort == 0 {
-			continue
-		}
-		for _, nodeVIP := range reconcileCtx.profile.nodePortVIPs {
-			family := strings.ToLower(util.CheckProtocol(nodeVIP.address))
-			lbName := serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBExternalTraffic, family)
-			vip := util.JoinHostPort(nodeVIP.address, port.NodePort)
-			base := fmt.Sprintf("%s%s_%s", prefix, strings.ToLower(string(port.Protocol)), util.Sha256Hash([]byte(vip))[:8])
-			vipVariable, backendVariable := base+"_vip", base+"_backends"
-			templateVIP := "^" + vipVariable + ":" + strconv.Itoa(int(port.NodePort))
-			backends := nodePortBackends(reconcileCtx.endpointSlices, port, nodeVIP, svc.Spec.ExternalTrafficPolicy, nodePortTrafficDistribution(svc))
-			if len(backends) == 0 {
-				continue
-			}
-			if desiredTemplateVIPs[lbName] == nil {
-				desiredTemplateVIPs[lbName] = make(map[string]string)
-			}
-			desiredTemplateVIPs[lbName][templateVIP] = "^" + backendVariable
-			migrations = append(migrations, ovs.TemplateVIPMigration{
-				LoadBalancer: lbName,
-				VIP:          templateVIP,
-				Backends:     []string{"^" + backendVariable},
-				OldVIP:       vip,
-				OldLoadBalancers: c.serviceLBMigrationCandidates(svc, port.Protocol, reconcileCtx.vpc,
-					serviceLBExternalTraffic),
-			})
-			// Logical router load-balancer flows are installed on every chassis.
-			// Keep every template variable resolvable everywhere, while deriving
-			// each backend list from the Node that owns its VIP.
-			for _, chassis := range *chassises {
-				variablesByChassis[chassis.Name][vipVariable] = nodeVIP.address
-				variablesByChassis[chassis.Name][backendVariable] = strings.Join(backends, ",")
-			}
-		}
-	}
-	if err := c.reconcileServiceTemplateState(svc, prefix, migrations, desiredTemplateVIPs, variablesByChassis, reconcileCtx.lbReconciliation); err != nil {
-		return fmt.Errorf("reconcile NodePort template for service %s/%s: %w", svc.Namespace, svc.Name, err)
 	}
 	return nil
 }

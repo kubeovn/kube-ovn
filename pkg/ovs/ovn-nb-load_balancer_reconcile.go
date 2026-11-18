@@ -40,6 +40,14 @@ type LoadBalancerReconciliation struct {
 	TemplateVariables        []ChassisTemplateVariableReconciliation
 	TemplateVariablePrefixes []string
 	DeleteEmptyLoadBalancers []string
+	IngressGuards            []LoadBalancerIngressGuard
+}
+
+// LoadBalancerIngressGuard rejects an unsupported ingress path before LB.
+// Guards share the LB owner's lifecycle and are reconciled in its transaction.
+type LoadBalancerIngressGuard struct {
+	LogicalSwitch string
+	Match         string
 }
 
 type loadBalancerReconcileRow struct {
@@ -103,6 +111,11 @@ func (c *OVNNbClient) resourceLoadBalancerOps(reconciliation LoadBalancerReconci
 		return nil, err
 	}
 	ops = append(ops, variableOps...)
+	guardOps, err := c.resourceLoadBalancerIngressGuardOps(reconciliation)
+	if err != nil {
+		return nil, err
+	}
+	ops = append(ops, guardOps...)
 	if !slices.ContainsFunc(ops, func(op ovsdb.Operation) bool { return op.Op != ovsdb.OperationWait }) {
 		return nil, nil
 	}

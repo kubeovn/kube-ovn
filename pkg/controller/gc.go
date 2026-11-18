@@ -694,6 +694,9 @@ func (c *Controller) gcLoadBalancer() error {
 			klog.Errorf("delete all load balancers: %v", err)
 			return err
 		}
+		if err := c.gcServiceNodePortIngressGuards(nil); err != nil {
+			return err
+		}
 		if err := c.gcServiceTrafficDistributionVariables(nil); err != nil {
 			return err
 		}
@@ -706,6 +709,9 @@ func (c *Controller) gcLoadBalancer() error {
 		klog.Errorf("failed to list svc, %v", err)
 		return err
 	}
+	if err := c.gcServiceNodePortIngressGuards(svcs); err != nil {
+		return err
+	}
 	if err := c.gcServiceTrafficDistributionVariables(svcs); err != nil {
 		return err
 	}
@@ -713,6 +719,15 @@ func (c *Controller) gcLoadBalancer() error {
 	for _, svc := range svcs {
 		if serviceUsesScopedLB(svc) {
 			vpcLbs.Add(serviceScopedLBNames(svc)...)
+			if serviceHasNodePorts(svc) {
+				// Retain the old template representation until the Service
+				// installs its static replacement in the same transaction.
+				for _, port := range svc.Spec.Ports {
+					for _, family := range []string{"ipv4", "ipv6"} {
+						vpcLbs.Add(serviceScopedLBNameForTrafficClassAndFamily(svc, port.Protocol, serviceLBExternalTraffic, family))
+					}
+				}
+			}
 		}
 	}
 
