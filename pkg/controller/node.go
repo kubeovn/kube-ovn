@@ -53,7 +53,7 @@ func (c *Controller) enqueueTrafficDistributionServices() {
 		return
 	}
 	for _, svc := range services {
-		if serviceUsesTrafficDistribution(svc) || serviceUsesNodePortTemplate(svc) {
+		if serviceUsesTrafficDistribution(svc) || serviceHasNodePorts(svc) {
 			c.enqueueEndpointSliceService(cache.MetaObjectToName(svc).String(), svc)
 		}
 	}

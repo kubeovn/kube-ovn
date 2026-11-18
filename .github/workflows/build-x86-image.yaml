@@ -301,6 +301,15 @@ jobs:
           docker tag kubeovn/kube-ovn-base:$TAG-amd64 kubeovn/kube-ovn-base:$TAG
           docker tag kubeovn/kube-ovn-base:$TAG-debug-amd64 kubeovn/kube-ovn-base:$TAG-debug
 
+      - name: Test static NodePort logical flows
+        run: |
+          go test -c -o /tmp/nodeport-lb.test ./pkg/controller
+          docker run --rm --network=none --read-only --tmpfs /tmp \
+            --mount "type=bind,source=$PWD/hack/test-service-nodeport-flows.sh,target=/test-service-nodeport-flows.sh,readonly" \
+            --mount "type=bind,source=/tmp/nodeport-lb.test,target=/nodeport-lb.test,readonly" \
+            --env NODEPORT_LB_TEST_BINARY=/nodeport-lb.test \
+            --entrypoint bash "kubeovn/kube-ovn-base:$TAG" /test-service-nodeport-flows.sh
+
       - name: Download dpdk base images
         if: needs.build-kube-ovn-dpdk-base.outputs.build-dpdk-base == 1
         uses: actions/download-artifact@v8

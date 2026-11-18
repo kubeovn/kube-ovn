@@ -697,7 +697,7 @@ func TestReconcileServiceScopedLoadBalancerAttachmentsNodePort(t *testing.T) {
 		},
 	}
 	fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-a", ovsdb.MutateOperationInsert, "svc-lb").Return(nil)
-	fake.mockOvnClient.EXPECT().LogicalRouterUpdateLoadBalancers(util.DefaultVpc, ovsdb.MutateOperationInsert, "svc-lb").Return(nil)
+	fake.mockOvnClient.EXPECT().LogicalRouterUpdateLoadBalancers(util.DefaultVpc, ovsdb.MutateOperationDelete, "svc-lb").Return(nil)
 
 	if err := fake.fakeController.reconcileResourceScopedLoadBalancerAttachments(svc, util.DefaultVpc, "", "svc-lb"); err != nil {
 		t.Fatal(err)
@@ -1251,6 +1251,9 @@ func TestGCServiceTrafficDistributionVariables(t *testing.T) {
 		if filter(activePrefix + "tcp_vip") {
 			t.Fatal("active service variable selected for garbage collection")
 		}
+		if filter(serviceNodePortTemplatePrefix(svc) + "tcp_vip") {
+			t.Fatal("legacy NodePort variable must survive until atomic migration")
+		}
 		if !filter(serviceTemplateVarRoot + "orphan_tcp_vip") {
 			t.Fatal("orphan service variable not selected for garbage collection")
 		}
@@ -1649,8 +1652,8 @@ func TestServiceScopedExternalLBFamilies(t *testing.T) {
 		t.Fatalf("cluster etp external LB name = %q, want %q", name, wantName)
 	}
 	nodePort := &corev1.Service{Spec: corev1.ServiceSpec{Type: corev1.ServiceTypeNodePort, Ports: []corev1.ServicePort{{NodePort: 30080}}}}
-	if got = serviceScopedExternalLBFamilies(nodePort); !slices.Equal(got, []string{"ipv4", "ipv6"}) {
-		t.Fatalf("NodePort families = %v, want ipv4 and ipv6", got)
+	if got = serviceScopedExternalLBFamilies(nodePort); !slices.Equal(got, []string{""}) {
+		t.Fatalf("NodePort external families = %v, want one static LB", got)
 	}
 }
 

@@ -13,6 +13,7 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -64,9 +65,18 @@ func (c *Controller) serviceScopedLBConfig(svc *v1.Service, protocol v1.Protocol
 	} else {
 		config.DeleteOptions = append(config.DeleteOptions, "distributed")
 	}
+	if trafficClass == serviceLBNodePortTraffic {
+		config.Options["neighbor_responder"] = "none"
+		config.Options["add_route"] = "false"
+		// Node addresses may include both families, independently of ClusterIPs.
+		config.SelectionFields = serviceScopedLBSelectionFields(svc, protocol, timeout, "")
+		if len(config.SelectionFields) != 0 {
+			config.SelectionFields = []string{ovnnb.LoadBalancerSelectionFieldsIPSrc, ovnnb.LoadBalancerSelectionFieldsIpv6Src}
+		}
+	}
 	config.Options["template"] = "false"
 	if (trafficClass == serviceLBInternalTraffic && serviceUsesTemplateLB(svc)) ||
-		(trafficClass == serviceLBExternalTraffic && (serviceUsesExternalLocalTemplate(svc) || serviceUsesNodePortTemplate(svc))) {
+		(trafficClass == serviceLBExternalTraffic && serviceUsesExternalLocalTemplate(svc)) {
 		config.Options["template"] = "true"
 		// Template LBs are per-Service and select a backend from chassis
 		// variables. Flush conntrack entries when an endpoint is removed so a
@@ -90,14 +100,23 @@ func (c *Controller) planServiceScopedLoadBalancers(ctx *endpointSliceReconcileC
 	owner := serviceScopedLBOwner(svc)
 	if owner.kind == switchLBRuleLBOwnerKind || owner.kind == routerLBRuleLBOwnerKind {
 		classes = []serviceLBTrafficClass{serviceLBExternalTraffic}
-	} else if serviceUsesNodePortTemplate(svc) || slices.ContainsFunc(ctx.profile.lbVips, func(vip string) bool { return ctx.profile.trafficClasses[vip] == serviceLBExternalTraffic }) {
+	} else if slices.ContainsFunc(ctx.profile.lbVips, func(vip string) bool { return ctx.profile.trafficClasses[vip] == serviceLBExternalTraffic }) {
 		classes = append(classes, serviceLBExternalTraffic)
+	}
+	if serviceHasNodePorts(svc) {
+		classes = append(classes, serviceLBNodePortTraffic)
 	}
 	for _, port := range svc.Spec.Ports {
 		for _, class := range classes {
+			if class == serviceLBNodePortTraffic && port.NodePort == 0 {
+				continue
+			}
 			families := serviceScopedInternalLBFamilies(svc)
-			if class == serviceLBExternalTraffic {
+			switch class {
+			case serviceLBExternalTraffic:
 				families = serviceScopedExternalLBFamilies(svc)
+			case serviceLBNodePortTraffic:
+				families = []string{""}
 			}
 			for _, family := range families {
 				config, err := c.serviceScopedLBConfig(svc, port.Protocol, class, family)
@@ -148,7 +167,7 @@ func (c *Controller) serviceLoadBalancerParents(ctx *endpointSliceReconcileConte
 			switches = append(switches, subnet.Name)
 		}
 	}
-	if owner.kind == routerLBRuleLBOwnerKind || svc.Spec.Type == v1.ServiceTypeNodePort || (svc.Spec.Type == v1.ServiceTypeLoadBalancer && class == serviceLBExternalTraffic) {
+	if owner.kind == routerLBRuleLBOwnerKind || (svc.Spec.Type == v1.ServiceTypeLoadBalancer && class == serviceLBExternalTraffic) {
 		routers = append(routers, ctx.vpcName)
 	}
 	return switches, routers, nil

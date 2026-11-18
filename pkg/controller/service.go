@@ -35,7 +35,7 @@ type updateSvcObject struct {
 	newPorts                 []v1.ServicePort
 	oldTrafficDistribution   bool
 	oldExternalLocalTemplate bool
-	oldNodePortTemplate      bool
+	oldNodePorts             bool
 }
 
 // podLbSvcEnabled reports whether the per-Service forwarding Pod lifecycle must run. The Pod DNATs
@@ -190,7 +190,7 @@ func (c *Controller) enqueueUpdateService(oldObj, newObj any) {
 		newPorts:                 newSvc.Spec.Ports,
 		oldTrafficDistribution:   serviceUsesTrafficDistribution(oldSvc),
 		oldExternalLocalTemplate: serviceUsesExternalLocalTemplate(oldSvc),
-		oldNodePortTemplate:      serviceUsesNodePortTemplate(oldSvc),
+		oldNodePorts:             serviceHasNodePorts(oldSvc),
 	}
 	c.updateServiceQueue.Add(updateSvc)
 	oldSpec, newSpec := oldSvc.Spec, newSvc.Spec
@@ -381,7 +381,7 @@ func (c *Controller) handleUpdateService(svcObject *updateSvcObject) error {
 			return err
 		}
 	}
-	if svcObject.oldNodePortTemplate && !serviceUsesNodePortTemplate(svc) && (!atomicLBs || !serviceUsesScopedLB(svc)) {
+	if svcObject.oldNodePorts && !serviceHasNodePorts(svc) && (!atomicLBs || !serviceUsesScopedLB(svc)) {
 		if err := c.cleanupServiceNodePortTemplateState(svc); err != nil {
 			return err
 		}

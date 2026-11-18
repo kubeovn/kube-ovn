@@ -19,7 +19,6 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/keymutex"
 
-	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -510,87 +509,6 @@ func TestServiceLoadBalancerProtocolChangeRollsBack(t *testing.T) {
 	remaining, err := nbClient.ListLoadBalancers(nil)
 	require.NoError(t, err)
 	require.Empty(t, remaining)
-}
-
-func TestNodePortTemplateUsesNodeAddressAndLocalBackends(t *testing.T) {
-	ctrl, nbClient, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeNodePort, false)
-	for index := range svc.Spec.Ports {
-		svc.Spec.Ports[index].NodePort = int32(30080 + index)
-	}
-	node, err := ctrl.nodesLister.Get("node")
-	require.NoError(t, err)
-	node.Status.Addresses = []corev1.NodeAddress{
-		{Type: corev1.NodeInternalIP, Address: "192.0.2.10"},
-		{Type: corev1.NodeInternalIP, Address: "2001:db8::10"},
-	}
-	ctrl.OVNSbClient.(*mockovs.MockSbClient).EXPECT().ListChassis().Return(&[]ovnsb.Chassis{{Name: "chassis", Hostname: "node"}}, nil)
-
-	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
-	for _, family := range []string{"ipv4", "ipv6"} {
-		lbName := serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, family)
-		lb, err := nbClient.GetLoadBalancer(lbName, false)
-		require.NoError(t, err)
-		require.NotNil(t, lb)
-		require.Equal(t, "true", lb.Options["template"])
-		require.Equal(t, family, lb.Options["address-family"])
-		foundTemplateVIP := false
-		for vip := range lb.Vips {
-			if strings.HasPrefix(vip, "^"+serviceNodePortTemplatePrefix(svc)+"tcp_") {
-				foundTemplateVIP = true
-				break
-			}
-		}
-		require.True(t, foundTemplateVIP)
-	}
-}
-
-func TestNodePortTemplateResolvesVariablesOnEveryChassis(t *testing.T) {
-	ctrl, nbClient, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeNodePort, false)
-	for index := range svc.Spec.Ports {
-		svc.Spec.Ports[index].NodePort = int32(30080 + index)
-	}
-	node, err := ctrl.nodesLister.Get("node")
-	require.NoError(t, err)
-	node.Status.Addresses = []corev1.NodeAddress{
-		{Type: corev1.NodeInternalIP, Address: "192.0.2.10"},
-		{Type: corev1.NodeInternalIP, Address: "2001:db8::10"},
-	}
-	chassises := []ovnsb.Chassis{
-		{Name: "node-chassis", Hostname: "node"},
-		{Name: "other-chassis", Hostname: "other-node"},
-	}
-	ctrl.OVNSbClient.(*mockovs.MockSbClient).EXPECT().ListChassis().Return(&chassises, nil).AnyTimes()
-
-	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
-	var variables []ovnnb.ChassisTemplateVar
-	require.NoError(t, nbClient.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(t.Context(), &variables))
-	require.Len(t, variables, 2, "router load-balancer flows need NodePort variables on every chassis")
-	byChassis := make(map[string]map[string]string, len(variables))
-	for _, variable := range variables {
-		require.Contains(t, []string{"node-chassis", "other-chassis"}, variable.Chassis)
-		require.NotEmpty(t, variable.Variables)
-		byChassis[variable.Chassis] = variable.Variables
-	}
-	require.Equal(t, byChassis["node-chassis"], byChassis["other-chassis"],
-		"each chassis must resolve the same NodePort VIP variables")
-}
-
-func TestNodePortTemplateOmitsVIPsWithoutBackends(t *testing.T) {
-	ctrl, nbClient, svc, _ := serviceLBReconcileFixture(t, corev1.ServiceTypeNodePort, false)
-	svc.Spec.Ports[0].NodePort = 30080
-	node, err := ctrl.nodesLister.Get("node")
-	require.NoError(t, err)
-	node.Status.Addresses = []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "192.0.2.10"}}
-	chassises := []ovnsb.Chassis{{Name: "node-chassis", Hostname: "node"}}
-	ctrl.OVNSbClient.(*mockovs.MockSbClient).EXPECT().ListChassis().Return(&chassises, nil).AnyTimes()
-
-	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, nil))
-	lb, err := nbClient.GetLoadBalancer(serviceScopedLBNameForTrafficClassAndFamily(svc, corev1.ProtocolTCP, serviceLBExternalTraffic, "ipv4"), false)
-	require.NoError(t, err)
-	require.Empty(t, lb.Vips)
-	var variables []ovnnb.ChassisTemplateVar
-	require.NoError(t, nbClient.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(t.Context(), &variables))
-	require.Empty(t, variables)
 }
 
 func TestServiceLoadBalancerTemplateTransitionIsAtomic(t *testing.T) {
