@@ -90,6 +90,14 @@ func TestEnqueueEndpointSliceServicePriority(t *testing.T) {
 				Type: corev1.ServiceTypeClusterIP,
 			}},
 		},
+		{
+			name: "NodePort service",
+			service: &corev1.Service{Spec: corev1.ServiceSpec{
+				Type:  corev1.ServiceTypeNodePort,
+				Ports: []corev1.ServicePort{{NodePort: 30080}},
+			}},
+			priority: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -113,6 +121,47 @@ func TestEnqueueEndpointSliceServicePriority(t *testing.T) {
 			priorityQueue.ShutDown()
 		})
 	}
+}
+
+func TestNodePortNodeAddresses(t *testing.T) {
+	node := &corev1.Node{Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{
+		{Type: corev1.NodeExternalIP, Address: "203.0.113.10"},
+		{Type: corev1.NodeInternalIP, Address: "10.0.0.10"},
+		{Type: corev1.NodeInternalIP, Address: "10.0.0.10"},
+		{Type: corev1.NodeHostName, Address: "node-a"},
+	}}}
+	assert.Equal(t, []string{"10.0.0.10", "203.0.113.10"}, nodePortNodeAddresses(node))
+}
+
+func TestEndpointSliceServiceProfileIncludesNodePortAddresses(t *testing.T) {
+	nodes := []*corev1.Node{
+		{Name: "node-a", Labels: map[string]string{corev1.LabelTopologyZone: "zone-a"}, Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "10.0.0.10"}, {Type: corev1.NodeExternalIP, Address: "203.0.113.10"}}}},
+		{Name: "node-b", Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "10.0.0.11"}}}},
+	}
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Nodes: nodes})
+	require.NoError(t, err)
+	svc := &corev1.Service{Namespace: "default", Name: "nodeport", Spec: corev1.ServiceSpec{
+		Type: corev1.ServiceTypeNodePort, ClusterIP: "10.96.0.10", Ports: []corev1.ServicePort{{NodePort: 30080}},
+	}}
+	profile, err := fake.fakeController.endpointSliceServiceProfile(svc)
+	require.NoError(t, err)
+	assert.Equal(t, []string{"10.0.0.10", "10.0.0.11", "203.0.113.10"}, profile.nodePortVIPs)
+	assert.Equal(t, []string{"10.96.0.10"}, profile.lbVips)
+}
+
+func TestEndpointSliceServiceProfileDeduplicatesNodePortAddressesAcrossNodes(t *testing.T) {
+	nodes := []*corev1.Node{
+		{Name: "node-a", Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "192.0.2.10"}}}},
+		{Name: "node-b", Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "192.0.2.10"}}}},
+	}
+	fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Nodes: nodes})
+	require.NoError(t, err)
+	svc := &corev1.Service{Namespace: "default", Name: "nodeport", Spec: corev1.ServiceSpec{
+		Type: corev1.ServiceTypeNodePort, ClusterIP: "10.96.0.10", Ports: []corev1.ServicePort{{NodePort: 30080}},
+	}}
+	profile, err := fake.fakeController.endpointSliceServiceProfile(svc)
+	require.NoError(t, err)
+	require.Equal(t, []string{"192.0.2.10"}, profile.nodePortVIPs)
 }
 
 func TestEnqueueEndpointSliceGatewayAddDelete(t *testing.T) {

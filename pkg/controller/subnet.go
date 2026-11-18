@@ -810,6 +810,9 @@ func (c *Controller) updateSubnetLoadBalancers(subnet *kubeovnv1.Subnet, vpc *ku
 	if err != nil {
 		return c.recordResourceError(subnet, "ListServiceLoadBalancersFailed", err)
 	}
+	// NodePort LBs need an atomic Service reconcile to attach their ingress
+	// guards at the same time. The generic attachment path excludes them.
+	c.enqueueTrafficDistributionServices()
 	if subnetEnablesServiceLB(subnet, c.config.EnableOvnLB) {
 		if lbErr := c.OVNNbClient.LogicalSwitchUpdateLoadBalancers(subnet.Name, ovsdb.MutateOperationInsert, lbs...); lbErr != nil {
 			klog.Error(lbErr)
