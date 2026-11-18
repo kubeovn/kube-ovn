@@ -544,7 +544,7 @@ func TestNodePortTemplateUsesNodeAddressAndLocalBackends(t *testing.T) {
 	}
 }
 
-func TestNodePortTemplateDefinesVariablesOnEveryChassis(t *testing.T) {
+func TestNodePortTemplateScopesVariablesToServingChassis(t *testing.T) {
 	ctrl, nbClient, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeNodePort, false)
 	for index := range svc.Spec.Ports {
 		svc.Spec.Ports[index].NodePort = int32(30080 + index)
@@ -564,11 +564,9 @@ func TestNodePortTemplateDefinesVariablesOnEveryChassis(t *testing.T) {
 	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 	var variables []ovnnb.ChassisTemplateVar
 	require.NoError(t, nbClient.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(t.Context(), &variables))
-	require.Len(t, variables, len(chassises), "every chassis needs template variables for every NodePort VIP")
+	require.Len(t, variables, 1, "NodePort variables must be scoped to the chassis serving the node VIP")
+	require.Equal(t, "node-chassis", variables[0].Chassis)
 	require.NotEmpty(t, variables[0].Variables)
-	for _, row := range variables {
-		require.Equal(t, variables[0].Variables, row.Variables, "template variables must be resolvable on %s", row.Chassis)
-	}
 }
 
 func TestNodePortTemplateOmitsVIPsWithoutBackends(t *testing.T) {
