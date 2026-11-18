@@ -1348,10 +1348,6 @@ func serviceExternalLocalTemplatePrefix(svc *v1.Service) string {
 	return serviceTemplateVarRoot + util.Sha256Hash([]byte(string(svc.UID)))[:12] + "_eloc_"
 }
 
-func serviceNodePortTemplatePrefix(svc *v1.Service) string {
-	return serviceTemplateVarRoot + util.Sha256Hash([]byte(string(svc.UID)))[:12] + "_nport_"
-}
-
 func endpointNodeName(endpoint discoveryv1.Endpoint) string {
 	if endpoint.NodeName != nil {
 		return *endpoint.NodeName
@@ -1413,38 +1409,6 @@ func (c *Controller) cleanupServiceExternalLocalTemplateState(svc *v1.Service) e
 	for _, chassis := range *chassises {
 		if err := c.OVNNbClient.ReconcileChassisTemplateVariables(chassis.Name, prefix, nil); err != nil {
 			return fmt.Errorf("clean external local template variables for chassis %s: %w", chassis.Name, err)
-		}
-	}
-	return nil
-}
-
-func (c *Controller) cleanupServiceNodePortTemplateState(svc *v1.Service) error {
-	prefix := serviceNodePortTemplatePrefix(svc)
-	lbs, err := c.OVNNbClient.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		return lb.ExternalIDs[serviceLBOwnerExternalID] == string(svc.UID)
-	})
-	if err != nil {
-		return fmt.Errorf("list load balancers for service %s/%s NodePort template cleanup: %w", svc.Namespace, svc.Name, err)
-	}
-	for _, lb := range lbs {
-		for templateVIP := range lb.Vips {
-			if strings.HasPrefix(templateVIP, "^"+prefix) {
-				if err := c.OVNNbClient.LoadBalancerDeleteVip(lb.Name, templateVIP, true); err != nil {
-					return fmt.Errorf("delete NodePort template VIP %s from load balancer %s: %w", templateVIP, lb.Name, err)
-				}
-			}
-		}
-	}
-	if c.OVNSbClient == nil {
-		return nil
-	}
-	chassises, err := c.OVNSbClient.ListChassis()
-	if err != nil {
-		return fmt.Errorf("list OVN chassis while cleaning service %s/%s NodePort template variables: %w", svc.Namespace, svc.Name, err)
-	}
-	for _, chassis := range *chassises {
-		if err := c.OVNNbClient.ReconcileChassisTemplateVariables(chassis.Name, prefix, nil); err != nil {
-			return fmt.Errorf("clean NodePort template variables for chassis %s: %w", chassis.Name, err)
 		}
 	}
 	return nil

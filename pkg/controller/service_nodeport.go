@@ -37,10 +37,6 @@ func (c *Controller) reconcileServiceNodePorts(ctx *endpointSliceReconcileContex
 				slices.Sort(backends)
 				lb.VIPs[vip] = strings.Join(slices.Compact(backends), ",")
 			}
-			for _, old := range c.serviceLBMigrationCandidates(svc, port.Protocol, ctx.vpc, serviceLBExternalTraffic) {
-				ctx.lbReconciliation.batch.VIPDeletions = append(ctx.lbReconciliation.batch.VIPDeletions,
-					ovs.TemplateVIPDeletion{LoadBalancer: old, VIP: vip})
-			}
 			protocol := strings.ToLower(string(port.Protocol))
 			family := "ip4"
 			if util.CheckProtocol(address) == "IPv6" {

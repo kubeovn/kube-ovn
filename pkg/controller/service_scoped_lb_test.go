@@ -1251,9 +1251,6 @@ func TestGCServiceTrafficDistributionVariables(t *testing.T) {
 		if filter(activePrefix + "tcp_vip") {
 			t.Fatal("active service variable selected for garbage collection")
 		}
-		if filter(serviceNodePortTemplatePrefix(svc) + "tcp_vip") {
-			t.Fatal("legacy NodePort variable must survive until atomic migration")
-		}
 		if !filter(serviceTemplateVarRoot + "orphan_tcp_vip") {
 			t.Fatal("orphan service variable not selected for garbage collection")
 		}

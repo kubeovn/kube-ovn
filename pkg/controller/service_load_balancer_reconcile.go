@@ -37,7 +37,7 @@ func newServiceLoadBalancerReconciliation(svc *v1.Service) *serviceLoadBalancerR
 				serviceLBNamespaceID: owner.namespace, serviceLBNameExternalID: owner.name,
 				serviceLBVersionID: serviceLBVersion,
 			},
-			TemplateVariablePrefixes: []string{serviceTrafficDistributionVariablePrefix(svc), serviceExternalLocalTemplatePrefix(svc), serviceNodePortTemplatePrefix(svc)},
+			TemplateVariablePrefixes: []string{serviceTrafficDistributionVariablePrefix(svc), serviceExternalLocalTemplatePrefix(svc)},
 		},
 		desired: make(map[string]*ovs.LoadBalancerDesiredState),
 	}
