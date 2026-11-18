@@ -599,3 +599,30 @@ func Test_handleDelSwitchLBRule(t *testing.T) {
 		require.True(t, k8serrors.IsNotFound(err), "VIP %s should have been deleted", subnetName)
 	})
 }
+
+func TestValidateSwitchLBRuleVIP(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		vip     string
+		wantErr bool
+	}{
+		{name: "IPv4", vip: "10.0.0.1"},
+		{name: "IPv6", vip: "fd00::1"},
+		{name: "IPv4 then IPv6", vip: "10.0.0.1,fd00::1"},
+		{name: "IPv6 then IPv4", vip: "fd00::1, 10.0.0.1"},
+		{name: "empty", vip: "", wantErr: true},
+		{name: "invalid", vip: "web", wantErr: true},
+		{name: "two IPv4", vip: "10.0.0.1,10.0.0.2", wantErr: true},
+		{name: "two IPv6", vip: "fd00::1,fd00::2", wantErr: true},
+		{name: "three addresses", vip: "10.0.0.1,fd00::1,10.0.0.2", wantErr: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateSwitchLBRuleVIP(tt.vip)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+		})
+	}
+}

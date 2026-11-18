@@ -544,6 +544,10 @@ func (c *Controller) reconcileServiceEndpointVIPs(reconcileCtx *endpointSliceRec
 }
 
 func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReconcileContext, lbVip string, port v1.ServicePort) error {
+	if util.CheckProtocol(lbVip) != kubeovnv1.ProtocolIPv4 && !reconcileCtx.profile.ignoreHealthCheck {
+		reconcileCtx.profile.ignoreHealthCheck = true
+		defer func() { reconcileCtx.profile.ignoreHealthCheck = false }()
+	}
 	svc, profile := reconcileCtx.service, reconcileCtx.profile
 	state := &serviceEndpointVIPState{
 		port:         port,

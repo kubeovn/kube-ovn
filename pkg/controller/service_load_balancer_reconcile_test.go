@@ -413,3 +413,66 @@ func TestRuleServiceLoadBalancersAreAtomic(t *testing.T) {
 		})
 	}
 }
+
+func TestSwitchLBRuleDualStackHealthCheckOnlyIPv4(t *testing.T) {
+	for name, vips := range map[string]string{"ipv4First": "10.96.0.20,fd00::20", "ipv6First": "fd00::20,10.96.0.20"} {
+		t.Run(name, func(t *testing.T) {
+			svc := &corev1.Service{
+				Namespace: "default", Name: generateSvcName("rule"), UID: "service-uid",
+				Annotations: map[string]string{
+					util.LogicalRouterAnnotation: "vpc", util.VpcAnnotation: "vpc", util.LogicalSwitchAnnotation: "subnet",
+					util.SwitchLBRuleVipsAnnotation: vips,
+				},
+				Spec: corev1.ServiceSpec{
+					Type: corev1.ServiceTypeClusterIP, ClusterIP: corev1.ClusterIPNone,
+					Selector: map[string]string{"app": "web"},
+					Ports:    []corev1.ServicePort{{Name: "web", Protocol: corev1.ProtocolTCP, Port: 80}},
+				},
+			}
+			setServiceScopedLBOwner(svc, switchLBRuleLBOwnerKind, "rule", "rule-uid")
+			pod := &corev1.Pod{
+				Namespace: "default", Name: "web-0",
+				Annotations: map[string]string{
+					util.AllocatedAnnotation: "true", util.LogicalSwitchAnnotation: "subnet", util.IPAddressAnnotation: "10.0.0.2,fd00::2",
+				},
+			}
+			subnet := &kubeovnv1.Subnet{Name: "subnet", Spec: kubeovnv1.SubnetSpec{Vpc: "vpc", Provider: util.OvnProvider}}
+			vip := &kubeovnv1.Vip{Name: "subnet", Status: kubeovnv1.VipStatus{V4ip: "10.0.0.250"}}
+			fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Services: []*corev1.Service{svc}, Subnets: []*kubeovnv1.Subnet{subnet}, Vpcs: []*kubeovnv1.Vpc{{Name: "vpc"}},
+				Nodes: []*corev1.Node{{Name: "node"}}, Pods: []*corev1.Pod{pod}, Vips: []*kubeovnv1.Vip{vip},
+			})
+			require.NoError(t, err)
+			ctrl := fc.fakeController
+			ctrl.svcKeyMutex = keymutex.NewHashed(0)
+			ctrl.config.EnableOvnLB = true
+			ctrl.config.ClusterRouter = "vpc"
+			nbClient := newInMemoryOVNNbClient(t)
+			ctrl.OVNNbClient = nbClient
+			require.NoError(t, nbClient.CreateBareLogicalSwitch("subnet"))
+			require.NoError(t, nbClient.CreateLogicalRouter("vpc"))
+			ports := []discoveryv1.EndpointPort{{Name: new("web"), Protocol: new(corev1.ProtocolTCP), Port: new(int32(8080))}}
+			target := &corev1.ObjectReference{Namespace: "default", Name: "web-0"}
+			endpoints := []*discoveryv1.EndpointSlice{
+				{AddressType: discoveryv1.AddressTypeIPv4, Ports: ports, Endpoints: []discoveryv1.Endpoint{{Addresses: []string{"10.0.0.2"}, TargetRef: target}}},
+				{AddressType: discoveryv1.AddressTypeIPv6, Ports: ports, Endpoints: []discoveryv1.Endpoint{{Addresses: []string{"fd00::2"}, TargetRef: target}}},
+			}
+			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
+
+			hcs, err := nbClient.ListLoadBalancerHealthChecks(func(*ovnnb.LoadBalancerHealthCheck) bool { return true })
+			require.NoError(t, err)
+			var checked []string
+			for _, hc := range hcs {
+				checked = append(checked, hc.Vip)
+			}
+			require.Equal(t, []string{"10.96.0.20:80"}, checked)
+			lbs, err := nbClient.ListLoadBalancers(serviceScopedLBOwner(svc).ownsLoadBalancer)
+			require.NoError(t, err)
+			for _, lb := range lbs {
+				for backend := range lb.IPPortMappings {
+					require.NotContains(t, backend, "fd00::")
+				}
+			}
+		})
+	}
+}
