@@ -599,14 +599,17 @@ func generateEndpoints(slr *kubeovnv1.SwitchLBRule, oldEps *corev1.Endpoints) *c
 }
 
 func validateSwitchLBRuleVIP(vip string) error {
-	ips := splitRuleVIPs(vip)
-	if len(ips) == 0 || len(ips) > 2 {
+	parts := strings.Split(vip, ",")
+	if len(parts) > 2 {
 		return fmt.Errorf("vip %q must be one IP address or one IPv4 and one IPv6 address", vip)
 	}
-	for _, ip := range ips {
+	ips := make([]string, 0, len(parts))
+	for _, part := range parts {
+		ip := strings.TrimSpace(part)
 		if net.ParseIP(ip) == nil {
 			return fmt.Errorf("vip %q contains invalid IP address %q", vip, ip)
 		}
+		ips = append(ips, ip)
 	}
 	if len(ips) == 2 && util.CheckProtocol(ips[0]) == util.CheckProtocol(ips[1]) {
 		return fmt.Errorf("vip %q must contain one IPv4 and one IPv6 address", vip)

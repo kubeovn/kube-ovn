@@ -614,6 +614,9 @@ func TestValidateSwitchLBRuleVIP(t *testing.T) {
 		{name: "invalid", vip: "web", wantErr: true},
 		{name: "two IPv4", vip: "10.0.0.1,10.0.0.2", wantErr: true},
 		{name: "two IPv6", vip: "fd00::1,fd00::2", wantErr: true},
+		{name: "trailing comma", vip: "10.0.0.1,", wantErr: true},
+		{name: "leading comma", vip: ",10.0.0.1", wantErr: true},
+		{name: "empty segment", vip: "10.0.0.1,,fd00::1", wantErr: true},
 		{name: "three addresses", vip: "10.0.0.1,fd00::1,10.0.0.2", wantErr: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {

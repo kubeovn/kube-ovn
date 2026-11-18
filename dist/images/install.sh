@@ -3532,7 +3532,13 @@ spec:
               sessionAffinity:
                 type: string
               vip:
+                maxLength: 100
                 type: string
+                x-kubernetes-validations:
+                - message: vip must be one IP address or one IPv4 and one IPv6 address
+                  rule: self.split(',').size() <= 2 && self.split(',').all(s, isIP(s.trim()))
+                    && (self.split(',').size() == 1 || ip(self.split(',')[0].trim()).family()
+                    != ip(self.split(',')[1].trim()).family())
             type: object
           status:
             properties:
