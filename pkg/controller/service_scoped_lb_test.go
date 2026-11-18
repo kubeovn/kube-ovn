@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -1299,6 +1300,69 @@ func TestGetDistributedIPPortMapping(t *testing.T) {
 	endpointSlice.Endpoints = []discoveryv1.Endpoint{endpoint}
 	if _, err := ctrl.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{endpointSlice}, service, servicePort, "10.96.0.10"); err == nil {
 		t.Fatal("expected ready endpoint without target to fail")
+	}
+}
+
+func TestGetDistributedIPPortMappingHostNetwork(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		serviceIP   string
+		backendIP   string
+		nodeName    string
+		missingPort bool
+		wantErr     string
+	}{
+		{name: "ipv4", serviceIP: "10.96.0.10", backendIP: "192.0.2.10", nodeName: "worker"},
+		{name: "ipv6", serviceIP: "fd00:10:96::a", backendIP: "2001:db8::10", nodeName: "worker"},
+		{name: "unassigned node", serviceIP: "10.96.0.10", backendIP: "192.0.2.10", wantErr: "has no node assigned"},
+		{name: "missing node port", serviceIP: "10.96.0.10", backendIP: "192.0.2.10", nodeName: "worker", missingPort: true, wantErr: "does not exist"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := &corev1.Pod{
+				Namespace: "default", Name: "agent",
+				Spec: corev1.PodSpec{HostNetwork: true, NodeName: tt.nodeName},
+			}
+			fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Pods:    []*corev1.Pod{pod},
+				Subnets: []*kubeovnv1.Subnet{{Name: util.DefaultSubnet}},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			portName := util.NodeLspName(pod.Spec.NodeName)
+			if tt.nodeName != "" {
+				var port *ovnnb.LogicalSwitchPort
+				if !tt.missingPort {
+					port = &ovnnb.LogicalSwitchPort{Name: portName}
+				}
+				fake.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, true).Return(port, nil)
+			}
+			service := &corev1.Service{Namespace: "default", Name: "agent", Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "agent"}}}
+			endpointSlice := &discoveryv1.EndpointSlice{
+				Ports: []discoveryv1.EndpointPort{{Port: new(int32(8080))}},
+				Endpoints: []discoveryv1.Endpoint{{
+					Addresses: []string{tt.backendIP},
+					TargetRef: &corev1.ObjectReference{Kind: "Pod", Namespace: pod.Namespace, Name: pod.Name},
+				}},
+			}
+			mapping, err := fake.fakeController.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{endpointSlice}, service, corev1.ServicePort{Port: 80}, tt.serviceIP)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("getDistributedIPPortMapping() error = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("host-network agent must map to its node port: %v", err)
+			}
+			key := tt.backendIP
+			if util.CheckProtocol(key) == kubeovnv1.ProtocolIPv6 {
+				key = "[" + key + "]"
+			}
+			if len(mapping) != 1 || mapping[key] != portName {
+				t.Fatalf("distributed mapping = %v, want %s mapped to %s", mapping, key, portName)
+			}
+		})
 	}
 }
 
