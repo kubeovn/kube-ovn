@@ -1634,10 +1634,10 @@ func (c *Controller) reconcileServiceNodePortTemplate(reconcileCtx *endpointSlic
 				OldLoadBalancers: c.serviceLBMigrationCandidates(svc, port.Protocol, reconcileCtx.vpc,
 					serviceLBExternalTraffic),
 			})
+			// Logical router load-balancer flows are installed on every chassis.
+			// Keep every template variable resolvable everywhere, while deriving
+			// each backend list from the Node that owns its VIP.
 			for _, chassis := range *chassises {
-				if !chassisServesNode(chassis, nodeVIP.nodeName) {
-					continue
-				}
 				variablesByChassis[chassis.Name][vipVariable] = nodeVIP.address
 				variablesByChassis[chassis.Name][backendVariable] = strings.Join(backends, ",")
 			}
