@@ -209,10 +209,10 @@ func serviceScopedLBSelectionFields(svc *v1.Service, protocol v1.Protocol, timeo
 	}
 	// Rule VIPs replace ClusterIPs in the endpoint reconciliation profile.
 	ips := slices.Values(util.ServiceClusterIPs(*svc))
-	if vip := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; vip != "" {
-		ips = slices.Values([]string{vip})
+	if vips := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; vips != "" {
+		ips = slices.Values(splitRuleVIPs(vips))
 	} else if vips := svc.Annotations[util.RouterLBRuleVipsAnnotation]; vips != "" {
-		ips = strings.SplitSeq(vips, ",")
+		ips = slices.Values(splitRuleVIPs(vips))
 	}
 	fields := make([]string, 0, 2)
 	for ip := range ips {

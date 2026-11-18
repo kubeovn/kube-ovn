@@ -1040,6 +1040,24 @@ func TestEndpointSliceServiceProfileSwitchLBRuleEnablesHealthCheck(t *testing.T)
 	require.Equal(t, []string{"10.0.0.20"}, profile.lbVips)
 }
 
+func TestEndpointSliceServiceProfileSwitchLBRuleDualStackVIPs(t *testing.T) {
+	svc := &corev1.Service{
+		Namespace: "default",
+		Name:      "web",
+		Annotations: map[string]string{
+			util.SwitchLBRuleVipsAnnotation: "10.0.0.20, fd00::20",
+		},
+		Spec: corev1.ServiceSpec{Type: corev1.ServiceTypeClusterIP, ClusterIP: corev1.ClusterIPNone},
+	}
+
+	profile, err := (&Controller{}).endpointSliceServiceProfile(svc)
+	require.NoError(t, err)
+	require.False(t, profile.ignoreHealthCheck)
+	require.Equal(t, []string{"10.0.0.20", "fd00::20"}, profile.lbVips)
+	require.Equal(t, serviceLBExternalTraffic, profile.trafficClasses["10.0.0.20"])
+	require.Equal(t, serviceLBExternalTraffic, profile.trafficClasses["fd00::20"])
+}
+
 func TestEndpointSliceServiceProfileRouterLBRuleHealthCheck(t *testing.T) {
 	t.Parallel()
 
