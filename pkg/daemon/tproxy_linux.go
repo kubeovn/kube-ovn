@@ -98,7 +98,7 @@ func getProbePorts(pod *corev1.Pod) (set.Set[int32], set.Set[int32]) {
 	ports := set.New[int32]()
 	tcpPorts := set.New[int32]()
 	for _, container := range pod.Spec.Containers {
-		for _, probe := range [...]*corev1.Probe{container.LivenessProbe, container.ReadinessProbe} {
+		for _, probe := range [...]*corev1.Probe{container.StartupProbe, container.LivenessProbe, container.ReadinessProbe} {
 			if probe == nil {
 				continue
 			}
