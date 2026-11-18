@@ -23,6 +23,8 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/keymutex"
+	kubevirtv1 "kubevirt.io/api/core/v1"
+	"kubevirt.io/client-go/kubecli"
 
 	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -117,6 +119,42 @@ func TestGcNetworkPolicyQueuesNormalizedPortGroupDeletion(t *testing.T) {
 	ctrl.deleteNpQueue.Done(request)
 	require.Equal(t, "default/np1test", request.key)
 	require.Equal(t, "np1test.default", request.portGroupName)
+}
+
+func TestGetVMLspsSkipsDefaultProviderInNonPrimaryCNI(t *testing.T) {
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{})
+	require.NoError(t, err)
+
+	mockCtrl := gomock.NewController(t)
+	mockVMs := kubecli.NewMockVirtualMachineInterface(mockCtrl)
+	mockKubevirt := kubecli.NewMockKubevirtClient(mockCtrl)
+	mockKubevirt.EXPECT().VirtualMachine(metav1.NamespaceDefault).Return(mockVMs)
+	mockVMs.EXPECT().List(gomock.Any(), gomock.Any()).Return(&kubevirtv1.VirtualMachineList{Items: []kubevirtv1.VirtualMachine{
+		{
+			Name:      "vm-primary",
+			Namespace: metav1.NamespaceDefault,
+			Spec:      kubevirtv1.VirtualMachineSpec{Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{}},
+		},
+		{
+			Name:      "vm-attached",
+			Namespace: metav1.NamespaceDefault,
+			Spec: kubevirtv1.VirtualMachineSpec{Template: &kubevirtv1.VirtualMachineInstanceTemplateSpec{
+				Spec: kubevirtv1.VirtualMachineInstanceSpec{Networks: []kubevirtv1.Network{{
+					Name:   "secondary",
+					Multus: &kubevirtv1.MultusNetwork{NetworkName: "default/net2"},
+				}}},
+			}},
+		},
+	}}, nil)
+
+	ctrl := fc.fakeController
+	ctrl.config.EnableKeepVMIP = true
+	ctrl.config.EnableNonPrimaryCNI = true
+	ctrl.config.KubevirtClient = mockKubevirt
+
+	got := ctrl.getVMLsps()
+	want := []string{ovs.PodNameToPortName("vm-attached", metav1.NamespaceDefault, "net2.default."+util.OvnProvider)}
+	require.ElementsMatch(t, want, got)
 }
 
 func TestMarkAndCleanLSPEnqueuesMissingNodeLSP(t *testing.T) {
