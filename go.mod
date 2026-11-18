@@ -3,7 +3,7 @@ module github.com/kubeovn/kube-ovn
 go 1.27.4
 
 require (
-	cel.dev/cel-go v0.33.2
+	cel.dev/cel-go v0.33.4
 	github.com/brianvoe/gofakeit/v7 v7.18.9
 	github.com/cenkalti/backoff/v7 v7.0.3
 	github.com/cert-manager/cert-manager v1.21.3
