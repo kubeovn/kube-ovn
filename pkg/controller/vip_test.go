@@ -48,6 +48,13 @@ func TestHandleAddVirtualIPSwitchLBRuleUsesOwnMac(t *testing.T) {
 		CreateLogicalSwitchPort(subnet.Name, portName, vip.Spec.V4ip, gomock.Not(""), vip.Name, vip.Spec.Namespace, false, "", "", false, nil, subnet.Spec.Vpc).
 		Return(nil)
 	fc.mockOvnClient.EXPECT().SetLogicalSwitchPortArpProxy(portName, true).Return(nil)
+	// The fake informer may observe the status update before handleAddVirtualIP
+	// reconciles virtual parents. SwitchLB VIPs do not use virtual parents, but
+	// the shared reconciliation path may still ensure their virtual port.
+	fc.mockOvnClient.EXPECT().
+		CreateVirtualLogicalSwitchPort(vip.Name, subnet.Name, vip.Spec.V4ip).
+		Return(nil).
+		AnyTimes()
 
 	require.NoError(t, ctrl.handleAddVirtualIP(vip.Name))
 
