@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -159,32 +160,48 @@ func TestCreateOrUpdateIPCRPersistsReplacementNodeOwner(t *testing.T) {
 func TestCreateOrUpdateIPCREnqueuesSubnetStatus(t *testing.T) {
 	t.Parallel()
 
-	// after a controller restart a pod can be re-allocated with a freshly generated MAC: the
-	// ip CR update is rejected as an immutable field change, so no watch event refreshes the
-	// subnet/ippool statistics unless createOrUpdateIPCR enqueues it itself
 	const subnet, podIP, oldMac, newMac = "subnet-a", "10.16.0.3", "00:00:00:00:00:01", "00:00:00:00:00:02"
-	ip := &kubeovnv1.IP{
-		Name:       "pod-a.default",
-		Labels:     map[string]string{util.SubnetNameLabel: subnet, util.NodeNameLabel: "node-a", subnet: "", util.IPReservedLabel: "false"},
-		Finalizers: []string{util.KubeOVNControllerFinalizer},
-		Spec: kubeovnv1.IPSpec{
-			PodName: "pod-a", Namespace: "default", NodeName: "node-a", Subnet: subnet,
-			IPAddress: podIP, V4IPAddress: podIP, MacAddress: oldMac,
-			AttachIPs: []string{}, AttachMacs: []string{}, AttachSubnets: []string{},
-		},
-	}
-	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{IPs: []*kubeovnv1.IP{ip}})
-	require.NoError(t, err)
-	ctrl := fakeCtrl.fakeController
-	t.Cleanup(ctrl.updateSubnetStatusQueue.ShutDown)
+	for _, tt := range []struct {
+		name        string
+		recordedMac string
+		wantUpdate  bool
+	}{
+		// a pod re-allocated after a controller restart gets a freshly generated MAC, and the
+		// update handler rejects the resulting ip CR change as an immutable field change
+		{name: "immutable field change rejected by the update handler", recordedMac: oldMac, wantUpdate: true},
+		// nothing changed, so no update and no watch event follow
+		{name: "ip CR already up to date", recordedMac: newMac},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			ip := &kubeovnv1.IP{
+				Name:       "pod-a.default",
+				Labels:     map[string]string{util.SubnetNameLabel: subnet, util.NodeNameLabel: "node-a", subnet: "", util.IPReservedLabel: "false"},
+				Finalizers: []string{util.KubeOVNControllerFinalizer},
+				Spec: kubeovnv1.IPSpec{
+					PodName: "pod-a", Namespace: "default", NodeName: "node-a", Subnet: subnet,
+					IPAddress: podIP, V4IPAddress: podIP, MacAddress: tt.recordedMac,
+					AttachIPs: []string{}, AttachMacs: []string{}, AttachSubnets: []string{},
+				},
+			}
+			fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{IPs: []*kubeovnv1.IP{ip}})
+			require.NoError(t, err)
+			ctrl := fakeCtrl.fakeController
+			t.Cleanup(ctrl.updateSubnetStatusQueue.ShutDown)
+			client := ctrl.config.KubeOvnClient.(*kubeovnfake.Clientset)
+			client.ClearActions()
 
-	for _, mac := range []string{newMac, newMac} { // changed CR, then unchanged CR
-		require.NoError(t, ctrl.createOrUpdateIPCR(ip.Name, "pod-a", podIP, mac, subnet, "default", "node-a", ""))
-		require.Equal(t, 1, ctrl.updateSubnetStatusQueue.Len())
-		key, shutdown := ctrl.updateSubnetStatusQueue.Get()
-		require.False(t, shutdown)
-		require.Equal(t, subnet, key)
-		ctrl.updateSubnetStatusQueue.Done(key)
+			require.NoError(t, ctrl.createOrUpdateIPCR(ip.Name, "pod-a", podIP, newMac, subnet, "default", "node-a", ""))
+
+			updated := slices.ContainsFunc(client.Actions(), func(action ktesting.Action) bool {
+				return action.Matches("update", "ips")
+			})
+			require.Equal(t, tt.wantUpdate, updated, "the test must exercise the intended branch")
+			require.Equal(t, 1, ctrl.updateSubnetStatusQueue.Len(), "the subnet status must be refreshed")
+			key, shutdown := ctrl.updateSubnetStatusQueue.Get()
+			require.False(t, shutdown)
+			require.Equal(t, subnet, key)
+			ctrl.updateSubnetStatusQueue.Done(key)
+		})
 	}
 }
 
