@@ -2581,6 +2581,80 @@ jobs:
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
+  underlay-u2o-installation-test:
+    name: Underlay U2O Installation Test
+    needs:
+      - prepare-kind-node-images
+      - build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: jlumbroso/free-disk-space@v2.0.0
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+
+      - name: Install kind
+        uses: helm/kind-action@v1.15.2
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator
+          make kind-init-dual
+
+      - name: Install Kube-OVN with U2O
+        id: install
+        run: |
+          make kind-install-underlay-u2o-dual
+          test "$(kubectl get subnet ovn-default -o jsonpath='{.spec.u2oInterconnection}')" = "true"
+
+      - name: Check kube ovn pod restarts
+        id: check-restarts
+        if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
+        run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko logs
+        if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        run: |
+          bash .github/scripts/collect-kubectl-ko-log.sh
+          mv kubectl-ko-log.tar.gz underlay-u2o-installation-test-ko-log.tar.gz
+
+      - name: upload kubectl ko logs
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        with:
+          name: underlay-u2o-installation-test-ko-log
+          path: underlay-u2o-installation-test-ko-log.tar.gz
+
+      - name: Cleanup
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
+
   no-ovn-lb-test:
     name: Disable OVN LB Test
     needs:
@@ -4907,6 +4981,7 @@ jobs:
       - kube-ovn-hosted-ovn-central-e2e
       - chart-test
       - underlay-logical-gateway-installation-test
+      - underlay-u2o-installation-test
       - no-ovn-lb-test
       - no-np-test
       - lb-svc-e2e
