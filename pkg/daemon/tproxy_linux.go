@@ -97,7 +97,7 @@ func getTProxyRulePorts(pod *corev1.Pod, podIP string) set.Set[int32] {
 func getProbePorts(pod *corev1.Pod) (set.Set[int32], set.Set[int32]) {
 	ports := set.New[int32]()
 	tcpPorts := set.New[int32]()
-	for _, container := range pod.Spec.Containers {
+	addContainerPorts := func(container *corev1.Container) {
 		for _, probe := range [...]*corev1.Probe{container.StartupProbe, container.LivenessProbe, container.ReadinessProbe} {
 			if probe == nil {
 				continue
@@ -130,6 +130,15 @@ func getProbePorts(pod *corev1.Pod) (set.Set[int32], set.Set[int32]) {
 					tcpPorts.Insert(resolvedPort)
 				}
 			}
+		}
+	}
+	for i := range pod.Spec.Containers {
+		addContainerPorts(&pod.Spec.Containers[i])
+	}
+	for i := range pod.Spec.InitContainers {
+		container := &pod.Spec.InitContainers[i]
+		if container.RestartPolicy != nil && *container.RestartPolicy == corev1.ContainerRestartPolicyAlways {
+			addContainerPorts(container)
 		}
 	}
 	klog.V(3).Infof("probe ports for pod %s/%s: %v", pod.Namespace, pod.Name, ports.SortedList())
