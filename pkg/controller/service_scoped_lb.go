@@ -691,8 +691,8 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 			return err
 		}
 		// Internal LBs stay switch-only. NodePort LBs on logical-gateway or U2O
-		// underlay subnets are also attached to the VPC router because Pod
-		// traffic enters through the router path before reaching the node VIP.
+		// underlay subnets use the VPC router path; ordinary subnets use switch
+		// attachment so the two ingress pipelines do not process the same VIP.
 		if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
 			return c.detachServiceScopedLoadBalancersFromRouters(lbNames...)
 		}
