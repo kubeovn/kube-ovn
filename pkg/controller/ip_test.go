@@ -156,6 +156,38 @@ func TestCreateOrUpdateIPCRPersistsReplacementNodeOwner(t *testing.T) {
 	require.Equal(t, node.UID, updated.OwnerReferences[0].UID, "the node ip CR must be owned by the replacement node")
 }
 
+func TestCreateOrUpdateIPCREnqueuesSubnetStatus(t *testing.T) {
+	t.Parallel()
+
+	// after a controller restart a pod can be re-allocated with a freshly generated MAC: the
+	// ip CR update is rejected as an immutable field change, so no watch event refreshes the
+	// subnet/ippool statistics unless createOrUpdateIPCR enqueues it itself
+	const subnet, podIP, oldMac, newMac = "subnet-a", "10.16.0.3", "00:00:00:00:00:01", "00:00:00:00:00:02"
+	ip := &kubeovnv1.IP{
+		Name:       "pod-a.default",
+		Labels:     map[string]string{util.SubnetNameLabel: subnet, util.NodeNameLabel: "node-a", subnet: "", util.IPReservedLabel: "false"},
+		Finalizers: []string{util.KubeOVNControllerFinalizer},
+		Spec: kubeovnv1.IPSpec{
+			PodName: "pod-a", Namespace: "default", NodeName: "node-a", Subnet: subnet,
+			IPAddress: podIP, V4IPAddress: podIP, MacAddress: oldMac,
+			AttachIPs: []string{}, AttachMacs: []string{}, AttachSubnets: []string{},
+		},
+	}
+	fakeCtrl, err := newFakeControllerWithOptions(t, &FakeControllerOptions{IPs: []*kubeovnv1.IP{ip}})
+	require.NoError(t, err)
+	ctrl := fakeCtrl.fakeController
+	t.Cleanup(ctrl.updateSubnetStatusQueue.ShutDown)
+
+	for _, mac := range []string{newMac, newMac} { // changed CR, then unchanged CR
+		require.NoError(t, ctrl.createOrUpdateIPCR(ip.Name, "pod-a", podIP, mac, subnet, "default", "node-a", ""))
+		require.Equal(t, 1, ctrl.updateSubnetStatusQueue.Len())
+		key, shutdown := ctrl.updateSubnetStatusQueue.Get()
+		require.False(t, shutdown)
+		require.Equal(t, subnet, key)
+		ctrl.updateSubnetStatusQueue.Done(key)
+	}
+}
+
 func TestHandleAddReservedIPRecordsFailureEvent(t *testing.T) {
 	t.Parallel()
 
