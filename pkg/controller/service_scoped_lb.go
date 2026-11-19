@@ -690,9 +690,9 @@ func (c *Controller) reconcileResourceScopedLoadBalancerAttachments(svc *v1.Serv
 		if err := c.reconcileServiceScopedLoadBalancerAttachments(vpcName, lbNames...); err != nil {
 			return err
 		}
-		// Internal LBs stay switch-only. NodePort LBs on logical-gateway
-		// subnets are also attached to the VPC router because Pod traffic enters
-		// through the router port before reaching the node-address VIP.
+		// Internal LBs stay switch-only. NodePort LBs on logical-gateway or U2O
+		// underlay subnets are also attached to the VPC router because Pod
+		// traffic enters through the router path before reaching the node VIP.
 		if svc.Spec.Type != v1.ServiceTypeLoadBalancer {
 			return c.detachServiceScopedLoadBalancersFromRouters(lbNames...)
 		}
