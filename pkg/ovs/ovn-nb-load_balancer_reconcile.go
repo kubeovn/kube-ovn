@@ -90,7 +90,7 @@ func (c *OVNNbClient) resourceLoadBalancerOps(reconciliation LoadBalancerReconci
 		ops = append(ops, healthOps...)
 	}
 	for _, name := range slices.Sorted(maps.Keys(rows)) {
-		rowOps, err := c.resourceLoadBalancerRowOps(rows[name])
+		rowOps, err := c.resourceLoadBalancerRowOps(rows[name], reconciliation.OwnerExternalIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -124,12 +124,7 @@ func (c *OVNNbClient) resourceLoadBalancerOps(reconciliation LoadBalancerReconci
 
 func (c *OVNNbClient) resourceLoadBalancerRows(reconciliation LoadBalancerReconciliation) (map[string]*loadBalancerReconcileRow, error) {
 	owned, err := c.ListLoadBalancers(func(lb *ovnnb.LoadBalancer) bool {
-		for key, value := range reconciliation.OwnerExternalIDs {
-			if lb.ExternalIDs[key] != value {
-				return false
-			}
-		}
-		return true
+		return resourceLoadBalancerOwnedBy(lb, reconciliation.OwnerExternalIDs)
 	})
 	if err != nil {
 		return nil, err
@@ -204,6 +199,15 @@ func (c *OVNNbClient) resourceLoadBalancerRows(reconciliation LoadBalancerReconc
 		}
 	}
 	return rows, nil
+}
+
+func resourceLoadBalancerOwnedBy(lb *ovnnb.LoadBalancer, owner map[string]string) bool {
+	for key, value := range owner {
+		if lb.ExternalIDs[key] != value {
+			return false
+		}
+	}
+	return true
 }
 
 func (c *OVNNbClient) resourceLoadBalancerEmptyRows(rows map[string]*loadBalancerReconcileRow, seen map[string]struct{}, names []string) error {
@@ -414,7 +418,7 @@ func (c *OVNNbClient) resourceLoadBalancerHealthCheckDeleteOps(rows map[string]*
 			return err
 		}
 		scheduled[hc.UUID] = struct{}{}
-		ops = append(ops, waitOps...)
+		ops = append(ops, resourceLoadBalancerAllowDeletedRows(waitOps)...)
 		ops = append(ops, deleteOps...)
 		return nil
 	}
@@ -425,6 +429,9 @@ func (c *OVNNbClient) resourceLoadBalancerHealthCheckDeleteOps(rows map[string]*
 			for _, uuid := range row.original.HealthCheck {
 				hc := &ovnnb.LoadBalancerHealthCheck{UUID: uuid}
 				if err := c.getResourceLoadBalancerHealthCheck(hc); err != nil {
+					if errors.Is(err, client.ErrNotFound) {
+						continue
+					}
 					return nil, err
 				}
 				staleHealthChecks = append(staleHealthChecks, hc)
@@ -471,7 +478,7 @@ func (c *OVNNbClient) pruneResourceLoadBalancerHealthChecks(row *loadBalancerRec
 	return nil
 }
 
-func (c *OVNNbClient) resourceLoadBalancerRowOps(row *loadBalancerReconcileRow) ([]ovsdb.Operation, error) {
+func (c *OVNNbClient) resourceLoadBalancerRowOps(row *loadBalancerReconcileRow, owner map[string]string) ([]ovsdb.Operation, error) {
 	if row.original == nil {
 		createOps, err := c.Create(row.desired)
 		if err != nil {
@@ -480,6 +487,9 @@ func (c *OVNNbClient) resourceLoadBalancerRowOps(row *loadBalancerReconcileRow) 
 		return append([]ovsdb.Operation{ConstructWaitForNameNotExistsOperation(row.desired.Name, ovnnb.LoadBalancerTable)}, createOps...), nil
 	}
 	old := row.original
+	if row.deleted && resourceLoadBalancerOwnedBy(old, owner) {
+		return c.resourceLoadBalancerDeleteOps(old, ovnnb.LoadBalancerTable, old.UUID, owner)
+	}
 	fields := []any{&old.Protocol, &old.SelectionFields, &old.Options, &old.ExternalIDs, &old.Vips, &old.IPPortMappings, &old.HealthCheck}
 	guards, err := c.Where(old).Wait(ovsdb.WaitConditionEqual, new(0), old, fields...)
 	if err != nil {
@@ -489,12 +499,48 @@ func (c *OVNNbClient) resourceLoadBalancerRowOps(row *loadBalancerReconcileRow) 
 		return guards, nil
 	}
 	if row.deleted {
-		ops, err := c.Where(old).Delete()
-		return append(guards, ops...), err
+		deleteOps, err := c.Where(old).Delete()
+		return append(guards, deleteOps...), err
 	}
 	lb := row.desired
 	ops, err := c.Where(old).Update(lb, &lb.Protocol, &lb.SelectionFields, &lb.Options, &lb.ExternalIDs, &lb.Vips, &lb.IPPortMappings, &lb.HealthCheck)
 	return append(guards, ops...), err
+}
+
+// Keep a deletion's snapshot checks when the row exists, but allow a concurrent
+// cleanup to have already removed it. Each wait rejects a row with changed data.
+func resourceLoadBalancerAllowDeletedRows(guards []ovsdb.Operation) []ovsdb.Operation {
+	var ops []ovsdb.Operation
+	for _, guard := range guards {
+		for _, column := range guard.Columns {
+			condition := ovsdb.NewCondition(column, ovsdb.ConditionNotEqual, guard.Rows[0][column])
+			ops = append(ops, ovsdb.Operation{
+				Op: ovsdb.OperationWait, Table: guard.Table, Timeout: new(0), Until: "==",
+				Columns: []string{"_uuid"}, Rows: []ovsdb.Row{},
+				Where: append(slices.Clone(guard.Where), condition),
+			})
+		}
+	}
+	return ops
+}
+
+// Deletion depends on ownership, not the row's mutable data or continued existence.
+// Reject ownership changes atomically, while allowing another cleanup to remove the
+// same row before this transaction reaches the server.
+func (c *OVNNbClient) resourceLoadBalancerDeleteOps(row model.Model, tableName, uuid string, owner map[string]string) ([]ovsdb.Operation, error) {
+	var ops []ovsdb.Operation
+	for _, key := range slices.Sorted(maps.Keys(owner)) {
+		ops = append(ops, ovsdb.Operation{
+			Op: ovsdb.OperationWait, Table: tableName, Timeout: new(0), Until: "==",
+			Columns: []string{"_uuid"}, Rows: []ovsdb.Row{},
+			Where: []ovsdb.Condition{
+				ovsdb.NewCondition("_uuid", ovsdb.ConditionEqual, ovsdb.UUID{GoUUID: uuid}),
+				ovsdb.NewCondition("external_ids", ovsdb.ConditionExcludes, ovsdb.OvsMap{GoMap: map[any]any{key: owner[key]}}),
+			},
+		})
+	}
+	deleteOps, err := c.Where(row).Delete()
+	return append(ops, deleteOps...), err
 }
 
 func loadBalancerStateEqual(a, b *ovnnb.LoadBalancer) bool {
@@ -537,6 +583,18 @@ func (c *OVNNbClient) resourceLoadBalancerVariableOps(reconciliation LoadBalance
 	var ops []ovsdb.Operation
 	for _, chassis := range slices.Sorted(maps.Keys(desired)) {
 		row := current[chassis]
+		if row != nil && len(reconciliation.TemplateVariables) == 0 {
+			keys := slices.Sorted(maps.Keys(row.Variables))
+			keys = slices.DeleteFunc(keys, func(key string) bool { _, retained := desired[chassis][key]; return retained })
+			if len(keys) != 0 {
+				deleteOps, err := c.Where(row).Mutate(row, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationDelete, Value: keys})
+				if err != nil {
+					return nil, err
+				}
+				ops = append(ops, deleteOps...)
+			}
+			continue
+		}
 		if row == nil {
 			if len(desired[chassis]) == 0 {
 				continue
@@ -636,10 +694,16 @@ func (c *OVNNbClient) resourceLoadBalancerParentOps(parent model.Model, field *[
 	if len(mutations) == 0 {
 		return nil, nil
 	}
-	guards, err := c.Where(parent).Wait(ovsdb.WaitConditionEqual, new(0), parent, field)
-	if err != nil {
-		return nil, err
+	var guards []ovsdb.Operation
+	if len(inserts) != 0 {
+		var err error
+		guards, err = c.Where(parent).Wait(ovsdb.WaitConditionEqual, new(0), parent, field)
+		if err != nil {
+			return nil, err
+		}
 	}
+	// Removing specific UUIDs commutes with unrelated changes to the shared set,
+	// including a concurrent deletion of these same UUIDs. No snapshot is required.
 	mutateOps, err := c.Where(parent).Mutate(parent, mutations...)
 	if err != nil {
 		return nil, err
