@@ -44,3 +44,49 @@ func TestGetTProxyRulePorts(t *testing.T) {
 	pod.UID = "uid-recreated"
 	require.Empty(t, getTProxyRulePorts(pod, podIP))
 }
+
+func TestGetTProxyRulePortsForNativeSidecar(t *testing.T) {
+	const podIP = "10.30.0.42"
+	sidecarTCP := util.JoinHostPort(podIP, 9101)
+	t.Cleanup(func() { customVPCPodTCPProbeIPPort.Delete(sidecarTCP) })
+	pod := &corev1.Pod{
+		Name: "native-sidecar", Namespace: "default", UID: "uid-native-sidecar",
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{
+					Name: "app",
+					ReadinessProbe: &corev1.Probe{
+						HTTPGet: &corev1.HTTPGetAction{Port: intstr.FromInt32(8080)},
+					},
+				},
+			},
+			InitContainers: []corev1.Container{
+				{
+					Name:  "setup",
+					Ports: []corev1.ContainerPort{{Name: "setup-port", ContainerPort: 9000}},
+				},
+				{
+					Name: "proxy", RestartPolicy: new(corev1.ContainerRestartPolicyAlways),
+					Ports: []corev1.ContainerPort{{Name: "health", ContainerPort: 9100}},
+					StartupProbe: &corev1.Probe{
+						HTTPGet: &corev1.HTTPGetAction{Port: intstr.FromString("health")},
+					},
+					LivenessProbe: &corev1.Probe{
+						TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt32(9101)},
+					},
+					ReadinessProbe: &corev1.Probe{
+						GRPC: &corev1.GRPCAction{Port: 9102},
+					},
+				},
+			},
+		},
+	}
+
+	require.Equal(t, []int32{8080, 9100, 9102}, getTProxyRulePorts(pod, podIP).SortedList())
+	_, tcpPorts := getProbePorts(pod)
+	require.Equal(t, []int32{9101}, tcpPorts.SortedList())
+
+	customVPCPodTCPProbeIPPort.Store(sidecarTCP, tcpProbeResult{podUID: pod.UID, reachable: true})
+	require.Equal(t, []int32{8080, 9100, 9101, 9102}, getTProxyRulePorts(pod, podIP).SortedList())
+	require.Equal(t, []int32{8080, 9100, 9102}, getTProxyRulePorts(pod, "fd00::42").SortedList())
+}
