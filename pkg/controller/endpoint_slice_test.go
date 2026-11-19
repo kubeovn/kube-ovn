@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -1075,6 +1076,39 @@ func TestEndpointSliceServiceProfileRouterLBRuleHealthCheck(t *testing.T) {
 		require.False(t, profile.ignoreHealthCheck)
 		require.Equal(t, []string{"192.0.2.10"}, profile.lbVips)
 	})
+
+	t.Run("IPv6 and dual-stack VIPs enable checks", func(t *testing.T) {
+		t.Parallel()
+		for _, vips := range []string{"fd00::10", "192.0.2.10,fd00::10"} {
+			svc := &corev1.Service{
+				Namespace: "default",
+				Name:      "rlr-web",
+				Annotations: map[string]string{
+					util.RouterLBRuleVipsAnnotation: vips,
+					util.ServiceHealthCheck:         "true",
+				},
+				Spec: corev1.ServiceSpec{Type: corev1.ServiceTypeClusterIP, ClusterIP: corev1.ClusterIPNone},
+			}
+			profile, err := (&Controller{}).endpointSliceServiceProfile(svc)
+			require.NoError(t, err)
+			require.False(t, profile.ignoreHealthCheck)
+			for vip := range strings.SplitSeq(vips, ",") {
+				require.True(t, profile.healthCheckVips[vip])
+			}
+		}
+	})
+}
+
+func TestFormatHealthCheckSourceIP(t *testing.T) {
+	tests := map[string]string{
+		"10.0.0.10": "10.0.0.10",
+		"fd00::10":  "[fd00::10]",
+	}
+	for input, want := range tests {
+		t.Run(input, func(t *testing.T) {
+			require.Equal(t, want, formatHealthCheckSourceIP(input))
+		})
+	}
 }
 
 func TestFilterIPPortMappingByVIP(t *testing.T) {
