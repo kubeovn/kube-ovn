@@ -52,7 +52,7 @@ func TestServiceNodePortsUseStaticClusterBackends(t *testing.T) {
 				}, lb.Vips)
 				lr, err := nb.GetLogicalRouter("vpc", false)
 				require.NoError(t, err)
-				require.NotContains(t, lr.LoadBalancer, lb.UUID, "external router ingress must not use the internal Cluster NodePort path")
+				require.NotContains(t, lr.LoadBalancer, lb.UUID, "non-logical-gateway NodePort traffic must remain switch-only")
 				ls, err := nb.GetLogicalSwitch("subnet", false)
 				require.NoError(t, err)
 				require.Contains(t, ls.LoadBalancer, lb.UUID)
@@ -64,6 +64,23 @@ func TestServiceNodePortsUseStaticClusterBackends(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestServiceNodePortsAttachToRouterForLogicalGateway(t *testing.T) {
+	ctrl, nb, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeNodePort, false)
+	subnet, err := ctrl.subnetsLister.Get("subnet")
+	require.NoError(t, err)
+	subnet.Spec.LogicalGateway = true
+	svc.Spec.Ports[0].NodePort = 30080
+	node, err := ctrl.nodesLister.Get("node")
+	require.NoError(t, err)
+	node.Status.Addresses = []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "192.0.2.10"}}
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
+	lb, err := nb.GetLoadBalancer(serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBNodePortTraffic), false)
+	require.NoError(t, err)
+	lr, err := nb.GetLogicalRouter("vpc", false)
+	require.NoError(t, err)
+	require.Contains(t, lr.LoadBalancer, lb.UUID)
 }
 
 func TestServiceNodePortsSeparateProtocolsWithTheSamePort(t *testing.T) {
