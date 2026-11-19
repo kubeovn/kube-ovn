@@ -22,6 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/util/wait"
 	corelisters "k8s.io/client-go/listers/core/v1"
 	netlisters "k8s.io/client-go/listers/networking/v1"
 	k8stesting "k8s.io/client-go/testing"
@@ -1680,4 +1681,29 @@ func TestMarkAndCleanLSPKeepsSwitchLBVipLSPWhileMigrationFails(t *testing.T) {
 	for range 3 {
 		require.NoError(t, ctrl.markAndCleanLSP())
 	}
+}
+
+func TestRunGCWithRetry(t *testing.T) {
+	t.Parallel()
+
+	// a gc pass can lose an OVSDB transaction to a concurrent write; a retry gets it through
+	backoff := wait.Backoff{Duration: time.Millisecond, Factor: 1, Steps: 4}
+	attempts := 0
+	runGCWithRetry(backoff, func() error {
+		attempts++
+		if attempts < 3 {
+			return errors.New("timed out: \"where\" clause test failed")
+		}
+		return nil
+	})
+	require.Equal(t, 3, attempts)
+
+	// a gc that keeps failing must not take the controller down, the cleanup is left to
+	// the next controller start
+	attempts = 0
+	runGCWithRetry(backoff, func() error {
+		attempts++
+		return errors.New("gc failed")
+	})
+	require.Equal(t, backoff.Steps, attempts)
 }
