@@ -525,18 +525,22 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		newIPCR.Spec.AttachMacs = []string{}
 		newIPCR.Spec.AttachSubnets = []string{}
 		newIPCR.Spec.PodType = podType
-		if maps.Equal(newIPCR.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) &&
-			reflect.DeepEqual(newIPCR.OwnerReferences, ipCR.OwnerReferences) {
-			return nil
-		}
-		controllerutil.AddFinalizer(newIPCR, util.KubeOVNControllerFinalizer)
+		if !maps.Equal(newIPCR.Labels, ipCR.Labels) || !reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) ||
+			!reflect.DeepEqual(newIPCR.OwnerReferences, ipCR.OwnerReferences) {
+			controllerutil.AddFinalizer(newIPCR, util.KubeOVNControllerFinalizer)
 
-		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{}); err != nil {
-			err := fmt.Errorf("failed to update ip CR %s: %w", ipCRName, err)
-			klog.Error(err)
-			return err
+			if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{}); err != nil {
+				err := fmt.Errorf("failed to update ip CR %s: %w", ipCRName, err)
+				klog.Error(err)
+				return err
+			}
 		}
 	}
+	// The subnet/ippool statistics are refreshed from IP CR watch events, which are not
+	// delivered when the CR is already up to date or when an immutable field change (e.g.
+	// a MAC regenerated after a controller restart) is rejected by the update handler.
+	// Trigger the refresh here so the statistics converge with what IPAM just committed.
+	c.updateSubnetStatusQueue.Add(subnetName)
 	return nil
 }
 
