@@ -167,7 +167,11 @@ func (c *Controller) serviceLoadBalancerParents(ctx *endpointSliceReconcileConte
 			switches = append(switches, subnet.Name)
 		}
 	}
-	if owner.kind == routerLBRuleLBOwnerKind || (svc.Spec.Type == v1.ServiceTypeLoadBalancer && class == serviceLBExternalTraffic) {
+	if owner.kind == routerLBRuleLBOwnerKind ||
+		(class == serviceLBNodePortTraffic && slices.ContainsFunc(subnets, func(subnet *kubeovnv1.Subnet) bool {
+			return subnet.Spec.Vpc == ctx.vpcName && subnet.Spec.LogicalGateway
+		})) ||
+		(svc.Spec.Type == v1.ServiceTypeLoadBalancer && class == serviceLBExternalTraffic) {
 		routers = append(routers, ctx.vpcName)
 	}
 	return switches, routers, nil
