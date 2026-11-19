@@ -8,6 +8,7 @@ import (
 
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -49,21 +50,22 @@ func (c *Controller) reconcileServiceNodePorts(ctx *endpointSliceReconcileContex
 		return nil
 	}
 	// Router ingress bypasses switch LB conntrack in OVN. Localnet ingress
-	// does not: reject direct external OVN NodePort ingress before LB rather
-	// than letting it bypass kube-proxy's external Local policy. Pod traffic
-	// has already been translated on its source logical port before it can
-	// arrive through another switch's localnet port.
-	for _, lb := range ctx.lbReconciliation.desired {
-		if lb.Config.ExternalIDs[serviceLBScopeExternalID] != "logical-switch/nodeport" {
+	// does not: reject direct external OVN NodePort ingress before it can reach
+	// a router-attached NodePort LB and bypass kube-proxy's external Local
+	// policy. Keep this guard on every enabled Service-LB switch, including
+	// logical-gateway and U2O switches whose NodePort LB is router-only.
+	subnets, err := c.subnetsLister.List(labels.Everything())
+	if err != nil {
+		return err
+	}
+	for _, subnet := range subnets {
+		if subnet.Name == c.config.NodeSwitch || !isOvnSubnet(subnet) || subnet.Spec.Vpc != ctx.vpcName || !subnetEnablesServiceLB(subnet, c.config.EnableOvnLB) {
 			continue
 		}
-		for _, logicalSwitch := range lb.LogicalSwitches {
-			ctx.lbReconciliation.batch.IngressGuards = append(ctx.lbReconciliation.batch.IngressGuards, ovs.LoadBalancerIngressGuard{
-				LogicalSwitch: logicalSwitch,
-				Match:         fmt.Sprintf("inport == %q && (%s)", ovs.GetLocalnetName(logicalSwitch), strings.Join(matches, " || ")),
-			})
-		}
-		break
+		ctx.lbReconciliation.batch.IngressGuards = append(ctx.lbReconciliation.batch.IngressGuards, ovs.LoadBalancerIngressGuard{
+			LogicalSwitch: subnet.Name,
+			Match:         fmt.Sprintf("inport == %q && (%s)", ovs.GetLocalnetName(subnet.Name), strings.Join(matches, " || ")),
+		})
 	}
 	return nil
 }
