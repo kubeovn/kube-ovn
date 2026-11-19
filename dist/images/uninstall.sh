@@ -36,7 +36,7 @@ delete_iptables_rule() {
   shift
   local out
   if ! out=$("${cmd}" -w 5 "$@" 2>&1); then
-    if [[ "${out}" != *"does a matching rule exist"* && "${out}" != *"No chain/target/match by that name"* && "${out}" != *"does not exist"* && "${out}" != *"doesn't exist"* && "${out}" != *"Table does not exist"* ]]; then
+    if [[ "${out}" != *"does a matching rule exist"* && "${out}" != *"No chain/target/match by that name"* && "${out}" != *"does not exist"* && "${out}" != *"doesn't exist"* && "${out}" != *"Table does not exist"* && "${out}" != *"Address family not supported"* && "${out}" != *"Protocol not supported"* ]]; then
       echo "failed to delete rule via ${cmd} $*: ${out}" >&2
       return 1
     fi
