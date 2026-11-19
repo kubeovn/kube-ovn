@@ -83,6 +83,23 @@ func TestServiceNodePortsAttachToRouterForLogicalGateway(t *testing.T) {
 	require.Contains(t, lr.LoadBalancer, lb.UUID)
 }
 
+func TestServiceNodePortsAttachToRouterForU2O(t *testing.T) {
+	ctrl, nb, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeNodePort, false)
+	subnet, err := ctrl.subnetsLister.Get("subnet")
+	require.NoError(t, err)
+	subnet.Spec.U2OInterconnection = true
+	svc.Spec.Ports[0].NodePort = 30080
+	node, err := ctrl.nodesLister.Get("node")
+	require.NoError(t, err)
+	node.Status.Addresses = []corev1.NodeAddress{{Type: corev1.NodeInternalIP, Address: "192.0.2.10"}}
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
+	lb, err := nb.GetLoadBalancer(serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBNodePortTraffic), false)
+	require.NoError(t, err)
+	lr, err := nb.GetLogicalRouter("vpc", false)
+	require.NoError(t, err)
+	require.Contains(t, lr.LoadBalancer, lb.UUID)
+}
+
 func TestServiceNodePortsSeparateProtocolsWithTheSamePort(t *testing.T) {
 	ctrl, nb, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeNodePort, false)
 	svc.Spec.Ports[0].NodePort, svc.Spec.Ports[2].NodePort = 30080, 30080
