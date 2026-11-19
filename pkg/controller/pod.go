@@ -2752,6 +2752,26 @@ func ippoolHasAvailableIPFamily(ippool *kubeovnv1.IPPool, subnetProtocol, ipFami
 	}
 }
 
+// recordedMacAddress returns the MAC recorded in the ip CR of a port when the pod is
+// already running with the recorded address. Such a pod is allocated again here because
+// the controller died between the IPAM commit and the annotation patch: its container NIC
+// is already configured with that MAC, so generating a new one would move OVN away from
+// the NIC and black-hole the pod's traffic. A pod that was recreated while the controller
+// was down has no address in its status yet and gets a fresh MAC, like any new pod.
+func (c *Controller) recordedMacAddress(pod *v1.Pod, portName string) string {
+	ipCR, err := c.ipsLister.Get(portName)
+	if err != nil || !ipCR.DeletionTimestamp.IsZero() || ipCR.Spec.MacAddress == "" {
+		return ""
+	}
+	podIPs := util.PodIPs(*pod)
+	for ip := range strings.SplitSeq(ipCR.Spec.IPAddress, ",") {
+		if slices.Contains(podIPs, ip) {
+			return ipCR.Spec.MacAddress
+		}
+	}
+	return ""
+}
+
 func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, string, string, *kubeovnv1.Subnet, error) {
 	// becomes vmNAme when pod is owned by a kubevirt VM
 	podName := c.getNameByPod(pod)
@@ -2793,6 +2813,8 @@ func (c *Controller) acquireAddress(pod *v1.Pod, podNet *kubeovnNet) (string, st
 				return "", "", "", podNet.Subnet, err
 			}
 			macPointer = &annoMAC
+		} else if ipCRMAC := c.recordedMacAddress(pod, portName); ipCRMAC != "" {
+			macPointer = &ipCRMAC
 		}
 	} else if macPointer == nil {
 		macPointer = new("")
