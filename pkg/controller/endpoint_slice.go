@@ -1673,9 +1673,26 @@ func (c *Controller) getDistributedIPPortMapping(endpointSlices []*discoveryv1.E
 		if err != nil {
 			return nil, fmt.Errorf("get endpoint pod %s/%s: %w", targetNamespace, endpoint.TargetRef.Name, err)
 		}
-		lspName, err := c.getEndpointTargetLSPName(pod, candidate.addresses)
-		if err != nil {
-			return nil, fmt.Errorf("get logical port for endpoint pod %s/%s: %w", pod.Namespace, pod.Name, err)
+		// Independent informer caches can observe a replacement Pod in either order.
+		if endpoint.TargetRef.UID != "" && endpoint.TargetRef.UID != pod.UID {
+			return nil, fmt.Errorf("endpoint target UID %q does not match pod %s/%s UID %q", endpoint.TargetRef.UID, pod.Namespace, pod.Name, pod.UID)
+		}
+		var lspName string
+		if pod.Spec.HostNetwork {
+			if pod.Spec.NodeName == "" {
+				return nil, fmt.Errorf("host-network endpoint pod %s/%s has no node assigned", pod.Namespace, pod.Name)
+			}
+			if endpoint.NodeName != nil && *endpoint.NodeName != pod.Spec.NodeName {
+				return nil, fmt.Errorf("endpoint node %q does not match host-network pod %s/%s node %q", *endpoint.NodeName, pod.Namespace, pod.Name, pod.Spec.NodeName)
+			}
+			// The node's join port identifies the agent's chassis. Keep the
+			// backend address unchanged so node IP routing reaches the agent.
+			lspName = util.NodeLspName(pod.Spec.NodeName)
+		} else {
+			lspName, err = c.getEndpointTargetLSPName(pod, candidate.addresses)
+			if err != nil {
+				return nil, fmt.Errorf("get logical port for endpoint pod %s/%s: %w", pod.Namespace, pod.Name, err)
+			}
 		}
 		lsp, err := c.OVNNbClient.GetLogicalSwitchPort(lspName, true)
 		if err != nil {

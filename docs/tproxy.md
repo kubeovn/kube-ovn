@@ -50,8 +50,10 @@ startup or temporary helper failures are failed dials retried by later probes.
 There is no container startup order requirement.
 
 The daemon intercepts HTTP, gRPC, and TCP probe ports, including startup probes,
-so kubelet can reach custom VPC Pods. TCP probes only check whether a connection
-opens, so the daemon intercepts their ports only after a successful backend dial.
+so kubelet can reach custom VPC Pods. This includes native sidecars defined under
+`initContainers` with `restartPolicy: Always`. TCP probes only check whether a
+connection opens, so the daemon intercepts their ports only after a successful
+backend dial.
 An unreachable TCP port is removed from the interception rules on the next
 gateway reconciliation; a port shared with an HTTP or gRPC probe follows the
 same TCP rule. Probe results are scoped to the Pod UID so an IP reused by
