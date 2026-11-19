@@ -84,6 +84,9 @@ func TestServiceNodePortsAttachToRouterForLogicalGateway(t *testing.T) {
 	ls, err := nb.GetLogicalSwitch("subnet", false)
 	require.NoError(t, err)
 	require.NotContains(t, ls.LoadBalancer, lb.UUID)
+	guards, err := nb.ListAcls("", map[string]string{ovs.LoadBalancerIngressGuardExternalID: "true"})
+	require.NoError(t, err)
+	require.Len(t, guards, 1)
 }
 
 func TestServiceNodePortsAttachToRouterForU2O(t *testing.T) {
@@ -104,6 +107,9 @@ func TestServiceNodePortsAttachToRouterForU2O(t *testing.T) {
 	ls, err := nb.GetLogicalSwitch("subnet", false)
 	require.NoError(t, err)
 	require.NotContains(t, ls.LoadBalancer, lb.UUID)
+	guards, err := nb.ListAcls("", map[string]string{ovs.LoadBalancerIngressGuardExternalID: "true"})
+	require.NoError(t, err)
+	require.Len(t, guards, 1)
 }
 
 func TestServiceNodePortsSeparateProtocolsWithTheSamePort(t *testing.T) {
