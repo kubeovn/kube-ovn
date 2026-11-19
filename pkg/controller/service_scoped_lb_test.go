@@ -1559,6 +1559,12 @@ func TestDecorateDistributedIPPortMapping(t *testing.T) {
 	if mapping["10.0.0.2"] != "pod-backend:10.0.0.10" {
 		t.Fatalf("empty source IP changed mapping = %v", mapping)
 	}
+
+	ipv6Mapping := IPPortMapping{"[fd00::2]": "pod-backend"}
+	decorateDistributedIPPortMapping(ipv6Mapping, "fd00::10")
+	if ipv6Mapping["[fd00::2]"] != "pod-backend:[fd00::10]" {
+		t.Fatalf("IPv6 decorated mapping = %v", ipv6Mapping)
+	}
 }
 
 func TestServiceScopedInternalLBFamilies(t *testing.T) {
