@@ -80,7 +80,7 @@ func (c *OVNNbClient) resourceLoadBalancerIngressGuardOps(plan LoadBalancerRecon
 		if _, ok := retained[acl.UUID]; ok {
 			continue
 		}
-		deleteOps, err := c.Where(&acl).Delete()
+		deleteOps, err := c.resourceLoadBalancerDeleteOps(&acl, ovnnb.ACLTable, acl.UUID, owner)
 		if err != nil {
 			return nil, err
 		}
