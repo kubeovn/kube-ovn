@@ -210,6 +210,28 @@ func TestReconcileResourceLoadBalancersRejectsStaleSnapshot(t *testing.T) {
 	require.Equal(t, "keep", tcp.ExternalIDs["concurrent"], "retry must preserve the concurrent metadata update")
 }
 
+func TestReconcileResourceLoadBalancersRetainsChangedHealthCheck(t *testing.T) {
+	nbClient := newResourceLoadBalancerTestClient(t)
+	reconciliation := resourceLoadBalancerFixture(t, nbClient)
+	require.NoError(t, nbClient.ReconcileLoadBalancers(reconciliation))
+	checks, err := nbClient.ListLoadBalancerHealthChecks(nil)
+	require.NoError(t, err)
+	require.Len(t, checks, 1)
+	reconciliation.LoadBalancers = nil
+	reconciliation.TemplateVariables = nil
+	ops, err := nbClient.resourceLoadBalancerOps(reconciliation)
+	require.NoError(t, err)
+	check := checks[0]
+	check.Options = maps.Clone(check.Options)
+	check.Options["timeout"] = "99"
+	require.NoError(t, nbClient.UpdateLoadBalancerHealthCheck(&check, &check.Options))
+	require.Error(t, nbClient.Transact("changed-health-check", ops))
+	checks, err = nbClient.ListLoadBalancerHealthChecks(nil)
+	require.NoError(t, err)
+	require.Len(t, checks, 1)
+	require.Equal(t, "99", checks[0].Options["timeout"])
+}
+
 func TestReconcileResourceLoadBalancersGuardsUnchangedRows(t *testing.T) {
 	nbClient := newResourceLoadBalancerTestClient(t)
 	reconciliation := resourceLoadBalancerFixture(t, nbClient)
