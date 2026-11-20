@@ -337,7 +337,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			}
 		}
 
-		if err = c.patchEipReplayStatus(key, "", cachedEip.Spec.QoSPolicy, true); err != nil {
+		if err = c.completeEipReplay(key, cachedEip.Status.Redo, cachedEip.Spec.QoSPolicy); err != nil {
 			klog.Errorf("failed to patch status for eip %s, %v", key, err)
 			return err
 		}
@@ -909,6 +909,32 @@ func (c *Controller) patchEipReplayStatus(key, redo, qos string, ready bool) err
 	}
 	if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, patch); err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to patch eip %s, %v", key, err)
+		return err
+	}
+	return nil
+}
+
+// completeEipReplay marks an EIP ready only when the replay token observed by its worker is
+// still current. The live resource version makes the status update compare-and-swap safe when a
+// newer replay is marked between the GET and UpdateStatus calls.
+func (c *Controller) completeEipReplay(key, expectedRedo, qos string) error {
+	client := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs()
+	eip, err := client.Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if eip.Status.Redo != expectedRedo {
+		return nil
+	}
+	eip.Status.Ready = true
+	if qos != "" {
+		eip.Status.QoSPolicy = qos
+	}
+	if _, err = client.UpdateStatus(context.Background(), eip, metav1.UpdateOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to complete replay for eip %s, %v", key, err)
 		return err
 	}
 	return nil

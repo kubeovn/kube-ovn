@@ -479,7 +479,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 			klog.Errorf("failed to create fip, %v", err)
 			return err
 		}
-		if err = c.patchFipStatus(key, "", "", "", "", true); err != nil {
+		if err = c.completeFipReplay(key, cachedFip.Status.Redo); err != nil {
 			klog.Errorf("failed to patch status for fip %s, %v", key, err)
 			return err
 		}
@@ -762,7 +762,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 			klog.Errorf("failed to create dnat %s, %v", key, err)
 			return err
 		}
-		if err = c.patchDnatStatus(key, "", "", "", "", true); err != nil {
+		if err = c.completeDnatReplay(key, cachedDnat.Status.Redo); err != nil {
 			klog.Errorf("failed to patch status for dnat %s, %v", key, err)
 			return err
 		}
@@ -1030,7 +1030,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 			klog.Errorf("failed to create new snat, %v", err)
 			return err
 		}
-		if err = c.patchSnatStatus(key, "", "", "", "", true); err != nil {
+		if err = c.completeSnatReplay(key, cachedSnat.Status.Redo); err != nil {
 			klog.Errorf("failed to patch status for snat %s, %v", key, err)
 			return err
 		}
@@ -1357,6 +1357,28 @@ func (c *Controller) patchFipStatus(key, v4ip, v6ip, natGwDp, redo string, ready
 	return nil
 }
 
+// completeFipReplay marks a FIP ready only when the replay token observed by its worker is still
+// current. UpdateStatus uses the live resource version as the compare-and-swap guard.
+func (c *Controller) completeFipReplay(key, expectedRedo string) error {
+	client := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules()
+	fip, err := client.Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if fip.Status.Redo != expectedRedo {
+		return nil
+	}
+	fip.Status.Ready = true
+	if _, err = client.UpdateStatus(context.Background(), fip, metav1.UpdateOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to complete replay for fip %s, %v", key, err)
+		return err
+	}
+	return nil
+}
+
 func (c *Controller) redoFip(key, redo string, eipReady bool) error {
 	fip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {
@@ -1479,6 +1501,28 @@ func (c *Controller) patchDnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 	return nil
 }
 
+// completeDnatReplay marks a DNAT ready only when the replay token observed by its worker is
+// still current. UpdateStatus uses the live resource version as the compare-and-swap guard.
+func (c *Controller) completeDnatReplay(key, expectedRedo string) error {
+	client := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules()
+	dnat, err := client.Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if dnat.Status.Redo != expectedRedo {
+		return nil
+	}
+	dnat.Status.Ready = true
+	if _, err = client.UpdateStatus(context.Background(), dnat, metav1.UpdateOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to complete replay for dnat %s, %v", key, err)
+		return err
+	}
+	return nil
+}
+
 func (c *Controller) redoDnat(key, redo string, eipReady bool) error {
 	dnat, err := c.iptablesDnatRulesLister.Get(key)
 	if err != nil {
@@ -1585,6 +1629,28 @@ func (c *Controller) patchSnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 
 	if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules(), key, patch); err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to patch snat %s, %v", key, err)
+		return err
+	}
+	return nil
+}
+
+// completeSnatReplay marks a SNAT ready only when the replay token observed by its worker is
+// still current. UpdateStatus uses the live resource version as the compare-and-swap guard.
+func (c *Controller) completeSnatReplay(key, expectedRedo string) error {
+	client := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules()
+	snat, err := client.Get(context.Background(), key, metav1.GetOptions{})
+	if err != nil {
+		if k8serrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	if snat.Status.Redo != expectedRedo {
+		return nil
+	}
+	snat.Status.Ready = true
+	if _, err = client.UpdateStatus(context.Background(), snat, metav1.UpdateOptions{}); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to complete replay for snat %s, %v", key, err)
 		return err
 	}
 	return nil
