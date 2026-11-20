@@ -1419,32 +1419,31 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 
 	/* filter all invalid virtual port */
 	existVips := make(map[string]string) // key is vip, value is port name
+	validVips := make(map[string]struct{})
+	virtualPortPrefix := subnet.Name + "-vip-"
 	for _, lsp := range lsps {
 		// only the ports CreateVirtualLogicalSwitchPorts made for subnet.Spec.Vips; a Vip CR's
 		// virtual ports (vip:<name>:ipv4/ipv6) belong to the vip controller
-		if !strings.HasPrefix(lsp.Name, subnet.Name+"-vip-") {
-			continue
-		}
-		vip, ok := lsp.Options["virtual-ip"]
+		vip, ok := strings.CutPrefix(lsp.Name, virtualPortPrefix)
 		if !ok {
-			continue // ignore vip which is empty
+			continue
 		}
 
 		if net.ParseIP(vip) == nil {
 			continue // ignore invalid vip
 		}
 
-		if lsp.Name != fmt.Sprintf("%s-vip-%s", subnet.Name, vip) {
-			continue
-		}
-
 		existVips[vip] = lsp.Name
+		if lsp.Options["virtual-ip"] != vip {
+			continue // recreate ports with stale or missing virtual-ip options
+		}
+		validVips[vip] = struct{}{}
 	}
 
 	/* filter virtual port to be added and old virtual port to be deleted */
 	var newVips []string
 	for _, vip := range subnet.Spec.Vips {
-		if _, ok := existVips[vip]; !ok {
+		if _, ok := validVips[vip]; !ok {
 			// new virtual port to be added
 			newVips = append(newVips, vip)
 		} else {
