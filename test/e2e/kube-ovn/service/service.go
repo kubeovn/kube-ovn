@@ -126,6 +126,60 @@ var _ = framework.Describe("[group:service]", func() {
 		}
 	})
 
+	framework.ConformanceIt("should reach static Cluster NodePort backends from a Pod with either external traffic policy", func() {
+		f.SkipVersionPriorTo(1, 17, "Static service-owned NodePort LBs require v1.17")
+		nodes, err := e2enode.GetReadySchedulableNodes(context.Background(), cs)
+		framework.ExpectNoError(err)
+		if len(nodes.Items) < 2 {
+			ginkgo.Skip("this test requires two schedulable nodes")
+		}
+		_ = subnetClient.CreateSync(framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, nil))
+		labels := map[string]string{"app": podName}
+		annotations := map[string]string{util.LogicalSwitchAnnotation: subnetName}
+		args := []string{"netexec", "--http-port=8080", "--udp-port=8080"}
+		backend := framework.MakePod(namespaceName, podName, labels, annotations, framework.AgnhostImage, nil, args)
+		backend.Spec.NodeName = nodes.Items[0].Name
+		_ = podClient.CreateSync(backend)
+		client := framework.MakePod(namespaceName, hostPodName, nil, annotations, framework.AgnhostImage, nil, args)
+		client.Spec.NodeName = nodes.Items[1].Name
+		_ = podClient.CreateSync(client)
+		ports := []corev1.ServicePort{
+			{Name: "tcp", Protocol: corev1.ProtocolTCP, Port: 80, TargetPort: intstr.FromInt32(8080)},
+			{Name: "udp", Protocol: corev1.ProtocolUDP, Port: 80, TargetPort: intstr.FromInt32(8080)},
+		}
+		svc := framework.MakeService(serviceName, corev1.ServiceTypeNodePort, nil, labels, ports, corev1.ServiceAffinityClientIP)
+		svc.Spec.IPFamilyPolicy = new(corev1.IPFamilyPolicyPreferDualStack)
+		svc.Spec.SessionAffinityConfig = &corev1.SessionAffinityConfig{ClientIP: &corev1.ClientIPConfig{TimeoutSeconds: new(int32(42))}}
+		svc = serviceClient.CreateSync(svc, func(s *corev1.Service) (bool, error) {
+			return len(s.Spec.Ports) == 2 && s.Spec.Ports[0].NodePort != 0, nil
+		}, "NodePorts are allocated")
+		changed := svc.DeepCopy()
+		changed.Spec.Ports[1].NodePort = svc.Spec.Ports[0].NodePort
+		svc = serviceClient.Patch(svc, changed)
+		ipv4, ipv6 := util.GetNodeInternalIP(nodes.Items[1])
+		for _, policy := range []corev1.ServiceExternalTrafficPolicy{corev1.ServiceExternalTrafficPolicyCluster, corev1.ServiceExternalTrafficPolicyLocal} {
+			changed = svc.DeepCopy()
+			changed.Spec.ExternalTrafficPolicy = policy
+			svc = serviceClient.Patch(svc, changed)
+			for _, address := range []string{ipv4, ipv6} {
+				if address == "" || f.IsIPv4() && util.CheckProtocol(address) == "IPv6" || f.IsIPv6() && util.CheckProtocol(address) == "IPv4" {
+					continue
+				}
+				ginkgo.By(fmt.Sprintf("Checking Pod access to %s with ETP %s and no local endpoint", address, policy))
+				for _, protocol := range []string{"tcp", "udp"} {
+					cmd := fmt.Sprintf("curl -q -g -fsS --connect-timeout 2 --max-time 3 'http://%s/hostname'", util.JoinHostPort(address, svc.Spec.Ports[0].NodePort))
+					if protocol == "udp" {
+						cmd = fmt.Sprintf("curl -q -g -fsS --max-time 3 'http://127.0.0.1:8080/dial?host=%s&port=%d&protocol=udp&request=hostname&tries=1'", address, svc.Spec.Ports[0].NodePort)
+					}
+					framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
+						out, err := e2epodoutput.RunHostCmd(namespaceName, hostPodName, cmd)
+						return err == nil && strings.Contains(out, podName), nil
+					}, "NodePort reaches the remote backend")
+				}
+			}
+		}
+	})
+
 	framework.ConformanceIt("should ovn nb change vip when dual-stack service removes the cluster ip", func() {
 		if !f.IsDual() {
 			ginkgo.Skip("this case only support dual mode")

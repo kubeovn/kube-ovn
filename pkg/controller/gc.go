@@ -694,6 +694,9 @@ func (c *Controller) gcLoadBalancer() error {
 			klog.Errorf("delete all load balancers: %v", err)
 			return err
 		}
+		if err := c.gcServiceNodePortIngressGuards(nil); err != nil {
+			return err
+		}
 		if err := c.gcServiceTrafficDistributionVariables(nil); err != nil {
 			return err
 		}
@@ -704,6 +707,9 @@ func (c *Controller) gcLoadBalancer() error {
 	svcs, err := c.servicesLister.List(labels.Everything())
 	if err != nil {
 		klog.Errorf("failed to list svc, %v", err)
+		return err
+	}
+	if err := c.gcServiceNodePortIngressGuards(svcs); err != nil {
 		return err
 	}
 	if err := c.gcServiceTrafficDistributionVariables(svcs); err != nil {

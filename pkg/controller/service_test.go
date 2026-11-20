@@ -410,6 +410,20 @@ func Test_enqueueUpdateServiceSkipsIrrelevantUpdates(t *testing.T) {
 			enqueued: true,
 		},
 		{
+			name: "topology mode annotation change is enqueued",
+			mutate: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{v1.AnnotationTopologyMode: "Auto"}
+			},
+			enqueued: true,
+		},
+		{
+			name: "legacy topology hints annotation change is enqueued",
+			mutate: func(svc *v1.Service) {
+				svc.Annotations = map[string]string{v1.DeprecatedAnnotationTopologyAwareHints: "Auto"}
+			},
+			enqueued: true,
+		},
+		{
 			name: "cluster ip change is enqueued",
 			mutate: func(svc *v1.Service) {
 				svc.Spec.ClusterIP = "10.96.0.11"

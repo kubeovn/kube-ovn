@@ -1705,6 +1705,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}
 
 	if c.config.EnableOvnLB {
+		go wait.Until(c.enqueueTrafficDistributionServices, 30*time.Second, ctx.Done())
 		go wait.Until(runWorker("add/update router lb rule", c.addRouterLBRuleQueue, c.handleAddOrUpdateRouterLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("delete router lb rule", c.delRouterLBRuleQueue, c.handleDelRouterLBRule), time.Second, ctx.Done())
 		go wait.Until(runWorker("update router lb rule", c.updateRouterLBRuleQueue, c.handleUpdateRouterLBRule), time.Second, ctx.Done())
