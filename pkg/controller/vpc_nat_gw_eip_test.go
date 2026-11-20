@@ -67,22 +67,18 @@ func TestCreateOrUpdateEipCRPreservesPendingReplay(t *testing.T) {
 			IP: "2.2.2.2", Nat: "new-nat", Redo: "new-replay",
 		},
 	}
-	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
-		IptablesEips:   []*kubeovnv1.IptablesEIP{eip},
-		VpcNatGateways: []*kubeovnv1.VpcNatGateway{fakeGw("gw")},
-	})
-	require.NoError(t, err)
+	c := newEipReplayTestController(t, eip)
 
-	client := fc.fakeController.config.KubeOvnClient.KubeovnV1().IptablesEIPs()
-	gotBefore, err := client.Get(context.Background(), eip.Name, metav1.GetOptions{})
+	client := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs()
+	gotBefore, err := client.Get(t.Context(), eip.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.False(t, gotBefore.Status.Ready)
 
-	require.NoError(t, fc.fakeController.createOrUpdateEipCR(
-		eip.Name, "2.2.2.2", "", "", "gw", "", "ext-net", "",
+	require.NoError(t, c.createOrUpdateEipCR(
+		eip.Name, "2.2.2.2", "", "", "gw", "", "ext-net",
 	))
 
-	got, err := client.Get(context.Background(), eip.Name, metav1.GetOptions{})
+	got, err := client.Get(t.Context(), eip.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.False(t, got.Status.Ready)
 	require.Equal(t, "new-replay", got.Status.Redo)
