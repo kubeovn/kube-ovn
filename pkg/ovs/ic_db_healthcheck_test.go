@@ -48,6 +48,11 @@ echo 'Status: cluster member'
 echo 'Role: leader'
 `, 0o700)
 			script := strings.ReplaceAll(string(content), "/etc/ovn", "${TEST_DB_DIR}")
+			checkScript, err := filepath.Abs(filepath.Join("..", "..", "dist", "images", "ovn-db-check.py"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			script = strings.ReplaceAll(script, "/kube-ovn/ovn-db-check.py", "'"+strings.ReplaceAll(checkScript, "'", "'\\''")+"'")
 			cmd := exec.CommandContext(t.Context(), requireBash(t), "-c", script) // #nosec G204
 			cmd.Env = startDBRecoveryEnv(dir, trace, "", "valid")
 			output, err := cmd.CombinedOutput()
