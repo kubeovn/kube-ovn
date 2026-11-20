@@ -75,22 +75,21 @@ type zeroTailMember struct {
 	backedUp bool
 }
 
-func cleanupZeroTailFiles(members map[string]*zeroTailMember, path string, restore bool) error {
+func restoreZeroTailFiles(members map[string]*zeroTailMember, path string) error {
 	var failures []error
-	if restore {
-		for _, member := range members {
-			if member.backedUp {
-				stdout, stderr, err := member.node.Exec("cp", member.backup, path)
-				if err != nil {
-					failures = append(failures, fmt.Errorf("restore %s: %w; stdout=%s stderr=%s", member.node.Name(), err, stdout, stderr))
-				}
+	for _, member := range members {
+		if member.backedUp {
+			stdout, stderr, err := member.node.Exec("cp", member.backup, path)
+			if err != nil {
+				failures = append(failures, fmt.Errorf("restore %s: %w; stdout=%s stderr=%s", member.node.Name(), err, stdout, stderr))
 			}
 		}
-		// A partial ensemble restore needs every backup for another attempt.
-		if len(failures) != 0 {
-			return errors.Join(failures...)
-		}
 	}
+	return errors.Join(failures...)
+}
+
+func removeZeroTailBackups(members map[string]*zeroTailMember) error {
+	var failures []error
 	for _, member := range members {
 		stdout, stderr, err := member.node.Exec("rm", "-f", member.backup)
 		if err != nil {
@@ -98,6 +97,20 @@ func cleanupZeroTailFiles(members map[string]*zeroTailMember, path string, resto
 		}
 	}
 	return errors.Join(failures...)
+}
+
+func cleanupZeroTailRecovery(members map[string]*zeroTailMember, path string, restore bool, restart func() error) error {
+	var restoreErr error
+	if restore {
+		restoreErr = restoreZeroTailFiles(members, path)
+	}
+	restartErr := restart()
+	// Keep every backup until both the files and the running ensemble recover.
+	// A rollout assertion can also panic here; no backup deletion precedes it.
+	if err := errors.Join(restoreErr, restartErr); err != nil {
+		return err
+	}
+	return removeZeroTailBackups(members)
 }
 
 // injectZeroTails changes only stopped, disposable Kind members. Failed specs
@@ -117,17 +130,28 @@ func injectZeroTails(f *framework.Framework, deploy *appsv1.Deployment, pods []c
 	}
 	recovered := false
 	ginkgo.DeferCleanup(func() {
-		// Always attempt to restore the replica count, including when stopping
-		// the deployment or restoring/removing one member's files fails.
-		defer func() {
+		restartAttempted := false
+		restart := func() error {
+			restartAttempted = true
 			setCentralReplicas(client, deploy.Name, *deploy.Spec.Replicas)
 			client.RolloutStatus(deploy.Name)
 			waitForCentralLeaders(f)
+			current, err := getCentralPods(client, deploy)
+			framework.ExpectNoError(err)
+			framework.ExpectHaveLen(current.Items, int(*deploy.Spec.Replicas))
+			waitForDbRecovery(f, current.Items)
+			return nil
+		}
+		// Stopping central can fail before the cleanup driver gets to restart.
+		defer func() {
+			if !restartAttempted {
+				framework.ExpectNoError(restart())
+			}
 		}()
 		if !recovered {
 			stopZeroTailCentral(client, deploy)
 		}
-		framework.ExpectNoError(cleanupZeroTailFiles(members, path, !recovered))
+		framework.ExpectNoError(cleanupZeroTailRecovery(members, path, !recovered, restart))
 	})
 
 	ginkgo.By("Stopping every central member so no live quorum can rebuild a damaged peer")

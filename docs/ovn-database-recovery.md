@@ -37,6 +37,8 @@ Kube-OVN v1.15 or later and at least three central replicas. They verify the
 committed marker on every member, fresh writes, cluster/server IDs, the original
 member files, and new cross-node Pod connections. Failed specs restore their
 saved test databases after capturing failure diagnostics.
+Backups are removed only after the replica count, rollout, leaders, and database
+membership have recovered. A failed restart retains the complete backup set.
 
 `ovsdb-tool fix-cluster` can rewrite a locally valid log prefix while discarding
 later records. A successful repair followed by a successful `check-cluster`

@@ -22,7 +22,7 @@ func (node *zeroTailTestNode) Exec(command ...string) ([]byte, []byte, error) {
 	return nil, nil, nil
 }
 
-func TestCleanupZeroTailFiles(t *testing.T) {
+func TestCleanupZeroTailRecovery(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		fail    string
@@ -40,7 +40,20 @@ func TestCleanupZeroTailFiles(t *testing.T) {
 				"first":  {node: first, backup: "first.backup", backedUp: true},
 				"second": {node: second, backup: "second.backup", backedUp: true},
 			}
-			err := cleanupZeroTailFiles(members, "database.db", test.restore)
+			restarts := 0
+			err := cleanupZeroTailRecovery(members, "database.db", test.restore, func() error {
+				restarts++
+				for _, node := range []*zeroTailTestNode{first, second} {
+					calls := strings.Join(node.called, "\n")
+					if strings.Contains(calls, "cp ") != test.restore || strings.Contains(calls, "rm ") {
+						t.Errorf("files must be restored and backups retained before restart: %s", calls)
+					}
+				}
+				return nil
+			})
+			if restarts != 1 {
+				t.Errorf("restart attempts = %d, want 1 even after file recovery errors", restarts)
+			}
 			if (err != nil) != (test.fail != "") {
 				t.Fatalf("cleanup error = %v, failure = %q", err, test.fail)
 			}
@@ -53,6 +66,39 @@ func TestCleanupZeroTailFiles(t *testing.T) {
 				if strings.Contains(calls, "rm ") != wantRemove {
 					t.Errorf("backup removal on %s: got %s, want removal=%t", node.name, calls, wantRemove)
 				}
+			}
+		})
+	}
+}
+
+func TestZeroTailBackupsSurviveFailedRestart(t *testing.T) {
+	for _, failWithPanic := range []bool{false, true} {
+		name := "restart returns an error"
+		if failWithPanic {
+			name = "rollout assertion panics"
+		}
+		t.Run(name, func(t *testing.T) {
+			node := &zeroTailTestNode{name: "member"}
+			members := map[string]*zeroTailMember{
+				"member": {node: node, backup: "member.backup", backedUp: true},
+			}
+			restarted, panicked := false, false
+			var cleanupErr error
+			func() {
+				defer func() { panicked = recover() != nil }()
+				cleanupErr = cleanupZeroTailRecovery(members, "database.db", true, func() error {
+					restarted = true
+					if failWithPanic {
+						panic("injected rollout assertion")
+					}
+					return errors.New("injected restart failure")
+				})
+			}()
+			if !restarted || panicked != failWithPanic || (!failWithPanic && cleanupErr == nil) {
+				t.Fatalf("restart attempted=%t, panic=%t, cleanup error=%v", restarted, panicked, cleanupErr)
+			}
+			if calls := strings.Join(node.called, "\n"); !strings.Contains(calls, "cp ") || strings.Contains(calls, "rm ") {
+				t.Fatalf("backup must be restored and retained after failed ensemble restart: %s", calls)
 			}
 		})
 	}
