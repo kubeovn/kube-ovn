@@ -691,15 +691,13 @@ var _ = framework.Describe("[group:vip]", func() {
 			_ = subnetClient.CreateSync(attachSubnet2)
 
 			var lbName, vipV4, vipV6 string
+			var vip *apiv1.Vip
 			if f.VersionPriorTo(1, 17) {
 				ginkgo.By("Getting the shared VPC load balancer")
 				vpc := vpcClient.Get(vpcName)
 				lbName = vpc.Status.TCPLoadBalancer
 				framework.ExpectNotEmpty(lbName, "VPC should have a TCP load balancer")
 			} else {
-				ginkgo.By("Creating a SwitchLBRule for the service-scoped load balancer")
-				switchLBRuleClient := f.SwitchLBRuleClient()
-				switchLBRuleName = "attach-rule-" + randomSuffix
 				vipAddress := framework.RandomIPs(cidr, ",", 1)
 				vipV4, vipV6 = util.SplitStringIP(vipAddress)
 				if vipV4 != "" {
@@ -708,6 +706,14 @@ var _ = framework.Describe("[group:vip]", func() {
 				} else {
 					vipAddress = vipV6
 				}
+
+				ginkgo.By("Reserving switch lb vip " + vipName + " before creating the SwitchLBRule")
+				vip = makeOvnVip(namespaceName, vipName, subnetName, vipV4, vipV6, util.SwitchLBRuleVip, nil)
+				vip = vipClient.CreateSync(vip)
+
+				ginkgo.By("Creating a SwitchLBRule for the service-scoped load balancer")
+				switchLBRuleClient := f.SwitchLBRuleClient()
+				switchLBRuleName = "attach-rule-" + randomSuffix
 				slr := framework.MakeSwitchLBRule(
 					switchLBRuleName, namespaceName, vipAddress, corev1.ServiceAffinityNone,
 					map[string]string{
@@ -739,9 +745,16 @@ var _ = framework.Describe("[group:vip]", func() {
 			var output []byte
 			var err error
 
-			ginkgo.By("Creating switch lb vip " + vipName + " with AttachSubnets=[" + attachSubnetName1 + "]")
-			vip := makeOvnVip(namespaceName, vipName, subnetName, vipV4, vipV6, util.SwitchLBRuleVip, []string{attachSubnetName1})
-			vip = vipClient.CreateSync(vip)
+			if vip == nil {
+				ginkgo.By("Creating switch lb vip " + vipName + " with AttachSubnets=[" + attachSubnetName1 + "]")
+				vip = makeOvnVip(namespaceName, vipName, subnetName, vipV4, vipV6, util.SwitchLBRuleVip, []string{attachSubnetName1})
+				vip = vipClient.CreateSync(vip)
+			} else {
+				ginkgo.By("Attaching switch lb vip " + vipName + " to " + attachSubnetName1)
+				modified := vip.DeepCopy()
+				modified.Spec.AttachSubnets = []string{attachSubnetName1}
+				vip = vipClient.Patch(vip, modified, 30*time.Second)
+			}
 
 			framework.WaitUntil(time.Second, time.Minute, func(context.Context) (bool, error) {
 				vip = vipClient.Get(vipName)
