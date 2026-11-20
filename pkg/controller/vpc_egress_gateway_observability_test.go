@@ -4,6 +4,7 @@ import (
 	json "encoding/json/v2"
 	"errors"
 	"testing"
+	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -19,6 +20,7 @@ import (
 	k8stesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
+	clocktesting "k8s.io/utils/clock/testing"
 
 	"github.com/stretchr/testify/require"
 
@@ -141,6 +143,54 @@ func TestReconcileVpcEgressGatewayObservabilityDeletesOwnedConfigMapByUID(t *tes
 	require.Equal(t, &metav1.Preconditions{UID: &configMap.UID}, deleteAction.GetDeleteOptions().Preconditions)
 	_, err := kubeClient.CoreV1().ConfigMaps(gw.Namespace).Get(t.Context(), configMap.Name, metav1.GetOptions{})
 	require.True(t, k8serrors.IsNotFound(err))
+}
+
+func TestReconcileVpcEgressGatewayObservabilityRetriesConfigMapCleanup(t *testing.T) {
+	for _, verb := range []string{"get", "delete"} {
+		t.Run(verb, func(t *testing.T) {
+			gw := observabilityTestGateway()
+			gw.Spec.Observability = nil
+			configMap := &corev1.ConfigMap{
+				Name: vpcEgressObserverResourceName(gw), Namespace: gw.Namespace, UID: "observer-config",
+			}
+			require.NoError(t, setVpcEgressGatewayControllerReference(gw, configMap))
+			kubeClient := k8sfake.NewSimpleClientset(configMap)
+			failOnce := true
+			kubeClient.PrependReactor(verb, "configmaps", func(k8stesting.Action) (bool, runtime.Object, error) {
+				if failOnce {
+					failOnce = false
+					return true, nil, k8serrors.NewServiceUnavailable("temporary API error")
+				}
+				return false, nil, nil
+			})
+			clock := clocktesting.NewFakeClock(time.Now())
+			queue := workqueue.NewTypedRateLimitingQueueWithConfig(
+				workqueue.DefaultTypedControllerRateLimiter[string](),
+				workqueue.TypedRateLimitingQueueConfig[string]{Clock: clock},
+			)
+			t.Cleanup(queue.ShutDown)
+			controller := &Controller{
+				config:                           &Configuration{KubeClient: kubeClient},
+				addOrUpdateVpcEgressGatewayQueue: queue,
+			}
+			labels := vegWorkloadLabels(gw.Name)
+
+			state := controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", labels)
+			require.False(t, state.enabled)
+			require.Zero(t, queue.Len())
+			clock.Step(vpcEgressObserverRetryDelay)
+			require.Eventually(t, func() bool { return queue.Len() == 1 }, time.Second, time.Millisecond)
+			key, shutdown := queue.Get()
+			require.False(t, shutdown)
+			require.Equal(t, gw.Namespace+"/"+gw.Name, key)
+
+			controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", labels)
+			queue.Done(key)
+			_, err := kubeClient.CoreV1().ConfigMaps(gw.Namespace).Get(t.Context(), configMap.Name, metav1.GetOptions{})
+			require.True(t, k8serrors.IsNotFound(err))
+			require.Zero(t, queue.Len())
+		})
+	}
 }
 
 func TestReconcileVpcEgressGatewayObservabilityLeavesUnownedConfigMapUntouched(t *testing.T) {

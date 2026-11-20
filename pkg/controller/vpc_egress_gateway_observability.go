@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilversion "k8s.io/apimachinery/pkg/util/version"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -30,6 +31,7 @@ const (
 	vpcEgressObserverConfigPath              = "/etc/kube-ovn-observer/config.json"
 	vpcEgressObserverNetworkStatusPath       = "/etc/podinfo/network-status"
 	vpcEgressObserverPort              int32 = 10666
+	vpcEgressObserverRetryDelay              = 30 * time.Second
 )
 
 type restartableInitContainerCapability uint8
@@ -141,7 +143,7 @@ func (c *Controller) reconcileVpcEgressGatewayObservability(gw *kubeovnv1.VpcEgr
 	if !support.supported() {
 		c.setVpcEgressGatewayObservabilityCondition(gw, corev1.ConditionFalse, support.reason, support.message)
 		if !support.definitive() {
-			c.addOrUpdateVpcEgressGatewayQueue.AddAfter(fmt.Sprintf("%s/%s", gw.Namespace, gw.Name), 30*time.Second)
+			c.addOrUpdateVpcEgressGatewayQueue.AddAfter(cache.MetaObjectToName(gw).String(), vpcEgressObserverRetryDelay)
 			return preservedState
 		}
 		c.deleteOwnedVpcEgressObserverConfigMap(gw, resourceName)
@@ -262,18 +264,13 @@ func (c *Controller) reconcileVpcEgressObserverConfigMap(gw *kubeovnv1.VpcEgress
 func (c *Controller) deleteOwnedVpcEgressObserverConfigMap(gw *kubeovnv1.VpcEgressGateway, name string) {
 	client := c.config.KubeClient.CoreV1().ConfigMaps(gw.Namespace)
 	configMap, err := client.Get(context.Background(), name, metav1.GetOptions{})
-	if k8serrors.IsNotFound(err) {
-		return
-	}
-	if err != nil {
-		klog.ErrorS(err, "Failed to get VpcEgressGateway observability ConfigMap", "namespace", gw.Namespace, "name", name)
-		return
-	}
-	if metav1.IsControlledBy(configMap, gw) {
+	if err == nil && metav1.IsControlledBy(configMap, gw) {
 		opts := metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &configMap.UID}}
-		if err := client.Delete(context.Background(), name, opts); err != nil && !k8serrors.IsNotFound(err) {
-			klog.ErrorS(err, "Failed to delete VpcEgressGateway observability ConfigMap", "namespace", gw.Namespace, "name", name)
-		}
+		err = client.Delete(context.Background(), name, opts)
+	}
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.ErrorS(err, "Failed to clean up VpcEgressGateway observability ConfigMap", "namespace", gw.Namespace, "name", name)
+		c.addOrUpdateVpcEgressGatewayQueue.AddAfter(cache.MetaObjectToName(gw).String(), vpcEgressObserverRetryDelay)
 	}
 }
 

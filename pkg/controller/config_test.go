@@ -9,16 +9,30 @@ import (
 
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
-func TestInitKubeClientWithoutMonitoringAPI(t *testing.T) {
+func TestReconcileVpcEgressGatewayObservabilityWithoutMonitoringAPI(t *testing.T) {
+	gw := observabilityTestGateway()
+	configMapName := vpcEgressObserverResourceName(gw)
 	api := http.NewServeMux()
 	api.HandleFunc("GET /version", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		if _, err := w.Write([]byte(`{"gitVersion":"v1.37.0"}`)); err != nil {
 			t.Errorf("write Kubernetes version: %v", err)
+		}
+	})
+	configMapsPath := "/api/v1/namespaces/" + gw.Namespace + "/configmaps"
+	api.HandleFunc("GET "+configMapsPath+"/"+configMapName, http.NotFound)
+	api.HandleFunc("POST "+configMapsPath, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		if _, err := w.Write([]byte(`{"apiVersion":"v1","kind":"ConfigMap"}`)); err != nil {
+			t.Errorf("write ConfigMap response: %v", err)
 		}
 	})
 	api.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -46,6 +60,19 @@ func TestInitKubeClientWithoutMonitoringAPI(t *testing.T) {
 	serverVersion, err := config.KubeClient.Discovery().ServerVersion()
 	require.NoError(t, err)
 	require.Equal(t, "v1.37.0", serverVersion.GitVersion)
+
+	controller := &Controller{
+		config: &config,
+		restartableInitContainerSupport: restartableInitContainerSupport{
+			capability: restartableInitContainerCapabilitySupported,
+		},
+	}
+	state := controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", vegWorkloadLabels(gw.Name))
+	require.True(t, state.enabled)
+	require.Equal(t, configMapName, state.configName)
+	condition := gw.Status.Conditions.GetCondition(kubeovnv1.ObservabilityConfigured)
+	require.NotNil(t, condition)
+	require.Equal(t, corev1.ConditionTrue, condition.Status)
 }
 
 func TestLeaderElectionConfigurationFlags(t *testing.T) {
