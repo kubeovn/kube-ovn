@@ -2,19 +2,74 @@ package controller
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	corelister "k8s.io/client-go/listers/core/v1"
 	ktesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/utils/keymutex"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestNatReplayUsesEachGatewayPodCreationTime(t *testing.T) {
+	enabled := vpcNatEnabled
+	vpcNatEnabled = "true"
+	t.Cleanup(func() { vpcNatEnabled = enabled })
+
+	const namespace = "kube-system"
+	pods := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	eips := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	client := kubeovnfake.NewSimpleClientset()
+	c := &Controller{
+		config:             &Configuration{PodNamespace: namespace, KubeOvnClient: client},
+		podsLister:         corelister.NewPodLister(pods),
+		iptablesEipsLister: kubeovnlister.NewIptablesEIPLister(eips),
+		vpcNatGwKeyMutex:   keymutex.NewHashed(0),
+	}
+	gateways := []struct {
+		name string
+		redo string
+	}{
+		{name: "gw-a", redo: "2026-11-20T08:00:00"},
+		{name: "gw-b", redo: "2026-11-20T08:03:00"},
+	}
+	for _, gw := range gateways {
+		created, err := time.Parse(time.RFC3339, gw.redo+"Z")
+		require.NoError(t, err)
+		require.NoError(t, pods.Add(&corev1.Pod{
+			Namespace: namespace, Name: gw.name,
+			Labels:            map[string]string{"app": util.GenNatGwName(gw.name), util.VpcNatGatewayLabel: "true"},
+			CreationTimestamp: metav1.NewTime(created),
+			Status:            corev1.PodStatus{Phase: corev1.PodRunning},
+		}))
+		eip := &kubeovnv1.IptablesEIP{
+			Name:   gw.name,
+			Spec:   kubeovnv1.IptablesEIPSpec{NatGwDp: gw.name},
+			Status: kubeovnv1.IptablesEIPStatus{Ready: true},
+		}
+		require.NoError(t, eips.Add(eip))
+		_, err = client.KubeovnV1().IptablesEIPs().Create(t.Context(), eip, metav1.CreateOptions{})
+		require.NoError(t, err)
+	}
+	for _, gw := range gateways {
+		require.NoError(t, c.handleUpdateVpcEip(gw.name))
+	}
+	for _, gw := range gateways {
+		eip, err := client.KubeovnV1().IptablesEIPs().Get(t.Context(), gw.name, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.Equal(t, gw.redo, eip.Status.Redo)
+		require.False(t, eip.Status.Ready)
+	}
+}
 
 func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
 	// Keep the informer behind the API server as it can be when replay overlaps

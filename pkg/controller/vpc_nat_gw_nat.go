@@ -466,15 +466,13 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 			klog.Error(err)
 			return err
 		}
-		// If Pod started before the redo timestamp, it has not restarted since
-		// the redo was marked — iptables rules are still intact, skip re-creation.
-		fipRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedFip.Status.Redo, time.Local)
+		// Wait for the gateway pod selected for this replay to become visible.
+		fipRedo, _ := time.Parse(natGwReplayTimeLayout, cachedFip.Status.Redo)
 		if len(gwPod.Status.ContainerStatuses) == 0 || gwPod.Status.ContainerStatuses[0].State.Running == nil {
 			return fmt.Errorf("fip %s: gateway pod container not running, will retry redo", key)
 		}
 		if gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: fipRedo}) {
-			klog.V(3).Infof("fip %s: pod started before redo mark, rules intact, skip", key)
-			return nil
+			return fmt.Errorf("fip %s: gateway pod %s started before redo mark, will retry replay", key, gwPod.Name)
 		}
 		if err = c.createFipInPod(cachedFip.Status.NatGwDp, cachedFip.Status.V4ip, cachedFip.Status.InternalIP); err != nil {
 			klog.Errorf("failed to create fip, %v", err)
@@ -747,15 +745,13 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 			klog.Error(err)
 			return err
 		}
-		// If Pod started before the redo timestamp, it has not restarted since
-		// the redo was marked — iptables rules are still intact, skip re-creation.
-		dnatRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedDnat.Status.Redo, time.Local)
+		// Wait for the gateway pod selected for this replay to become visible.
+		dnatRedo, _ := time.Parse(natGwReplayTimeLayout, cachedDnat.Status.Redo)
 		if len(gwPod.Status.ContainerStatuses) == 0 || gwPod.Status.ContainerStatuses[0].State.Running == nil {
 			return fmt.Errorf("dnat %s: gateway pod container not running, will retry redo", key)
 		}
 		if gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: dnatRedo}) {
-			klog.V(3).Infof("dnat %s: pod started before redo mark, rules intact, skip", key)
-			return nil
+			return fmt.Errorf("dnat %s: gateway pod %s started before redo mark, will retry replay", key, gwPod.Name)
 		}
 		if err = c.createDnatInPod(cachedDnat.Status.NatGwDp, cachedDnat.Status.Protocol,
 			cachedDnat.Status.V4ip, cachedDnat.Status.InternalIP,
@@ -1017,15 +1013,13 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 			klog.Error(err)
 			return err
 		}
-		// If Pod started before the redo timestamp, it has not restarted since
-		// the redo was marked — iptables rules are still intact, skip re-creation.
-		snatRedo, _ := time.ParseInLocation("2006-01-02T15:04:05", cachedSnat.Status.Redo, time.Local)
+		// Wait for the gateway pod selected for this replay to become visible.
+		snatRedo, _ := time.Parse(natGwReplayTimeLayout, cachedSnat.Status.Redo)
 		if len(gwPod.Status.ContainerStatuses) == 0 || gwPod.Status.ContainerStatuses[0].State.Running == nil {
 			return fmt.Errorf("snat %s: gateway pod container not running, will retry redo", key)
 		}
 		if gwPod.Status.ContainerStatuses[0].State.Running.StartedAt.Before(&metav1.Time{Time: snatRedo}) {
-			klog.V(3).Infof("snat %s: pod started before redo mark, rules intact, skip", key)
-			return nil
+			return fmt.Errorf("snat %s: gateway pod %s started before redo mark, will retry replay", key, gwPod.Name)
 		}
 		if err = c.createSnatInPod(cachedSnat.Status.NatGwDp, cachedSnat.Status.V4ip, cachedSnat.Status.InternalCIDR); err != nil {
 			klog.Errorf("failed to create new snat, %v", err)
