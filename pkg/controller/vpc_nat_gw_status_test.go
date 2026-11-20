@@ -176,11 +176,12 @@ func TestEipReplayCompletionPreservesAppliedNat(t *testing.T) {
 func TestEipNatRefreshPreservesPendingReplay(t *testing.T) {
 	eip := &kubeovnv1.IptablesEIP{
 		Name: "eip", UID: "eip-uid",
+		Spec:   kubeovnv1.IptablesEIPSpec{V4ip: "192.0.2.10"},
 		Status: kubeovnv1.IptablesEIPStatus{Ready: true, Redo: "gateway-generation"},
 	}
 	dnat := &kubeovnv1.IptablesDnatRule{
 		Name:   "dnat",
-		Labels: map[string]string{util.EipUIDLabel: string(eip.UID)},
+		Labels: map[string]string{util.EipV4IpLabel: eip.Spec.V4ip},
 	}
 	eipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	require.NoError(t, eipIndexer.Add(eip))
@@ -345,13 +346,13 @@ func TestRecordIptablesRuleStatusRespectsReplayToken(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, kubeovnv1.IptablesSnatRuleStatus{
 				Redo: tt.liveRedo, Ready: tt.wantReady, V4ip: eip.Status.IP, V6ip: eip.Spec.V6ip,
-				NatGwDp: eip.Spec.NatGwDp, InternalCIDR: "10.0.0.5/32",
+				NatGwDp: eip.Spec.NatGwDp, InternalCIDR: snat.Spec.InternalCIDR,
 			}, gotSnat.Status)
 		})
 	}
 }
 
-func TestRecordIptablesRuleStatusConflictsWithReplayInvalidation(t *testing.T) {
+func TestRecordIptablesRuleStatusRetriesAfterReplayInvalidation(t *testing.T) {
 	const (
 		resource = "iptables-fip-rules"
 		oldRedo  = "old-replay"
@@ -370,25 +371,39 @@ func TestRecordIptablesRuleStatusConflictsWithReplayInvalidation(t *testing.T) {
 	_, err := client.Create(t.Context(), fip, metav1.CreateOptions{})
 	require.NoError(t, err)
 
+	attempts := 0
 	clientset.PrependReactor("update", resource, func(action ktesting.Action) (bool, runtime.Object, error) {
 		require.Equal(t, "status", action.GetSubresource())
 		attempt := action.(ktesting.UpdateAction).GetObject().(*kubeovnv1.IptablesFIPRule)
+		attempts++
+		if attempts > 1 {
+			require.Equal(t, "11", attempt.ResourceVersion)
+			require.False(t, attempt.Status.Ready)
+			require.Equal(t, newRedo, attempt.Status.Redo)
+			require.Equal(t, fip.Spec.InternalIP, attempt.Status.InternalIP)
+			return false, nil, nil
+		}
 		require.True(t, attempt.Status.Ready)
 		require.Equal(t, fip.ResourceVersion, attempt.ResourceVersion)
-		// The client-go tracker has no resourceVersion check. Model the API
-		// server accepting a newer invalidation after GET and rejecting this write.
+		// The tracker has no resourceVersion check. Model the API accepting a
+		// new invalidation and spec edit after GET, then rejecting this write.
 		invalidated := fip.DeepCopy()
 		invalidated.ResourceVersion = "11"
 		invalidated.Status.Redo = newRedo
+		invalidated.Spec.InternalIP = "10.0.0.7"
 		gvr := action.GetResource()
 		require.NoError(t, clientset.Tracker().Update(gvr, invalidated, ""))
 		return true, nil, k8serrors.NewConflict(gvr.GroupResource(), fip.Name, nil)
 	})
 	c := &Controller{config: &Configuration{KubeOvnClient: clientset}}
-	require.True(t, k8serrors.IsConflict(c.recordFipStatus(fip, eip)))
+	require.NoError(t, c.recordFipStatus(fip, eip))
 	got, err := client.Get(t.Context(), fip.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.False(t, got.Status.Ready)
 	require.Equal(t, newRedo, got.Status.Redo)
-	require.Equal(t, fip.Status.InternalIP, got.Status.InternalIP)
+	require.Equal(t, fip.Spec.InternalIP, got.Status.InternalIP)
+	require.Equal(t, "10.0.0.7", got.Spec.InternalIP)
+
+	require.NoError(t, c.recordFipStatus(fip, eip))
+	require.Equal(t, 2, attempts, "an already published snapshot needs no further write")
 }
