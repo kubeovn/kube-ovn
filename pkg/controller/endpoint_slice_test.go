@@ -985,7 +985,7 @@ func TestEndpointSliceServiceProfileDistributedLocalDoesNotPreferLocalBackend(t 
 	profile, err := (&Controller{}).endpointSliceServiceProfile(svc)
 	require.NoError(t, err)
 	require.True(t, profile.distributedLocal)
-	require.True(t, profile.ignoreHealthCheck)
+	require.Equal(t, map[string]bool{"10.96.0.10": false}, profile.healthCheckVIPs)
 }
 
 func TestEndpointSliceServiceProfileLoadBalancerETPLocalKeepsClusterIPInternal(t *testing.T) {
@@ -1002,7 +1002,7 @@ func TestEndpointSliceServiceProfileLoadBalancerETPLocalKeepsClusterIPInternal(t
 
 	profile, err := (&Controller{}).endpointSliceServiceProfile(svc)
 	require.NoError(t, err)
-	require.True(t, profile.ignoreHealthCheck)
+	require.Equal(t, map[string]bool{"10.96.0.10": false, "172.19.0.100": false}, profile.healthCheckVIPs)
 	require.Equal(t, serviceLBInternalTraffic, profile.trafficClasses["10.96.0.10"])
 	require.Equal(t, serviceLBExternalTraffic, profile.trafficClasses["172.19.0.100"])
 }
@@ -1020,7 +1020,7 @@ func TestEndpointSliceServiceProfileClusterIPDoesNotEnableHealthCheck(t *testing
 
 	profile, err := (&Controller{}).endpointSliceServiceProfile(svc)
 	require.NoError(t, err)
-	require.True(t, profile.ignoreHealthCheck)
+	require.Equal(t, map[string]bool{"10.96.0.10": false, "fd00::10": false}, profile.healthCheckVIPs)
 	require.Equal(t, []string{"10.96.0.10", "fd00::10"}, profile.lbVips)
 }
 
@@ -1036,7 +1036,7 @@ func TestEndpointSliceServiceProfileSwitchLBRuleEnablesHealthCheck(t *testing.T)
 
 	profile, err := (&Controller{}).endpointSliceServiceProfile(svc)
 	require.NoError(t, err)
-	require.False(t, profile.ignoreHealthCheck)
+	require.Equal(t, map[string]bool{"10.0.0.20": true}, profile.healthCheckVIPs)
 	require.Equal(t, []string{"10.0.0.20"}, profile.lbVips)
 }
 
@@ -1055,7 +1055,7 @@ func TestEndpointSliceServiceProfileRouterLBRuleHealthCheck(t *testing.T) {
 		}
 		profile, err := (&Controller{}).endpointSliceServiceProfile(svc)
 		require.NoError(t, err)
-		require.True(t, profile.ignoreHealthCheck)
+		require.Equal(t, map[string]bool{"192.0.2.10": false}, profile.healthCheckVIPs)
 		require.Equal(t, []string{"192.0.2.10"}, profile.lbVips)
 	})
 
@@ -1072,23 +1072,9 @@ func TestEndpointSliceServiceProfileRouterLBRuleHealthCheck(t *testing.T) {
 		}
 		profile, err := (&Controller{}).endpointSliceServiceProfile(svc)
 		require.NoError(t, err)
-		require.False(t, profile.ignoreHealthCheck)
+		require.Equal(t, map[string]bool{"192.0.2.10": true}, profile.healthCheckVIPs)
 		require.Equal(t, []string{"192.0.2.10"}, profile.lbVips)
 	})
-}
-
-func TestFilterIPPortMappingByVIP(t *testing.T) {
-	mapping := IPPortMapping{
-		"10.0.0.2":  "pod-a",
-		"[fd00::2]": "pod-b",
-		"fd00::3":   "pod-c",
-	}
-
-	got := filterIPPortMappingByVIP(mapping, "10.96.0.10")
-	require.Equal(t, IPPortMapping{"10.0.0.2": "pod-a"}, got)
-
-	got = filterIPPortMappingByVIP(mapping, "fd00::10")
-	require.Equal(t, IPPortMapping{"[fd00::2]": "pod-b", "fd00::3": "pod-c"}, got)
 }
 
 func TestDeleteSubnetHealthCheckVip(t *testing.T) {
