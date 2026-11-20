@@ -10,6 +10,7 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	kubeovnlister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
@@ -25,7 +26,7 @@ func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
 	snat := &kubeovnv1.IptablesSnatRule{Name: "snat"}
 
 	liveEip := eip.DeepCopy()
-	liveEip.Status = kubeovnv1.IptablesEIPStatus{Ready: true, IP: "192.0.2.10", QoSPolicy: "qos"}
+	liveEip.Status = kubeovnv1.IptablesEIPStatus{Ready: true, IP: "192.0.2.10", Nat: util.DnatUsingEip, QoSPolicy: "qos"}
 	liveFip := fip.DeepCopy()
 	liveFip.Status = kubeovnv1.IptablesFIPRuleStatus{
 		Ready: true, V4ip: "192.0.2.10", V6ip: "2001:db8::10", NatGwDp: "gw", InternalIP: "10.0.0.10",
