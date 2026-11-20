@@ -634,6 +634,11 @@ function del_snat() {
         if [ -n "$ruleMatch" ]; then
           ruleMatch=$(echo "$ruleMatch" | sed 's/^-A //')
           exec_cmd "$iptables_cmd -t nat -D $ruleMatch"
+          # Flush conntrack entries already translated by this rule, otherwise
+          # established flows keep being SNATed after the rule is removed.
+          # Matching on the original source CIDR keeps DNAT/FIP flows on a
+          # shared EIP untouched.
+          conntrack -D --orig-src "$internalCIDR" --reply-dst "$eip" 2>/dev/null || true
         fi
     done
 }
