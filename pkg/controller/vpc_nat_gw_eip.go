@@ -1016,10 +1016,13 @@ func (c *Controller) refreshEipNat(key string) error {
 	return nil
 }
 
-func (c *Controller) markEipNotReady(key, redo string) error {
-	return updateIptablesStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, func(eip *kubeovnv1.IptablesEIP) bool {
-		return markNatStatusNotReady(&eip.Status.Ready, &eip.Status.Redo, redo)
+func (c *Controller) markGatewayEipNotReady(key, gateway, redo string) (bool, error) {
+	var owned bool
+	err := updateIptablesStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, func(eip *kubeovnv1.IptablesEIP) bool {
+		owned = eip.Spec.NatGwDp == gateway && eip.DeletionTimestamp.IsZero()
+		return owned && markNatStatusNotReady(&eip.Status.Ready, &eip.Status.Redo, redo)
 	})
+	return owned, err
 }
 
 // completeEipReplay publishes readiness and the applied QoS policy for the worker's replay token.
