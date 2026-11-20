@@ -452,7 +452,7 @@ func (c *Controller) handleUpdateVpcFloatingIP(natGwKey string) error {
 	for _, fip := range fips {
 		if fip.Status.Redo != redo {
 			klog.V(3).Infof("redo fip %s", fip.Name)
-			if err = c.redoFip(fip.Name, redo, false); err != nil {
+			if err = c.redoFip(fip.Name, natGwKey, redo); err != nil {
 				klog.Errorf("failed to update eip '%s' to re-apply, %v", fip.Spec.EIP, err)
 				return err
 			}
@@ -483,7 +483,7 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 	for _, eip := range eips {
 		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != redo {
 			klog.V(3).Infof("redo eip %s", eip.Name)
-			if err = c.markEipNotReady(eip.Name, redo); err != nil {
+			if _, err = c.markGatewayEipNotReady(eip.Name, natGwKey, redo); err != nil {
 				klog.Errorf("failed to update eip '%s' to re-apply, %v", eip.Name, err)
 				return err
 			}
@@ -514,7 +514,7 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 	for _, snat := range snats {
 		if snat.Status.Redo != redo {
 			klog.V(3).Infof("redo snat %s", snat.Name)
-			if err = c.redoSnat(snat.Name, redo, false); err != nil {
+			if err = c.redoSnat(snat.Name, natGwKey, redo); err != nil {
 				err = fmt.Errorf("failed to update eip '%s' to re-apply, %w", snat.Spec.EIP, err)
 				klog.Error(err)
 				return err
@@ -547,7 +547,7 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 	for _, dnat := range dnats {
 		if dnat.Status.Redo != redo {
 			klog.V(3).Infof("redo dnat %s", dnat.Name)
-			if err = c.redoDnat(dnat.Name, redo, false); err != nil {
+			if err = c.redoDnat(dnat.Name, natGwKey, redo); err != nil {
 				err := fmt.Errorf("failed to update dnat '%s' to redo, %w", dnat.Name, err)
 				klog.Error(err)
 				return err

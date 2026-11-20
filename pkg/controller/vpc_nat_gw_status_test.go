@@ -71,10 +71,19 @@ func TestNatReplayUsesEachGatewayPodCreationTime(t *testing.T) {
 	}
 }
 
-func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
+type natReplayStatusFixture struct {
+	controller *Controller
+	client     *kubeovnfake.Clientset
+	eip        *kubeovnv1.IptablesEIP
+	fip        *kubeovnv1.IptablesFIPRule
+	dnat       *kubeovnv1.IptablesDnatRule
+	snat       *kubeovnv1.IptablesSnatRule
+}
+
+func newNatReplayStatusFixture(t *testing.T) natReplayStatusFixture {
+	t.Helper()
 	// Keep the informer behind the API server as it can be when replay overlaps
 	// with rule creation or an update to an existing rule.
-	const redo = "new-gateway-generation"
 	eip := &kubeovnv1.IptablesEIP{
 		Name: "eip",
 		Spec: kubeovnv1.IptablesEIPSpec{V4ip: "192.0.2.10"},
@@ -89,6 +98,7 @@ func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
 	snat := &kubeovnv1.IptablesSnatRule{Name: "snat"}
 
 	liveEip := eip.DeepCopy()
+	liveEip.Spec.NatGwDp = "gw"
 	liveEip.Status = kubeovnv1.IptablesEIPStatus{Ready: true, IP: "192.0.2.10", Nat: util.DnatUsingEip, QoSPolicy: "qos"}
 	liveFip := fip.DeepCopy()
 	liveFip.Status = kubeovnv1.IptablesFIPRuleStatus{
@@ -127,69 +137,82 @@ func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
 		iptablesSnatRulesLister: kubeovnlister.NewIptablesSnatRuleLister(index(snat)),
 	}
 
-	t.Run("completed replay stays ready with stale cache", func(t *testing.T) {
-		// The stale listers still describe the rules from before this replay.
-		const token = "completed-replay"
-		require.NoError(t, c.markEipNotReady(eip.Name, token))
-		require.NoError(t, c.redoFip(fip.Name, token, true))
-		require.NoError(t, c.redoDnat(dnat.Name, token, true))
-		require.NoError(t, c.redoSnat(snat.Name, token, true))
+	return natReplayStatusFixture{controller: c, client: clientset, eip: liveEip, fip: liveFip, dnat: liveDnat, snat: liveSnat}
+}
 
-		require.NoError(t, c.completeEipReplay(eip.Name, token, ""))
-		require.NoError(t, c.completeFipReplay(fip.Name, token))
-		require.NoError(t, c.completeDnatReplay(dnat.Name, token))
-		require.NoError(t, c.completeSnatReplay(snat.Name, token))
+func TestCompletedNatReplayStaysReadyWithStaleCache(t *testing.T) {
+	fixture := newNatReplayStatusFixture(t)
+	c, client := fixture.controller, fixture.client.KubeovnV1()
+	// The stale listers still describe the rules from before this replay.
+	const token = "completed-replay"
+	_, err := c.markGatewayEipNotReady(fixture.eip.Name, "gw", token)
+	require.NoError(t, err)
+	require.NoError(t, c.redoFip(fixture.fip.Name, "gw", token))
+	require.NoError(t, c.redoDnat(fixture.dnat.Name, "gw", token))
+	require.NoError(t, c.redoSnat(fixture.snat.Name, "gw", token))
 
-		// A later gateway worker observed the same pod instances. This token
-		// must not invalidate the completion, even with those stale listers.
-		require.NoError(t, c.markEipNotReady(eip.Name, token))
-		require.NoError(t, c.redoFip(fip.Name, token, true))
-		require.NoError(t, c.redoDnat(dnat.Name, token, true))
-		require.NoError(t, c.redoSnat(snat.Name, token, true))
+	require.NoError(t, c.completeEipReplay(fixture.eip.Name, token, ""))
+	require.NoError(t, c.completeFipReplay(fixture.fip.Name, token))
+	require.NoError(t, c.completeDnatReplay(fixture.dnat.Name, token))
+	require.NoError(t, c.completeSnatReplay(fixture.snat.Name, token))
 
-		gotEip, err := client.IptablesEIPs().Get(t.Context(), eip.Name, metav1.GetOptions{})
-		require.NoError(t, err)
-		require.True(t, gotEip.Status.Ready)
-		gotFip, err := client.IptablesFIPRules().Get(t.Context(), fip.Name, metav1.GetOptions{})
-		require.NoError(t, err)
-		require.True(t, gotFip.Status.Ready)
-		gotDnat, err := client.IptablesDnatRules().Get(t.Context(), dnat.Name, metav1.GetOptions{})
-		require.NoError(t, err)
-		require.True(t, gotDnat.Status.Ready)
-		gotSnat, err := client.IptablesSnatRules().Get(t.Context(), snat.Name, metav1.GetOptions{})
-		require.NoError(t, err)
-		require.True(t, gotSnat.Status.Ready)
-	})
+	// A later gateway worker observed the same pod instances. This token
+	// must not invalidate the completion, even with those stale listers.
+	_, err = c.markGatewayEipNotReady(fixture.eip.Name, "gw", token)
+	require.NoError(t, err)
+	require.NoError(t, c.redoFip(fixture.fip.Name, "gw", token))
+	require.NoError(t, c.redoDnat(fixture.dnat.Name, "gw", token))
+	require.NoError(t, c.redoSnat(fixture.snat.Name, "gw", token))
+
+	gotEip, err := client.IptablesEIPs().Get(t.Context(), fixture.eip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.True(t, gotEip.Status.Ready)
+	gotFip, err := client.IptablesFIPRules().Get(t.Context(), fixture.fip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.True(t, gotFip.Status.Ready)
+	gotDnat, err := client.IptablesDnatRules().Get(t.Context(), fixture.dnat.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.True(t, gotDnat.Status.Ready)
+	gotSnat, err := client.IptablesSnatRules().Get(t.Context(), fixture.snat.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.True(t, gotSnat.Status.Ready)
+}
+
+func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
+	fixture := newNatReplayStatusFixture(t)
+	c, client := fixture.controller, fixture.client.KubeovnV1()
+	const redo = "new-gateway-generation"
 
 	t.Run("FIP", func(t *testing.T) {
-		require.NoError(t, c.redoFip(fip.Name, redo, true))
-		got, err := client.IptablesFIPRules().Get(t.Context(), fip.Name, metav1.GetOptions{})
+		require.NoError(t, c.redoFip(fixture.fip.Name, "gw", redo))
+		got, err := client.IptablesFIPRules().Get(t.Context(), fixture.fip.Name, metav1.GetOptions{})
 		require.NoError(t, err)
-		want := liveFip.Status
+		want := fixture.fip.Status
 		want.Ready, want.Redo = false, redo
 		require.Equal(t, want, got.Status)
 	})
 	t.Run("DNAT", func(t *testing.T) {
-		require.NoError(t, c.redoDnat(dnat.Name, redo, true))
-		got, err := client.IptablesDnatRules().Get(t.Context(), dnat.Name, metav1.GetOptions{})
+		require.NoError(t, c.redoDnat(fixture.dnat.Name, "gw", redo))
+		got, err := client.IptablesDnatRules().Get(t.Context(), fixture.dnat.Name, metav1.GetOptions{})
 		require.NoError(t, err)
-		want := liveDnat.Status
+		want := fixture.dnat.Status
 		want.Ready, want.Redo = false, redo
 		require.Equal(t, want, got.Status)
 	})
 	t.Run("SNAT", func(t *testing.T) {
-		require.NoError(t, c.redoSnat(snat.Name, redo, true))
-		got, err := client.IptablesSnatRules().Get(t.Context(), snat.Name, metav1.GetOptions{})
+		require.NoError(t, c.redoSnat(fixture.snat.Name, "gw", redo))
+		got, err := client.IptablesSnatRules().Get(t.Context(), fixture.snat.Name, metav1.GetOptions{})
 		require.NoError(t, err)
-		want := liveSnat.Status
+		want := fixture.snat.Status
 		want.Ready, want.Redo = false, redo
 		require.Equal(t, want, got.Status)
 	})
 	t.Run("EIP", func(t *testing.T) {
-		require.NoError(t, c.markEipNotReady(eip.Name, redo))
-		got, err := client.IptablesEIPs().Get(t.Context(), eip.Name, metav1.GetOptions{})
+		_, err := c.markGatewayEipNotReady(fixture.eip.Name, "gw", redo)
 		require.NoError(t, err)
-		want := liveEip.Status
+		got, err := client.IptablesEIPs().Get(t.Context(), fixture.eip.Name, metav1.GetOptions{})
+		require.NoError(t, err)
+		want := fixture.eip.Status
 		want.Ready, want.Redo = false, redo
 		require.Equal(t, want, got.Status)
 	})
