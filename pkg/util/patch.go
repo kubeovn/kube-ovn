@@ -42,6 +42,19 @@ func PatchAnnotations[T metav1.Object](cs patchClient[T], name string, patch KVP
 	return patchMetaKVs(cs, name, "annotations", patch)
 }
 
+// PatchStatus applies the supplied fields to the status subresource.
+func PatchStatus[T metav1.Object](cs patchClient[T], name string, patch KVPatch) error {
+	if len(patch) == 0 {
+		return nil
+	}
+	data, err := json.Marshal(map[string]KVPatch{"status": patch})
+	if err != nil {
+		return err
+	}
+	_, err = cs.Patch(context.Background(), name, types.MergePatchType, data, metav1.PatchOptions{}, "status")
+	return err
+}
+
 func GenerateStrategicMergePatchPayload(original, modified runtime.Object) ([]byte, error) {
 	originalJSON, err := json.Marshal(original)
 	if err != nil {
