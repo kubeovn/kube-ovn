@@ -4256,8 +4256,8 @@ spec:
                         type: object
                     type: object
                   serviceMonitor:
-                    description: VpcEgressGatewayServiceMonitor configures metadata
-                      for the per-gateway ServiceMonitor.
+                    description: 'Deprecated: This field is ignored. Configure a PodMonitor
+                      or ServiceMonitor separately.'
                     properties:
                       annotations:
                         additionalProperties:

@@ -31,7 +31,8 @@ type VpcEgressGatewayObservabilityApplyConfiguration struct {
 	Resources        *corev1.ResourceRequirements                              `json:"resources,omitempty"`
 	InterfaceMetrics *VpcEgressGatewayObservabilityFeatureApplyConfiguration   `json:"interfaceMetrics,omitempty"`
 	Conntrack        *VpcEgressGatewayConntrackObservabilityApplyConfiguration `json:"conntrack,omitempty"`
-	ServiceMonitor   *VpcEgressGatewayServiceMonitorApplyConfiguration         `json:"serviceMonitor,omitempty"`
+	// Deprecated: This field is ignored. Configure a PodMonitor or ServiceMonitor separately.
+	ServiceMonitor *VpcEgressGatewayServiceMonitorApplyConfiguration `json:"serviceMonitor,omitempty"`
 }
 
 // VpcEgressGatewayObservabilityApplyConfiguration constructs a declarative configuration of the VpcEgressGatewayObservability type for use with

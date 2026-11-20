@@ -15,10 +15,8 @@ import (
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/util/intstr"
 	utilversion "k8s.io/apimachinery/pkg/util/version"
+	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -33,9 +31,8 @@ const (
 	vpcEgressObserverConfigPath              = "/etc/kube-ovn-observer/config.json"
 	vpcEgressObserverNetworkStatusPath       = "/etc/podinfo/network-status"
 	vpcEgressObserverPort              int32 = 10666
+	vpcEgressObserverRetryDelay              = 30 * time.Second
 )
-
-var serviceMonitorGVR = schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "servicemonitors"}
 
 type restartableInitContainerCapability uint8
 
@@ -68,10 +65,6 @@ type vpcEgressObserverState struct {
 
 func observabilityEnabled(config *kubeovnv1.VpcEgressGatewayObservability) bool {
 	return config != nil && (config.InterfaceMetrics.Enabled || config.Conntrack.Metrics.Enabled || config.Conntrack.Log.Enabled)
-}
-
-func observabilityMetricsEnabled(config *kubeovnv1.VpcEgressGatewayObservability) bool {
-	return config != nil && (config.InterfaceMetrics.Enabled || config.Conntrack.Metrics.Enabled)
 }
 
 func (c *Controller) supportsRestartableInitContainers() restartableInitContainerSupport {
@@ -138,72 +131,46 @@ func (c *Controller) supportsRestartableInitContainers() restartableInitContaine
 
 func (c *Controller) reconcileVpcEgressGatewayObservability(gw *kubeovnv1.VpcEgressGateway, externalNetwork string, labels map[string]string) vpcEgressObserverState {
 	resourceName := vpcEgressObserverResourceName(gw)
+	gw.Status.Conditions.RemoveCondition(kubeovnv1.ServiceMonitorReady)
 	if !observabilityEnabled(gw.Spec.Observability) {
-		c.deleteVpcEgressGatewayObservabilityResources(gw, resourceName)
+		c.deleteOwnedVpcEgressObserverConfigMap(gw, resourceName)
 		gw.Status.Conditions.RemoveCondition(kubeovnv1.ObservabilityConfigured)
-		gw.Status.Conditions.RemoveCondition(kubeovnv1.ServiceMonitorReady)
 		return vpcEgressObserverState{}
 	}
 	preservedState := c.currentVpcEgressObserverState(gw, resourceName)
 
 	support := c.supportsRestartableInitContainers()
 	if !support.supported() {
-		c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ObservabilityConfigured, corev1.ConditionFalse, support.reason, support.message)
-		if observabilityMetricsEnabled(gw.Spec.Observability) {
-			c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ServiceMonitorReady, corev1.ConditionFalse, support.reason, support.message)
-		} else {
-			gw.Status.Conditions.RemoveCondition(kubeovnv1.ServiceMonitorReady)
-		}
+		c.setVpcEgressGatewayObservabilityCondition(gw, corev1.ConditionFalse, support.reason, support.message)
 		if !support.definitive() {
-			c.addOrUpdateVpcEgressGatewayQueue.AddAfter(fmt.Sprintf("%s/%s", gw.Namespace, gw.Name), 30*time.Second)
+			c.addOrUpdateVpcEgressGatewayQueue.AddAfter(cache.MetaObjectToName(gw).String(), vpcEgressObserverRetryDelay)
 			return preservedState
 		}
-		c.deleteVpcEgressGatewayObservabilityResources(gw, resourceName)
+		c.deleteOwnedVpcEgressObserverConfigMap(gw, resourceName)
 		return vpcEgressObserverState{}
 	}
-	if !observabilityMetricsEnabled(gw.Spec.Observability) {
-		gw.Status.Conditions.RemoveCondition(kubeovnv1.ServiceMonitorReady)
-	}
 
-	observerConfig := vegobserver.Config{Namespace: gw.Namespace, Name: gw.Name, ExternalNetwork: externalNetwork, Observability: *gw.Spec.Observability.DeepCopy()}
+	observability := gw.Spec.Observability
+	observerConfig := vegobserver.Config{
+		Namespace:       gw.Namespace,
+		Name:            gw.Name,
+		ExternalNetwork: externalNetwork,
+		Observability: kubeovnv1.VpcEgressGatewayObservability{
+			Resources:        observability.Resources,
+			InterfaceMetrics: observability.InterfaceMetrics,
+			Conntrack:        observability.Conntrack,
+		},
+	}
 	data, err := json.Marshal(observerConfig)
 	if err != nil {
-		c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ObservabilityConfigured, corev1.ConditionFalse, "InvalidConfiguration", err.Error())
-		if observabilityMetricsEnabled(gw.Spec.Observability) {
-			c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ServiceMonitorReady, corev1.ConditionFalse, "InvalidConfiguration", err.Error())
-		}
+		c.setVpcEgressGatewayObservabilityCondition(gw, corev1.ConditionFalse, "InvalidConfiguration", err.Error())
 		return preservedState
 	}
 	if err := c.reconcileVpcEgressObserverConfigMap(gw, resourceName, labels, data); err != nil {
-		c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ObservabilityConfigured, corev1.ConditionFalse, "ConfigMapReconcileFailed", err.Error())
-		if observabilityMetricsEnabled(gw.Spec.Observability) {
-			c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ServiceMonitorReady, corev1.ConditionFalse, "ConfigMapReconcileFailed", err.Error())
-		}
+		c.setVpcEgressGatewayObservabilityCondition(gw, corev1.ConditionFalse, "ConfigMapReconcileFailed", err.Error())
 		return preservedState
 	}
-	c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ObservabilityConfigured, corev1.ConditionTrue, "Configured", "")
-
-	if observabilityMetricsEnabled(gw.Spec.Observability) {
-		if err := c.reconcileVpcEgressObserverService(gw, resourceName, labels); err != nil {
-			c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ObservabilityConfigured, corev1.ConditionFalse, "ServiceReconcileFailed", err.Error())
-			c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ServiceMonitorReady, corev1.ConditionFalse, "ServiceReconcileFailed", err.Error())
-			return preservedState
-		}
-		if err := c.reconcileVpcEgressObserverServiceMonitor(gw, resourceName, labels); err != nil {
-			reason := "ServiceMonitorReconcileFailed"
-			if k8serrors.IsNotFound(err) {
-				reason = "ServiceMonitorCRDNotInstalled"
-			}
-			c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ServiceMonitorReady, corev1.ConditionFalse, reason, err.Error())
-			c.addOrUpdateVpcEgressGatewayQueue.AddAfter(fmt.Sprintf("%s/%s", gw.Namespace, gw.Name), 30*time.Second)
-		} else {
-			c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ServiceMonitorReady, corev1.ConditionTrue, "Ready", "")
-		}
-	} else {
-		c.deleteOwnedService(gw, resourceName)
-		c.deleteOwnedServiceMonitor(gw, resourceName)
-		gw.Status.Conditions.RemoveCondition(kubeovnv1.ServiceMonitorReady)
-	}
+	c.setVpcEgressGatewayObservabilityCondition(gw, corev1.ConditionTrue, "Configured", "")
 	return vpcEgressObserverState{enabled: true, configName: resourceName}
 }
 
@@ -245,9 +212,9 @@ func (c *Controller) currentVpcEgressObserverState(gw *kubeovnv1.VpcEgressGatewa
 	return state
 }
 
-func (c *Controller) setVpcEgressGatewayObservabilityCondition(gw *kubeovnv1.VpcEgressGateway, conditionType kubeovnv1.ConditionType, status corev1.ConditionStatus, reason, message string) {
-	previous := gw.Status.Conditions.GetCondition(conditionType)
-	gw.Status.Conditions.SetCondition(conditionType, status, reason, message, gw.Generation)
+func (c *Controller) setVpcEgressGatewayObservabilityCondition(gw *kubeovnv1.VpcEgressGateway, status corev1.ConditionStatus, reason, message string) {
+	previous := gw.Status.Conditions.GetCondition(kubeovnv1.ObservabilityConfigured)
+	gw.Status.Conditions.SetCondition(kubeovnv1.ObservabilityConfigured, status, reason, message, gw.Generation)
 	if status == corev1.ConditionFalse && (previous == nil || previous.Status != status || previous.Reason != reason || previous.Message != message) {
 		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, reason, message)
 	}
@@ -275,152 +242,35 @@ func setVpcEgressGatewayControllerReference(gw *kubeovnv1.VpcEgressGateway, obje
 func (c *Controller) reconcileVpcEgressObserverConfigMap(gw *kubeovnv1.VpcEgressGateway, name string, labels map[string]string, data []byte) error {
 	configMaps := c.config.KubeClient.CoreV1().ConfigMaps(gw.Namespace)
 	desired := &corev1.ConfigMap{Name: name, Namespace: gw.Namespace, Labels: maps.Clone(labels), Data: map[string]string{"config.json": string(data)}}
-	return reconcileVpcEgressObserverResource(
-		gw, "config map", name, desired,
-		func() (metav1.Object, error) { return configMaps.Get(context.Background(), name, metav1.GetOptions{}) },
-		func() error {
-			_, err := configMaps.Create(context.Background(), desired, metav1.CreateOptions{})
-			return err
-		},
-		func(metav1.Object) error {
-			_, err := configMaps.Update(context.Background(), desired, metav1.UpdateOptions{})
-			return err
-		},
-	)
-}
-
-func (c *Controller) reconcileVpcEgressObserverService(gw *kubeovnv1.VpcEgressGateway, name string, labels map[string]string) error {
-	services := c.config.KubeClient.CoreV1().Services(gw.Namespace)
-	desired := &corev1.Service{Name: name, Namespace: gw.Namespace, Labels: maps.Clone(labels), Spec: corev1.ServiceSpec{
-		ClusterIP: corev1.ClusterIPNone, PublishNotReadyAddresses: true, Selector: maps.Clone(labels),
-		Ports: []corev1.ServicePort{{Name: "metrics", Port: vpcEgressObserverPort, TargetPort: intstr.FromInt32(vpcEgressObserverPort)}},
-	}}
-	return reconcileVpcEgressObserverResource(
-		gw, "service", name, desired,
-		func() (metav1.Object, error) { return services.Get(context.Background(), name, metav1.GetOptions{}) },
-		func() error {
-			_, err := services.Create(context.Background(), desired, metav1.CreateOptions{})
-			return err
-		},
-		func(object metav1.Object) error {
-			current := object.(*corev1.Service)
-			desired.Spec.ClusterIPs = current.Spec.ClusterIPs
-			desired.Spec.IPFamilies = current.Spec.IPFamilies
-			desired.Spec.IPFamilyPolicy = current.Spec.IPFamilyPolicy
-			_, err := services.Update(context.Background(), desired, metav1.UpdateOptions{})
-			return err
-		},
-	)
-}
-
-func (c *Controller) reconcileVpcEgressObserverServiceMonitor(gw *kubeovnv1.VpcEgressGateway, name string, selector map[string]string) error {
-	if c.config.DynamicClient == nil {
-		return errors.New("dynamic client is not configured")
-	}
-	labels := maps.Clone(gw.Spec.Observability.ServiceMonitor.Labels)
-	if labels == nil {
-		labels = map[string]string{}
-	}
-	maps.Copy(labels, selector)
-	object := &unstructured.Unstructured{Object: map[string]any{
-		"apiVersion": "monitoring.coreos.com/v1", "kind": "ServiceMonitor",
-		"metadata": map[string]any{"name": name, "namespace": gw.Namespace, "labels": stringMapAny(labels), "annotations": stringMapAny(gw.Spec.Observability.ServiceMonitor.Annotations)},
-		"spec":     map[string]any{"selector": map[string]any{"matchLabels": stringMapAny(selector)}, "endpoints": []any{map[string]any{"port": "metrics", "path": "/metrics"}}},
-	}}
-	client := c.config.DynamicClient.Resource(serviceMonitorGVR).Namespace(gw.Namespace)
-	return reconcileVpcEgressObserverResource(
-		gw, "service monitor", name, object,
-		func() (metav1.Object, error) { return client.Get(context.Background(), name, metav1.GetOptions{}) },
-		func() error {
-			_, err := client.Create(context.Background(), object, metav1.CreateOptions{})
-			return err
-		},
-		func(metav1.Object) error {
-			_, err := client.Update(context.Background(), object, metav1.UpdateOptions{})
-			return err
-		},
-	)
-}
-
-func reconcileVpcEgressObserverResource(
-	gw *kubeovnv1.VpcEgressGateway,
-	kind, name string,
-	desired metav1.Object,
-	get func() (metav1.Object, error),
-	create func() error,
-	update func(metav1.Object) error,
-) error {
 	if err := setVpcEgressGatewayControllerReference(gw, desired); err != nil {
 		return err
 	}
-	current, err := get()
+	current, err := configMaps.Get(context.Background(), name, metav1.GetOptions{})
 	if k8serrors.IsNotFound(err) {
-		return create()
+		_, err = configMaps.Create(context.Background(), desired, metav1.CreateOptions{})
+		return err
 	}
 	if err != nil {
 		return err
 	}
 	if !metav1.IsControlledBy(current, gw) {
-		return fmt.Errorf("%s %s/%s is not controlled by this VpcEgressGateway", kind, gw.Namespace, name)
+		return fmt.Errorf("config map %s/%s is not controlled by this VpcEgressGateway", gw.Namespace, name)
 	}
-	desired.SetResourceVersion(current.GetResourceVersion())
-	return update(current)
+	desired.ResourceVersion = current.ResourceVersion
+	_, err = configMaps.Update(context.Background(), desired, metav1.UpdateOptions{})
+	return err
 }
 
-func (c *Controller) deleteVpcEgressGatewayObservabilityResources(gw *kubeovnv1.VpcEgressGateway, name string) {
-	c.deleteOwnedConfigMap(gw, name)
-	c.deleteOwnedService(gw, name)
-	c.deleteOwnedServiceMonitor(gw, name)
-}
-
-func (c *Controller) deleteOwnedConfigMap(gw *kubeovnv1.VpcEgressGateway, name string) {
+func (c *Controller) deleteOwnedVpcEgressObserverConfigMap(gw *kubeovnv1.VpcEgressGateway, name string) {
 	client := c.config.KubeClient.CoreV1().ConfigMaps(gw.Namespace)
-	deleteOwnedVpcEgressObserverResource(
-		gw, name, "ConfigMap",
-		func() (metav1.Object, error) { return client.Get(context.Background(), name, metav1.GetOptions{}) },
-		func() error { return client.Delete(context.Background(), name, metav1.DeleteOptions{}) },
-	)
-}
-
-func (c *Controller) deleteOwnedService(gw *kubeovnv1.VpcEgressGateway, name string) {
-	client := c.config.KubeClient.CoreV1().Services(gw.Namespace)
-	deleteOwnedVpcEgressObserverResource(
-		gw, name, "Service",
-		func() (metav1.Object, error) { return client.Get(context.Background(), name, metav1.GetOptions{}) },
-		func() error { return client.Delete(context.Background(), name, metav1.DeleteOptions{}) },
-	)
-}
-
-func (c *Controller) deleteOwnedServiceMonitor(gw *kubeovnv1.VpcEgressGateway, name string) {
-	if c.config.DynamicClient == nil {
-		return
+	configMap, err := client.Get(context.Background(), name, metav1.GetOptions{})
+	if err == nil && metav1.IsControlledBy(configMap, gw) {
+		opts := metav1.DeleteOptions{Preconditions: &metav1.Preconditions{UID: &configMap.UID}}
+		err = client.Delete(context.Background(), name, opts)
 	}
-	client := c.config.DynamicClient.Resource(serviceMonitorGVR).Namespace(gw.Namespace)
-	deleteOwnedVpcEgressObserverResource(
-		gw, name, "ServiceMonitor",
-		func() (metav1.Object, error) { return client.Get(context.Background(), name, metav1.GetOptions{}) },
-		func() error { return client.Delete(context.Background(), name, metav1.DeleteOptions{}) },
-	)
-}
-
-func deleteOwnedVpcEgressObserverResource(
-	gw *kubeovnv1.VpcEgressGateway,
-	name, kind string,
-	get func() (metav1.Object, error),
-	remove func() error,
-) {
-	object, err := get()
-	if k8serrors.IsNotFound(err) {
-		return
-	}
-	if err != nil {
-		klog.ErrorS(err, "Failed to get VpcEgressGateway observability resource", "kind", kind, "namespace", gw.Namespace, "name", name)
-		return
-	}
-	if metav1.IsControlledBy(object, gw) {
-		if err := remove(); err != nil && !k8serrors.IsNotFound(err) {
-			klog.ErrorS(err, "Failed to delete VpcEgressGateway observability resource", "kind", kind, "namespace", gw.Namespace, "name", name)
-		}
+	if err != nil && !k8serrors.IsNotFound(err) {
+		klog.ErrorS(err, "Failed to clean up VpcEgressGateway observability ConfigMap", "namespace", gw.Namespace, "name", name)
+		c.addOrUpdateVpcEgressGatewayQueue.AddAfter(cache.MetaObjectToName(gw).String(), vpcEgressObserverRetryDelay)
 	}
 }
 
@@ -469,15 +319,4 @@ func addVpcEgressGatewayObserver(podSpec *corev1.PodSpec, image string, config *
 		corev1.Volume{Name: vpcEgressObserverConfigVolume, ConfigMap: &corev1.ConfigMapVolumeSource{Name: state.configName}},
 		corev1.Volume{Name: vpcEgressObserverPodInfoVolume, DownwardAPI: &corev1.DownwardAPIVolumeSource{Items: []corev1.DownwardAPIVolumeFile{{Path: "network-status", FieldRef: &corev1.ObjectFieldSelector{FieldPath: "metadata.annotations['k8s.v1.cni.cncf.io/network-status']"}}}}},
 	)
-}
-
-func stringMapAny(values map[string]string) map[string]any {
-	if values == nil {
-		return nil
-	}
-	result := make(map[string]any, len(values))
-	for key, value := range values {
-		result[key] = value
-	}
-	return result
 }

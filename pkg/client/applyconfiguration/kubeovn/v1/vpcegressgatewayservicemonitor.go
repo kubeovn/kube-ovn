@@ -21,7 +21,7 @@ package v1
 // VpcEgressGatewayServiceMonitorApplyConfiguration represents a declarative configuration of the VpcEgressGatewayServiceMonitor type for use
 // with apply.
 //
-// VpcEgressGatewayServiceMonitor configures metadata for the per-gateway ServiceMonitor.
+// VpcEgressGatewayServiceMonitor holds the legacy configuration for a per-gateway ServiceMonitor.
 type VpcEgressGatewayServiceMonitorApplyConfiguration struct {
 	Labels      map[string]string `json:"labels,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty"`
