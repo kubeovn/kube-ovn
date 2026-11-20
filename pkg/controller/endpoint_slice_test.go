@@ -1097,6 +1097,23 @@ func TestEndpointSliceServiceProfileRouterLBRuleHealthCheck(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("malformed VIP does not enable an IPv6 check", func(t *testing.T) {
+		t.Parallel()
+		svc := &corev1.Service{
+			Namespace: "default",
+			Name:      "rlr-web",
+			Annotations: map[string]string{
+				util.RouterLBRuleVipsAnnotation: "not-an-ip",
+				util.ServiceHealthCheck:         "true",
+			},
+			Spec: corev1.ServiceSpec{Type: corev1.ServiceTypeClusterIP, ClusterIP: corev1.ClusterIPNone},
+		}
+		profile, err := (&Controller{}).endpointSliceServiceProfile(svc)
+		require.NoError(t, err)
+		require.True(t, profile.ignoreHealthCheck)
+		require.False(t, profile.healthCheckVips["not-an-ip"])
+	})
 }
 
 func TestFormatHealthCheckSourceIP(t *testing.T) {
