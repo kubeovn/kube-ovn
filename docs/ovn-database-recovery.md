@@ -31,6 +31,13 @@ tails: requiring an already running quorum to rebuild every member would stop
 all of them before any database process starts. Probes use the same validation
 so they do not restart a server that has loaded such a recoverable tail.
 
+The Kind HA suite exercises NB and SB recovery with an 80-byte zero tail on
+every stopped member, without a live quorum. These disruptive specs require
+Kube-OVN v1.15 or later and at least three central replicas. They verify the
+committed marker on every member, fresh writes, cluster/server IDs, the original
+member files, and new cross-node Pod connections. Failed specs restore their
+saved test databases after capturing failure diagnostics.
+
 `ovsdb-tool fix-cluster` can rewrite a locally valid log prefix while discarding
 later records. A successful repair followed by a successful `check-cluster`
 does not prove that committed history was preserved. Likewise, a reachable
