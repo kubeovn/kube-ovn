@@ -417,22 +417,10 @@ func Test_reconcileVips(t *testing.T) {
 		},
 	}
 
-	mockLsp := func(lsName, lspName, vip string) ovnnb.LogicalSwitchPort {
-		return ovnnb.LogicalSwitchPort{
-			Name: lspName,
-			ExternalIDs: map[string]string{
-				"ls": lsName,
-			},
-			Options: map[string]string{
-				"virtual-ip": vip,
-			},
-		}
-	}
-
 	lsps := []ovnnb.LogicalSwitchPort{
-		mockLsp("", lspName("192.168.123.8"), "192.168.123.8"),
-		mockLsp("", lspName("192.168.123.9"), "192.168.123.9"),
-		mockLsp("", lspName("192.168.123.10"), "192.168.123.10"),
+		mockReconcileVipsLSP("", lspName("192.168.123.8"), "192.168.123.8"),
+		mockReconcileVipsLSP("", lspName("192.168.123.9"), "192.168.123.9"),
+		mockReconcileVipsLSP("", lspName("192.168.123.10"), "192.168.123.10"),
 	}
 
 	t.Run("existent vips and new vips has intersection", func(t *testing.T) {
@@ -468,52 +456,72 @@ func Test_reconcileVips(t *testing.T) {
 		require.NoError(t, err)
 	})
 
-	t.Run("a vip cr's virtual port is not deleted", func(t *testing.T) {
-		subnet := &kubeovnv1.Subnet{
-			Name: "ovn-test",
-		}
-		vipCRPort := mockLsp(subnet.Name, "vip:demo:ipv4", "192.168.123.20")
+}
 
-		mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitchPort{vipCRPort, lsps[0]}, nil)
-		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspName("192.168.123.8")).Return(nil)
-		mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name).Return(nil)
+func Test_reconcileVipsPreservesVipCRPort(t *testing.T) {
+	t.Parallel()
 
-		err := ctrl.reconcileVips(subnet)
-		require.NoError(t, err)
-	})
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	subnet := &kubeovnv1.Subnet{Name: "ovn-test"}
+	vipCRPort := mockReconcileVipsLSP(subnet.Name, "vip:demo:ipv4", "192.168.123.20")
+	managedPort := mockReconcileVipsLSP(subnet.Name, "ovn-test-vip-192.168.123.8", "192.168.123.8")
 
-	t.Run("a same-prefix non-owned virtual port is not reconciled", func(t *testing.T) {
-		subnet := &kubeovnv1.Subnet{
-			Name: "ovn-test",
-			Spec: kubeovnv1.SubnetSpec{
-				Vips: []string{"192.168.123.20"},
-			},
-		}
-		nonOwnedPort := mockLsp(subnet.Name, subnet.Name+"-vip-owned", "192.168.123.20")
+	mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitchPort{vipCRPort, managedPort}, nil)
+	mockOvnClient.EXPECT().DeleteLogicalSwitchPort("ovn-test-vip-192.168.123.8").Return(nil)
+	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name).Return(nil)
 
-		mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitchPort{nonOwnedPort}, nil)
-		mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name, "192.168.123.20").Return(nil)
+	require.NoError(t, ctrl.reconcileVips(subnet))
+}
 
-		err := ctrl.reconcileVips(subnet)
-		require.NoError(t, err)
-	})
+func Test_reconcileVipsIgnoresSamePrefixNonOwnedPort(t *testing.T) {
+	t.Parallel()
 
-	t.Run("a subnet vip port with stale virtual ip is recreated", func(t *testing.T) {
-		subnet := &kubeovnv1.Subnet{
-			Name: "ovn-test",
-			Spec: kubeovnv1.SubnetSpec{
-				Vips: []string{"192.168.123.20"},
-			},
-		}
-		stalePort := mockLsp(subnet.Name, lspName("192.168.123.20"), "192.168.123.21")
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	subnet := &kubeovnv1.Subnet{
+		Name: "ovn-test",
+		Spec: kubeovnv1.SubnetSpec{Vips: []string{"192.168.123.20"}},
+	}
+	nonOwnedPort := mockReconcileVipsLSP(subnet.Name, "ovn-test-vip-owned", "192.168.123.20")
 
-		mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitchPort{stalePort}, nil)
-		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspName("192.168.123.20")).Return(nil)
-		mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name, "192.168.123.20").Return(nil)
+	mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitchPort{nonOwnedPort}, nil)
+	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name, "192.168.123.20").Return(nil)
 
-		err := ctrl.reconcileVips(subnet)
-		require.NoError(t, err)
-	})
+	require.NoError(t, ctrl.reconcileVips(subnet))
+}
+
+func Test_reconcileVipsRecreatesStaleVirtualIP(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	subnet := &kubeovnv1.Subnet{
+		Name: "ovn-test",
+		Spec: kubeovnv1.SubnetSpec{Vips: []string{"192.168.123.20"}},
+	}
+	stalePort := mockReconcileVipsLSP(subnet.Name, "ovn-test-vip-192.168.123.20", "192.168.123.21")
+
+	mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitchPort{stalePort}, nil)
+	mockOvnClient.EXPECT().DeleteLogicalSwitchPort("ovn-test-vip-192.168.123.20").Return(nil)
+	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name, "192.168.123.20").Return(nil)
+
+	require.NoError(t, ctrl.reconcileVips(subnet))
+}
+
+func mockReconcileVipsLSP(lsName, lspName, vip string) ovnnb.LogicalSwitchPort {
+	return ovnnb.LogicalSwitchPort{
+		Name: lspName,
+		ExternalIDs: map[string]string{
+			"ls": lsName,
+		},
+		Options: map[string]string{
+			"virtual-ip": vip,
+		},
+	}
 }
 
 func Test_syncVirtualPort(t *testing.T) {
