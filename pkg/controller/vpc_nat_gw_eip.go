@@ -861,7 +861,7 @@ func (c *Controller) patchEipStatus(key, v4ip, redo, qos string, ready bool) err
 		klog.Error(err)
 		return err
 	}
-	patch := natStatusPatch(eip.Status.Ready, eip.Status.Redo, ready, redo, false)
+	patch := natStatusPatch(eip.Status.Ready, eip.Status.Redo, ready, redo, ready)
 	if ready && v4ip != "" && eip.Status.IP != v4ip {
 		patch["ip"] = v4ip
 	}
