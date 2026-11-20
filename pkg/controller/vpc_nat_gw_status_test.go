@@ -20,7 +20,12 @@ func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
 	eip := &kubeovnv1.IptablesEIP{
 		Name: "eip",
 		Spec: kubeovnv1.IptablesEIPSpec{V4ip: "192.0.2.10"},
+		// The stale informer still records the EIP as used by a DNAT, while its
+		// stale NAT-rule listers below calculate no users. Replay must preserve
+		// this applied status instead of clearing Nat from the API object.
+		Status: kubeovnv1.IptablesEIPStatus{Nat: util.DnatUsingEip},
 	}
+
 	fip := &kubeovnv1.IptablesFIPRule{Name: "fip"}
 	dnat := &kubeovnv1.IptablesDnatRule{Name: "dnat"}
 	snat := &kubeovnv1.IptablesSnatRule{Name: "snat"}
@@ -64,6 +69,30 @@ func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
 		iptablesSnatRulesLister: kubeovnlister.NewIptablesSnatRuleLister(index(snat)),
 	}
 
+	t.Run("Ready restoration with stale cache", func(t *testing.T) {
+		// The first call has already patched the API object to Ready=false, but
+		// these informer objects remain Ready=true for the second call.
+		fip.Status.Ready = true
+		dnat.Status.Ready = true
+		snat.Status.Ready = true
+		require.NoError(t, c.patchFipStatus(fip.Name, "", "", "", "", false))
+		require.NoError(t, c.patchFipStatus(fip.Name, "", "", "", "", true))
+		require.NoError(t, c.patchDnatStatus(dnat.Name, "", "", "", "", false))
+		require.NoError(t, c.patchDnatStatus(dnat.Name, "", "", "", "", true))
+		require.NoError(t, c.patchSnatStatus(snat.Name, "", "", "", "", false))
+		require.NoError(t, c.patchSnatStatus(snat.Name, "", "", "", "", true))
+
+		gotFip, err := client.IptablesFIPRules().Get(t.Context(), fip.Name, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.True(t, gotFip.Status.Ready)
+		gotDnat, err := client.IptablesDnatRules().Get(t.Context(), dnat.Name, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.True(t, gotDnat.Status.Ready)
+		gotSnat, err := client.IptablesSnatRules().Get(t.Context(), snat.Name, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.True(t, gotSnat.Status.Ready)
+	})
+
 	t.Run("FIP", func(t *testing.T) {
 		require.NoError(t, c.redoFip(fip.Name, redo, true))
 		got, err := client.IptablesFIPRules().Get(t.Context(), fip.Name, metav1.GetOptions{})
@@ -96,4 +125,11 @@ func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
 		want.Ready, want.Redo = false, redo
 		require.Equal(t, want, got.Status)
 	})
+}
+
+func TestNatStatusPatchNoop(t *testing.T) {
+	require.Empty(t, natStatusPatch(true, "", true, "", false))
+	require.Equal(t, util.KVPatch{"ready": true}, natStatusPatch(true, "", true, "", true))
+	require.Equal(t, util.KVPatch{"redo": "generation", "ready": false},
+		natStatusPatch(true, "", false, "generation", false))
 }

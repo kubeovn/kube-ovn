@@ -1318,14 +1318,14 @@ func (c *Controller) handleDelIptablesSnatFinalizer(key string) error {
 	return nil
 }
 
-func natStatusPatch(currentReady bool, currentRedo string, ready bool, redo string) util.KVPatch {
+func natStatusPatch(currentReady bool, currentRedo string, ready bool, redo string, forceReady bool) util.KVPatch {
 	patch := util.KVPatch{}
 	if redo != "" && redo != currentRedo {
 		// A new replay invalidates readiness even when the cache has not yet
 		// observed the API server's Ready=true.
 		patch["redo"] = redo
 		patch["ready"] = ready
-	} else if currentReady != ready {
+	} else if currentReady != ready || (forceReady && ready) {
 		patch["ready"] = ready
 	}
 	return patch
@@ -1340,7 +1340,7 @@ func (c *Controller) patchFipStatus(key, v4ip, v6ip, natGwDp, redo string, ready
 		klog.Error(err)
 		return err
 	}
-	patch := natStatusPatch(fip.Status.Ready, fip.Status.Redo, ready, redo)
+	patch := natStatusPatch(fip.Status.Ready, fip.Status.Redo, ready, redo, ready)
 	if ready && v4ip != "" && fip.Status.V4ip != v4ip {
 		patch["v4ip"] = v4ip
 		patch["v6ip"] = v6ip
@@ -1453,7 +1453,7 @@ func (c *Controller) patchDnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		klog.Error(err)
 		return err
 	}
-	patch := natStatusPatch(dnat.Status.Ready, dnat.Status.Redo, ready, redo)
+	patch := natStatusPatch(dnat.Status.Ready, dnat.Status.Redo, ready, redo, ready)
 	if ready && v4ip != "" && dnat.Status.V4ip != v4ip {
 		patch["v4ip"] = v4ip
 		patch["v6ip"] = v6ip
@@ -1567,7 +1567,7 @@ func (c *Controller) patchSnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		klog.Error(err)
 		return err
 	}
-	patch := natStatusPatch(snat.Status.Ready, snat.Status.Redo, ready, redo)
+	patch := natStatusPatch(snat.Status.Ready, snat.Status.Redo, ready, redo, ready)
 	if ready && v4ip != "" && snat.Status.V4ip != v4ip {
 		patch["v4ip"] = v4ip
 		patch["v6ip"] = v6ip
