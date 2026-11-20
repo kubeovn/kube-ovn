@@ -3,6 +3,7 @@ ARG BASE_TAG=$VERSION
 FROM kubeovn/kube-ovn-base:$BASE_TAG AS setcap
 
 COPY *.sh /kube-ovn/
+COPY ovn-db-check.py /kube-ovn/ovn-db-check.py
 COPY kubectl-ko /kube-ovn/kubectl-ko
 COPY kubectl-ko-node-agent /kube-ovn/kubectl-ko-node-agent
 COPY 01-kube-ovn.conflist /kube-ovn/01-kube-ovn.conflist
