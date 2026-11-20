@@ -1014,6 +1014,11 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 	/* filter all invalid virtual port */
 	existVips := make(map[string]string) // key is vip, value is port name
 	for _, lsp := range lsps {
+		// only the ports CreateVirtualLogicalSwitchPorts made for subnet.Spec.Vips; a Vip CR's
+		// virtual ports (vip:<name>:ipv4/ipv6) belong to the vip controller
+		if !strings.HasPrefix(lsp.Name, subnet.Name+"-vip-") {
+			continue
+		}
 		vip, ok := lsp.Options["virtual-ip"]
 		if !ok {
 			continue // ignore vip which is empty
