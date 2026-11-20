@@ -72,9 +72,12 @@ func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
 	t.Run("Ready restoration with stale cache", func(t *testing.T) {
 		// The first call has already patched the API object to Ready=false, but
 		// these informer objects remain Ready=true for the second call.
+		eip.Status.Ready = true
 		fip.Status.Ready = true
 		dnat.Status.Ready = true
 		snat.Status.Ready = true
+		require.NoError(t, c.patchEipStatus(eip.Name, "", "ready-restoration", "", false))
+		require.NoError(t, c.patchEipStatus(eip.Name, "", "ready-restoration", "", true))
 		require.NoError(t, c.patchFipStatus(fip.Name, "", "", "", "", false))
 		require.NoError(t, c.patchFipStatus(fip.Name, "", "", "", "", true))
 		require.NoError(t, c.patchDnatStatus(dnat.Name, "", "", "", "", false))
@@ -82,6 +85,9 @@ func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
 		require.NoError(t, c.patchSnatStatus(snat.Name, "", "", "", "", false))
 		require.NoError(t, c.patchSnatStatus(snat.Name, "", "", "", "", true))
 
+		gotEip, err := client.IptablesEIPs().Get(t.Context(), eip.Name, metav1.GetOptions{})
+		require.NoError(t, err)
+		require.True(t, gotEip.Status.Ready)
 		gotFip, err := client.IptablesFIPRules().Get(t.Context(), fip.Name, metav1.GetOptions{})
 		require.NoError(t, err)
 		require.True(t, gotFip.Status.Ready)
