@@ -101,6 +101,184 @@ func serviceLBReconcileFixture(t *testing.T, serviceType corev1.ServiceType, tem
 	return ctrl, nbClient, svc, endpoints
 }
 
+func routerLBRuleHealthCheckReconcileFixture(t *testing.T, vips string) (*Controller, *ovs.OVNNbClient, *corev1.Service, []*discoveryv1.EndpointSlice) {
+	t.Helper()
+
+	svc := &corev1.Service{
+		Namespace: "default",
+		Name:      generateRlrSvcName("rlr1"),
+		UID:       "service-uid",
+		Annotations: map[string]string{
+			util.LogicalRouterAnnotation:    "vpc",
+			util.VpcAnnotation:              "vpc",
+			util.LogicalSwitchAnnotation:    "subnet",
+			util.RouterLBRuleVipsAnnotation: vips,
+			util.ServiceHealthCheck:         "true",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeClusterIP,
+			ClusterIP: corev1.ClusterIPNone,
+			Ports: []corev1.ServicePort{{
+				Name:     "web",
+				Protocol: corev1.ProtocolTCP,
+				Port:     80,
+			}},
+			Selector: map[string]string{"app": "backend"},
+		},
+	}
+	setServiceScopedLBOwner(svc, routerLBRuleLBOwnerKind, "rlr1", "rlr-uid")
+
+	hasIPv4, hasIPv6 := false, false
+	for vip := range strings.SplitSeq(vips, ",") {
+		switch util.CheckProtocol(strings.TrimSpace(vip)) {
+		case kubeovnv1.ProtocolIPv4:
+			hasIPv4 = true
+		case kubeovnv1.ProtocolIPv6:
+			hasIPv6 = true
+		}
+	}
+	addresses := make([]string, 0, 2)
+	if hasIPv4 {
+		addresses = append(addresses, "10.0.0.2")
+	}
+	if hasIPv6 {
+		addresses = append(addresses, "fd00::2")
+	}
+	pod := &corev1.Pod{
+		Namespace: "default",
+		Name:      "backend",
+		Labels:    map[string]string{"app": "backend"},
+		Annotations: map[string]string{
+			util.LogicalSwitchAnnotation: "subnet",
+			util.LogicalRouterAnnotation: "vpc",
+			util.IPAddressAnnotation:     strings.Join(addresses, ","),
+		},
+	}
+	subnet := &kubeovnv1.Subnet{Name: "subnet", Spec: kubeovnv1.SubnetSpec{Vpc: "vpc", Provider: util.OvnProvider}}
+	healthCheckVIP := &kubeovnv1.Vip{
+		Name:   "subnet",
+		Spec:   kubeovnv1.VipSpec{Subnet: "subnet"},
+		Status: kubeovnv1.VipStatus{},
+	}
+	if hasIPv4 {
+		healthCheckVIP.Status.V4ip = "10.0.0.254"
+	}
+	if hasIPv6 {
+		healthCheckVIP.Status.V6ip = "fd00::254"
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Services: []*corev1.Service{svc},
+		Pods:     []*corev1.Pod{pod},
+		Subnets:  []*kubeovnv1.Subnet{subnet},
+		Vips:     []*kubeovnv1.Vip{healthCheckVIP},
+		Vpcs:     []*kubeovnv1.Vpc{{Name: "vpc"}},
+	})
+	require.NoError(t, err)
+
+	ctrl := fc.fakeController
+	ctrl.config.EnableOvnLB = true
+	ctrl.config.ClusterRouter = "vpc"
+	nbClient := newInMemoryOVNNbClient(t)
+	ctrl.OVNNbClient = nbClient
+	require.NoError(t, nbClient.CreateBareLogicalSwitch("subnet"))
+	require.NoError(t, nbClient.CreateLogicalRouter("vpc"))
+
+	targetRef := &corev1.ObjectReference{Kind: util.KindPod, Namespace: "default", Name: pod.Name}
+	portName := "web"
+	protocol := corev1.ProtocolTCP
+	port := int32(8080)
+	endpoints := make([]*discoveryv1.EndpointSlice, 0, 2)
+	if hasIPv4 {
+		endpoints = append(endpoints, &discoveryv1.EndpointSlice{
+			AddressType: discoveryv1.AddressTypeIPv4,
+			Ports:       []discoveryv1.EndpointPort{{Name: &portName, Protocol: &protocol, Port: &port}},
+			Endpoints:   []discoveryv1.Endpoint{{Addresses: []string{"10.0.0.2"}, TargetRef: targetRef}},
+		})
+	}
+	if hasIPv6 {
+		endpoints = append(endpoints, &discoveryv1.EndpointSlice{
+			AddressType: discoveryv1.AddressTypeIPv6,
+			Ports:       []discoveryv1.EndpointPort{{Name: &portName, Protocol: &protocol, Port: &port}},
+			Endpoints:   []discoveryv1.Endpoint{{Addresses: []string{"fd00::2"}, TargetRef: targetRef}},
+		})
+	}
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
+	return ctrl, nbClient, svc, endpoints
+}
+
+func TestRouterLBRuleHealthCheckReconcileUsesIPv6SourceBrackets(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		vips string
+	}{
+		{name: "IPv6-only", vips: "fd00::100"},
+		{name: "dual-stack", vips: "192.0.2.100,fd00::100"},
+		{name: "dual-stack reversed", vips: "fd00::100,192.0.2.100"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, nbClient, svc, _ := routerLBRuleHealthCheckReconcileFixture(t, tc.vips)
+			lbName := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
+			lb, err := nbClient.GetLoadBalancer(lbName, false)
+			require.NoError(t, err)
+			lspName := ovs.PodNameToPortName("backend", "default", util.OvnProvider)
+			wantVIPs := map[string]string{"[fd00::100]:80": "[fd00::2]:8080"}
+			wantMappings := map[string]string{"[fd00::2]": lspName + ":[fd00::254]"}
+			wantHealthCheckVIPs := []string{"[fd00::100]:80"}
+			if strings.Contains(tc.name, "dual-stack") {
+				wantVIPs["192.0.2.100:80"] = "10.0.0.2:8080"
+				wantMappings["10.0.0.2"] = lspName + ":10.0.0.254"
+				wantHealthCheckVIPs = append(wantHealthCheckVIPs, "192.0.2.100:80")
+			}
+			require.Equal(t, wantVIPs, lb.Vips)
+			require.Equal(t, wantMappings, lb.IPPortMappings)
+
+			healthChecks, err := nbClient.ListLoadBalancerHealthChecks(nil)
+			require.NoError(t, err)
+			require.Len(t, healthChecks, len(wantHealthCheckVIPs))
+			healthCheckUUIDs := make([]string, 0, len(healthChecks))
+			healthCheckVIPs := make([]string, 0, len(healthChecks))
+			for _, healthCheck := range healthChecks {
+				healthCheckUUIDs = append(healthCheckUUIDs, healthCheck.UUID)
+				healthCheckVIPs = append(healthCheckVIPs, healthCheck.Vip)
+			}
+			require.ElementsMatch(t, lb.HealthCheck, healthCheckUUIDs)
+			require.ElementsMatch(t, wantHealthCheckVIPs, healthCheckVIPs)
+		})
+	}
+}
+
+func TestRouterLBRuleHealthCheckReconcileDisablesAndPrunesFamilyMappings(t *testing.T) {
+	ctrl, nbClient, svc, endpoints := routerLBRuleHealthCheckReconcileFixture(t, "192.0.2.100,fd00::100")
+	lbName := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
+
+	svc.Annotations[util.ServiceHealthCheck] = "false"
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
+	lb, err := nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{
+		"192.0.2.100:80": "10.0.0.2:8080",
+		"[fd00::100]:80": "[fd00::2]:8080",
+	}, lb.Vips)
+	require.Empty(t, lb.HealthCheck)
+	require.Empty(t, lb.IPPortMappings)
+	healthChecks, err := nbClient.ListLoadBalancerHealthChecks(nil)
+	require.NoError(t, err)
+	require.Empty(t, healthChecks)
+
+	svc.Annotations[util.ServiceHealthCheck] = "true"
+	endpoints[0].Endpoints[0].TargetRef = nil
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
+	lb, err = nbClient.GetLoadBalancer(lbName, false)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"[fd00::2]": "backend.default:[fd00::254]"}, lb.IPPortMappings)
+	require.Len(t, lb.HealthCheck, 1)
+	healthChecks, err = nbClient.ListLoadBalancerHealthChecks(nil)
+	require.NoError(t, err)
+	require.Len(t, healthChecks, 1)
+	require.Equal(t, "[fd00::100]:80", healthChecks[0].Vip)
+	require.Equal(t, lb.HealthCheck[0], healthChecks[0].UUID)
+}
+
 func TestServiceLoadBalancersReconcileAtomically(t *testing.T) {
 	for _, tc := range []struct {
 		name        string
