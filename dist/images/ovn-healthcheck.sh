@@ -35,7 +35,7 @@ fi
 # reachable majority.
 for db in nb sb; do
     db_file="/etc/ovn/ovn${db}_db.db"
-    if ! ovsdb-tool check-cluster "$db_file"; then
+    if ! python3 /kube-ovn/ovn-db-check.py "$db_file"; then
         echo "${db} persistent Raft log validation failed"
         exit 1
     fi

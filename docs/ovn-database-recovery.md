@@ -14,7 +14,31 @@ and startup path, without the database-identity preflight described here.
 | Valid standalone database | Preserve the existing standalone startup path. |
 | Missing database | Preserve the existing initialization and header recovery paths. |
 | Pending cluster join | Resume the join. Central databases retain their existing stale pending-join cleanup. |
+| Complete valid Raft history followed only by zero bytes | Validate a private copy of the complete prefix, preserve the original member file and identity, and let `ovsdb-server` recover its physical tail without requiring live peers. |
 | Unknown identity, unexpected database name, unknown storage format, or invalid clustered log | Preserve the original database and header. For an invalid clustered log, create a clean member from a valid matching Raft header and a reachable quorum; if the header or quorum is unavailable, keep startup blocked for retry. |
+
+Central and IC startup and health probes share `ovn-db-check.py`. It first runs
+normal `check-cluster`. If that fails, it accepts only an all-zero suffix after
+complete records with valid lengths and SHA-1 checksums, and requires the
+unchanged prefix to pass a separate `check-cluster` on a private temporary copy.
+The original file is never trimmed, repaired, or replaced. A concurrent append
+or replacement fails validation. Internal corruption, checksum failures,
+nonzero garbage, other incomplete records, and Raft semantic errors retain the
+existing failure and quorum-based recovery behavior.
+
+This avoids a startup dependency cycle when all members have recoverable zero
+tails: requiring an already running quorum to rebuild every member would stop
+all of them before any database process starts. Probes use the same validation
+so they do not restart a server that has loaded such a recoverable tail.
+
+The Kind HA suite exercises NB and SB recovery with an 80-byte zero tail on
+every stopped member, without a live quorum. These disruptive specs require
+Kube-OVN v1.15 or later and at least three central replicas. They verify the
+committed marker on every member, fresh writes, cluster/server IDs, the original
+member files, and new cross-node Pod connections. Failed specs restore their
+saved test databases after capturing failure diagnostics.
+Backups are removed only after the replica count, rollout, leaders, and database
+membership have recovered. A failed restart retains the complete backup set.
 
 `ovsdb-tool fix-cluster` can rewrite a locally valid log prefix while discarding
 later records. A successful repair followed by a successful `check-cluster`
