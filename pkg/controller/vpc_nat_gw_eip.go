@@ -864,12 +864,25 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 				klog.Error(errMsg)
 				return errMsg
 			}
-			patch := util.KVPatch{"ready": true, "qosPolicy": qos}
-			if eip.Status.IP == "" {
-				// EIP addresses are fixed after allocation.
-				patch["ip"] = v4ip
+			// Read the status again after the spec update. UpdateStatus carries the live resource
+			// version, so a replay invalidation that wins the race causes a conflict instead of
+			// allowing this allocation pass to restore readiness from an old snapshot.
+			statusEip, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Get(context.Background(), key, metav1.GetOptions{})
+			if err != nil {
+				if k8serrors.IsNotFound(err) {
+					return nil
+				}
+				return err
 			}
-			if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, patch); err != nil {
+			if statusEip.Status.IP == "" {
+				// EIP addresses are fixed after allocation.
+				statusEip.Status.IP = v4ip
+			}
+			if statusEip.Status.Ready || statusEip.Status.Redo == "" {
+				statusEip.Status.Ready = true
+			}
+			statusEip.Status.QoSPolicy = qos
+			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().UpdateStatus(context.Background(), statusEip, metav1.UpdateOptions{}); err != nil {
 				if k8serrors.IsNotFound(err) {
 					return nil
 				}
@@ -1073,6 +1086,15 @@ func (c *Controller) patchEipReplayStatus(key, redo, qos string, ready bool) err
 		}
 		klog.Error(err)
 		return err
+	}
+	if redo != "" {
+		current, err := c.replayTokenMatchesGateway(eip.Spec.NatGwDp, redo)
+		if err != nil {
+			return err
+		}
+		if !current {
+			return nil
+		}
 	}
 	patch := natStatusPatch(eip.Status.Ready, eip.Status.Redo, ready, redo, ready)
 	if qos != "" && eip.Status.QoSPolicy != qos {
