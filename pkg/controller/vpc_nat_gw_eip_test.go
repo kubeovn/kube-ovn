@@ -352,6 +352,58 @@ func TestCreateOrUpdateEipCRPublishesQoSClaim(t *testing.T) {
 	require.Equal(t, "qos", got.Status.QoSPolicy)
 }
 
+func TestCreateOrUpdateEipCRPreservesLiveReplayStatus(t *testing.T) {
+	oldStatus := kubeovnv1.IptablesEIPStatus{
+		IP: "2.2.2.2", Ready: true, Nat: "old-nat", Redo: "old-replay",
+	}
+	eip := &kubeovnv1.IptablesEIP{
+		Name: "eip", UID: "eip-uid",
+		Spec:   kubeovnv1.IptablesEIPSpec{V4ip: "2.2.2.2", NatGwDp: "gw", ExternalSubnet: "ext-net"},
+		Status: oldStatus,
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		IptablesEips:   []*kubeovnv1.IptablesEIP{eip},
+		VpcNatGateways: []*kubeovnv1.VpcNatGateway{fakeGw("gw")},
+	})
+	require.NoError(t, err)
+	c := fc.fakeController
+
+	client := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs()
+	live, err := client.Get(context.Background(), "eip", metav1.GetOptions{})
+	require.NoError(t, err)
+	live.Status = kubeovnv1.IptablesEIPStatus{
+		IP: "2.2.2.2", Ready: true, Nat: "new-nat", Redo: "new-replay",
+	}
+	_, err = client.UpdateStatus(context.Background(), live, metav1.UpdateOptions{})
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		cached, getErr := c.iptablesEipsLister.Get("eip")
+		return getErr == nil && cached.Status.Redo == "new-replay"
+	}, time.Second, time.Millisecond)
+
+	// Reintroduce the informer lag that triggered the bug. The API object retains the new
+	// replay status while the lister returns the old one.
+	stale := eip.DeepCopy()
+	stale.Status = oldStatus
+	require.NoError(t, fc.fakeInformers.iptablesEipInformer.Informer().GetIndexer().Update(stale))
+	require.Equal(t, "old-replay", mustGetIptablesEip(t, c).Status.Redo)
+
+	require.NoError(t, c.createOrUpdateEipCR("eip", "2.2.2.2", "", "", "gw", "", "ext-net", ""))
+
+	got, err := client.Get(context.Background(), "eip", metav1.GetOptions{})
+	require.NoError(t, err)
+	require.True(t, got.Status.Ready)
+	require.Equal(t, "new-nat", got.Status.Nat)
+	require.Equal(t, "new-replay", got.Status.Redo)
+}
+
+func mustGetIptablesEip(t *testing.T, c *Controller) *kubeovnv1.IptablesEIP {
+	t.Helper()
+	eip, err := c.iptablesEipsLister.Get("eip")
+	require.NoError(t, err)
+	return eip
+}
+
 // TestSyncNatUIDLabelsIsIdempotentAndBestEffort pins the migration contract: objects whose
 // claim is already correct are left untouched, and an object that cannot be migrated is
 // reported without stopping the migration of the others.
