@@ -91,3 +91,44 @@ func mustGetIptablesEip(t *testing.T, c *Controller) *kubeovnv1.IptablesEIP {
 	require.NoError(t, err)
 	return eip
 }
+
+func TestEnqueueIptablesEipReplayWhenAllocated(t *testing.T) {
+	t.Parallel()
+	eip := &kubeovnv1.IptablesEIP{
+		Name: "eip", Status: kubeovnv1.IptablesEIPStatus{Redo: "pending-replay"},
+	}
+	c := newEipReplayTestController(t, eip)
+	client := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs()
+	c.addIptablesEipQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
+	c.updateIptablesEipQueue = workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]())
+	t.Cleanup(c.addIptablesEipQueue.ShutDown)
+	t.Cleanup(c.updateIptablesEipQueue.ShutDown)
+
+	require.NoError(t, c.recordEipAllocation(eip.Name, "192.0.2.10", ""))
+	allocated, err := client.Get(t.Context(), eip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "192.0.2.10", allocated.Status.IP)
+	require.Equal(t, eip.Status.Redo, allocated.Status.Redo)
+	require.False(t, allocated.Status.Ready)
+
+	for _, event := range []struct {
+		name    string
+		enqueue func()
+	}{
+		{name: "first status IP", enqueue: func() { c.enqueueUpdateIptablesEip(eip, allocated) }},
+		{name: "informer relist", enqueue: func() { c.enqueueAddIptablesEip(allocated) }},
+	} {
+		t.Run(event.name, func(t *testing.T) {
+			event.enqueue()
+			require.Zero(t, c.addIptablesEipQueue.Len())
+			require.Equal(t, 1, c.updateIptablesEipQueue.Len())
+			key, shutdown := c.updateIptablesEipQueue.Get()
+			require.False(t, shutdown)
+			require.Equal(t, eip.Name, key)
+			c.updateIptablesEipQueue.Done(key)
+		})
+	}
+
+	c.enqueueUpdateIptablesEip(allocated, allocated.DeepCopy())
+	require.Zero(t, c.updateIptablesEipQueue.Len(), "already published IP leaves the queue alone")
+}

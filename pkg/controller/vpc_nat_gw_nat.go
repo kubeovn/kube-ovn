@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -1324,7 +1325,7 @@ type iptablesStatusClient[T metav1.Object] interface {
 }
 
 // updateIptablesStatus uses the live resource version so a replay invalidation
-// between the read and write conflicts and the worker retries.
+// between the read and write causes a conflict.
 func updateIptablesStatus[T metav1.Object](client iptablesStatusClient[T], key string, update func(T) bool) error {
 	ctx := context.Background()
 	obj, err := client.Get(ctx, key, metav1.GetOptions{})
@@ -1342,6 +1343,13 @@ func updateIptablesStatus[T metav1.Object](client iptablesStatusClient[T], key s
 		return nil
 	}
 	return err
+}
+
+// Retry status publication with the same applied rule or allocation after a conflict.
+func retryIptablesStatusUpdate[T metav1.Object](client iptablesStatusClient[T], key string, update func(T) bool) error {
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		return updateIptablesStatus(client, key, update)
+	})
 }
 
 // Gateway workers compute and publish a replay token under the gateway lock.
@@ -1362,11 +1370,14 @@ func markNatStatusNotReady(ready *bool, currentRedo *string, redo string) bool {
 // The applied fields are needed for future replay and cleanup even when a
 // newer replay took ownership of readiness while the rule was being applied.
 func (c *Controller) recordFipStatus(fip *kubeovnv1.IptablesFIPRule, eip *kubeovnv1.IptablesEIP) error {
-	return updateIptablesStatus(c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules(), fip.Name, func(live *kubeovnv1.IptablesFIPRule) bool {
+	return retryIptablesStatusUpdate(c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules(), fip.Name, func(live *kubeovnv1.IptablesFIPRule) bool {
 		status := &live.Status
-		if status.Redo == fip.Status.Redo {
-			status.Ready = true
+		ready := status.Ready || status.Redo == fip.Status.Redo
+		if status.Ready == ready && status.V4ip == eip.Status.IP && status.V6ip == eip.Spec.V6ip &&
+			status.NatGwDp == eip.Spec.NatGwDp && status.InternalIP == fip.Spec.InternalIP {
+			return false
 		}
+		status.Ready = ready
 		status.V4ip = eip.Status.IP
 		status.V6ip = eip.Spec.V6ip
 		status.NatGwDp = eip.Spec.NatGwDp
@@ -1479,11 +1490,15 @@ func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 }
 
 func (c *Controller) recordDnatStatus(dnat *kubeovnv1.IptablesDnatRule, eip *kubeovnv1.IptablesEIP) error {
-	return updateIptablesStatus(c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules(), dnat.Name, func(live *kubeovnv1.IptablesDnatRule) bool {
+	return retryIptablesStatusUpdate(c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules(), dnat.Name, func(live *kubeovnv1.IptablesDnatRule) bool {
 		status := &live.Status
-		if status.Redo == dnat.Status.Redo {
-			status.Ready = true
+		ready := status.Ready || status.Redo == dnat.Status.Redo
+		if status.Ready == ready && status.V4ip == eip.Status.IP && status.V6ip == eip.Spec.V6ip &&
+			status.NatGwDp == eip.Spec.NatGwDp && status.Protocol == dnat.Spec.Protocol && status.InternalIP == dnat.Spec.InternalIP &&
+			status.InternalPort == dnat.Spec.InternalPort && status.ExternalPort == dnat.Spec.ExternalPort {
+			return false
 		}
+		status.Ready = ready
 		status.V4ip = eip.Status.IP
 		status.V6ip = eip.Spec.V6ip
 		status.NatGwDp = eip.Spec.NatGwDp
@@ -1591,15 +1606,18 @@ func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 }
 
 func (c *Controller) recordSnatStatus(snat *kubeovnv1.IptablesSnatRule, eip *kubeovnv1.IptablesEIP) error {
-	return updateIptablesStatus(c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules(), snat.Name, func(live *kubeovnv1.IptablesSnatRule) bool {
+	v4CIDR, _ := util.SplitStringIP(snat.Spec.InternalCIDR)
+	return retryIptablesStatusUpdate(c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules(), snat.Name, func(live *kubeovnv1.IptablesSnatRule) bool {
 		status := &live.Status
-		if status.Redo == snat.Status.Redo {
-			status.Ready = true
+		ready := status.Ready || status.Redo == snat.Status.Redo
+		if status.Ready == ready && status.V4ip == eip.Status.IP && status.V6ip == eip.Spec.V6ip &&
+			status.NatGwDp == eip.Spec.NatGwDp && status.InternalCIDR == v4CIDR {
+			return false
 		}
+		status.Ready = ready
 		status.V4ip = eip.Status.IP
 		status.V6ip = eip.Spec.V6ip
 		status.NatGwDp = eip.Spec.NatGwDp
-		v4CIDR, _ := util.SplitStringIP(snat.Spec.InternalCIDR)
 		status.InternalCIDR = v4CIDR
 		return true
 	})
