@@ -245,7 +245,7 @@ function ovn_db_pre_start() {
     if ovsdb-tool db-is-clustered "$db_file"; then
         local message
         local status=0
-        message=$(ovsdb-tool check-cluster "$db_file" 2>&1) || status=$?
+        message=$(python3 /kube-ovn/ovn-db-check.py "$db_file" 2>&1) || status=$?
         if grep -Fxq "$db_file has not joined the cluster, omitting" <<< "$message"; then
             return 0
         fi
@@ -260,6 +260,8 @@ function ovn_db_pre_start() {
                 fi
             done
             rebuild_clustered_database_from_raft_header "$db_file" "$hdr_file" "$db" "$1" "$local_addr" "${remote_addr[@]}" || return 1
+        elif [[ -n "$message" ]]; then
+            echo "$message" >&2
         fi
     elif ! ovsdb-tool db-is-standalone "$db_file"; then
         echo "ERROR! cannot determine the storage model of $db_file; preserve it for explicit recovery" >&2

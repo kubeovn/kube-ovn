@@ -210,8 +210,16 @@ jobs:
             ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-${{ github.ref_name }}-
             ${{ runner.os }}-go-${{ env.GO_VERSION }}-x86-${{ github.base_ref }}-
 
+      - name: Install OVSDB regression tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends openvswitch-common
+          command -v ovsdb-tool
+
       - name: Unit test
-        run: make ut
+        run: |
+          python3 hack/test-ovn-db-check.py
+          make ut
 
       - uses: shogo82148/actions-goveralls@v1
         continue-on-error: true
