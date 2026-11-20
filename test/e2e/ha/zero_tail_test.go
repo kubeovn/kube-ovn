@@ -2,6 +2,7 @@ package ha
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"strings"
@@ -42,8 +43,12 @@ func verifyZeroTailMarker(f *framework.Framework, pods []corev1.Pod, db, key, va
 	for _, pod := range pods {
 		framework.WaitUntil(time.Second, 30*time.Second, func(ctx context.Context) (bool, error) {
 			command := fmt.Sprintf("ovn-%sctl --timeout=5 --no-leader-only get %s_Global . external_ids:%s", db, strings.ToUpper(db), key)
-			stdout, _, err := framework.ExecShellInContainerContext(ctx, f, pod.Namespace, pod.Name, "ovn-central", command)
-			return err == nil && strings.Trim(strings.TrimSpace(stdout), "\"") == value, nil
+			stdout, stderr, err := framework.ExecShellInContainerContext(ctx, f, pod.Namespace, pod.Name, "ovn-central", command)
+			if err != nil {
+				framework.Logf("marker read on %s failed: %v; stdout=%s stderr=%s", pod.Name, err, stdout, stderr)
+				return false, nil
+			}
+			return strings.Trim(strings.TrimSpace(stdout), "\"") == value, nil
 		}, "committed marker on "+pod.Name)
 	}
 }
@@ -57,12 +62,42 @@ func stopZeroTailCentral(client *framework.DeploymentClient, deploy *appsv1.Depl
 	}, "all central processes to stop before changing database files")
 }
 
+type zeroTailNode interface {
+	Name() string
+	Exec(...string) ([]byte, []byte, error)
+}
+
 type zeroTailMember struct {
-	node     *kind.Node
+	node     zeroTailNode
 	backup   string
 	inode    string
 	identity string
 	backedUp bool
+}
+
+func cleanupZeroTailFiles(members map[string]*zeroTailMember, path string, restore bool) error {
+	var failures []error
+	if restore {
+		for _, member := range members {
+			if member.backedUp {
+				stdout, stderr, err := member.node.Exec("cp", member.backup, path)
+				if err != nil {
+					failures = append(failures, fmt.Errorf("restore %s: %w; stdout=%s stderr=%s", member.node.Name(), err, stdout, stderr))
+				}
+			}
+		}
+		// A partial ensemble restore needs every backup for another attempt.
+		if len(failures) != 0 {
+			return errors.Join(failures...)
+		}
+	}
+	for _, member := range members {
+		stdout, stderr, err := member.node.Exec("rm", "-f", member.backup)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("remove backup on %s: %w; stdout=%s stderr=%s", member.node.Name(), err, stdout, stderr))
+		}
+	}
+	return errors.Join(failures...)
 }
 
 // injectZeroTails changes only stopped, disposable Kind members. Failed specs
@@ -82,20 +117,17 @@ func injectZeroTails(f *framework.Framework, deploy *appsv1.Deployment, pods []c
 	}
 	recovered := false
 	ginkgo.DeferCleanup(func() {
+		// Always attempt to restore the replica count, including when stopping
+		// the deployment or restoring/removing one member's files fails.
+		defer func() {
+			setCentralReplicas(client, deploy.Name, *deploy.Spec.Replicas)
+			client.RolloutStatus(deploy.Name)
+			waitForCentralLeaders(f)
+		}()
 		if !recovered {
 			stopZeroTailCentral(client, deploy)
 		}
-		for _, member := range members {
-			if !recovered && member.backedUp {
-				stdout, stderr, err := member.node.Exec("cp", member.backup, path)
-				framework.ExpectNoError(err, "restore %s: stdout=%s stderr=%s", member.node.Name(), stdout, stderr)
-			}
-			stdout, stderr, err := member.node.Exec("rm", "-f", member.backup)
-			framework.ExpectNoError(err, "remove test backup: stdout=%s stderr=%s", stdout, stderr)
-		}
-		setCentralReplicas(client, deploy.Name, *deploy.Spec.Replicas)
-		client.RolloutStatus(deploy.Name)
-		waitForCentralLeaders(f)
+		framework.ExpectNoError(cleanupZeroTailFiles(members, path, !recovered))
 	})
 
 	ginkgo.By("Stopping every central member so no live quorum can rebuild a damaged peer")
@@ -142,7 +174,10 @@ func verifyZeroTailConnectivity(f *framework.Framework, pods []corev1.Pod) {
 	framework.ExpectNotEmpty(probes[1].Status.PodIPs)
 	for _, ip := range probes[1].Status.PodIPs {
 		framework.WaitUntil(time.Second, 30*time.Second, func(ctx context.Context) (bool, error) {
-			_, _, err := framework.ExecCommandInContainerContext(ctx, f, probes[0].Namespace, probes[0].Name, "container", "/agnhost", "connect", net.JoinHostPort(ip.IP, "8080"), "--protocol=tcp", "--timeout=5s")
+			stdout, stderr, err := framework.ExecCommandInContainerContext(ctx, f, probes[0].Namespace, probes[0].Name, "container", "/agnhost", "connect", net.JoinHostPort(ip.IP, "8080"), "--protocol=tcp", "--timeout=5s")
+			if err != nil {
+				framework.Logf("cross-node connection to %s failed: %v; stdout=%s stderr=%s", ip.IP, err, stdout, stderr)
+			}
 			return err == nil, nil
 		}, "new cross-node connection to "+ip.IP)
 	}
