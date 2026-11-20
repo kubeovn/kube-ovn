@@ -53,6 +53,7 @@ esac
                 executable.chmod(0o755)
             script = (ROOT / "dist/images" / "ovn-healthcheck.sh").read_text()
             replacements = {
+                "/kube-ovn/ovn-db-check.py": str(ROOT / "dist/images/ovn-db-check.py"),
                 "/usr/share/ovn/scripts/ovn-ctl": f"{bin_dir}/ovn-ctl",
                 "/etc/ovn": str(db_dir),
                 "/var/run/ovn": str(run_dir),
