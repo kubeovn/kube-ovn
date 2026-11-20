@@ -7,13 +7,13 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/version"
 	fakediscovery "k8s.io/client-go/discovery/fake"
-	dynamicfake "k8s.io/client-go/dynamic/fake"
 	k8sfake "k8s.io/client-go/kubernetes/fake"
 	appslisters "k8s.io/client-go/listers/apps/v1"
 	k8stesting "k8s.io/client-go/testing"
@@ -80,9 +80,8 @@ func TestCollectorSwitchesDoNotChangeObserverPodSpec(t *testing.T) {
 
 func TestReconcileVpcEgressGatewayObservabilityLeavesScrapeResourcesUserManaged(t *testing.T) {
 	kubeClient := k8sfake.NewSimpleClientset()
-	dynamicClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
 	controller := &Controller{
-		config:                           &Configuration{KubeClient: kubeClient, DynamicClient: dynamicClient},
+		config:                           &Configuration{KubeClient: kubeClient},
 		addOrUpdateVpcEgressGatewayQueue: workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
 	}
 	controller.restartableInitContainerSupport = restartableInitContainerSupport{capability: restartableInitContainerCapabilitySupported}
@@ -117,10 +116,31 @@ func TestReconcileVpcEgressGatewayObservabilityLeavesScrapeResourcesUserManaged(
 	state = controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", labels)
 	require.False(t, state.enabled)
 	require.Nil(t, gw.Status.Conditions.GetCondition(kubeovnv1.ObservabilityConfigured))
-	require.Empty(t, dynamicClient.Actions())
 	for _, action := range kubeClient.Actions() {
 		require.Equal(t, "configmaps", action.GetResource().Resource)
 	}
+}
+
+func TestReconcileVpcEgressGatewayObservabilityDeletesOwnedConfigMapByUID(t *testing.T) {
+	gw := observabilityTestGateway()
+	gw.Spec.Observability = nil
+	configMap := &corev1.ConfigMap{
+		Name: vpcEgressObserverResourceName(gw), Namespace: gw.Namespace, UID: "observer-config",
+	}
+	require.NoError(t, setVpcEgressGatewayControllerReference(gw, configMap))
+	kubeClient := k8sfake.NewSimpleClientset(configMap)
+	controller := &Controller{config: &Configuration{KubeClient: kubeClient}}
+
+	controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", vegWorkloadLabels(gw.Name))
+
+	actions := kubeClient.Actions()
+	require.Len(t, actions, 2)
+	deleteAction, ok := actions[1].(k8stesting.DeleteAction)
+	require.True(t, ok)
+	require.Equal(t, configMap.Name, deleteAction.GetName())
+	require.Equal(t, &metav1.Preconditions{UID: &configMap.UID}, deleteAction.GetDeleteOptions().Preconditions)
+	_, err := kubeClient.CoreV1().ConfigMaps(gw.Namespace).Get(t.Context(), configMap.Name, metav1.GetOptions{})
+	require.True(t, k8serrors.IsNotFound(err))
 }
 
 func TestReconcileVpcEgressGatewayObservabilityDoesNotInjectWhenSidecarsUnsupported(t *testing.T) {
