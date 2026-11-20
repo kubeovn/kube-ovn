@@ -743,7 +743,7 @@ func Test_reconcileVips(t *testing.T) {
 	ctrl := fakeController.fakeController
 	mockOvnClient := fakeController.mockOvnClient
 
-	lspNamePrefix := "reconcile-vip-lsp"
+	lspNamePrefix := "ovn-test-vip"
 
 	subnet := &kubeovnv1.Subnet{
 		Name: "ovn-test",
@@ -797,6 +797,20 @@ func Test_reconcileVips(t *testing.T) {
 		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspNamePrefix + "-0").Return(nil)
 		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspNamePrefix + "-1").Return(nil)
 		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspNamePrefix + "-2").Return(nil)
+		mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name).Return(nil)
+
+		err := ctrl.reconcileVips(subnet)
+		require.NoError(t, err)
+	})
+
+	t.Run("a vip cr's virtual port is not deleted", func(t *testing.T) {
+		subnet := &kubeovnv1.Subnet{
+			Name: "ovn-test",
+		}
+		vipCRPort := mockLsp(subnet.Name, "vip:demo:ipv4", "192.168.123.20")
+
+		mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitchPort{vipCRPort, lsps[0]}, nil)
+		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspNamePrefix + "-0").Return(nil)
 		mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name).Return(nil)
 
 		err := ctrl.reconcileVips(subnet)
