@@ -79,6 +79,14 @@ type ControllerRuntime struct {
 	flowCacheMutex sync.RWMutex
 	flowChan       chan struct{} // channel to trigger immediate flow sync
 	podQoSOps      podQoSOperations
+	newIPSet       func(family int, prefix string) *ipsets.IPSets
+}
+
+func (c *Controller) makeIPSet(family int, prefix string) *ipsets.IPSets {
+	if c.newIPSet != nil {
+		return c.newIPSet(family, prefix)
+	}
+	return ipsets.NewIPSets(family, prefix)
 }
 
 type LbServiceRules struct {
@@ -161,7 +169,7 @@ func (c *Controller) initRuntime() error {
 				c.iptablesObsolete[kubeovnv1.ProtocolIPv4] = ipt
 			}
 		}
-		c.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(netlink.FAMILY_V4, IPSetPrefix)
+		c.ipsets[kubeovnv1.ProtocolIPv4] = c.makeIPSet(netlink.FAMILY_V4, IPSetPrefix)
 		c.k8siptables[kubeovnv1.ProtocolIPv4] = k8siptables.New(k8siptables.ProtocolIPv4)
 	}
 	if c.protocol == kubeovnv1.ProtocolIPv6 || c.protocol == kubeovnv1.ProtocolDual {
@@ -184,7 +192,7 @@ func (c *Controller) initRuntime() error {
 				c.iptablesObsolete[kubeovnv1.ProtocolIPv6] = ipt
 			}
 		}
-		c.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(netlink.FAMILY_V6, IPSetPrefix)
+		c.ipsets[kubeovnv1.ProtocolIPv6] = c.makeIPSet(netlink.FAMILY_V6, IPSetPrefix)
 		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(k8siptables.ProtocolIPv6)
 	}
 

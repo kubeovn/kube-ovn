@@ -86,6 +86,7 @@ ENABLE_DNS_NAME_RESOLVER=${ENABLE_DNS_NAME_RESOLVER:-false}
 SET_GENEVE_TX_OFF=${SET_GENEVE_TX_OFF:-false}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 HOST_TUNNEL_SRC=${HOST_TUNNEL_SRC:-false}
+ENABLE_TUNNEL_NOTRACK=${ENABLE_TUNNEL_NOTRACK:-true}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
 OVSDB_INACTIVITY_TIMEOUT=${OVSDB_INACTIVITY_TIMEOUT:-10}
 ENABLE_LIVE_MIGRATION_OPTIMIZE=${ENABLE_LIVE_MIGRATION_OPTIMIZE:-true}
@@ -278,6 +279,7 @@ echo "Enable Networkpolicy: $ENABLE_NP"
 echo "Enable ACL Sampling:  $ENABLE_ACL_SAMPLING"
 echo "Enable EIP and SNAT:  $ENABLE_EIP_SNAT"
 echo "Enable Mirror:        $ENABLE_MIRROR"
+echo "Enable Tunnel Notrack:$ENABLE_TUNNEL_NOTRACK"
 echo "-------------------------------"
 
 if [[ $ENABLE_SSL = "true" ]];then
@@ -9577,6 +9579,7 @@ ${IPSEC_CLEANUP_INIT}
           - --enable-acl-sampling=$ENABLE_ACL_SAMPLING
           - --acl-sampling-set-id=$ACL_SAMPLING_SET_ID
           - --acl-sampling-local-group-id=$ACL_SAMPLING_LOCAL_GROUP_ID
+          - --enable-tunnel-notrack=$ENABLE_TUNNEL_NOTRACK
         securityContext:
           runAsGroup: ${CNI_RUN_AS_USER}
           runAsUser: ${CNI_RUN_AS_USER}
