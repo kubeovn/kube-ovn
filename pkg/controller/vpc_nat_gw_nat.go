@@ -410,7 +410,7 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		return nil
 	}
 
-	if oldV4ip != newV4ip || cachedFip.Status.InternalIP != newInternalIP {
+	if cachedFip.Status.NatGwDp != eip.Spec.NatGwDp || oldV4ip != newV4ip || cachedFip.Status.InternalIP != newInternalIP {
 		// Mark FIP as not ready before starting the update.
 		// This ensures that if the controller crashes or the update fails midway,
 		// the resource will be left in a non-ready state, indicating a potential inconsistency.
@@ -686,7 +686,7 @@ func (c *Controller) handleUpdateIptablesDnatRule(key string) error {
 		return nil
 	}
 
-	if oldV4ip != newV4ip || oldProtocol != newProtocol || oldExternalPort != newExternalPort ||
+	if cachedDnat.Status.NatGwDp != eip.Spec.NatGwDp || oldV4ip != newV4ip || oldProtocol != newProtocol || oldExternalPort != newExternalPort ||
 		cachedDnat.Status.InternalIP != newInternalIP || cachedDnat.Status.InternalPort != newInternalPort {
 		// Mark DNAT as not ready before starting the update.
 		// This ensures that if the controller crashes or the update fails midway,
@@ -958,7 +958,7 @@ func (c *Controller) handleUpdateIptablesSnatRule(key string) error {
 		return nil
 	}
 
-	if oldV4ip != newV4ip || oldV4Cidr != newV4Cidr {
+	if cachedSnat.Status.NatGwDp != eip.Spec.NatGwDp || oldV4ip != newV4ip || oldV4Cidr != newV4Cidr {
 		// Mark SNAT as not ready before starting the update.
 		// This ensures that if the controller crashes or the update fails midway,
 		// the resource will be left in a non-ready state, indicating a potential inconsistency.
@@ -1361,17 +1361,52 @@ func markNatStatusNotReady(ready *bool, currentRedo *string, redo string) bool {
 	return true
 }
 
+func (c *Controller) redoNatRule[T metav1.Object](client iptablesStatusClient[T], key, gateway, redo string, repairEipLabel func(string) error,
+	ruleState func(T) (gateway, eip string, ready *bool, redo *string),
+) error {
+	var eipErr error
+	err := updateIptablesStatus(client, key, func(rule T) bool {
+		appliedGateway, eip, ready, currentRedo := ruleState(rule)
+		if appliedGateway != gateway || !rule.GetDeletionTimestamp().IsZero() || !markNatStatusNotReady(ready, currentRedo, redo) {
+			return false
+		}
+		// Replay the EIP first so a failed EIP write leaves the rule eligible for retry.
+		if eip != "" {
+			var owned bool
+			owned, eipErr = c.markGatewayEipNotReady(eip, gateway, redo)
+			if eipErr == nil && owned && repairEipLabel != nil {
+				eipErr = repairEipLabel(eip)
+			}
+		}
+		return eipErr == nil
+	})
+	if eipErr != nil {
+		return fmt.Errorf("failed to mark EIP for NAT rule %s replay: %w", key, eipErr)
+	}
+	return err
+}
+
+func recordedNatRuleReplay(appliedGateway, gateway string, ready bool, liveRedo, workerRedo string) (bool, string) {
+	if appliedGateway != "" && appliedGateway != gateway {
+		// The rule was installed on its new gateway. Any live replay token
+		// belongs to the previous gateway and cannot follow the rule.
+		return true, ""
+	}
+	return ready || liveRedo == workerRedo, liveRedo
+}
+
 // The applied fields are needed for future replay and cleanup even when a
 // newer replay took ownership of readiness while the rule was being applied.
 func (c *Controller) recordFipStatus(fip *kubeovnv1.IptablesFIPRule, eip *kubeovnv1.IptablesEIP) error {
 	return retryIptablesStatusUpdate(c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules(), fip.Name, func(live *kubeovnv1.IptablesFIPRule) bool {
 		status := &live.Status
-		ready := status.Ready || status.Redo == fip.Status.Redo
-		if status.Ready == ready && status.V4ip == eip.Status.IP && status.V6ip == eip.Spec.V6ip &&
+		ready, redo := recordedNatRuleReplay(status.NatGwDp, eip.Spec.NatGwDp, status.Ready, status.Redo, fip.Status.Redo)
+		if status.Ready == ready && status.Redo == redo && status.V4ip == eip.Status.IP && status.V6ip == eip.Spec.V6ip &&
 			status.NatGwDp == eip.Spec.NatGwDp && status.InternalIP == fip.Spec.InternalIP {
 			return false
 		}
 		status.Ready = ready
+		status.Redo = redo
 		status.V4ip = eip.Status.IP
 		status.V6ip = eip.Spec.V6ip
 		status.NatGwDp = eip.Spec.NatGwDp
@@ -1396,35 +1431,11 @@ func (c *Controller) completeFipReplay(key, expectedRedo string) error {
 	})
 }
 
-func (c *Controller) redoFip(key, redo string, eipReady bool) error {
-	fip, err := c.iptablesFipsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to get fip %s, %v", key, err)
-		return err
-	}
-	if redo != "" && redo != fip.Status.Redo {
-		if !eipReady {
-			if err = c.patchEipLabel(fip.Spec.EIP); err != nil {
-				err = fmt.Errorf("failed to patch eip %s, %w", fip.Spec.EIP, err)
-				klog.Error(err)
-				return err
-			}
-			if err = c.markEipNotReady(fip.Spec.EIP, redo); err != nil {
-				err = fmt.Errorf("failed to patch eip %s, %w", fip.Spec.EIP, err)
-				klog.Error(err)
-				return err
-			}
-		}
-		if err = c.markFipNotReady(key, redo); err != nil {
-			err = fmt.Errorf("failed to patch fip %s, %w", fip.Name, err)
-			klog.Error(err)
-			return err
-		}
-	}
-	return err
+func (c *Controller) redoFip(key, gateway, redo string) error {
+	return c.redoNatRule(c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules(), key, gateway, redo, c.patchEipLabel,
+		func(rule *kubeovnv1.IptablesFIPRule) (string, string, *bool, *string) {
+			return rule.Status.NatGwDp, rule.Spec.EIP, &rule.Status.Ready, &rule.Status.Redo
+		})
 }
 
 func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) error {
@@ -1486,13 +1497,14 @@ func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 func (c *Controller) recordDnatStatus(dnat *kubeovnv1.IptablesDnatRule, eip *kubeovnv1.IptablesEIP) error {
 	return retryIptablesStatusUpdate(c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules(), dnat.Name, func(live *kubeovnv1.IptablesDnatRule) bool {
 		status := &live.Status
-		ready := status.Ready || status.Redo == dnat.Status.Redo
-		if status.Ready == ready && status.V4ip == eip.Status.IP && status.V6ip == eip.Spec.V6ip &&
+		ready, redo := recordedNatRuleReplay(status.NatGwDp, eip.Spec.NatGwDp, status.Ready, status.Redo, dnat.Status.Redo)
+		if status.Ready == ready && status.Redo == redo && status.V4ip == eip.Status.IP && status.V6ip == eip.Spec.V6ip &&
 			status.NatGwDp == eip.Spec.NatGwDp && status.Protocol == dnat.Spec.Protocol && status.InternalIP == dnat.Spec.InternalIP &&
 			status.InternalPort == dnat.Spec.InternalPort && status.ExternalPort == dnat.Spec.ExternalPort {
 			return false
 		}
 		status.Ready = ready
+		status.Redo = redo
 		status.V4ip = eip.Status.IP
 		status.V6ip = eip.Spec.V6ip
 		status.NatGwDp = eip.Spec.NatGwDp
@@ -1520,30 +1532,11 @@ func (c *Controller) completeDnatReplay(key, expectedRedo string) error {
 	})
 }
 
-func (c *Controller) redoDnat(key, redo string, eipReady bool) error {
-	dnat, err := c.iptablesDnatRulesLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to get dnat %s, %v", key, err)
-		return err
-	}
-	if redo != "" && redo != dnat.Status.Redo {
-		if !eipReady {
-			if err = c.markEipNotReady(dnat.Spec.EIP, redo); err != nil {
-				err = fmt.Errorf("failed to patch eip %s, %w", dnat.Spec.EIP, err)
-				klog.Error(err)
-				return err
-			}
-		}
-		if err = c.markDnatNotReady(key, redo); err != nil {
-			err = fmt.Errorf("failed to patch dnat %s, %w", key, err)
-			klog.Error(err)
-			return err
-		}
-	}
-	return nil
+func (c *Controller) redoDnat(key, gateway, redo string) error {
+	return c.redoNatRule(c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules(), key, gateway, redo, nil,
+		func(rule *kubeovnv1.IptablesDnatRule) (string, string, *bool, *string) {
+			return rule.Status.NatGwDp, rule.Spec.EIP, &rule.Status.Ready, &rule.Status.Redo
+		})
 }
 
 func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) error {
@@ -1603,12 +1596,13 @@ func (c *Controller) recordSnatStatus(snat *kubeovnv1.IptablesSnatRule, eip *kub
 	v4CIDR, _ := util.SplitStringIP(snat.Spec.InternalCIDR)
 	return retryIptablesStatusUpdate(c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules(), snat.Name, func(live *kubeovnv1.IptablesSnatRule) bool {
 		status := &live.Status
-		ready := status.Ready || status.Redo == snat.Status.Redo
-		if status.Ready == ready && status.V4ip == eip.Status.IP && status.V6ip == eip.Spec.V6ip &&
+		ready, redo := recordedNatRuleReplay(status.NatGwDp, eip.Spec.NatGwDp, status.Ready, status.Redo, snat.Status.Redo)
+		if status.Ready == ready && status.Redo == redo && status.V4ip == eip.Status.IP && status.V6ip == eip.Spec.V6ip &&
 			status.NatGwDp == eip.Spec.NatGwDp && status.InternalCIDR == v4CIDR {
 			return false
 		}
 		status.Ready = ready
+		status.Redo = redo
 		status.V4ip = eip.Status.IP
 		status.V6ip = eip.Spec.V6ip
 		status.NatGwDp = eip.Spec.NatGwDp
@@ -1633,30 +1627,11 @@ func (c *Controller) completeSnatReplay(key, expectedRedo string) error {
 	})
 }
 
-func (c *Controller) redoSnat(key, redo string, eipReady bool) error {
-	snat, err := c.iptablesSnatRulesLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Errorf("failed to get snat %s, %v", key, err)
-		return err
-	}
-	if redo != "" && redo != snat.Status.Redo {
-		if !eipReady {
-			if err = c.markEipNotReady(snat.Spec.EIP, redo); err != nil {
-				err = fmt.Errorf("failed to patch eip %s, %w", snat.Spec.EIP, err)
-				klog.Error(err)
-				return err
-			}
-		}
-		if err = c.markSnatNotReady(key, redo); err != nil {
-			err = fmt.Errorf("failed to patch snat %s, %w", key, err)
-			klog.Error(err)
-			return err
-		}
-	}
-	return nil
+func (c *Controller) redoSnat(key, gateway, redo string) error {
+	return c.redoNatRule(c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules(), key, gateway, redo, nil,
+		func(rule *kubeovnv1.IptablesSnatRule) (string, string, *bool, *string) {
+			return rule.Status.NatGwDp, rule.Spec.EIP, &rule.Status.Ready, &rule.Status.Redo
+		})
 }
 
 func (c *Controller) createFipInPod(dp, v4ip, internalIP string) error {
