@@ -1,12 +1,52 @@
 package controller
 
 import (
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/spf13/pflag"
 	"github.com/stretchr/testify/require"
+	"k8s.io/client-go/tools/clientcmd"
+	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
+
+func TestInitKubeClientWithoutMonitoringAPI(t *testing.T) {
+	api := http.NewServeMux()
+	api.HandleFunc("GET /version", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write([]byte(`{"gitVersion":"v1.37.0"}`)); err != nil {
+			t.Errorf("write Kubernetes version: %v", err)
+		}
+	})
+	api.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("unexpected Kubernetes API request: %s %s", r.Method, r.URL.Path)
+		http.NotFound(w, r)
+	})
+	server := httptest.NewServer(api)
+	t.Cleanup(server.Close)
+
+	kubeconfigPath := filepath.Join(t.TempDir(), "kubeconfig")
+	require.NoError(t, clientcmd.WriteToFile(clientcmdapi.Config{
+		Clusters:       map[string]*clientcmdapi.Cluster{"test": {Server: server.URL}},
+		Contexts:       map[string]*clientcmdapi.Context{"test": {Cluster: "test"}},
+		CurrentContext: "test",
+	}, kubeconfigPath))
+
+	config := Configuration{KubeConfigFile: kubeconfigPath}
+	require.NoError(t, config.initKubeClient())
+	require.NotNil(t, config.AttachNetClient)
+	require.NotNil(t, config.KubevirtClient)
+	require.NotNil(t, config.AnpClient)
+	require.NotNil(t, config.KubeOvnClient)
+	require.NotNil(t, config.ExtClient)
+	require.NotNil(t, config.KubeClient)
+	serverVersion, err := config.KubeClient.Discovery().ServerVersion()
+	require.NoError(t, err)
+	require.Equal(t, "v1.37.0", serverVersion.GitVersion)
+}
 
 func TestLeaderElectionConfigurationFlags(t *testing.T) {
 	tests := []struct {

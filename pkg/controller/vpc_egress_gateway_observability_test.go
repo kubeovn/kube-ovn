@@ -143,6 +143,34 @@ func TestReconcileVpcEgressGatewayObservabilityDeletesOwnedConfigMapByUID(t *tes
 	require.True(t, k8serrors.IsNotFound(err))
 }
 
+func TestReconcileVpcEgressGatewayObservabilityLeavesUnownedConfigMapUntouched(t *testing.T) {
+	gw := observabilityTestGateway()
+	configMap := &corev1.ConfigMap{
+		Name: vpcEgressObserverResourceName(gw), Namespace: gw.Namespace,
+		Data: map[string]string{"config.json": "user-owned"},
+	}
+	kubeClient := k8sfake.NewSimpleClientset(configMap)
+	controller := &Controller{config: &Configuration{KubeClient: kubeClient}}
+	controller.restartableInitContainerSupport = restartableInitContainerSupport{capability: restartableInitContainerCapabilitySupported}
+	labels := vegWorkloadLabels(gw.Name)
+
+	state := controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", labels)
+	require.False(t, state.enabled)
+	condition := gw.Status.Conditions.GetCondition(kubeovnv1.ObservabilityConfigured)
+	require.NotNil(t, condition)
+	require.Equal(t, "ConfigMapReconcileFailed", condition.Reason)
+	require.Contains(t, condition.Message, "is not controlled by this VpcEgressGateway")
+
+	gw.Spec.Observability = nil
+	controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", labels)
+	for _, action := range kubeClient.Actions() {
+		require.Equal(t, "get", action.GetVerb())
+	}
+	current, err := kubeClient.CoreV1().ConfigMaps(gw.Namespace).Get(t.Context(), configMap.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, configMap.Data, current.Data)
+}
+
 func TestReconcileVpcEgressGatewayObservabilityDoesNotInjectWhenSidecarsUnsupported(t *testing.T) {
 	controller := &Controller{config: &Configuration{KubeClient: k8sfake.NewSimpleClientset()}}
 	controller.restartableInitContainerSupport = restartableInitContainerSupport{
