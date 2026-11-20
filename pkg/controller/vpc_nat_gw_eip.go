@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -31,9 +32,9 @@ func (c *Controller) enqueueAddIptablesEip(obj any) {
 		return
 	}
 	// On controller restart, informer relist delivers existing objects through AddFunc.
-	// An allocated EIP with a pending QoS credential must resume the update path;
-	// handleAddIptablesEip intentionally returns early for allocated EIPs.
-	if eip.Status.Ready && eip.Status.IP != "" && eip.Spec.QoSPolicy != eip.Status.QoSPolicy {
+	// Resume replay or a pending QoS update for an allocated EIP.
+	if eipNeedsReplay(eip) ||
+		(eip.Status.Ready && eip.Status.IP != "" && eip.Spec.QoSPolicy != eip.Status.QoSPolicy) {
 		c.updateIptablesEipQueue.Add(key)
 		return
 	}
@@ -46,6 +47,7 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 	newEip := newObj.(*kubeovnv1.IptablesEIP)
 	if !newEip.DeletionTimestamp.IsZero() ||
 		oldEip.Status.Redo != newEip.Status.Redo ||
+		(oldEip.Status.IP == "" && eipNeedsReplay(newEip)) ||
 		oldEip.Spec.QoSPolicy != newEip.Spec.QoSPolicy {
 		key := cache.MetaObjectToName(newEip).String()
 		klog.Infof("enqueue update iptables eip %s", key)
@@ -54,6 +56,10 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 
 	c.enqueueQoSPolicyRelease(oldEip.Spec.QoSPolicy, oldEip.Status.QoSPolicy,
 		newEip.Spec.QoSPolicy, newEip.Status.QoSPolicy)
+}
+
+func eipNeedsReplay(eip *kubeovnv1.IptablesEIP) bool {
+	return !eip.Status.Ready && eip.Status.Redo != "" && eip.Status.IP != ""
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj any) {
@@ -107,7 +113,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return errors.New("iptables nat gw not enable")
 	}
 
-	if !cachedEip.DeletionTimestamp.IsZero() {
+	if !cachedEip.DeletionTimestamp.IsZero() || eipNeedsReplay(cachedEip) {
 		return c.handleUpdateIptablesEip(key)
 	}
 
@@ -352,10 +358,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	}
 
 	// redo
-	if !cachedEip.Status.Ready &&
-		cachedEip.Status.Redo != "" &&
-		cachedEip.Status.IP != "" &&
-		cachedEip.DeletionTimestamp.IsZero() {
+	if eipNeedsReplay(cachedEip) {
 		addrV4, err := util.GetIPAddrWithMask(cachedEip.Status.IP, v4Cidr)
 		if err != nil {
 			err = fmt.Errorf("failed to get eip %s with mask by cidr %s: %w", cachedEip.Status.IP, v4Cidr, err)
@@ -864,30 +867,8 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 				klog.Error(errMsg)
 				return errMsg
 			}
-			// Read the status again after the spec update. UpdateStatus carries the live resource
-			// version, so a replay invalidation that wins the race causes a conflict instead of
-			// allowing this allocation pass to restore readiness from an old snapshot.
-			statusEip, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Get(context.Background(), key, metav1.GetOptions{})
-			if err != nil {
-				if k8serrors.IsNotFound(err) {
-					return nil
-				}
-				return err
-			}
-			if statusEip.Status.IP == "" {
-				// EIP addresses are fixed after allocation.
-				statusEip.Status.IP = v4ip
-			}
-			if statusEip.Status.Ready || statusEip.Status.Redo == "" {
-				statusEip.Status.Ready = true
-			}
-			statusEip.Status.QoSPolicy = qos
-			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().UpdateStatus(context.Background(), statusEip, metav1.UpdateOptions{}); err != nil {
-				if k8serrors.IsNotFound(err) {
-					return nil
-				}
-				klog.Errorf("failed to patch eip %s, %v", key, err)
-				return err
+			if err := c.recordEipAllocation(key, v4ip, qos); err != nil {
+				return fmt.Errorf("failed to record allocation for eip %s: %w", key, err)
 			}
 		}
 
@@ -899,6 +880,21 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 	// Trigger subnet status update after all operations complete
 	c.enqueueSubnetStatusAfter(externalNet, "NAT", 300*time.Millisecond)
 	return nil
+}
+
+func (c *Controller) recordEipAllocation(key, v4ip, qos string) error {
+	return retryIptablesStatusUpdate(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, func(eip *kubeovnv1.IptablesEIP) bool {
+		status := &eip.Status
+		// A replay may already own readiness even before the allocated address
+		// is first published. Preserve it while making the address available.
+		ready := status.Ready || status.Redo == ""
+		ip := cmp.Or(status.IP, v4ip)
+		if status.IP == ip && status.Ready == ready && status.QoSPolicy == qos {
+			return false
+		}
+		status.IP, status.Ready, status.QoSPolicy = ip, ready, qos
+		return true
+	})
 }
 
 func (c *Controller) syncIptablesEipFinalizer(cl client.Client) error {
