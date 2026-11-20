@@ -779,7 +779,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 		return fmt.Errorf("failed to get qos policy %s: %w", qos, err)
 	}
 	needCreate := false
-	cachedEip, err := c.iptablesEipsLister.Get(key)
+	_, err = c.iptablesEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			needCreate = true
@@ -824,7 +824,17 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 			return errMsg
 		}
 	} else {
-		eip := cachedEip.DeepCopy()
+		// The informer may lag behind status updates made by replay workers. Read the live
+		// object before the full update so stale status fields cannot be written back.
+		eip, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Get(context.Background(), key, metav1.GetOptions{})
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			errMsg := fmt.Errorf("failed to get live eip crd %s, %w", key, err)
+			klog.Error(errMsg)
+			return errMsg
+		}
 
 		// Ensure labels are set correctly before any update
 		if eip.Labels == nil {
