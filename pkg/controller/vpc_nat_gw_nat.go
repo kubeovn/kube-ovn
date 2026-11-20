@@ -1325,10 +1325,28 @@ func natStatusPatch(currentReady bool, currentRedo string, ready bool, redo stri
 		// observed the API server's Ready=true.
 		patch["redo"] = redo
 		patch["ready"] = ready
+	} else if ready && !currentReady && currentRedo != "" {
+		// A pending replay owns readiness until its worker completes. Ordinary status
+		// refreshes must not resurrect the record from a stale informer view.
+		return patch
 	} else if currentReady != ready || (forceReady && ready) {
 		patch["ready"] = ready
 	}
 	return patch
+}
+
+// replayTokenMatchesGateway rejects a replay token from an obsolete gateway worker. The token
+// is derived from the live gateway Pod instances, so a worker that started before a replacement
+// Pod cannot overwrite a newer pending token.
+func (c *Controller) replayTokenMatchesGateway(natGwDp, redo string) (bool, error) {
+	if redo == "" || natGwDp == "" || c.vpcNatGatewayLister == nil || c.config == nil || c.config.KubeClient == nil {
+		return true, nil
+	}
+	current, err := c.natGwRedoToken(natGwDp)
+	if err != nil {
+		return false, err
+	}
+	return current == redo, nil
 }
 
 func (c *Controller) patchFipStatus(key, v4ip, v6ip, natGwDp, redo string, ready bool) error {
@@ -1340,7 +1358,27 @@ func (c *Controller) patchFipStatus(key, v4ip, v6ip, natGwDp, redo string, ready
 		klog.Error(err)
 		return err
 	}
-	patch := natStatusPatch(fip.Status.Ready, fip.Status.Redo, ready, redo, ready)
+	if redo != "" {
+		current, err := c.replayTokenMatchesGateway(fip.Status.NatGwDp, redo)
+		if err != nil {
+			return err
+		}
+		if !current {
+			return nil
+		}
+	}
+	currentReady, currentRedo := fip.Status.Ready, fip.Status.Redo
+	if redo == "" && ready {
+		live, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Get(context.Background(), key, metav1.GetOptions{})
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		currentReady, currentRedo = live.Status.Ready, live.Status.Redo
+	}
+	patch := natStatusPatch(currentReady, currentRedo, ready, redo, ready)
 	if ready && v4ip != "" && fip.Status.V4ip != v4ip {
 		patch["v4ip"] = v4ip
 		patch["v6ip"] = v6ip
@@ -1475,7 +1513,27 @@ func (c *Controller) patchDnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		klog.Error(err)
 		return err
 	}
-	patch := natStatusPatch(dnat.Status.Ready, dnat.Status.Redo, ready, redo, ready)
+	if redo != "" {
+		current, err := c.replayTokenMatchesGateway(dnat.Status.NatGwDp, redo)
+		if err != nil {
+			return err
+		}
+		if !current {
+			return nil
+		}
+	}
+	currentReady, currentRedo := dnat.Status.Ready, dnat.Status.Redo
+	if redo == "" && ready {
+		live, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Get(context.Background(), key, metav1.GetOptions{})
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		currentReady, currentRedo = live.Status.Ready, live.Status.Redo
+	}
+	patch := natStatusPatch(currentReady, currentRedo, ready, redo, ready)
 	if ready && v4ip != "" && dnat.Status.V4ip != v4ip {
 		patch["v4ip"] = v4ip
 		patch["v6ip"] = v6ip
@@ -1611,7 +1669,27 @@ func (c *Controller) patchSnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		klog.Error(err)
 		return err
 	}
-	patch := natStatusPatch(snat.Status.Ready, snat.Status.Redo, ready, redo, ready)
+	if redo != "" {
+		current, err := c.replayTokenMatchesGateway(snat.Status.NatGwDp, redo)
+		if err != nil {
+			return err
+		}
+		if !current {
+			return nil
+		}
+	}
+	currentReady, currentRedo := snat.Status.Ready, snat.Status.Redo
+	if redo == "" && ready {
+		live, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Get(context.Background(), key, metav1.GetOptions{})
+		if err != nil {
+			if k8serrors.IsNotFound(err) {
+				return nil
+			}
+			return err
+		}
+		currentReady, currentRedo = live.Status.Ready, live.Status.Redo
+	}
+	patch := natStatusPatch(currentReady, currentRedo, ready, redo, ready)
 	if ready && v4ip != "" && snat.Status.V4ip != v4ip {
 		patch["v4ip"] = v4ip
 		patch["v6ip"] = v6ip
