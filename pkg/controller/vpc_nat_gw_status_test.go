@@ -158,7 +158,7 @@ func TestEipReplayCompletionPreservesAppliedNat(t *testing.T) {
 
 	// Replay completion only restores readiness. The informer has not observed the DNAT yet,
 	// so deriving Nat from its empty lister would incorrectly clear the applied status in the API.
-	require.NoError(t, c.patchEipReplayStatus(eip.Name, "", "", true))
+	require.NoError(t, c.completeEipReplay(eip.Name, eip.Status.Redo, ""))
 
 	got, err := clientset.KubeovnV1().IptablesEIPs().Get(t.Context(), eip.Name, metav1.GetOptions{})
 	require.NoError(t, err)
@@ -200,6 +200,70 @@ func TestEipNatRefreshPreservesPendingReplay(t *testing.T) {
 	require.False(t, got.Status.Ready)
 	require.Equal(t, eip.Status.Redo, got.Status.Redo)
 	require.Equal(t, util.DnatUsingEip, got.Status.Nat)
+}
+
+func TestReplayCompletionDoesNotResurrectNewerToken(t *testing.T) {
+	const (
+		oldRedo = "replay-a"
+		newRedo = "replay-b"
+	)
+	eip := &kubeovnv1.IptablesEIP{Name: "eip", Status: kubeovnv1.IptablesEIPStatus{Redo: oldRedo}}
+	fip := &kubeovnv1.IptablesFIPRule{Name: "fip", Status: kubeovnv1.IptablesFIPRuleStatus{Redo: oldRedo}}
+	dnat := &kubeovnv1.IptablesDnatRule{Name: "dnat", Status: kubeovnv1.IptablesDnatRuleStatus{Redo: oldRedo}}
+	snat := &kubeovnv1.IptablesSnatRule{Name: "snat", Status: kubeovnv1.IptablesSnatRuleStatus{Redo: oldRedo}}
+
+	clientset := kubeovnfake.NewSimpleClientset()
+	client := clientset.KubeovnV1()
+	liveEip := eip.DeepCopy()
+	liveEip.Status.Ready, liveEip.Status.Redo = false, newRedo
+	liveFip := fip.DeepCopy()
+	liveFip.Status.Ready, liveFip.Status.Redo = false, newRedo
+	liveDnat := dnat.DeepCopy()
+	liveDnat.Status.Ready, liveDnat.Status.Redo = false, newRedo
+	liveSnat := snat.DeepCopy()
+	liveSnat.Status.Ready, liveSnat.Status.Redo = false, newRedo
+	_, err := client.IptablesEIPs().Create(t.Context(), liveEip, metav1.CreateOptions{})
+	require.NoError(t, err)
+	_, err = client.IptablesFIPRules().Create(t.Context(), liveFip, metav1.CreateOptions{})
+	require.NoError(t, err)
+	_, err = client.IptablesDnatRules().Create(t.Context(), liveDnat, metav1.CreateOptions{})
+	require.NoError(t, err)
+	_, err = client.IptablesSnatRules().Create(t.Context(), liveSnat, metav1.CreateOptions{})
+	require.NoError(t, err)
+	index := func(obj metav1.Object) cache.Indexer {
+		indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+		require.NoError(t, indexer.Add(obj))
+		return indexer
+	}
+	c := &Controller{
+		config:                  &Configuration{KubeOvnClient: clientset},
+		iptablesEipsLister:      kubeovnlister.NewIptablesEIPLister(index(eip)),
+		iptablesFipsLister:      kubeovnlister.NewIptablesFIPRuleLister(index(fip)),
+		iptablesDnatRulesLister: kubeovnlister.NewIptablesDnatRuleLister(index(dnat)),
+		iptablesSnatRulesLister: kubeovnlister.NewIptablesSnatRuleLister(index(snat)),
+	}
+
+	require.NoError(t, c.completeEipReplay(eip.Name, oldRedo, ""))
+	require.NoError(t, c.completeFipReplay(fip.Name, oldRedo))
+	require.NoError(t, c.completeDnatReplay(dnat.Name, oldRedo))
+	require.NoError(t, c.completeSnatReplay(snat.Name, oldRedo))
+
+	gotEip, err := client.IptablesEIPs().Get(t.Context(), eip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.False(t, gotEip.Status.Ready)
+	require.Equal(t, newRedo, gotEip.Status.Redo)
+	gotFip, err := client.IptablesFIPRules().Get(t.Context(), fip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.False(t, gotFip.Status.Ready)
+	require.Equal(t, newRedo, gotFip.Status.Redo)
+	gotDnat, err := client.IptablesDnatRules().Get(t.Context(), dnat.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.False(t, gotDnat.Status.Ready)
+	require.Equal(t, newRedo, gotDnat.Status.Redo)
+	gotSnat, err := client.IptablesSnatRules().Get(t.Context(), snat.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.False(t, gotSnat.Status.Ready)
+	require.Equal(t, newRedo, gotSnat.Status.Redo)
 }
 
 func TestNatStatusPatchNoop(t *testing.T) {
