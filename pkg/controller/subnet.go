@@ -1028,6 +1028,10 @@ func (c *Controller) reconcileVips(subnet *kubeovnv1.Subnet) error {
 			continue // ignore invalid vip
 		}
 
+		if lsp.Name != fmt.Sprintf("%s-vip-%s", subnet.Name, vip) {
+			continue
+		}
+
 		existVips[vip] = lsp.Name
 	}
 
