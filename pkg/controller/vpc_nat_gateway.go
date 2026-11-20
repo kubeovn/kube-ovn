@@ -31,7 +31,6 @@ import (
 var (
 	vpcNatEnabled   = "unknown"
 	VpcNatCmVersion = ""
-	natGwCreatedAT  = ""
 )
 
 const (
@@ -53,7 +52,8 @@ const (
 	natGwSubnetRouteAdd   = "subnet-route-add"
 	natGwSubnetRouteDel   = "subnet-route-del"
 
-	getIptablesVersion = "get-iptables-version"
+	getIptablesVersion    = "get-iptables-version"
+	natGwReplayTimeLayout = "2006-01-02T15:04:05"
 )
 
 func (c *Controller) resyncVpcNatGwConfig() {
@@ -343,8 +343,6 @@ func (c *Controller) handleInitVpcNatGw(key string) error {
 	if _, hasInit := pod.Annotations[util.VpcNatGatewayInitAnnotation]; hasInit {
 		return nil
 	}
-	natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
-	klog.V(3).Infof("nat gw pod '%s' inited at %s", key, natGwCreatedAT)
 	// During initialization, when KubeOVN is running on non primary cni mode, we need to ensure the NAT gateway interfaces
 	// are properly configured. We extract the interfaces from the runtime Pod annotations (network-status).
 	var interfaces []string
@@ -439,10 +437,8 @@ func (c *Controller) handleUpdateVpcFloatingIP(natGwKey string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
 	klog.Infof("handle update vpc fip %s", natGwKey)
 
-	// refresh exist fips
-	if err := c.initCreateAt(natGwKey); err != nil {
-		err = fmt.Errorf("failed to init nat gw pod '%s' create at, %w", natGwKey, err)
-		klog.Error(err)
+	redo, err := c.natGwReplayToken(natGwKey)
+	if err != nil {
 		return err
 	}
 
@@ -454,9 +450,9 @@ func (c *Controller) handleUpdateVpcFloatingIP(natGwKey string) error {
 	}
 
 	for _, fip := range fips {
-		if fip.Status.Redo != natGwCreatedAT {
+		if fip.Status.Redo != redo {
 			klog.V(3).Infof("redo fip %s", fip.Name)
-			if err = c.redoFip(fip.Name, natGwCreatedAT, false); err != nil {
+			if err = c.redoFip(fip.Name, redo, false); err != nil {
 				klog.Errorf("failed to update eip '%s' to re-apply, %v", fip.Spec.EIP, err)
 				return err
 			}
@@ -474,10 +470,8 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
 	klog.Infof("handle update vpc eip %s", natGwKey)
 
-	// refresh exist fips
-	if err := c.initCreateAt(natGwKey); err != nil {
-		err = fmt.Errorf("failed to init nat gw pod '%s' create at, %w", natGwKey, err)
-		klog.Error(err)
+	redo, err := c.natGwReplayToken(natGwKey)
+	if err != nil {
 		return err
 	}
 	eips, err := c.iptablesEipsLister.List(labels.Everything())
@@ -487,9 +481,9 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 		return err
 	}
 	for _, eip := range eips {
-		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != natGwCreatedAT {
+		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != redo {
 			klog.V(3).Infof("redo eip %s", eip.Name)
-			if err = c.markEipNotReady(eip.Name, natGwCreatedAT); err != nil {
+			if err = c.markEipNotReady(eip.Name, redo); err != nil {
 				klog.Errorf("failed to update eip '%s' to re-apply, %v", eip.Name, err)
 				return err
 			}
@@ -507,10 +501,8 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
 	klog.Infof("handle update vpc snat %s", natGwKey)
 
-	// refresh exist snats
-	if err := c.initCreateAt(natGwKey); err != nil {
-		err = fmt.Errorf("failed to init nat gw pod '%s' create at, %w", natGwKey, err)
-		klog.Error(err)
+	redo, err := c.natGwReplayToken(natGwKey)
+	if err != nil {
 		return err
 	}
 	snats, err := c.iptablesSnatRulesLister.List(labels.SelectorFromSet(labels.Set{util.VpcNatGatewayNameLabel: natGwKey}))
@@ -520,9 +512,9 @@ func (c *Controller) handleUpdateVpcSnat(natGwKey string) error {
 		return err
 	}
 	for _, snat := range snats {
-		if snat.Status.Redo != natGwCreatedAT {
+		if snat.Status.Redo != redo {
 			klog.V(3).Infof("redo snat %s", snat.Name)
-			if err = c.redoSnat(snat.Name, natGwCreatedAT, false); err != nil {
+			if err = c.redoSnat(snat.Name, redo, false); err != nil {
 				err = fmt.Errorf("failed to update eip '%s' to re-apply, %w", snat.Spec.EIP, err)
 				klog.Error(err)
 				return err
@@ -541,10 +533,8 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 	defer func() { _ = c.vpcNatGwKeyMutex.UnlockKey(natGwKey) }()
 	klog.Infof("handle update vpc dnat %s", natGwKey)
 
-	// refresh exist dnats
-	if err := c.initCreateAt(natGwKey); err != nil {
-		err = fmt.Errorf("failed to init nat gw pod '%s' create at, %w", natGwKey, err)
-		klog.Error(err)
+	redo, err := c.natGwReplayToken(natGwKey)
+	if err != nil {
 		return err
 	}
 
@@ -555,9 +545,9 @@ func (c *Controller) handleUpdateVpcDnat(natGwKey string) error {
 		return err
 	}
 	for _, dnat := range dnats {
-		if dnat.Status.Redo != natGwCreatedAT {
+		if dnat.Status.Redo != redo {
 			klog.V(3).Infof("redo dnat %s", dnat.Name)
-			if err = c.redoDnat(dnat.Name, natGwCreatedAT, false); err != nil {
+			if err = c.redoDnat(dnat.Name, redo, false); err != nil {
 				err := fmt.Errorf("failed to update dnat '%s' to redo, %w", dnat.Name, err)
 				klog.Error(err)
 				return err
@@ -1190,17 +1180,12 @@ func (c *Controller) getNatGwPod(name string) (*corev1.Pod, error) {
 	return pods[0], nil
 }
 
-func (c *Controller) initCreateAt(key string) (err error) {
-	if natGwCreatedAT != "" {
-		return nil
-	}
+func (c *Controller) natGwReplayToken(key string) (string, error) {
 	pod, err := c.getNatGwPod(key)
 	if err != nil {
-		klog.Error(err)
-		return err
+		return "", fmt.Errorf("failed to get nat gateway %s pod for replay: %w", key, err)
 	}
-	natGwCreatedAT = pod.CreationTimestamp.Format("2006-01-02T15:04:05")
-	return nil
+	return pod.CreationTimestamp.UTC().Format(natGwReplayTimeLayout), nil
 }
 
 func (c *Controller) updateCrdNatGwLabels(key, qos string) error {
