@@ -367,9 +367,11 @@ func (c *Controller) endpointSliceServiceProfile(svc *v1.Service) (endpointSlice
 func (p *endpointSliceServiceProfile) addVIP(vip string, trafficClass serviceLBTrafficClass, svc *v1.Service, enableHealthCheck bool) {
 	p.lbVips = append(p.lbVips, vip)
 	p.trafficClasses[vip] = trafficClass
-	ipv6HealthCheck := svc.Annotations[util.RouterLBRuleVipsAnnotation] != ""
+	protocol := util.CheckProtocol(vip)
+	ipv6HealthCheck := protocol == kubeovnv1.ProtocolIPv6 &&
+		svc.Annotations[util.RouterLBRuleVipsAnnotation] != ""
 	p.healthCheckVips[vip] = enableHealthCheck && !serviceHealthChecksDisabled(svc) &&
-		(util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 || ipv6HealthCheck)
+		(protocol == kubeovnv1.ProtocolIPv4 || ipv6HealthCheck)
 	if p.healthCheckVips[vip] {
 		p.ignoreHealthCheck = false
 	}
