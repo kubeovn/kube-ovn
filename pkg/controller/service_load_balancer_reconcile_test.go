@@ -2,16 +2,20 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 	metallbv1beta1 "go.universe.tf/metallb/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
 	discoveryv1 "k8s.io/api/discovery/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/utils/keymutex"
 
@@ -412,4 +416,236 @@ func TestRuleServiceLoadBalancersAreAtomic(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestRuleServiceSkipsHealthCheckWithoutOVNBackendMapping(t *testing.T) {
+	ctrl, nbClient, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeClusterIP, false)
+	svc.Spec.ClusterIP = corev1.ClusterIPNone
+	svc.Spec.ClusterIPs = nil
+	svc.Annotations[util.SwitchLBRuleVipsAnnotation] = "10.96.0.20"
+	setServiceScopedLBOwner(svc, switchLBRuleLBOwnerKind, "rule", "rule-uid")
+
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	require.NoError(t, indexer.Add(&corev1.Pod{
+		Namespace: svc.Namespace, Name: "unrelated",
+		Annotations: map[string]string{nadv1.NetworkAttachmentAnnot: "["},
+	}))
+	ctrl.podsLister = corelisters.NewPodLister(indexer)
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
+
+	_, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), "subnet", metav1.GetOptions{})
+	require.True(t, k8serrors.IsNotFound(err))
+
+	lbs, err := nbClient.ListLoadBalancers(serviceScopedLBOwner(svc).ownsLoadBalancer)
+	require.NoError(t, err)
+	require.NotEmpty(t, lbs)
+	backendFound := false
+	for _, lb := range lbs {
+		require.Empty(t, lb.HealthCheck, lb.Name)
+		if backend, ok := lb.Vips["10.96.0.20:80"]; ok {
+			require.Equal(t, "10.0.0.2:8080", backend)
+			backendFound = true
+		}
+	}
+	require.True(t, backendFound)
+}
+
+func TestRuleServiceSkipsHealthCheckForUnmappedEligibleBackend(t *testing.T) {
+	for _, backendReady := range []bool{false, true} {
+		t.Run(fmt.Sprintf("OVN backend ready=%t", backendReady), func(t *testing.T) {
+			ctrl, nbClient, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeClusterIP, false)
+			svc.Spec.ClusterIP = corev1.ClusterIPNone
+			svc.Spec.ClusterIPs = nil
+			svc.Spec.Ports = svc.Spec.Ports[:1]
+			svc.Spec.Selector = map[string]string{"app": "backend"}
+			svc.Annotations[util.SwitchLBRuleVipsAnnotation] = "10.96.0.20"
+			setServiceScopedLBOwner(svc, switchLBRuleLBOwnerKind, "rule", "rule-uid")
+			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+			ctrl.podsLister = corelisters.NewPodLister(indexer)
+			for _, pod := range []*corev1.Pod{
+				{Name: "agent", Namespace: svc.Namespace, Spec: corev1.PodSpec{HostNetwork: true}},
+				{Name: "backend", Namespace: svc.Namespace, Annotations: map[string]string{
+					util.LogicalSwitchAnnotation: "subnet", util.IPAddressAnnotation: "10.0.0.3",
+				}},
+			} {
+				require.NoError(t, indexer.Add(pod))
+			}
+			require.NoError(t, nbClient.CreateBareLogicalSwitchPort("subnet", "backend.default", "10.0.0.3", "00:00:00:00:00:03"))
+			endpoints[0].Endpoints[0].TargetRef = &corev1.ObjectReference{Kind: "Pod", Namespace: svc.Namespace, Name: "agent"}
+			endpoints[0].Endpoints = append(endpoints[0].Endpoints, discoveryv1.Endpoint{
+				Addresses:  []string{"10.0.0.3"},
+				TargetRef:  &corev1.ObjectReference{Kind: "Pod", Namespace: svc.Namespace, Name: "backend"},
+				Conditions: discoveryv1.EndpointConditions{Ready: new(backendReady)},
+			})
+
+			require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints[:1]))
+
+			_, err := ctrl.config.KubeOvnClient.KubeovnV1().Vips().Get(t.Context(), "subnet", metav1.GetOptions{})
+			require.True(t, k8serrors.IsNotFound(err))
+			lbName := serviceScopedExternalLBName(svc, corev1.ProtocolTCP, "10.96.0.20")
+			lb, err := nbClient.GetLoadBalancer(lbName, false)
+			require.NoError(t, err)
+			wantBackend := "10.0.0.2:8080"
+			if backendReady {
+				wantBackend += ",10.0.0.3:8080"
+			}
+			require.Equal(t, map[string]string{"10.96.0.20:80": wantBackend}, lb.Vips)
+			require.Empty(t, lb.HealthCheck)
+			require.Empty(t, lb.IPPortMappings)
+		})
+	}
+}
+
+type serviceLBCompatibilityClient struct {
+	ovs.NbClient
+}
+
+func TestServiceLoadBalancerCompatibilityPathDisablesHealthCheck(t *testing.T) {
+	ctrl, nbClient, svc, _ := serviceLBReconcileFixture(t, corev1.ServiceTypeClusterIP, false)
+	ctrl.OVNNbClient = serviceLBCompatibilityClient{NbClient: nbClient}
+	const lbName, vip, backend = "legacy", "10.96.0.10:80", "10.0.0.2:8080"
+	require.NoError(t, nbClient.CreateLoadBalancer(lbName, "tcp"))
+	require.NoError(t, nbClient.LoadBalancerAddVip(lbName, vip, backend))
+	require.NoError(t, nbClient.LoadBalancerAddHealthCheck(lbName, vip, false, map[string]string{"10.0.0.2": "backend.default:10.0.0.254"}, nil))
+
+	mapping := IPPortMapping{"10.0.0.2": "backend.default"}
+	ctx := &endpointSliceReconcileContext{
+		service: svc, vpc: &kubeovnv1.Vpc{Name: "vpc"},
+		desiredScopedVIPs: make(map[string]map[string]struct{}),
+	}
+	state := &serviceEndpointVIPState{
+		lb: lbName, vip: vip, port: svc.Spec.Ports[0],
+		backends: []string{backend}, mapping: mapping, distributed: true,
+	}
+	require.NoError(t, ctrl.addServiceEndpointVIP(ctx, state))
+
+	lb, check, err := nbClient.GetLoadBalancerHealthCheck(lbName, vip, true)
+	require.NoError(t, err)
+	require.Nil(t, check)
+	require.Equal(t, map[string]string{vip: backend}, lb.Vips)
+	require.Equal(t, map[string]string(mapping), lb.IPPortMappings)
+}
+
+func TestRuleServiceHealthChecksRemainPerVIP(t *testing.T) {
+	service := &corev1.Service{
+		Namespace: "default",
+		Name:      "rlr-service",
+		UID:       "service-uid",
+		Annotations: map[string]string{
+			util.LogicalRouterAnnotation:    "vpc",
+			util.VpcAnnotation:              "vpc",
+			util.LogicalSwitchAnnotation:    "subnet",
+			util.RouterLBRuleVipsAnnotation: "fd00::20,10.96.0.20",
+			util.ServiceHealthCheck:         "true",
+		},
+		Spec: corev1.ServiceSpec{
+			Type:      corev1.ServiceTypeClusterIP,
+			ClusterIP: corev1.ClusterIPNone,
+			Ports:     []corev1.ServicePort{{Name: "web", Protocol: corev1.ProtocolTCP, Port: 80}},
+			Selector:  map[string]string{"app": "backend"},
+		},
+	}
+	setServiceScopedLBOwner(service, routerLBRuleLBOwnerKind, "rule", "rule-uid")
+	pod := &corev1.Pod{
+		Namespace: "default",
+		Name:      "backend",
+		Annotations: map[string]string{
+			util.LogicalSwitchAnnotation: "subnet",
+			util.IPAddressAnnotation:     "10.0.0.2,fd00::2",
+		},
+	}
+	endpointSlice := &discoveryv1.EndpointSlice{
+		AddressType: discoveryv1.AddressTypeIPv4,
+		Ports:       []discoveryv1.EndpointPort{{Name: new("web"), Protocol: new(corev1.ProtocolTCP), Port: new(int32(8080))}},
+		Endpoints: []discoveryv1.Endpoint{{
+			Addresses: []string{"10.0.0.2"},
+			TargetRef: &corev1.ObjectReference{Kind: "Pod", Namespace: "default", Name: "backend"},
+		}},
+	}
+	ipv6Endpoints := endpointSlice.DeepCopy()
+	ipv6Endpoints.AddressType = discoveryv1.AddressTypeIPv6
+	ipv6Endpoints.Endpoints[0].Addresses = []string{"fd00::2"}
+	healthCheckVIP := &kubeovnv1.Vip{
+		Name:   "subnet",
+		Spec:   kubeovnv1.VipSpec{Subnet: "subnet"},
+		Status: kubeovnv1.VipStatus{V4ip: "10.0.0.254"},
+	}
+	subnet := &kubeovnv1.Subnet{Name: "subnet", Spec: kubeovnv1.SubnetSpec{Vpc: "vpc", Provider: util.OvnProvider}}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Services: []*corev1.Service{service},
+		Pods:     []*corev1.Pod{pod},
+		Subnets:  []*kubeovnv1.Subnet{subnet},
+		Vpcs:     []*kubeovnv1.Vpc{{Name: "vpc"}},
+		Vips:     []*kubeovnv1.Vip{healthCheckVIP},
+	})
+	require.NoError(t, err)
+	ctrl := fc.fakeController
+	ctrl.svcKeyMutex = keymutex.NewHashed(0)
+	ctrl.config.EnableOvnLB = true
+	ctrl.config.ClusterRouter = "vpc"
+	nbClient := newInMemoryOVNNbClient(t)
+	ctrl.OVNNbClient = nbClient
+	require.NoError(t, nbClient.CreateBareLogicalSwitch("subnet"))
+	require.NoError(t, nbClient.CreateLogicalRouter("vpc"))
+
+	portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
+	lbName := serviceScopedExternalLBName(service, corev1.ProtocolTCP, "10.96.0.20")
+	endpoints := []*discoveryv1.EndpointSlice{endpointSlice, ipv6Endpoints}
+
+	assertForwardingWithoutProbe := func() {
+		t.Helper()
+		lb, check, err := nbClient.GetLoadBalancerHealthCheck(lbName, "10.96.0.20:80", true)
+		require.NoError(t, err)
+		require.Nil(t, check)
+		require.Equal(t, map[string]string{"10.96.0.20:80": "10.0.0.2:8080", "[fd00::20]:80": "[fd00::2]:8080"}, lb.Vips)
+	}
+	require.ErrorContains(t, ctrl.reconcileServiceEndpointSlices(service, endpoints), "waiting for health-check backend logical port")
+	assertForwardingWithoutProbe()
+
+	require.NoError(t, nbClient.CreateBareLogicalSwitchPort("subnet", portName, "10.0.0.2,fd00::2", "00:00:00:00:00:02"))
+	stalePod := pod.DeepCopy()
+	delete(stalePod.Annotations, util.IPAddressAnnotation)
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	require.NoError(t, indexer.Add(stalePod))
+	ctrl.podsLister = corelisters.NewPodLister(indexer)
+	require.ErrorContains(t, ctrl.reconcileServiceEndpointSlices(service, endpoints), "waiting for OVN IP annotation")
+	assertForwardingWithoutProbe()
+
+	require.NoError(t, indexer.Update(pod))
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(service, endpoints))
+
+	lb, check, err := nbClient.GetLoadBalancerHealthCheck(lbName, "10.96.0.20:80", false)
+	require.NoError(t, err)
+	require.NotNil(t, check)
+	require.Equal(t, map[string]string{"10.96.0.20:80": "10.0.0.2:8080", "[fd00::20]:80": "[fd00::2]:8080"}, lb.Vips)
+	require.Equal(t, map[string]string{"10.0.0.2": portName + ":10.0.0.254"}, lb.IPPortMappings)
+	_, check, err = nbClient.GetLoadBalancerHealthCheck(lbName, "[fd00::20]:80", true)
+	require.NoError(t, err)
+	require.Nil(t, check)
+}
+
+func TestDistributedServiceMappingIsKeptWithoutHealthCheck(t *testing.T) {
+	ctrl, nbClient, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeClusterIP, false)
+	svc.Spec.ClusterIPs = []string{"10.96.0.10"}
+	svc.Spec.Ports = svc.Spec.Ports[:1]
+	svc.Spec.InternalTrafficPolicy = new(corev1.ServiceInternalTrafficPolicyLocal)
+	svc.Spec.Selector = map[string]string{"app": "backend"}
+	pod := &corev1.Pod{
+		Namespace: svc.Namespace, Name: "backend",
+		Annotations: map[string]string{util.LogicalSwitchAnnotation: "subnet", util.IPAddressAnnotation: "10.0.0.2"},
+	}
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+	require.NoError(t, indexer.Add(pod))
+	ctrl.podsLister = corelisters.NewPodLister(indexer)
+	portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
+	require.NoError(t, nbClient.CreateBareLogicalSwitchPort("subnet", portName, "10.0.0.2", "00:00:00:00:00:02"))
+	endpoints[0].Endpoints[0].TargetRef = &corev1.ObjectReference{Kind: "Pod", Namespace: pod.Namespace, Name: pod.Name}
+
+	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints[:1]))
+
+	lb, err := nbClient.GetLoadBalancer(serviceScopedLBName(svc, corev1.ProtocolTCP), false)
+	require.NoError(t, err)
+	require.Equal(t, map[string]string{"10.96.0.10:80": "10.0.0.2:8080"}, lb.Vips)
+	require.Equal(t, map[string]string{"10.0.0.2": portName}, lb.IPPortMappings)
+	require.Empty(t, lb.HealthCheck)
 }

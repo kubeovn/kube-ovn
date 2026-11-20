@@ -162,7 +162,7 @@ func (c *Controller) planServiceEndpointVIP(ctx *endpointSliceReconcileContext, 
 		slices.Sort(backends)
 		lb.VIPs[state.vip] = strings.Join(backends, ",")
 		maps.Copy(lb.IPPortMappings, state.mapping)
-		if !ctx.profile.ignoreHealthCheck {
+		if state.healthCheck {
 			lb.HealthChecks[state.vip] = maps.Clone(state.externals)
 		}
 	}

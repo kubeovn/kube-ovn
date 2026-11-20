@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -179,7 +180,7 @@ type endpointSliceServiceProfile struct {
 	trafficClasses       map[string]serviceLBTrafficClass
 	externalVIPNode      string
 	serviceL2StatusReady bool
-	ignoreHealthCheck    bool
+	healthCheckVIPs      map[string]bool
 	distributedLocal     bool
 }
 
@@ -200,6 +201,7 @@ type endpointSliceReconcileContext struct {
 	scopedLBAttachmentsApplied bool
 	desiredScopedVIPs          map[string]map[string]struct{}
 	lbReconciliation           *serviceLoadBalancerReconciliation
+	healthCheckRetryErr        error
 }
 
 type serviceEndpointVIPState struct {
@@ -208,13 +210,13 @@ type serviceEndpointVIPState struct {
 	lb           string
 	oldLB        string
 	vip          string
-	checkIP      string
 	backends     []string
 	mapping      IPPortMapping
 	externals    map[string]string
 	trafficClass serviceLBTrafficClass
 	distributed  bool
 	template     bool
+	healthCheck  bool
 }
 
 func (c *Controller) handleUpdateEndpointSlice(key string) error {
@@ -300,7 +302,8 @@ func (c *Controller) reconcileServiceEndpointSlices(svc *v1.Service, endpointSli
 	if err := c.finishServiceEndpointSliceReconcile(reconcileCtx); err != nil {
 		return err
 	}
-	return nil
+	// Publish forwarding before returning a retry for health-check discovery.
+	return reconcileCtx.healthCheckRetryErr
 }
 
 // filterServiceEndpointSlices excludes stale selector-managed slices after a
@@ -326,7 +329,7 @@ func (c *Controller) endpointSliceServiceProfile(svc *v1.Service) (endpointSlice
 	profile := endpointSliceServiceProfile{
 		trafficClasses:       make(map[string]serviceLBTrafficClass),
 		serviceL2StatusReady: true,
-		ignoreHealthCheck:    true,
+		healthCheckVIPs:      make(map[string]bool),
 		distributedLocal:     serviceUsesDistributedLB(svc),
 	}
 
@@ -364,9 +367,7 @@ func (c *Controller) endpointSliceServiceProfile(svc *v1.Service) (endpointSlice
 func (p *endpointSliceServiceProfile) addVIP(vip string, trafficClass serviceLBTrafficClass, svc *v1.Service, enableHealthCheck bool) {
 	p.lbVips = append(p.lbVips, vip)
 	p.trafficClasses[vip] = trafficClass
-	if enableHealthCheck && util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 && !serviceHealthChecksDisabled(svc) {
-		p.ignoreHealthCheck = false
-	}
+	p.healthCheckVIPs[vip] = enableHealthCheck && util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 && !serviceHealthChecksDisabled(svc)
 }
 
 func (c *Controller) replaceEndpointSliceSecondaryIPs(svc *v1.Service, endpointSlices []*discoveryv1.EndpointSlice) error {
@@ -546,6 +547,7 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 	isExternalVIP := state.trafficClass == serviceLBExternalTraffic
 	state.distributed = profile.distributedLocal && !isExternalVIP
 	state.template = serviceUsesTemplateLB(svc) && !isExternalVIP
+	state.healthCheck = profile.healthCheckVIPs[lbVip]
 	if isExternalVIP && serviceUsesScopedLB(svc) {
 		state.lb = serviceScopedExternalLBName(svc, port.Protocol, lbVip)
 	} else if isExternalVIP {
@@ -570,66 +572,49 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 		}
 	}
 
-	var err error
-	state.checkIP, state.externals, err = c.serviceVIPHealthCheck(reconcileCtx, lbVip)
-	if err != nil {
-		return err
-	}
-	state.mapping, err = c.serviceVIPIPPortMapping(reconcileCtx, port, lbVip, state.distributed, state.checkIP)
-	if err != nil {
-		return err
-	}
-	if !reconcileCtx.profile.ignoreHealthCheck && len(state.mapping) == 0 {
-		// Host-network or manually managed endpoints do not have an OVN logical
-		// port to probe from the health-check VIP. Keeping a health check with an
-		// empty mapping would mark otherwise reachable backends (for example the
-		// Kubernetes API service) down.
-		klog.Infof("skip health check for service %s/%s vip %s: no OVN backend mapping", svc.Namespace, svc.Name, lbVip)
-		reconcileCtx.profile.ignoreHealthCheck = true
-		state.checkIP = ""
-		state.externals = nil
-	}
-	state.backends = c.getEndpointBackend(reconcileCtx.endpointSlices, port, lbVip, state.distributed)
+	candidates := serviceEndpointCandidates(reconcileCtx.endpointSlices, port, lbVip, state.distributed)
+	state.backends = endpointBackends(candidates)
 	if len(state.backends) == 0 {
 		return c.deleteServiceEndpointVIP(reconcileCtx, state)
+	}
+	if err := c.reconcileServiceVIPHealthCheck(reconcileCtx, state, candidates); err != nil {
+		return err
 	}
 	return c.addServiceEndpointVIP(reconcileCtx, state)
 }
 
-func (c *Controller) serviceVIPHealthCheck(reconcileCtx *endpointSliceReconcileContext, lbVip string) (string, map[string]string, error) {
-	var checkIP string
-	var externals map[string]string
-	if !reconcileCtx.profile.ignoreHealthCheck {
-		var err error
-		checkIP, err = c.getHealthCheckVip(reconcileCtx.subnetName, lbVip)
-		if err != nil {
-			return "", nil, err
+func (c *Controller) reconcileServiceVIPHealthCheck(ctx *endpointSliceReconcileContext, state *serviceEndpointVIPState, candidates []serviceEndpointCandidate) error {
+	var err error
+	switch {
+	case state.distributed:
+		state.mapping, err = c.getDistributedIPPortMapping(candidates, ctx.service)
+	case state.healthCheck:
+		var retryErr error
+		state.mapping, retryErr = c.getHealthCheckBackendMappings(ctx.service, candidates)
+		if ctx.healthCheckRetryErr == nil {
+			ctx.healthCheckRetryErr = retryErr
 		}
-		externals = map[string]string{util.SwitchLBRuleSubnet: reconcileCtx.subnetName}
 	}
-	return checkIP, externals, nil
-}
-
-func (c *Controller) serviceVIPIPPortMapping(reconcileCtx *endpointSliceReconcileContext, servicePort v1.ServicePort, serviceIP string, distributed bool, checkIP string) (IPPortMapping, error) {
-	if distributed {
-		mapping, err := c.getDistributedIPPortMapping(reconcileCtx.endpointSlices, reconcileCtx.service, servicePort, serviceIP)
-		if err != nil {
-			return nil, fmt.Errorf("get distributed ip port mapping for service %s/%s: %w", reconcileCtx.service.Namespace, reconcileCtx.service.Name, err)
-		}
-		mapping = filterIPPortMappingByVIP(mapping, serviceIP)
-		if !reconcileCtx.profile.ignoreHealthCheck {
-			decorateDistributedIPPortMapping(mapping, checkIP)
-		}
-		return mapping, nil
-	}
-	if reconcileCtx.profile.ignoreHealthCheck {
-		return nil, nil
-	}
-	mapping, err := c.getIPPortMapping(reconcileCtx.endpointSlices, reconcileCtx.service, checkIP)
 	if err != nil {
-		return nil, fmt.Errorf("get ip port mapping for service %s/%s: %w", reconcileCtx.service.Namespace, reconcileCtx.service.Name, err)
+		return fmt.Errorf("map backends for service %s/%s VIP %s: %w", ctx.service.Namespace, ctx.service.Name, state.vip, err)
 	}
-	return filterIPPortMappingByVIP(mapping, serviceIP), nil
+	if !state.healthCheck {
+		return nil
+	}
+	if !allBackendsMapped(candidates, state.mapping) {
+		// OVN excludes unmapped backends from forwarding when a VIP has a health check.
+		klog.V(3).Infof("skip health check for service %s/%s vip %s: incomplete OVN backend mapping", ctx.service.Namespace, ctx.service.Name, state.lbVip)
+		state.healthCheck = false
+		state.mapping = nil
+		return nil
+	}
+	checkIP, err := c.getHealthCheckVip(ctx.subnetName, state.lbVip)
+	if err != nil {
+		return err
+	}
+	decorateIPPortMappingWithHealthCheck(state.mapping, checkIP)
+	state.externals = map[string]string{util.SwitchLBRuleSubnet: ctx.subnetName}
+	return nil
 }
 
 func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileContext, state *serviceEndpointVIPState) error {
@@ -637,7 +622,7 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 		c.planServiceEndpointVIP(reconcileCtx, state)
 		return nil
 	}
-	svc, profile := reconcileCtx.service, reconcileCtx.profile
+	svc := reconcileCtx.service
 	klog.Infof("add vip endpoint %s, backends %v to LB %s", state.vip, state.backends, state.lb)
 	candidates := c.serviceLBMigrationCandidates(svc, state.port.Protocol, reconcileCtx.vpc, state.trafficClass)
 	if serviceLB, ok := c.OVNNbClient.(interface {
@@ -645,7 +630,7 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 	}); ok {
 		if err := serviceLB.LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(
 			state.lb, state.vip, state.backends, state.vip, candidates, reconcileCtx.scopedLBAttachments,
-			state.mapping, profile.ignoreHealthCheck, state.externals,
+			state.mapping, !state.healthCheck, state.externals,
 		); err != nil {
 			return fmt.Errorf("reconcile vip %s: %w", state.vip, err)
 		}
@@ -659,15 +644,8 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 		); err != nil {
 			return fmt.Errorf("migrate vip %s: %w", state.vip, err)
 		}
-		if state.distributed && len(state.mapping) != 0 {
-			if err := c.OVNNbClient.LoadBalancerUpdateIPPortMapping(state.lb, state.vip, state.mapping); err != nil {
-				return fmt.Errorf("update ip port mapping for vip %s on load balancer %s: %w", state.vip, state.lb, err)
-			}
-		}
-		if !profile.ignoreHealthCheck {
-			if err := c.OVNNbClient.LoadBalancerAddHealthCheck(state.lb, state.vip, profile.ignoreHealthCheck, state.mapping, state.externals); err != nil {
-				return fmt.Errorf("add health check for vip %s on load balancer %s: %w", state.vip, state.lb, err)
-			}
+		if err := c.OVNNbClient.LoadBalancerAddHealthCheck(state.lb, state.vip, !state.healthCheck, state.mapping, state.externals); err != nil {
+			return fmt.Errorf("reconcile health check for vip %s on load balancer %s: %w", state.vip, state.lb, err)
 		}
 	}
 	reconcileCtx.scopedLBAttachmentsApplied = len(reconcileCtx.scopedLBAttachments) != 0
@@ -1175,9 +1153,8 @@ func healthCheckVIPAddress(vip *kubeovnv1.Vip, protocol string) string {
 	}
 }
 
-// getEndpointBackend returns the LB backend for a service
-func (c *Controller) getEndpointBackend(endpointSlices []*discoveryv1.EndpointSlice, servicePort v1.ServicePort, serviceIP string, allowTerminatingFallback bool) (backends []string) {
-	for _, candidate := range serviceEndpointCandidates(endpointSlices, servicePort, serviceIP, allowTerminatingFallback) {
+func endpointBackends(candidates []serviceEndpointCandidate) (backends []string) {
+	for _, candidate := range candidates {
 		for _, address := range candidate.addresses {
 			backends = append(backends, util.JoinHostPort(address, candidate.targetPort))
 		}
@@ -1587,63 +1564,121 @@ func endpointServingAndTerminating(endpoint discoveryv1.Endpoint) bool {
 		endpoint.Conditions.Terminating != nil && *endpoint.Conditions.Terminating
 }
 
-// addIPPortMappingEntry adds a new entry to an IPPortMapping for a given target, the addresses on that target and the
-// VIP used to run the health checks
-func (c *Controller) addIPPortMappingEntry(pod *v1.Pod, addresses []string, checkVip string, mapping IPPortMapping) error {
-	// Abort if the pod is getting deleted
-	if !pod.DeletionTimestamp.IsZero() {
-		return nil
+func backendMappingKey(address string) string {
+	if util.CheckProtocol(address) == kubeovnv1.ProtocolIPv6 {
+		return fmt.Sprintf("[%s]", address)
 	}
-
-	// Compute the name of the LSP for that endpoint target
-	lspName, err := c.getEndpointTargetLSPName(pod, addresses)
-	if err != nil {
-		return fmt.Errorf("couldn't get LSP for the endpoint's target: %w", err)
-	}
-
-	for _, address := range addresses {
-		key := address
-		if util.CheckProtocol(address) == kubeovnv1.ProtocolIPv6 {
-			key = fmt.Sprintf("[%s]", address)
-		}
-		mapping[key] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, lspName, checkVip)
-	}
-
-	return nil
+	return address
 }
 
-// getIPPortMapping returns the mapping between each endpoint, LSP and health check VIP
-func (c *Controller) getIPPortMapping(endpointSlices []*discoveryv1.EndpointSlice, service *v1.Service, checkVip string) (IPPortMapping, error) {
-	// Choose the most optimized and straightforward way to compute the IPPortMapping
-	if serviceHasSelector(service) {
-		// The service has a selector, which means that the EndpointSlices should have targets.
-		// We can use those targets instead of looking at every pod in the namespace.
-		return c.getIPPortMappingWithTargets(endpointSlices, checkVip), nil
+func allBackendsMapped(candidates []serviceEndpointCandidate, mapping IPPortMapping) bool {
+	for _, candidate := range candidates {
+		for _, address := range candidate.addresses {
+			if _, found := mapping[backendMappingKey(address)]; !found {
+				return false
+			}
+		}
 	}
+	return true
+}
 
-	// The service has no selectors, we must find which pods in the namespace of the service
-	// are targeted by the endpoint by only looking at the IPs.
-	pods, err := c.podsLister.Pods(service.Namespace).List(labels.Everything())
+func (c *Controller) getHealthCheckBackendMappings(service *v1.Service, candidates []serviceEndpointCandidate) (IPPortMapping, error) {
+	mapping := make(IPPortMapping)
+	var retryErr error
+	if !serviceHasSelector(service) {
+		pods, err := c.podsLister.Pods(service.Namespace).List(labels.Everything())
+		if err != nil {
+			return nil, err
+		}
+		for _, candidate := range candidates {
+			for _, pod := range pods {
+				if err := c.addHealthCheckBackendMappings(pod, candidate.addresses, mapping, false); err != nil && retryErr == nil {
+					retryErr = err
+				}
+			}
+		}
+		return mapping, retryErr
+	}
+	for _, candidate := range candidates {
+		ref := candidate.endpoint.TargetRef
+		if ref == nil || ref.Name == "" || (ref.Kind != "" && ref.Kind != util.KindPod) {
+			continue
+		}
+		namespace := cmp.Or(ref.Namespace, service.Namespace)
+		pod, err := c.podsLister.Pods(namespace).Get(ref.Name)
+		if err != nil {
+			if retryErr == nil {
+				retryErr = fmt.Errorf("get health-check backend pod %s/%s: %w", namespace, ref.Name, err)
+			}
+			continue
+		}
+		if ref.UID != "" && ref.UID != pod.UID {
+			if retryErr == nil {
+				retryErr = fmt.Errorf("waiting for health-check backend pod %s/%s UID %s", namespace, ref.Name, ref.UID)
+			}
+			continue
+		}
+		if err := c.addHealthCheckBackendMappings(pod, candidate.addresses, mapping, true); err != nil && retryErr == nil {
+			retryErr = err
+		}
+	}
+	return mapping, retryErr
+}
+
+func (c *Controller) addHealthCheckBackendMappings(pod *v1.Pod, addresses []string, mapping IPPortMapping, targeted bool) error {
+	if !pod.DeletionTimestamp.IsZero() || pod.Spec.HostNetwork {
+		return nil
+	}
+	networks, err := c.getPodKubeovnNets(pod)
 	if err != nil {
-		err := fmt.Errorf("failed to get pods for service %s in namespace %s: %w", service.Name, service.Namespace, err)
-		klog.Error(err)
-		return nil, err
+		if !targeted {
+			klog.V(3).Infof("skip health-check mapping for pod %s/%s: %v", pod.Namespace, pod.Name, err)
+			return nil
+		}
+		return fmt.Errorf("get providers for health-check backend pod %s/%s: %w", pod.Namespace, pod.Name, err)
 	}
-
-	return c.getIPPortMappingWithNoTargets(endpointSlices, pods, checkVip), nil
+	providers := make([]string, 0, len(networks))
+	hasUnallocatedNetwork := false
+	for _, network := range networks {
+		if network.Type == providerTypeOriginal {
+			providers = append(providers, network.ProviderName)
+			if pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, network.ProviderName)] == "" {
+				hasUnallocatedNetwork = true
+			}
+		}
+	}
+	for _, address := range addresses {
+		provider := getMatchingProviderForAddress(pod, providers, address)
+		if provider == "" {
+			if targeted && hasUnallocatedNetwork {
+				return fmt.Errorf("waiting for OVN IP annotation on health-check backend pod %s/%s", pod.Namespace, pod.Name)
+			}
+			continue
+		}
+		lspName := getEndpointTargetLSPNameFromProvider(pod, provider)
+		lsp, err := c.OVNNbClient.GetLogicalSwitchPort(lspName, true)
+		if err != nil {
+			return fmt.Errorf("get health-check backend logical port %s: %w", lspName, err)
+		}
+		if lsp == nil {
+			return fmt.Errorf("waiting for health-check backend logical port %s", lspName)
+		}
+		mapping[backendMappingKey(address)] = lspName
+	}
+	return nil
 }
 
 // getDistributedIPPortMapping returns backend IP to logical-port mappings
 // required by OVN's distributed load balancer. Strict Local must not infer a
 // logical port for selectorless or manually supplied endpoints, because an
 // incomplete mapping would make traffic unavailable on every chassis.
-func (c *Controller) getDistributedIPPortMapping(endpointSlices []*discoveryv1.EndpointSlice, service *v1.Service, servicePort v1.ServicePort, serviceIP string) (IPPortMapping, error) {
+func (c *Controller) getDistributedIPPortMapping(candidates []serviceEndpointCandidate, service *v1.Service) (IPPortMapping, error) {
 	if !serviceHasSelector(service) {
 		return nil, errors.New("service has no selector; EndpointSlice targets are required for distributed load balancing")
 	}
 
 	mapping := make(IPPortMapping)
-	for _, candidate := range serviceEndpointCandidates(endpointSlices, servicePort, serviceIP, true) {
+	for _, candidate := range candidates {
 		endpoint := candidate.endpoint
 		if endpoint.TargetRef == nil {
 			return nil, fmt.Errorf("eligible endpoint %v has no Pod target", candidate.addresses)
@@ -1688,118 +1723,20 @@ func (c *Controller) getDistributedIPPortMapping(endpointSlices []*discoveryv1.E
 			return nil, fmt.Errorf("logical port %s for endpoint pod %s/%s does not exist", lspName, pod.Namespace, pod.Name)
 		}
 		for _, address := range candidate.addresses {
-			key := address
-			if util.CheckProtocol(address) == kubeovnv1.ProtocolIPv6 {
-				key = fmt.Sprintf("[%s]", address)
-			}
-			mapping[key] = lspName
+			mapping[backendMappingKey(address)] = lspName
 		}
 	}
 	return mapping, nil
 }
 
-// decorateDistributedIPPortMapping preserves the health-check source VIP while
-// keeping the logical port prefix required by OVN distributed load balancers.
-func decorateDistributedIPPortMapping(mapping IPPortMapping, sourceIP string) {
+// decorateIPPortMappingWithHealthCheck adds the probe source IP to each logical port.
+func decorateIPPortMappingWithHealthCheck(mapping IPPortMapping, sourceIP string) {
 	if sourceIP == "" {
 		return
 	}
 	for backendIP, logicalPort := range mapping {
-		mapping[backendIP] = fmt.Sprintf("%s:%s", logicalPort, sourceIP)
+		mapping[backendIP] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, logicalPort, sourceIP)
 	}
-}
-
-func ipPortMappingAddress(backendIP string) string {
-	if strings.HasPrefix(backendIP, "[") && strings.HasSuffix(backendIP, "]") {
-		return backendIP[1 : len(backendIP)-1]
-	}
-	return backendIP
-}
-
-func filterIPPortMappingByVIP(mapping IPPortMapping, vip string) IPPortMapping {
-	if len(mapping) == 0 {
-		return mapping
-	}
-	protocol := util.CheckProtocol(vip)
-	if protocol == "" {
-		return mapping
-	}
-	filtered := make(IPPortMapping, len(mapping))
-	for backendIP, value := range mapping {
-		if util.CheckProtocol(ipPortMappingAddress(backendIP)) == protocol {
-			filtered[backendIP] = value
-		}
-	}
-	return filtered
-}
-
-// getIPPortMappingWithTargets returns the IPPortMapping for endpoints with targets
-func (c *Controller) getIPPortMappingWithTargets(endpointSlices []*discoveryv1.EndpointSlice, checkVip string) IPPortMapping {
-	mapping := make(IPPortMapping)
-
-	for _, slice := range endpointSlices {
-		for _, endpoint := range slice.Endpoints {
-			if endpoint.TargetRef == nil {
-				continue
-			}
-
-			namespace, name := endpoint.TargetRef.Namespace, endpoint.TargetRef.Name
-			if name == "" || namespace == "" {
-				continue
-			}
-
-			// Retrieve the pod for that endpoint target
-			pod, err := c.podsLister.Pods(namespace).Get(name)
-			if err != nil {
-				err := fmt.Errorf("couldn't retrieve pod %s/%s: %w", namespace, name, err)
-				klog.Error(err)
-				continue
-			}
-
-			// Compute the IPPortMapping for that endpoint target
-			if err := c.addIPPortMappingEntry(pod, endpoint.Addresses, checkVip, mapping); err != nil {
-				err := fmt.Errorf("couldn't compute ip port mapping for pod %s/%s: %w", namespace, name, err)
-				klog.Error(err)
-				continue
-			}
-		}
-	}
-
-	return mapping
-}
-
-// getIPPortMappingWithNoTargets returns the IPPortMapping for endpoints with no targets
-func (c *Controller) getIPPortMappingWithNoTargets(endpointSlices []*discoveryv1.EndpointSlice, pods []*v1.Pod, checkVip string) IPPortMapping {
-	mapping := make(IPPortMapping)
-
-	for _, slice := range endpointSlices {
-		for _, endpoint := range slice.Endpoints {
-			for _, pod := range pods {
-				// Try to find a matching provider for the addresses
-				provider, err := c.getEndpointProvider(pod, endpoint.Addresses)
-				if err != nil {
-					err := fmt.Errorf("couldn't get provider for pod %s/%s: %w", pod.Namespace, pod.Name, err)
-					klog.Error(err)
-					continue
-				}
-
-				// If the pod has a provider that matches that set of addresses, it is an endpoint target.
-				// Otherwise, it isn't targeted by the EndpointSlice and can be dismissed.
-				if provider == "" {
-					continue
-				}
-
-				// Compute the IPPortMapping for that endpoint target
-				if err := c.addIPPortMappingEntry(pod, endpoint.Addresses, checkVip, mapping); err != nil {
-					err := fmt.Errorf("couldn't compute ip port mapping for pod %s/%s: %w", pod.Namespace, pod.Name, err)
-					klog.Error(err)
-					continue
-				}
-			}
-		}
-	}
-
-	return mapping
 }
 
 // getPodProviders returns all the providers available on a pod
