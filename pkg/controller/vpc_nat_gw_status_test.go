@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 
@@ -266,9 +267,122 @@ func TestReplayCompletionDoesNotResurrectNewerToken(t *testing.T) {
 	require.Equal(t, newRedo, gotSnat.Status.Redo)
 }
 
+func TestReplayInvalidationDoesNotOverwriteNewerToken(t *testing.T) {
+	const staleRedo = "replay-a"
+	gwName := "gw"
+	liveEip := &kubeovnv1.IptablesEIP{
+		Name: "eip", UID: "eip-uid",
+		Spec:   kubeovnv1.IptablesEIPSpec{NatGwDp: gwName},
+		Status: kubeovnv1.IptablesEIPStatus{Redo: "replay-b"},
+	}
+	liveFip := &kubeovnv1.IptablesFIPRule{
+		Name: "fip", Status: kubeovnv1.IptablesFIPRuleStatus{NatGwDp: gwName, Redo: "replay-b"},
+	}
+	liveDnat := &kubeovnv1.IptablesDnatRule{
+		Name: "dnat", Status: kubeovnv1.IptablesDnatRuleStatus{NatGwDp: gwName, Redo: "replay-b"},
+	}
+	liveSnat := &kubeovnv1.IptablesSnatRule{
+		Name: "snat", Status: kubeovnv1.IptablesSnatRuleStatus{NatGwDp: gwName, Redo: "replay-b"},
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "gw-pod",
+			Namespace: metav1.NamespaceSystem,
+			UID:       "pod-uid",
+			Labels: map[string]string{
+				"app": util.GenNatGwName(gwName), util.VpcNatGatewayLabel: "true",
+			},
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodRunning,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				Name: "vpc-nat-gw", ContainerID: "container-b",
+				State: corev1.ContainerState{Running: &corev1.ContainerStateRunning{}},
+			}},
+		},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		VpcNatGateways:    []*kubeovnv1.VpcNatGateway{fakeGw(gwName)},
+		Pods:              []*corev1.Pod{pod},
+		IptablesEips:      []*kubeovnv1.IptablesEIP{liveEip},
+		IptablesFips:      []*kubeovnv1.IptablesFIPRule{liveFip},
+		IptablesDnatRules: []*kubeovnv1.IptablesDnatRule{liveDnat},
+		IptablesSnatRules: []*kubeovnv1.IptablesSnatRule{liveSnat},
+	})
+	require.NoError(t, err)
+	c := fc.fakeController
+	currentRedo, err := c.natGwRedoToken(gwName)
+	require.NoError(t, err)
+	liveEip.Status.Redo = currentRedo
+	liveFip.Status.Redo = currentRedo
+	liveDnat.Status.Redo = currentRedo
+	liveSnat.Status.Redo = currentRedo
+	for _, obj := range []*kubeovnv1.IptablesEIP{liveEip} {
+		_, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().UpdateStatus(t.Context(), obj, metav1.UpdateOptions{})
+		require.NoError(t, err)
+	}
+	_, err = c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().UpdateStatus(t.Context(), liveFip, metav1.UpdateOptions{})
+	require.NoError(t, err)
+	_, err = c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().UpdateStatus(t.Context(), liveDnat, metav1.UpdateOptions{})
+	require.NoError(t, err)
+	_, err = c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().UpdateStatus(t.Context(), liveSnat, metav1.UpdateOptions{})
+	require.NoError(t, err)
+
+	// Replace the rule listers with the stale worker snapshots. The API objects retain
+	// the newer gateway token, so every old worker update must be ignored.
+	eipStale := liveEip.DeepCopy()
+	eipStale.Status.Redo = staleRedo
+	fipStale := liveFip.DeepCopy()
+	fipStale.Status.Redo = staleRedo
+	dnatStale := liveDnat.DeepCopy()
+	dnatStale.Status.Redo = staleRedo
+	snatStale := liveSnat.DeepCopy()
+	snatStale.Status.Redo = staleRedo
+	makeIndexer := func(obj metav1.Object) cache.Indexer {
+		indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+		require.NoError(t, indexer.Add(obj))
+		return indexer
+	}
+	c.iptablesEipsLister = kubeovnlister.NewIptablesEIPLister(makeIndexer(eipStale))
+	c.iptablesFipsLister = kubeovnlister.NewIptablesFIPRuleLister(makeIndexer(fipStale))
+	c.iptablesDnatRulesLister = kubeovnlister.NewIptablesDnatRuleLister(makeIndexer(dnatStale))
+	c.iptablesSnatRulesLister = kubeovnlister.NewIptablesSnatRuleLister(makeIndexer(snatStale))
+
+	require.NoError(t, c.patchEipReplayStatus(liveEip.Name, staleRedo, "", false))
+	require.NoError(t, c.patchFipStatus(liveFip.Name, "", "", "", staleRedo, false))
+	require.NoError(t, c.patchDnatStatus(liveDnat.Name, "", "", "", staleRedo, false))
+	require.NoError(t, c.patchSnatStatus(liveSnat.Name, "", "", "", staleRedo, false))
+	// A normal add/update pass may still see these stale Ready=true snapshots. It must not
+	// restore readiness while the API object carries the newer pending replay token.
+	eipStale.Status.Ready = true
+	fipStale.Status.Ready = true
+	dnatStale.Status.Ready = true
+	snatStale.Status.Ready = true
+	require.NoError(t, c.patchFipStatus(liveFip.Name, "", "", "", "", true))
+	require.NoError(t, c.patchDnatStatus(liveDnat.Name, "", "", "", "", true))
+	require.NoError(t, c.patchSnatStatus(liveSnat.Name, "", "", "", "", true))
+
+	gotEip, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Get(t.Context(), liveEip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, currentRedo, gotEip.Status.Redo)
+	gotFip, err := c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Get(t.Context(), liveFip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, currentRedo, gotFip.Status.Redo)
+	gotDnat, err := c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Get(t.Context(), liveDnat.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, currentRedo, gotDnat.Status.Redo)
+	gotSnat, err := c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Get(t.Context(), liveSnat.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, currentRedo, gotSnat.Status.Redo)
+	require.False(t, gotFip.Status.Ready)
+	require.False(t, gotDnat.Status.Ready)
+	require.False(t, gotSnat.Status.Ready)
+}
+
 func TestNatStatusPatchNoop(t *testing.T) {
 	require.Empty(t, natStatusPatch(true, "", true, "", false))
 	require.Equal(t, util.KVPatch{"ready": true}, natStatusPatch(true, "", true, "", true))
 	require.Equal(t, util.KVPatch{"redo": "generation", "ready": false},
 		natStatusPatch(true, "", false, "generation", false))
+	require.Empty(t, natStatusPatch(false, "pending", true, "", true))
 }
