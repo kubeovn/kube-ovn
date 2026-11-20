@@ -194,6 +194,7 @@ spec:
           - --enable-live-migration-optimize={{- .Values.features.enableLiveMigrationOptimization }}
           - --image={{ $controllerImage.prefix }}{{ $controllerImage.repository }}:{{ $controllerImage.tag }}
           - --non-primary-cni-mode={{- .Values.cni.nonPrimaryCNI }}
+          - --enable-dra-nic={{- .Values.features.enableDraNic }}
           - --np-enforcement={{- .Values.networkPolicies.enforcement | quote }}
           securityContext:
             runAsUser: {{ include "kubeovn.runAsUser" . }}

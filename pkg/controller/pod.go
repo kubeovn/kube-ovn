@@ -581,6 +581,31 @@ func (c *Controller) getPodKubeovnNets(pod *v1.Pod) ([]*kubeovnNet, error) {
 		return nil, err
 	}
 
+	draNets, err := c.getPodDRANets(pod)
+	if err != nil {
+		klog.Error(err)
+		return nil, err
+	}
+	// A provider keys a network's annotations, port and ip CR, so a DRA nic must not share it with
+	// a Multus attachment of the pod.
+	for _, draNet := range draNets {
+		for _, attachmentNet := range attachmentNets {
+			if draNet.ProviderName == attachmentNet.ProviderName {
+				err = fmt.Errorf("pod %s/%s uses provider %s for a dra nic and network attachment %s/%s", pod.Namespace, pod.Name, draNet.ProviderName, attachmentNet.NadNamespace, attachmentNet.NadName)
+				klog.Error(err)
+				return nil, err
+			}
+		}
+	}
+	if err = checkDRAInterfaceNames(pod, draNets); err != nil {
+		klog.Error(err)
+		// A deleting pod still needs its networks to release them.
+		if pod.DeletionTimestamp.IsZero() {
+			return nil, err
+		}
+	}
+	attachmentNets = append(attachmentNets, draNets...)
+
 	podNets := attachmentNets
 	// When Kube-OVN is run as non-primary CNI, we do not add default network configuration to pod.
 	// We only add network attachment defined by the user to pod.
@@ -651,6 +676,9 @@ func (c *Controller) handlePod(key string, forceRoute bool) (err error) {
 		return err
 	}
 
+	// Checked before the nets are built: a claim allocated in between would count as ready
+	// although its nic is missing from podNets, and its port would be released as stale.
+	draClaimsPending := c.hasPendingDRAClaims(pod)
 	podNets, err := c.getPodKubeovnNets(pod)
 	if err != nil {
 		klog.Errorf("failed to get pod nets %v", err)
@@ -659,7 +687,7 @@ func (c *Controller) handlePod(key string, forceRoute bool) (err error) {
 	}
 
 	// check and do hotnoplug nic
-	updatedPod, hotplugDetails, err := c.syncKubeOvnNet(pod, podNets)
+	updatedPod, hotplugDetails, err := c.syncKubeOvnNet(pod, podNets, draClaimsPending)
 	if err != nil {
 		klog.Errorf("failed to sync pod nets %v", err)
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodNetworkUpdateFailed", "stage=syncKubeOvnNet error=%v", err)
@@ -670,7 +698,7 @@ func (c *Controller) handlePod(key string, forceRoute bool) (err error) {
 		// pod has been deleted
 		return nil
 	}
-	needAllocatePodNets := needAllocateSubnets(pod, podNets)
+	needAllocatePodNets := deferUnscheduledDRANets(pod, needAllocateSubnets(pod, podNets))
 	if len(needAllocatePodNets) != 0 && c.isCurrentMigrationSourcePod(pod) {
 		needAllocatePodNets = nil
 	}
@@ -1352,6 +1380,73 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 	return nil
 }
 
+// releaseUncoveredPortIP deletes the ip CR named after a deleted pod port and releases its
+// address. It is used for ports whose network could no longer be resolved for the pod.
+func (c *Controller) releaseUncoveredPortIP(podKey string, port ovnnb.LogicalSwitchPort) ([]string, error) {
+	// The port records its logical switch, so the address can be released even without an ip CR.
+	subnet := port.ExternalIDs[ovs.LogicalSwitchKey]
+	var released []string
+	ipCR, err := c.ipsLister.Get(port.Name)
+	switch {
+	case err == nil:
+		if ipCR.Labels[util.IPReservedLabel] == "true" {
+			return nil, nil
+		}
+		if ipCR.Spec.Subnet != "" {
+			subnet = ipCR.Spec.Subnet
+		}
+		klog.Infof("delete ip CR %s of port without resolvable network", ipCR.Name)
+		if err := c.config.KubeOvnClient.KubeovnV1().IPs().Delete(context.Background(), ipCR.Name, metav1.DeleteOptions{}); err != nil {
+			if !k8serrors.IsNotFound(err) {
+				klog.Errorf("failed to delete ip %s, %v", ipCR.Name, err)
+				return nil, err
+			}
+		} else {
+			released = append(released, fmt.Sprintf("ipCR=%s subnet=%s", ipCR.Name, subnet))
+		}
+	case !k8serrors.IsNotFound(err):
+		klog.Errorf("failed to get ip %s, %v", port.Name, err)
+		return nil, err
+	}
+	if subnet == "" {
+		return released, nil
+	}
+
+	addressCount := len(c.ipam.GetPodAddress(podKey))
+	c.ipam.ReleaseAddressByNic(podKey, port.Name, subnet)
+	if len(c.ipam.GetPodAddress(podKey)) < addressCount {
+		released = append(released, fmt.Sprintf("ipam=%s subnet=%s", port.Name, subnet))
+	}
+	c.updateSubnetStatusQueue.Add(subnet)
+	return released, nil
+}
+
+// releaseUncoveredPorts releases the ip CRs and addresses of a deleted pod's ports whose network is
+// missing from podNets because their network's source is already gone (e.g. a deleted NAD whose subnet
+// cannot be determined, or a DRA claim that is unreserved before the pod object disappears), while
+// their ports are still listed by pod. keepOwnerIPCR keeps the addresses of statefulset and vm pods
+// whose owner persists, except for the ports in ipcrToDelete.
+func (c *Controller) releaseUncoveredPorts(pod *v1.Pod, podName, podKey string, podNets []*kubeovnNet, ports []ovnnb.LogicalSwitchPort,
+	keepOwnerIPCR bool, ipcrToDelete []string,
+) ([]string, error) {
+	covered := strset.NewWithSize(len(podNets))
+	for _, podNet := range podNets {
+		covered.Add(ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName))
+	}
+	var released []string
+	for _, port := range ports {
+		if covered.Has(port.Name) || (keepOwnerIPCR && !slices.Contains(ipcrToDelete, port.Name)) {
+			continue
+		}
+		portReleased, err := c.releaseUncoveredPortIP(podKey, port)
+		if err != nil {
+			return released, err
+		}
+		released = append(released, portReleased...)
+	}
+	return released, nil
+}
+
 func (c *Controller) handleDeletePod(key string) (err error) {
 	pod, ok := c.deletingPodObjMap.Load(key)
 	if !ok {
@@ -1664,6 +1759,16 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 				c.enqueueSubnetStatus(podNet.Subnet.Name, "Pod")
 			}
 		}
+		stage = "releaseUncoveredPorts"
+		keepOwnerIPCR := (isStsPod || isVMPod) && !isOwnerRefToDel && !isOwnerRefDeleted
+		portsReleased, err := c.releaseUncoveredPorts(pod, podName, podKey, podNets, ports, keepOwnerIPCR, ipcrToDelete)
+		if len(portsReleased) != 0 {
+			changed = true
+			released = append(released, portsReleased...)
+		}
+		if err != nil {
+			return err
+		}
 	}
 	for _, podNet := range podNets {
 		// Skip non-OVN subnets for security group synchronization
@@ -1822,7 +1927,9 @@ func collectStalePodNetworkState(pod *v1.Pod, podName string, targetPorts *strse
 	return state
 }
 
-func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod, string, error) {
+// syncKubeOvnNet releases the ports of networks the pod no longer has. draClaimsPending is whether
+// the pod had unallocated resource claims when podNets was built.
+func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet, draClaimsPending bool) (*v1.Pod, string, error) {
 	podName := c.getNameByPod(pod)
 	key := cache.NewObjectName(pod.Namespace, podName).String()
 	targetPortNameList := strset.NewWithSize(len(podNets))
@@ -1856,6 +1963,13 @@ func (c *Controller) syncKubeOvnNet(pod *v1.Pod, podNets []*kubeovnNet) (*v1.Pod
 	}
 
 	staleState := collectStalePodNetworkState(pod, podName, targetPortNameList, ports)
+	if len(staleState.ports) != 0 && draClaimsPending {
+		// The pod's DRA nics are unknown until the scheduler allocates its claims. A recreated
+		// keep-vm-ip VM pod already has their ports, so cleaning up now would release the VM's
+		// addresses. The claim update requeues the pod once the claims are allocated.
+		klog.Infof("pod %s/%s has unallocated resource claims, skip releasing ports %v", pod.Namespace, pod.Name, staleState.ports)
+		staleState = stalePodNetworkState{}
+	}
 	if len(staleState.ports) == 0 && len(annotationsNeedToAdd) == 0 {
 		return pod, "", nil
 	}
@@ -2065,6 +2179,16 @@ func getNextHopByTunnelIP(gw []net.IP) string {
 		nextHop = gw[0].String() + "," + gw[1].String()
 	}
 	return nextHop
+}
+
+// deferUnscheduledDRANets postpones DRA networks until the pod is bound. The scheduler allocates
+// a claim right before binding the pod, so allocating then would record no node in the ip CR;
+// binding updates the pod and requeues it.
+func deferUnscheduledDRANets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
+	if pod.Spec.NodeName != "" {
+		return nets
+	}
+	return slices.DeleteFunc(nets, func(n *kubeovnNet) bool { return n.IsDRA })
 }
 
 func needAllocateSubnets(pod *v1.Pod, nets []*kubeovnNet) []*kubeovnNet {
@@ -2388,6 +2512,8 @@ type kubeovnNet struct {
 	NadName            string
 	NadNamespace       string
 	InterfaceName      string
+	// IsDRA marks a network resolved from a DRA resource claim instead of an annotation
+	IsDRA bool
 }
 
 func (c *Controller) getPodAttachmentNet(pod *v1.Pod) ([]*kubeovnNet, error) {
@@ -3259,6 +3385,11 @@ func (c *Controller) cleanStaleVMAttachmentIPs(pod *v1.Pod, podName string) {
 		return
 	}
 	if len(ports) == 0 {
+		return
+	}
+	// DRA attachments only become part of the pod networks once its claims are allocated
+	if c.hasPendingDRAClaims(pod) {
+		klog.Infof("pod %s/%s has unallocated resource claims, skip stale vm attachment cleanup", pod.Namespace, pod.Name)
 		return
 	}
 

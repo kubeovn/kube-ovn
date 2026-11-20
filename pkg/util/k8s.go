@@ -283,6 +283,7 @@ func TrimManagedFields(obj any) (any, error) {
 // Preserved (required by controller code paths):
 //   - ObjectMeta (labels, annotations, ownerReferences, finalizers, deletionTimestamp, ...)
 //   - Spec.NodeName, Spec.HostNetwork, Spec.RestartPolicy
+//   - Spec.ResourceClaims (whether DRA nic claims are still pending allocation)
 //   - Spec.Containers[].Name and .Ports (named-port policy lookup)
 //   - Spec.InitContainers[].Name, .Ports, .RestartPolicy (restartable sidecars)
 //   - Status.Phase, .PodIP, .PodIPs, .HostIP, .Reason
@@ -309,7 +310,6 @@ func TrimPodForController(obj any) (any, error) {
 	pod.Spec.ReadinessGates = nil
 	pod.Spec.HostAliases = nil
 	pod.Spec.ImagePullSecrets = nil
-	pod.Spec.ResourceClaims = nil
 	pod.Spec.SchedulingGates = nil
 	pod.Spec.Overhead = nil
 	pod.Spec.SecurityContext = nil
