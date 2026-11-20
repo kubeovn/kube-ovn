@@ -3155,7 +3155,7 @@ func shouldCleanPodNet(c *Controller, pod *v1.Pod, ownerRefName, ownerRefSubnet,
 		return false
 	}
 	if podSubnet == nil {
-		// TODO: remove: CRD get interface will retrun a nil subnet ?
+		// TODO: remove: CRD get interface will return a nil subnet ?
 		klog.Errorf("pod %s/%s subnet %s is nil, not auto clean ip", pod.Namespace, pod.Name, podSwitch)
 		return false
 	}

@@ -74,7 +74,7 @@ This document lists the features merged into the master branch for the next mino
 - ACL log supports ratelimiting. [#5938](https://github.com/kubeovn/kube-ovn/pull/5938)
 - Subnet with centralized gateway now supports nodeSelectors. [#5956](https://github.com/kubeovn/kube-ovn/pull/5956)
 - Overlay encapsulation NIC selection. [#5946](https://github.com/kubeovn/kube-ovn/pull/5946)
-- Performace: skip conntrack for specific dst CIDRs. [#5821](https://github.com/kubeovn/kube-ovn/pull/5821)
+- Performance: skip conntrack for specific dst CIDRs. [#5821](https://github.com/kubeovn/kube-ovn/pull/5821)
 - NetworkPolicy supports `lax` mode which only deny traffic type of TCP, UDP and SCTP. That means ARP, ICMP and DHCP traffic are alaways allowed. [#5745](https://github.com/kubeovn/kube-ovn/pull/5745)
 - Remove internal-port type interface code. [#5794](https://github.com/kubeovn/kube-ovn/pull/5794)
 - IPPool
