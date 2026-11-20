@@ -340,7 +340,7 @@ function recover_clustered_database {
     local remote_addr=("$@")
 
     local message
-    message=$(ovsdb-tool check-cluster "$db_file" 2>&1) || true
+    message=$(python3 /kube-ovn/ovn-db-check.py "$db_file" 2>&1) || true
     if grep -q 'has not joined the cluster' <<< "$message"; then
         local birth_time
         birth_time=$(stat --format=%W "$db_file")
@@ -353,7 +353,7 @@ function recover_clustered_database {
         fi
         return 0
     fi
-    if ovsdb-tool check-cluster "$db_file"; then
+    if python3 /kube-ovn/ovn-db-check.py "$db_file"; then
         return 0
     fi
 
@@ -361,7 +361,7 @@ function recover_clustered_database {
     echo "backup $db_file to $db_backup"
     cp "$db_file" "$db_backup" || return 1
     echo "detected database corruption for file $db_file, try to fix it."
-    if ovsdb-tool fix-cluster "$db_file" && ovsdb-tool check-cluster "$db_file"; then
+    if ovsdb-tool fix-cluster "$db_file" && python3 /kube-ovn/ovn-db-check.py "$db_file"; then
         return 0
     fi
 
