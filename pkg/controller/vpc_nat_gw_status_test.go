@@ -152,9 +152,9 @@ func TestCompletedNatReplayStaysReadyWithStaleCache(t *testing.T) {
 	require.NoError(t, c.redoSnat(fixture.snat.Name, "gw", token))
 
 	require.NoError(t, c.completeEipReplay(fixture.eip.Name, token, ""))
-	require.NoError(t, c.completeFipReplay(fixture.fip.Name, token))
-	require.NoError(t, c.completeDnatReplay(fixture.dnat.Name, token))
-	require.NoError(t, c.completeSnatReplay(fixture.snat.Name, token))
+	require.NoError(t, c.completeFipReplay(fixture.fip.Name, "gw", token))
+	require.NoError(t, c.completeDnatReplay(fixture.dnat.Name, "gw", token))
+	require.NoError(t, c.completeSnatReplay(fixture.snat.Name, "gw", token))
 
 	// A later gateway worker observed the same pod instances. This token
 	// must not invalidate the completion, even with those stale listers.
@@ -330,9 +330,9 @@ func TestReplayCompletionDoesNotResurrectNewerToken(t *testing.T) {
 	}
 
 	require.NoError(t, c.completeEipReplay(eip.Name, oldRedo, ""))
-	require.NoError(t, c.completeFipReplay(fip.Name, oldRedo))
-	require.NoError(t, c.completeDnatReplay(dnat.Name, oldRedo))
-	require.NoError(t, c.completeSnatReplay(snat.Name, oldRedo))
+	require.NoError(t, c.completeFipReplay(fip.Name, fip.Status.NatGwDp, oldRedo))
+	require.NoError(t, c.completeDnatReplay(dnat.Name, dnat.Status.NatGwDp, oldRedo))
+	require.NoError(t, c.completeSnatReplay(snat.Name, snat.Status.NatGwDp, oldRedo))
 
 	gotEip, err := client.IptablesEIPs().Get(t.Context(), eip.Name, metav1.GetOptions{})
 	require.NoError(t, err)
@@ -358,12 +358,14 @@ func TestRecordIptablesRuleStatusRespectsReplayToken(t *testing.T) {
 		Status: kubeovnv1.IptablesEIPStatus{IP: "192.0.2.5"},
 	}
 	for _, tt := range []struct {
-		name       string
-		workerRedo string
-		liveRedo   string
-		wantReady  bool
+		name        string
+		workerRedo  string
+		liveRedo    string
+		bindingRedo string
+		wantReady   bool
 	}{
-		{name: "new rule", wantReady: true},
+		{name: "first binding", bindingRedo: "pod-replay"},
+		{name: "new replay during first binding", liveRedo: "pending-replay", bindingRedo: "pod-replay"},
 		{name: "spec update after replay", workerRedo: "prior-replay", liveRedo: "prior-replay", wantReady: true},
 		{name: "new replay during rule creation", liveRedo: "pending-replay"},
 		{name: "new replay during spec update", workerRedo: "prior-replay", liveRedo: "pending-replay"},
@@ -403,27 +405,31 @@ func TestRecordIptablesRuleStatusRespectsReplayToken(t *testing.T) {
 			require.NoError(t, c.markFipNotReady(fip.Name, redo))
 			require.NoError(t, c.markDnatNotReady(dnat.Name, redo))
 			require.NoError(t, c.markSnatNotReady(snat.Name, redo))
-			require.NoError(t, c.recordFipStatus(fip, eip))
-			require.NoError(t, c.recordDnatStatus(dnat, eip))
-			require.NoError(t, c.recordSnatStatus(snat, eip))
+			require.NoError(t, c.recordFipStatus(fip, eip, tt.bindingRedo))
+			require.NoError(t, c.recordDnatStatus(dnat, eip, tt.bindingRedo))
+			require.NoError(t, c.recordSnatStatus(snat, eip, tt.bindingRedo))
 
+			wantRedo := tt.liveRedo
+			if wantRedo == "" {
+				wantRedo = tt.bindingRedo
+			}
 			gotFip, err := client.IptablesFIPRules().Get(t.Context(), fip.Name, metav1.GetOptions{})
 			require.NoError(t, err)
 			require.Equal(t, kubeovnv1.IptablesFIPRuleStatus{
-				Redo: tt.liveRedo, Ready: tt.wantReady, V4ip: eip.Status.IP, V6ip: eip.Spec.V6ip,
+				Redo: wantRedo, Ready: tt.wantReady, V4ip: eip.Status.IP, V6ip: eip.Spec.V6ip,
 				NatGwDp: eip.Spec.NatGwDp, InternalIP: fip.Spec.InternalIP,
 			}, gotFip.Status)
 			gotDnat, err := client.IptablesDnatRules().Get(t.Context(), dnat.Name, metav1.GetOptions{})
 			require.NoError(t, err)
 			require.Equal(t, kubeovnv1.IptablesDnatRuleStatus{
-				Redo: tt.liveRedo, Ready: tt.wantReady, V4ip: eip.Status.IP, V6ip: eip.Spec.V6ip,
+				Redo: wantRedo, Ready: tt.wantReady, V4ip: eip.Status.IP, V6ip: eip.Spec.V6ip,
 				NatGwDp: eip.Spec.NatGwDp, Protocol: dnat.Spec.Protocol,
 				InternalIP: dnat.Spec.InternalIP, InternalPort: dnat.Spec.InternalPort, ExternalPort: dnat.Spec.ExternalPort,
 			}, gotDnat.Status)
 			gotSnat, err := client.IptablesSnatRules().Get(t.Context(), snat.Name, metav1.GetOptions{})
 			require.NoError(t, err)
 			require.Equal(t, kubeovnv1.IptablesSnatRuleStatus{
-				Redo: tt.liveRedo, Ready: tt.wantReady, V4ip: eip.Status.IP, V6ip: eip.Spec.V6ip,
+				Redo: wantRedo, Ready: tt.wantReady, V4ip: eip.Status.IP, V6ip: eip.Spec.V6ip,
 				NatGwDp: eip.Spec.NatGwDp, InternalCIDR: snat.Spec.InternalCIDR,
 			}, gotSnat.Status)
 		})
@@ -474,7 +480,7 @@ func TestRecordIptablesRuleStatusRetriesAfterReplayInvalidation(t *testing.T) {
 		return true, nil, k8serrors.NewConflict(gvr.GroupResource(), fip.Name, nil)
 	})
 	c := &Controller{config: &Configuration{KubeOvnClient: clientset}}
-	require.NoError(t, c.recordFipStatus(fip, eip))
+	require.NoError(t, c.recordFipStatus(fip, eip, ""))
 	got, err := client.Get(t.Context(), fip.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.False(t, got.Status.Ready)
@@ -482,6 +488,6 @@ func TestRecordIptablesRuleStatusRetriesAfterReplayInvalidation(t *testing.T) {
 	require.Equal(t, fip.Spec.InternalIP, got.Status.InternalIP)
 	require.Equal(t, "10.0.0.7", got.Spec.InternalIP)
 
-	require.NoError(t, c.recordFipStatus(fip, eip))
+	require.NoError(t, c.recordFipStatus(fip, eip, ""))
 	require.Equal(t, 2, attempts, "an already published snapshot needs no further write")
 }
