@@ -320,16 +320,14 @@ func TestEipQoSClaimIsWrittenBeforeApply(t *testing.T) {
 	})
 }
 
-// TestCreateOrUpdateEipCRPublishesQoSClaim pins the claim of the eip creation flow: the policy
-// generation is recorded in the same update that publishes the spec and status of the eip, so no
-// rule can use the eip before the policy generation it depends on is claimed.
-func TestCreateOrUpdateEipCRPublishesQoSClaim(t *testing.T) {
+// TestUpdateEipAllocationPublishesQoSClaim verifies that the allocation records the policy generation.
+func TestUpdateEipAllocationPublishesQoSClaim(t *testing.T) {
 	qos := &kubeovnv1.QoSPolicy{Name: "qos", UID: "qos-uid"}
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		QoSPolicies: []*kubeovnv1.QoSPolicy{qos},
 		IptablesEips: []*kubeovnv1.IptablesEIP{{
 			Name: "eip", UID: "eip-uid",
-			Spec: kubeovnv1.IptablesEIPSpec{NatGwDp: "gw", ExternalSubnet: "ext-net"},
+			Spec: kubeovnv1.IptablesEIPSpec{NatGwDp: "gw", QoSPolicy: "qos", ExternalSubnet: "ext-net"},
 		}},
 		Subnets: []*kubeovnv1.Subnet{{
 			Name: "ext-net",
@@ -339,7 +337,7 @@ func TestCreateOrUpdateEipCRPublishesQoSClaim(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	require.NoError(t, fc.fakeController.createOrUpdateEipCR("eip", "2.2.2.2", "", "", "gw", "qos", "ext-net", ""))
+	require.NoError(t, fc.fakeController.updateEipAllocation(mustGetIptablesEip(t, fc.fakeController), "2.2.2.2", "", "", "ext-net", ""))
 
 	got, err := fc.fakeController.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Get(
 		context.Background(), "eip", metav1.GetOptions{},
@@ -352,7 +350,7 @@ func TestCreateOrUpdateEipCRPublishesQoSClaim(t *testing.T) {
 	require.Equal(t, "qos", got.Status.QoSPolicy)
 }
 
-func TestCreateOrUpdateEipCRPreservesLiveReplayStatus(t *testing.T) {
+func TestUpdateEipAllocationPreservesLiveReplayStatus(t *testing.T) {
 	oldStatus := kubeovnv1.IptablesEIPStatus{
 		IP: "2.2.2.2", Ready: true, Nat: "old-nat", Redo: "old-replay",
 	}
@@ -388,7 +386,7 @@ func TestCreateOrUpdateEipCRPreservesLiveReplayStatus(t *testing.T) {
 	require.NoError(t, fc.fakeInformers.iptablesEipInformer.Informer().GetIndexer().Update(stale))
 	require.Equal(t, "old-replay", mustGetIptablesEip(t, c).Status.Redo)
 
-	require.NoError(t, c.createOrUpdateEipCR("eip", "2.2.2.2", "", "", "gw", "", "ext-net", ""))
+	require.NoError(t, c.updateEipAllocation(mustGetIptablesEip(t, c), "2.2.2.2", "", "", "ext-net", ""))
 
 	got, err := client.Get(context.Background(), "eip", metav1.GetOptions{})
 	require.NoError(t, err)
@@ -397,7 +395,7 @@ func TestCreateOrUpdateEipCRPreservesLiveReplayStatus(t *testing.T) {
 	require.Equal(t, "new-replay", got.Status.Redo)
 }
 
-func TestCreateOrUpdateEipCRPreservesPendingReplay(t *testing.T) {
+func TestUpdateEipAllocationPreservesPendingReplay(t *testing.T) {
 	eip := &kubeovnv1.IptablesEIP{
 		Name: "eip", UID: "eip-uid",
 		Spec: kubeovnv1.IptablesEIPSpec{V4ip: "2.2.2.2", NatGwDp: "gw", ExternalSubnet: "ext-net"},
@@ -416,8 +414,8 @@ func TestCreateOrUpdateEipCRPreservesPendingReplay(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, gotBefore.Status.Ready)
 
-	require.NoError(t, fc.fakeController.createOrUpdateEipCR(
-		eip.Name, "2.2.2.2", "", "", "gw", "", "ext-net", "",
+	require.NoError(t, fc.fakeController.updateEipAllocation(
+		eip, "2.2.2.2", "", "", "ext-net", "",
 	))
 
 	got, err := client.Get(context.Background(), eip.Name, metav1.GetOptions{})
@@ -625,7 +623,7 @@ func TestEnqueueIptablesEipReplayWhenAllocated(t *testing.T) {
 	t.Cleanup(c.addIptablesEipQueue.ShutDown)
 	t.Cleanup(c.updateIptablesEipQueue.ShutDown)
 
-	require.NoError(t, c.recordEipAllocation(eip.Name, "192.0.2.10", ""))
+	require.NoError(t, c.recordEipAllocation(eip, "192.0.2.10", ""))
 	allocated, err := client.Get(t.Context(), eip.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "192.0.2.10", allocated.Status.IP)
@@ -704,4 +702,36 @@ func TestTerminatingEipKeepsConvergingWhileInUse(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, kept.Finalizers, util.KubeOVNControllerFinalizer,
 		"the finalizer must be held while a rule still references the eip")
+}
+
+func TestEipAllocationRejectsChangedObject(t *testing.T) {
+	for _, change := range []struct {
+		name  string
+		apply func(*kubeovnv1.IptablesEIP)
+	}{
+		{"changed spec", func(eip *kubeovnv1.IptablesEIP) { eip.Spec.V4ip = "192.0.2.20" }},
+		{"replacement object", func(eip *kubeovnv1.IptablesEIP) { eip.UID = "replacement" }},
+	} {
+		t.Run(change.name, func(t *testing.T) {
+			expected := &kubeovnv1.IptablesEIP{
+				Name: "eip", UID: "original",
+				Spec: kubeovnv1.IptablesEIPSpec{V4ip: "192.0.2.10", NatGwDp: "gw"},
+			}
+			live := expected.DeepCopy()
+			change.apply(live)
+			clientset := kubeovnfake.NewSimpleClientset()
+			client := clientset.KubeovnV1().IptablesEIPs()
+			_, err := client.Create(t.Context(), live, metav1.CreateOptions{})
+			require.NoError(t, err)
+			c := &Controller{config: &Configuration{KubeOvnClient: clientset}}
+
+			require.ErrorContains(t, c.updateEipAllocation(expected, "192.0.2.10", "", "", "ext-net", ""), "changed during allocation")
+			require.ErrorContains(t, c.recordEipAllocation(expected, "192.0.2.10", ""), "changed before allocation status")
+			got, err := client.Get(t.Context(), live.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.Equal(t, live.UID, got.UID)
+			require.Equal(t, live.Spec, got.Spec)
+			require.Equal(t, live.Status, got.Status)
+		})
+	}
 }
