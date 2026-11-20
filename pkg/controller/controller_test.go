@@ -81,6 +81,7 @@ type fakeControllerInformers struct {
 	namespaceInformer    coreinformers.NamespaceInformer
 	nodeInformer         coreinformers.NodeInformer
 	podInformer          coreinformers.PodInformer
+	iptablesEipInformer  kubeovninformer.IptablesEIPInformer
 	netAttachInformer    cache.SharedIndexInformer
 	switchLBRuleInformer kubeovninformer.SwitchLBRuleInformer
 }
@@ -412,6 +413,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		namespaceInformer:    namespaceInformer,
 		nodeInformer:         nodeInformer,
 		podInformer:          podInformer,
+		iptablesEipInformer:  iptablesEipInformer,
 		netAttachInformer:    nadInformer.Informer(),
 		switchLBRuleInformer: switchLBRuleInformer,
 	}
