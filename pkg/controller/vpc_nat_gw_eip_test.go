@@ -608,6 +608,52 @@ func TestEnqueueAddIptablesEip(t *testing.T) {
 	require.Equal(t, 2, c.updateIptablesEipQueue.Len(), "pending QoS credential must resume update")
 }
 
+func TestEnqueueIptablesEipReplayWhenAllocated(t *testing.T) {
+	t.Parallel()
+	eip := &kubeovnv1.IptablesEIP{
+		Name: "eip", Status: kubeovnv1.IptablesEIPStatus{Redo: "pending-replay"},
+	}
+	clientset := kubeovnfake.NewSimpleClientset()
+	client := clientset.KubeovnV1().IptablesEIPs()
+	_, err := client.Create(t.Context(), eip, metav1.CreateOptions{})
+	require.NoError(t, err)
+	c := &Controller{
+		config:                 &Configuration{KubeOvnClient: clientset},
+		addIptablesEipQueue:    newTypedRateLimitingQueue[string]("AddIptablesEip", nil),
+		updateIptablesEipQueue: newTypedRateLimitingQueue[string]("UpdateIptablesEip", nil),
+	}
+	t.Cleanup(c.addIptablesEipQueue.ShutDown)
+	t.Cleanup(c.updateIptablesEipQueue.ShutDown)
+
+	require.NoError(t, c.recordEipAllocation(eip.Name, "192.0.2.10", ""))
+	allocated, err := client.Get(t.Context(), eip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, "192.0.2.10", allocated.Status.IP)
+	require.Equal(t, eip.Status.Redo, allocated.Status.Redo)
+	require.False(t, allocated.Status.Ready)
+
+	for _, event := range []struct {
+		name    string
+		enqueue func()
+	}{
+		{name: "first status IP", enqueue: func() { c.enqueueUpdateIptablesEip(eip, allocated) }},
+		{name: "informer relist", enqueue: func() { c.enqueueAddIptablesEip(allocated) }},
+	} {
+		t.Run(event.name, func(t *testing.T) {
+			event.enqueue()
+			require.Zero(t, c.addIptablesEipQueue.Len())
+			require.Equal(t, 1, c.updateIptablesEipQueue.Len())
+			key, shutdown := c.updateIptablesEipQueue.Get()
+			require.False(t, shutdown)
+			require.Equal(t, eip.Name, key)
+			c.updateIptablesEipQueue.Done(key)
+		})
+	}
+
+	c.enqueueUpdateIptablesEip(allocated, allocated.DeepCopy())
+	require.Zero(t, c.updateIptablesEipQueue.Len(), "already published IP leaves the queue alone")
+}
+
 // TestTerminatingEipKeepsConvergingWhileInUse pins that a terminating EIP does not depend on an
 // external event to notice that the last NAT rule referencing it is gone: the rule controllers
 // notify it through a delaying queue that keeps only the earliest deadline for an item, so a
