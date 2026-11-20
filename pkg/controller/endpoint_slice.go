@@ -215,6 +215,7 @@ type serviceEndpointVIPState struct {
 	trafficClass serviceLBTrafficClass
 	distributed  bool
 	template     bool
+	healthCheck  bool
 }
 
 func (c *Controller) handleUpdateEndpointSlice(key string) error {
@@ -546,6 +547,7 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 	isExternalVIP := state.trafficClass == serviceLBExternalTraffic
 	state.distributed = profile.distributedLocal && !isExternalVIP
 	state.template = serviceUsesTemplateLB(svc) && !isExternalVIP
+	state.healthCheck = !profile.ignoreHealthCheck
 	if isExternalVIP && serviceUsesScopedLB(svc) {
 		state.lb = serviceScopedExternalLBName(svc, port.Protocol, lbVip)
 	} else if isExternalVIP {
@@ -571,23 +573,32 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 	}
 
 	var err error
-	state.checkIP, state.externals, err = c.serviceVIPHealthCheck(reconcileCtx, lbVip)
+	state.mapping, err = c.serviceVIPIPPortMapping(reconcileCtx, port, lbVip, state.distributed, state.healthCheck, "")
 	if err != nil {
 		return err
 	}
-	state.mapping, err = c.serviceVIPIPPortMapping(reconcileCtx, port, lbVip, state.distributed, state.checkIP)
-	if err != nil {
-		return err
-	}
-	if !reconcileCtx.profile.ignoreHealthCheck && len(state.mapping) == 0 {
-		// Host-network or manually managed endpoints do not have an OVN logical
-		// port to probe from the health-check VIP. Keeping a health check with an
-		// empty mapping would mark otherwise reachable backends (for example the
-		// Kubernetes API service) down.
-		klog.Infof("skip health check for service %s/%s vip %s: no OVN backend mapping", svc.Namespace, svc.Name, lbVip)
-		reconcileCtx.profile.ignoreHealthCheck = true
-		state.checkIP = ""
-		state.externals = nil
+	if state.healthCheck {
+		if len(state.mapping) == 0 {
+			// Host-network or manually managed endpoints do not have an OVN logical
+			// port to probe from the health-check VIP. Avoid creating the shared
+			// health-check VIP when there is no mapping to use.
+			klog.Infof("skip health check for service %s/%s vip %s: no OVN backend mapping", svc.Namespace, svc.Name, lbVip)
+			state.healthCheck = false
+		} else {
+			state.checkIP, state.externals, err = c.serviceVIPHealthCheck(reconcileCtx, lbVip)
+			if err != nil {
+				return err
+			}
+			state.mapping, err = c.serviceVIPIPPortMapping(reconcileCtx, port, lbVip, state.distributed, state.healthCheck, state.checkIP)
+			if err != nil {
+				return err
+			}
+			if len(state.mapping) == 0 {
+				state.healthCheck = false
+				state.checkIP = ""
+				state.externals = nil
+			}
+		}
 	}
 	state.backends = c.getEndpointBackend(reconcileCtx.endpointSlices, port, lbVip, state.distributed)
 	if len(state.backends) == 0 {
@@ -597,32 +608,26 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 }
 
 func (c *Controller) serviceVIPHealthCheck(reconcileCtx *endpointSliceReconcileContext, lbVip string) (string, map[string]string, error) {
-	var checkIP string
-	var externals map[string]string
-	if !reconcileCtx.profile.ignoreHealthCheck {
-		var err error
-		checkIP, err = c.getHealthCheckVip(reconcileCtx.subnetName, lbVip)
-		if err != nil {
-			return "", nil, err
-		}
-		externals = map[string]string{util.SwitchLBRuleSubnet: reconcileCtx.subnetName}
+	checkIP, err := c.getHealthCheckVip(reconcileCtx.subnetName, lbVip)
+	if err != nil {
+		return "", nil, err
 	}
-	return checkIP, externals, nil
+	return checkIP, map[string]string{util.SwitchLBRuleSubnet: reconcileCtx.subnetName}, nil
 }
 
-func (c *Controller) serviceVIPIPPortMapping(reconcileCtx *endpointSliceReconcileContext, servicePort v1.ServicePort, serviceIP string, distributed bool, checkIP string) (IPPortMapping, error) {
+func (c *Controller) serviceVIPIPPortMapping(reconcileCtx *endpointSliceReconcileContext, servicePort v1.ServicePort, serviceIP string, distributed, healthCheck bool, checkIP string) (IPPortMapping, error) {
 	if distributed {
 		mapping, err := c.getDistributedIPPortMapping(reconcileCtx.endpointSlices, reconcileCtx.service, servicePort, serviceIP)
 		if err != nil {
 			return nil, fmt.Errorf("get distributed ip port mapping for service %s/%s: %w", reconcileCtx.service.Namespace, reconcileCtx.service.Name, err)
 		}
 		mapping = filterIPPortMappingByVIP(mapping, serviceIP)
-		if !reconcileCtx.profile.ignoreHealthCheck {
+		if healthCheck {
 			decorateDistributedIPPortMapping(mapping, checkIP)
 		}
 		return mapping, nil
 	}
-	if reconcileCtx.profile.ignoreHealthCheck {
+	if !healthCheck {
 		return nil, nil
 	}
 	mapping, err := c.getIPPortMapping(reconcileCtx.endpointSlices, reconcileCtx.service, checkIP)
@@ -637,7 +642,7 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 		c.planServiceEndpointVIP(reconcileCtx, state)
 		return nil
 	}
-	svc, profile := reconcileCtx.service, reconcileCtx.profile
+	svc := reconcileCtx.service
 	klog.Infof("add vip endpoint %s, backends %v to LB %s", state.vip, state.backends, state.lb)
 	candidates := c.serviceLBMigrationCandidates(svc, state.port.Protocol, reconcileCtx.vpc, state.trafficClass)
 	if serviceLB, ok := c.OVNNbClient.(interface {
@@ -645,7 +650,7 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 	}); ok {
 		if err := serviceLB.LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(
 			state.lb, state.vip, state.backends, state.vip, candidates, reconcileCtx.scopedLBAttachments,
-			state.mapping, profile.ignoreHealthCheck, state.externals,
+			state.mapping, !state.healthCheck, state.externals,
 		); err != nil {
 			return fmt.Errorf("reconcile vip %s: %w", state.vip, err)
 		}
@@ -664,8 +669,8 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 				return fmt.Errorf("update ip port mapping for vip %s on load balancer %s: %w", state.vip, state.lb, err)
 			}
 		}
-		if !profile.ignoreHealthCheck {
-			if err := c.OVNNbClient.LoadBalancerAddHealthCheck(state.lb, state.vip, profile.ignoreHealthCheck, state.mapping, state.externals); err != nil {
+		if state.healthCheck {
+			if err := c.OVNNbClient.LoadBalancerAddHealthCheck(state.lb, state.vip, !state.healthCheck, state.mapping, state.externals); err != nil {
 				return fmt.Errorf("add health check for vip %s on load balancer %s: %w", state.vip, state.lb, err)
 			}
 		}
