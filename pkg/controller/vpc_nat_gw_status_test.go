@@ -76,8 +76,8 @@ func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
 		fip.Status.Ready = true
 		dnat.Status.Ready = true
 		snat.Status.Ready = true
-		require.NoError(t, c.patchEipStatus(eip.Name, "", "ready-restoration", "", false))
-		require.NoError(t, c.patchEipStatus(eip.Name, "", "ready-restoration", "", true))
+		require.NoError(t, c.patchEipReplayStatus(eip.Name, "ready-restoration", "", false))
+		require.NoError(t, c.patchEipReplayStatus(eip.Name, "", "", true))
 		require.NoError(t, c.patchFipStatus(fip.Name, "", "", "", "", false))
 		require.NoError(t, c.patchFipStatus(fip.Name, "", "", "", "", true))
 		require.NoError(t, c.patchDnatStatus(dnat.Name, "", "", "", "", false))
@@ -124,13 +124,82 @@ func TestNatRedoPreservesAppliedStatusWithStaleCache(t *testing.T) {
 		require.Equal(t, want, got.Status)
 	})
 	t.Run("EIP", func(t *testing.T) {
-		require.NoError(t, c.patchEipStatus(eip.Name, "", redo, "", false))
+		require.NoError(t, c.patchEipReplayStatus(eip.Name, redo, "", false))
 		got, err := client.IptablesEIPs().Get(t.Context(), eip.Name, metav1.GetOptions{})
 		require.NoError(t, err)
 		want := liveEip.Status
 		want.Ready, want.Redo = false, redo
 		require.Equal(t, want, got.Status)
 	})
+}
+
+func TestEipReplayCompletionPreservesAppliedNat(t *testing.T) {
+	eip := &kubeovnv1.IptablesEIP{
+		Name: "eip", UID: "eip-uid",
+		Status: kubeovnv1.IptablesEIPStatus{
+			Ready: true, Redo: "gateway-generation", Nat: util.DnatUsingEip,
+		},
+	}
+
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(eip))
+	clientset := kubeovnfake.NewSimpleClientset()
+	liveEip := eip.DeepCopy()
+	liveEip.Status.Ready = false
+	_, err := clientset.KubeovnV1().IptablesEIPs().Create(t.Context(), liveEip, metav1.CreateOptions{})
+	require.NoError(t, err)
+	c := &Controller{
+		config:                  &Configuration{KubeOvnClient: clientset},
+		iptablesEipsLister:      kubeovnlister.NewIptablesEIPLister(indexer),
+		iptablesFipsLister:      kubeovnlister.NewIptablesFIPRuleLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})),
+		iptablesDnatRulesLister: kubeovnlister.NewIptablesDnatRuleLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})),
+		iptablesSnatRulesLister: kubeovnlister.NewIptablesSnatRuleLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})),
+	}
+
+	// Replay completion only restores readiness. The informer has not observed the DNAT yet,
+	// so deriving Nat from its empty lister would incorrectly clear the applied status in the API.
+	require.NoError(t, c.patchEipReplayStatus(eip.Name, "", "", true))
+
+	got, err := clientset.KubeovnV1().IptablesEIPs().Get(t.Context(), eip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.True(t, got.Status.Ready)
+	require.Equal(t, eip.Status.Nat, got.Status.Nat)
+}
+
+func TestEipNatRefreshPreservesPendingReplay(t *testing.T) {
+	eip := &kubeovnv1.IptablesEIP{
+		Name: "eip", UID: "eip-uid",
+		Status: kubeovnv1.IptablesEIPStatus{Ready: true, Redo: "gateway-generation"},
+	}
+	dnat := &kubeovnv1.IptablesDnatRule{
+		Name:   "dnat",
+		Labels: map[string]string{util.EipUIDLabel: string(eip.UID)},
+	}
+	eipIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, eipIndexer.Add(eip))
+	dnatIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, dnatIndexer.Add(dnat))
+	clientset := kubeovnfake.NewSimpleClientset()
+	liveEip := eip.DeepCopy()
+	liveEip.Status.Ready = false
+	_, err := clientset.KubeovnV1().IptablesEIPs().Create(t.Context(), liveEip, metav1.CreateOptions{})
+	require.NoError(t, err)
+	c := &Controller{
+		config:                  &Configuration{KubeOvnClient: clientset},
+		iptablesEipsLister:      kubeovnlister.NewIptablesEIPLister(eipIndexer),
+		iptablesFipsLister:      kubeovnlister.NewIptablesFIPRuleLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})),
+		iptablesDnatRulesLister: kubeovnlister.NewIptablesDnatRuleLister(dnatIndexer),
+		iptablesSnatRulesLister: kubeovnlister.NewIptablesSnatRuleLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})),
+	}
+
+	// A normal NAT refresh observes the newly indexed DNAT but must leave replay readiness alone.
+	require.NoError(t, c.patchEipStatus(eip.Name, "", "", "", true))
+
+	got, err := clientset.KubeovnV1().IptablesEIPs().Get(t.Context(), eip.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.False(t, got.Status.Ready)
+	require.Equal(t, eip.Status.Redo, got.Status.Redo)
+	require.Equal(t, util.DnatUsingEip, got.Status.Nat)
 }
 
 func TestNatStatusPatchNoop(t *testing.T) {
