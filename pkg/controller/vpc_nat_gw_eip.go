@@ -866,16 +866,19 @@ func (c *Controller) patchEipStatus(key, v4ip, redo, qos string, ready bool) err
 		patch["ip"] = v4ip
 	}
 
-	nat, err := c.getIptablesEipNat(eip.Spec.V4ip)
-	if err != nil {
-		err = fmt.Errorf("failed to get eip nat: %w", err)
-		klog.Error(err)
-		return err
-	}
-	// nat record all kinds of nat rules using this eip
-	klog.V(3).Infof("nat of eip %s is %s", eip.Name, nat)
-	if eip.Status.Nat != nat {
-		patch["nat"] = nat
+	// Replay only updates readiness and its token.
+	if redo == "" {
+		nat, err := c.getIptablesEipNat(eip.Spec.V4ip)
+		if err != nil {
+			err = fmt.Errorf("failed to get eip nat: %w", err)
+			klog.Error(err)
+			return err
+		}
+		// nat record all kinds of nat rules using this eip
+		klog.V(3).Infof("nat of eip %s is %s", eip.Name, nat)
+		if eip.Status.Nat != nat {
+			patch["nat"] = nat
+		}
 	}
 
 	if qos != "" && eip.Status.QoSPolicy != qos {
