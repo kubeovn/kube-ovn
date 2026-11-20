@@ -424,7 +424,7 @@ function recover_clustered_database {
 
     local message
     local status=0
-    message=$(ovsdb-tool check-cluster "$db_file" 2>&1) || status=$?
+    message=$(python3 /kube-ovn/ovn-db-check.py "$db_file" 2>&1) || status=$?
     if grep -Fxq "$db_file has not joined the cluster, omitting" <<< "$message"; then
         local birth_time
         birth_time=$(stat --format=%W "$db_file")
@@ -438,6 +438,8 @@ function recover_clustered_database {
     elif [[ $status -ne 0 ]]; then
         echo "$message" >&2
         rebuild_clustered_database_from_raft_header "$db_file" "$hdr_file" "$db_name" "$db_type" "$local_addr" "${remote_addr[@]}" || return 1
+    elif [[ -n "$message" ]]; then
+        echo "$message" >&2
     fi
     return 0
 }

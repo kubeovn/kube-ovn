@@ -209,7 +209,9 @@ func startDBRecoveryFunctions(t *testing.T, name string) string {
 	}
 	functions := strings.ReplaceAll(script[start:end], "/etc/ovn", "${TEST_DB_DIR}")
 	modeScript := filepath.Join(filepath.Dir(filename), "..", "..", "dist", "images", "ovn-db-mode.sh")
-	return strings.ReplaceAll(functions, "/kube-ovn/ovn-db-mode.sh", "'"+strings.ReplaceAll(modeScript, "'", "'\\''")+"'")
+	functions = strings.ReplaceAll(functions, "/kube-ovn/ovn-db-mode.sh", "'"+strings.ReplaceAll(modeScript, "'", "'\\''")+"'")
+	checkScript := filepath.Join(filepath.Dir(modeScript), "ovn-db-check.py")
+	return strings.ReplaceAll(functions, "/kube-ovn/ovn-db-check.py", "'"+strings.ReplaceAll(checkScript, "'", "'\\''")+"'")
 }
 
 func startDBRecoveryEnv(dir, trace, name, mode string) []string {
