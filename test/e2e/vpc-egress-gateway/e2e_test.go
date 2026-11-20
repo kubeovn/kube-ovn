@@ -21,10 +21,8 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilversion "k8s.io/apimachinery/pkg/util/version"
 	"k8s.io/apimachinery/pkg/util/wait"
-	"k8s.io/client-go/dynamic"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/component-base/logs"
@@ -850,7 +848,6 @@ func registerVpcEgressGatewayObservabilityTest(
 						Metrics: apiv1.VpcEgressGatewayObservabilityFeature{Enabled: true},
 						Log:     apiv1.VpcEgressGatewayConntrackLog{Enabled: true},
 					},
-					ServiceMonitor: apiv1.VpcEgressGatewayServiceMonitor{Labels: map[string]string{"e2e": "vpc-egress-observability"}},
 				}
 			},
 		)
@@ -1508,11 +1505,6 @@ func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgress
 	configMap, err := f.ClientSet.CoreV1().ConfigMaps(veg.Namespace).Get(context.Background(), resourceName, metav1.GetOptions{})
 	framework.ExpectNoError(err)
 	framework.ExpectContainSubstring(configMap.Data["config.json"], `"interfaceMetrics":{"enabled":true}`)
-	service, err := f.ClientSet.CoreV1().Services(veg.Namespace).Get(context.Background(), resourceName, metav1.GetOptions{})
-	framework.ExpectNoError(err)
-	framework.ExpectEqual(service.Spec.ClusterIP, corev1.ClusterIPNone)
-	framework.ExpectTrue(service.Spec.PublishNotReadyAddresses)
-	framework.ExpectEqual(service.Spec.Ports[0].TargetPort.IntVal, int32(10666))
 
 	for _, pod := range workloadPods {
 		found := false
@@ -1552,19 +1544,6 @@ func validateVpcEgressObservability(f *framework.Framework, veg *apiv1.VpcEgress
 	condition := veg.Status.Conditions.GetCondition(apiv1.ObservabilityConfigured)
 	framework.ExpectNotNil(condition)
 	framework.ExpectEqual(condition.Status, corev1.ConditionTrue)
-	serviceMonitorCondition := veg.Status.Conditions.GetCondition(apiv1.ServiceMonitorReady)
-	framework.ExpectNotNil(serviceMonitorCondition)
-	if serviceMonitorCondition.Status == corev1.ConditionTrue {
-		config, err := k8sframework.LoadConfig()
-		framework.ExpectNoError(err)
-		dynamicClient, err := dynamic.NewForConfig(config)
-		framework.ExpectNoError(err)
-		serviceMonitor, err := dynamicClient.Resource(schema.GroupVersionResource{Group: "monitoring.coreos.com", Version: "v1", Resource: "servicemonitors"}).Namespace(veg.Namespace).Get(context.Background(), resourceName, metav1.GetOptions{})
-		framework.ExpectNoError(err)
-		framework.ExpectEqual(serviceMonitor.GetLabels()["e2e"], "vpc-egress-observability")
-	} else {
-		framework.ExpectEqual(serviceMonitorCondition.Reason, "ServiceMonitorCRDNotInstalled")
-	}
 }
 
 func validateVpcEgressObservabilityHotReload(f *framework.Framework, veg *apiv1.VpcEgressGateway, originalPods []corev1.Pod, initialReloads map[string]float64) {

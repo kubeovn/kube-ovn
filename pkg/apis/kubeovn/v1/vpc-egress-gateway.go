@@ -27,7 +27,8 @@ const (
 	PodAntiAffinityPreferred = "Preferred"
 
 	ObservabilityConfigured ConditionType = "ObservabilityConfigured"
-	ServiceMonitorReady     ConditionType = "ServiceMonitorReady"
+	// ServiceMonitorReady identifies the legacy condition cleared by the controller.
+	ServiceMonitorReady ConditionType = "ServiceMonitorReady"
 
 	ObservabilityEventStart = "start"
 	ObservabilityEventEnd   = "end"
@@ -366,7 +367,8 @@ type VpcEgressGatewayObservability struct {
 	Resources        corev1.ResourceRequirements            `json:"resources,omitempty"`
 	InterfaceMetrics VpcEgressGatewayObservabilityFeature   `json:"interfaceMetrics,omitempty"`
 	Conntrack        VpcEgressGatewayConntrackObservability `json:"conntrack,omitempty"`
-	ServiceMonitor   VpcEgressGatewayServiceMonitor         `json:"serviceMonitor,omitempty"`
+	// Deprecated: This field is ignored. Configure a PodMonitor or ServiceMonitor separately.
+	ServiceMonitor VpcEgressGatewayServiceMonitor `json:"serviceMonitor,omitempty"`
 }
 
 // VpcEgressGatewayObservabilityFeature enables an observability collector.
@@ -453,7 +455,7 @@ type VpcEgressGatewayConntrackLogRateLimit struct {
 	Burst int32 `json:"burst,omitempty"`
 }
 
-// VpcEgressGatewayServiceMonitor configures metadata for the per-gateway ServiceMonitor.
+// VpcEgressGatewayServiceMonitor holds the legacy configuration for a per-gateway ServiceMonitor.
 type VpcEgressGatewayServiceMonitor struct {
 	Labels      map[string]string `json:"labels,omitempty"`
 	Annotations map[string]string `json:"annotations,omitempty"`

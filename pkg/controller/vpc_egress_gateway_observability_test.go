@@ -1,17 +1,14 @@
 package controller
 
 import (
-	"context"
 	"errors"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/version"
 	fakediscovery "k8s.io/client-go/discovery/fake"
@@ -35,6 +32,7 @@ func TestAddVpcEgressGatewayObserverUsesRestartableNonRootSidecar(t *testing.T) 
 	container := podSpec.InitContainers[0]
 	require.Equal(t, vpcEgressObserverContainerName, container.Name)
 	require.Equal(t, new(corev1.ContainerRestartPolicyAlways), container.RestartPolicy)
+	require.Equal(t, []corev1.ContainerPort{{Name: "metrics", ContainerPort: 10666}}, container.Ports)
 	require.Contains(t, container.Command[2], "exec sleep infinity")
 	require.Equal(t, "20m", container.Resources.Requests.Cpu().String())
 	require.Equal(t, "64Mi", container.Resources.Requests.Memory().String())
@@ -79,7 +77,7 @@ func TestCollectorSwitchesDoNotChangeObserverPodSpec(t *testing.T) {
 	require.Equal(t, first, second)
 }
 
-func TestReconcileVpcEgressGatewayObservabilityCreatesPerGatewayResources(t *testing.T) {
+func TestReconcileVpcEgressGatewayObservabilityLeavesScrapeResourcesUserManaged(t *testing.T) {
 	kubeClient := k8sfake.NewSimpleClientset()
 	dynamicClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
 	controller := &Controller{
@@ -87,39 +85,30 @@ func TestReconcileVpcEgressGatewayObservabilityCreatesPerGatewayResources(t *tes
 		addOrUpdateVpcEgressGatewayQueue: workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
 	}
 	controller.restartableInitContainerSupport = restartableInitContainerSupport{capability: restartableInitContainerCapabilitySupported}
-	gw := &kubeovnv1.VpcEgressGateway{
-		APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: "VpcEgressGateway",
-		Name: "gateway", Namespace: "ns", UID: types.UID("gateway-uid"), Generation: 1,
-		Spec: kubeovnv1.VpcEgressGatewaySpec{Observability: &kubeovnv1.VpcEgressGatewayObservability{
-			InterfaceMetrics: kubeovnv1.VpcEgressGatewayObservabilityFeature{Enabled: true},
-			ServiceMonitor:   kubeovnv1.VpcEgressGatewayServiceMonitor{Labels: map[string]string{"team": "network", "app": "must-not-override"}},
-		}},
-	}
+	gw := observabilityTestGateway()
+	gw.Status.Conditions.SetCondition(kubeovnv1.ServiceMonitorReady, corev1.ConditionTrue, "Ready", "", gw.Generation)
 	labels := vegWorkloadLabels(gw.Name)
 	state := controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", labels)
 	require.True(t, state.enabled)
-	configMap, err := kubeClient.CoreV1().ConfigMaps("ns").Get(context.Background(), state.configName, metav1.GetOptions{})
+	configMap, err := kubeClient.CoreV1().ConfigMaps(gw.Namespace).Get(t.Context(), state.configName, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.True(t, metav1.IsControlledBy(configMap, gw))
 	require.Nil(t, metav1.GetControllerOf(configMap).BlockOwnerDeletion)
 	require.Contains(t, configMap.Data["config.json"], `"externalNetwork":"ns/external"`)
-	service, err := kubeClient.CoreV1().Services("ns").Get(context.Background(), state.configName, metav1.GetOptions{})
-	require.NoError(t, err)
-	require.True(t, metav1.IsControlledBy(service, gw))
-	require.Nil(t, metav1.GetControllerOf(service).BlockOwnerDeletion)
-	require.Equal(t, corev1.ClusterIPNone, service.Spec.ClusterIP)
-	require.True(t, service.Spec.PublishNotReadyAddresses)
-	require.Equal(t, int32(10666), service.Spec.Ports[0].TargetPort.IntVal)
-	serviceMonitor, err := dynamicClient.Resource(serviceMonitorGVR).Namespace("ns").Get(context.Background(), state.configName, metav1.GetOptions{})
-	require.NoError(t, err)
-	require.True(t, metav1.IsControlledBy(serviceMonitor, gw))
-	require.Nil(t, metav1.GetControllerOf(serviceMonitor).BlockOwnerDeletion)
-	require.Equal(t, "network", serviceMonitor.GetLabels()["team"])
-	require.Equal(t, labels["app"], serviceMonitor.GetLabels()["app"])
 	require.Equal(t, corev1.ConditionTrue, gw.Status.Conditions.GetCondition(kubeovnv1.ObservabilityConfigured).Status)
-	require.Equal(t, corev1.ConditionTrue, gw.Status.Conditions.GetCondition(kubeovnv1.ServiceMonitorReady).Status)
+	require.Nil(t, gw.Status.Conditions.GetCondition(kubeovnv1.ServiceMonitorReady))
+
 	state = controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", labels)
 	require.True(t, state.enabled)
+
+	gw.Spec.Observability = nil
+	state = controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", labels)
+	require.False(t, state.enabled)
+	require.Nil(t, gw.Status.Conditions.GetCondition(kubeovnv1.ObservabilityConfigured))
+	require.Empty(t, dynamicClient.Actions())
+	for _, action := range kubeClient.Actions() {
+		require.Equal(t, "configmaps", action.GetResource().Resource)
+	}
 }
 
 func TestReconcileVpcEgressGatewayObservabilityDoesNotInjectWhenSidecarsUnsupported(t *testing.T) {
@@ -137,33 +126,6 @@ func TestReconcileVpcEgressGatewayObservabilityDoesNotInjectWhenSidecarsUnsuppor
 	condition := gw.Status.Conditions.GetCondition(kubeovnv1.ObservabilityConfigured)
 	require.Equal(t, corev1.ConditionFalse, condition.Status)
 	require.Equal(t, "UnsupportedKubernetesVersion", condition.Reason)
-}
-
-func TestReconcileVpcEgressGatewayObservabilitySoftFailsWithoutServiceMonitorCRD(t *testing.T) {
-	kubeClient := k8sfake.NewSimpleClientset()
-	dynamicClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
-	dynamicClient.PrependReactor("create", "servicemonitors", func(action k8stesting.Action) (bool, runtime.Object, error) {
-		name := action.(k8stesting.CreateAction).GetObject().(metav1.Object).GetName()
-		return true, nil, k8serrors.NewNotFound(schema.GroupResource{Group: "monitoring.coreos.com", Resource: "servicemonitors"}, name)
-	})
-	controller := &Controller{
-		config:                           &Configuration{KubeClient: kubeClient, DynamicClient: dynamicClient},
-		addOrUpdateVpcEgressGatewayQueue: workqueue.NewTypedRateLimitingQueue(workqueue.DefaultTypedControllerRateLimiter[string]()),
-	}
-	controller.restartableInitContainerSupport = restartableInitContainerSupport{capability: restartableInitContainerCapabilitySupported}
-	gw := &kubeovnv1.VpcEgressGateway{
-		APIVersion: kubeovnv1.SchemeGroupVersion.String(), Kind: "VpcEgressGateway",
-		Name: "gateway", Namespace: "ns", UID: types.UID("gateway-uid"), Generation: 1,
-		Spec: kubeovnv1.VpcEgressGatewaySpec{Observability: &kubeovnv1.VpcEgressGatewayObservability{
-			InterfaceMetrics: kubeovnv1.VpcEgressGatewayObservabilityFeature{Enabled: true},
-		}},
-	}
-	state := controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", vegWorkloadLabels(gw.Name))
-	require.True(t, state.enabled)
-	require.Equal(t, corev1.ConditionTrue, gw.Status.Conditions.GetCondition(kubeovnv1.ObservabilityConfigured).Status)
-	condition := gw.Status.Conditions.GetCondition(kubeovnv1.ServiceMonitorReady)
-	require.Equal(t, corev1.ConditionFalse, condition.Status)
-	require.Equal(t, "ServiceMonitorCRDNotInstalled", condition.Reason)
 }
 
 func TestReconcileVpcEgressGatewayObservabilityPreservesExistingObserverOnConfigMapFailure(t *testing.T) {
@@ -199,26 +161,6 @@ func TestReconcileVpcEgressGatewayObservabilityPreservesExistingObserverOnCapabi
 	condition := gw.Status.Conditions.GetCondition(kubeovnv1.ObservabilityConfigured)
 	require.Equal(t, corev1.ConditionFalse, condition.Status)
 	require.Equal(t, "SidecarContainersCapabilityUnknown", condition.Reason)
-}
-
-func TestReconcileVpcEgressGatewayObservabilityPreservesResourcesOnServiceFailure(t *testing.T) {
-	gw := observabilityTestGateway()
-	name := vpcEgressObserverResourceName(gw)
-	configMap := &corev1.ConfigMap{Name: name, Namespace: gw.Namespace}
-	service := &corev1.Service{Name: name, Namespace: gw.Namespace, Spec: corev1.ServiceSpec{ClusterIP: corev1.ClusterIPNone}}
-	require.NoError(t, setVpcEgressGatewayControllerReference(gw, configMap))
-	require.NoError(t, setVpcEgressGatewayControllerReference(gw, service))
-	kubeClient := k8sfake.NewSimpleClientset(configMap, service)
-	kubeClient.PrependReactor("update", "services", func(k8stesting.Action) (bool, runtime.Object, error) {
-		return true, nil, errors.New("transient service update failure")
-	})
-	controller := observabilityTestController(t, kubeClient, gw)
-
-	state := controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", vegWorkloadLabels(gw.Name))
-
-	requirePreservedObserverState(t, state)
-	_, err := kubeClient.CoreV1().ConfigMaps(gw.Namespace).Get(context.Background(), name, metav1.GetOptions{})
-	require.NoError(t, err, "the last-known-good observer ConfigMap must be retained")
 }
 
 func requirePreservedObserverState(t *testing.T, state vpcEgressObserverState) {

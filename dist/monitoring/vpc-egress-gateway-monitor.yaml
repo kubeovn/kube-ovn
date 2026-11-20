@@ -1,0 +1,21 @@
+# Enable interface or conntrack metrics in the VpcEgressGateway observability spec.
+# Set the namespace and labels to match your Prometheus PodMonitor selectors.
+# Use namespaceSelector.matchNames to restrict scraping to specific namespaces.
+# For a ServiceMonitor, create a Service selecting the gateway pods with targetPort 10666.
+# During migration, retire legacy scrape resources after verifying the new targets.
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: kube-ovn-vpc-egress-gateway
+  namespace: monitoring
+spec:
+  namespaceSelector:
+    any: true
+  podMetricsEndpoints:
+    - interval: 15s
+      path: /metrics
+      port: metrics
+      scrapeTimeout: 10s
+  selector:
+    matchLabels:
+      app: vpc-egress-gateway
