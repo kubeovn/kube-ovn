@@ -139,7 +139,7 @@ func (c *Controller) reconcileVpcEgressGatewayObservability(gw *kubeovnv1.VpcEgr
 
 	support := c.supportsRestartableInitContainers()
 	if !support.supported() {
-		c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ObservabilityConfigured, corev1.ConditionFalse, support.reason, support.message)
+		c.setVpcEgressGatewayObservabilityCondition(gw, corev1.ConditionFalse, support.reason, support.message)
 		if !support.definitive() {
 			c.addOrUpdateVpcEgressGatewayQueue.AddAfter(fmt.Sprintf("%s/%s", gw.Namespace, gw.Name), 30*time.Second)
 			return preservedState
@@ -148,17 +148,27 @@ func (c *Controller) reconcileVpcEgressGatewayObservability(gw *kubeovnv1.VpcEgr
 		return vpcEgressObserverState{}
 	}
 
-	observerConfig := vegobserver.Config{Namespace: gw.Namespace, Name: gw.Name, ExternalNetwork: externalNetwork, Observability: *gw.Spec.Observability.DeepCopy()}
+	observability := gw.Spec.Observability
+	observerConfig := vegobserver.Config{
+		Namespace:       gw.Namespace,
+		Name:            gw.Name,
+		ExternalNetwork: externalNetwork,
+		Observability: kubeovnv1.VpcEgressGatewayObservability{
+			Resources:        observability.Resources,
+			InterfaceMetrics: observability.InterfaceMetrics,
+			Conntrack:        observability.Conntrack,
+		},
+	}
 	data, err := json.Marshal(observerConfig)
 	if err != nil {
-		c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ObservabilityConfigured, corev1.ConditionFalse, "InvalidConfiguration", err.Error())
+		c.setVpcEgressGatewayObservabilityCondition(gw, corev1.ConditionFalse, "InvalidConfiguration", err.Error())
 		return preservedState
 	}
 	if err := c.reconcileVpcEgressObserverConfigMap(gw, resourceName, labels, data); err != nil {
-		c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ObservabilityConfigured, corev1.ConditionFalse, "ConfigMapReconcileFailed", err.Error())
+		c.setVpcEgressGatewayObservabilityCondition(gw, corev1.ConditionFalse, "ConfigMapReconcileFailed", err.Error())
 		return preservedState
 	}
-	c.setVpcEgressGatewayObservabilityCondition(gw, kubeovnv1.ObservabilityConfigured, corev1.ConditionTrue, "Configured", "")
+	c.setVpcEgressGatewayObservabilityCondition(gw, corev1.ConditionTrue, "Configured", "")
 	return vpcEgressObserverState{enabled: true, configName: resourceName}
 }
 
@@ -200,9 +210,9 @@ func (c *Controller) currentVpcEgressObserverState(gw *kubeovnv1.VpcEgressGatewa
 	return state
 }
 
-func (c *Controller) setVpcEgressGatewayObservabilityCondition(gw *kubeovnv1.VpcEgressGateway, conditionType kubeovnv1.ConditionType, status corev1.ConditionStatus, reason, message string) {
-	previous := gw.Status.Conditions.GetCondition(conditionType)
-	gw.Status.Conditions.SetCondition(conditionType, status, reason, message, gw.Generation)
+func (c *Controller) setVpcEgressGatewayObservabilityCondition(gw *kubeovnv1.VpcEgressGateway, status corev1.ConditionStatus, reason, message string) {
+	previous := gw.Status.Conditions.GetCondition(kubeovnv1.ObservabilityConfigured)
+	gw.Status.Conditions.SetCondition(kubeovnv1.ObservabilityConfigured, status, reason, message, gw.Generation)
 	if status == corev1.ConditionFalse && (previous == nil || previous.Status != status || previous.Reason != reason || previous.Message != message) {
 		c.recordVpcEgressGatewayEvent(gw, corev1.EventTypeWarning, reason, message)
 	}

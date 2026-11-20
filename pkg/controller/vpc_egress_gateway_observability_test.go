@@ -1,6 +1,7 @@
 package controller
 
 import (
+	json "encoding/json/v2"
 	"errors"
 	"testing"
 
@@ -98,8 +99,19 @@ func TestReconcileVpcEgressGatewayObservabilityLeavesScrapeResourcesUserManaged(
 	require.Equal(t, corev1.ConditionTrue, gw.Status.Conditions.GetCondition(kubeovnv1.ObservabilityConfigured).Status)
 	require.Nil(t, gw.Status.Conditions.GetCondition(kubeovnv1.ServiceMonitorReady))
 
+	require.NoError(t, json.Unmarshal([]byte(`{
+		"serviceMonitor": {
+			"labels": {"team": "network"},
+			"annotations": {"example.com/owner": "network"}
+		}
+	}`), gw.Spec.Observability))
+	updatedObservability := gw.Spec.Observability.DeepCopy()
 	state = controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", labels)
 	require.True(t, state.enabled)
+	updatedConfigMap, err := kubeClient.CoreV1().ConfigMaps(gw.Namespace).Get(t.Context(), state.configName, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, configMap.Data, updatedConfigMap.Data)
+	require.Equal(t, updatedObservability, gw.Spec.Observability)
 
 	gw.Spec.Observability = nil
 	state = controller.reconcileVpcEgressGatewayObservability(gw, "ns/external", labels)
