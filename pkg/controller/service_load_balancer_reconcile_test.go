@@ -237,12 +237,17 @@ func TestRouterLBRuleHealthCheckReconcileUsesIPv6SourceBrackets(t *testing.T) {
 			require.Len(t, healthChecks, len(wantHealthCheckVIPs))
 			healthCheckUUIDs := make([]string, 0, len(healthChecks))
 			healthCheckVIPs := make([]string, 0, len(healthChecks))
+			healthChecksByVIP := make(map[string]string, len(healthChecks))
 			for _, healthCheck := range healthChecks {
 				healthCheckUUIDs = append(healthCheckUUIDs, healthCheck.UUID)
 				healthCheckVIPs = append(healthCheckVIPs, healthCheck.Vip)
+				healthChecksByVIP[healthCheck.Vip] = healthCheck.UUID
 			}
 			require.ElementsMatch(t, lb.HealthCheck, healthCheckUUIDs)
 			require.ElementsMatch(t, wantHealthCheckVIPs, healthCheckVIPs)
+			for _, vip := range wantHealthCheckVIPs {
+				require.Contains(t, lb.HealthCheck, healthChecksByVIP[vip])
+			}
 		})
 	}
 }
@@ -270,6 +275,10 @@ func TestRouterLBRuleHealthCheckReconcileDisablesAndPrunesFamilyMappings(t *test
 	require.NoError(t, ctrl.reconcileServiceEndpointSlices(svc, endpoints))
 	lb, err = nbClient.GetLoadBalancer(lbName, false)
 	require.NoError(t, err)
+	require.Equal(t, map[string]string{
+		"192.0.2.100:80": "10.0.0.2:8080",
+		"[fd00::100]:80": "[fd00::2]:8080",
+	}, lb.Vips)
 	require.Equal(t, map[string]string{"[fd00::2]": "backend.default:[fd00::254]"}, lb.IPPortMappings)
 	require.Len(t, lb.HealthCheck, 1)
 	healthChecks, err = nbClient.ListLoadBalancerHealthChecks(nil)
