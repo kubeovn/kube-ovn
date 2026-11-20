@@ -933,7 +933,7 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 			continue
 		}
 		klog.V(3).Infof("redo eip %s", eip.Name)
-		if err = c.patchEipStatus(eip.Name, "", redoToken, "", false); err != nil {
+		if err = c.patchEipReplayStatus(eip.Name, redoToken, "", false); err != nil {
 			return fmt.Errorf("failed to update eip %s for re-apply: %w", eip.Name, err)
 		}
 	}
