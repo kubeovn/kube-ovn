@@ -4,6 +4,9 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega/gbytes"
 )
 
 type zeroTailTestNode struct {
@@ -101,5 +104,34 @@ func TestZeroTailBackupsSurviveFailedRestart(t *testing.T) {
 				t.Fatalf("backup must be restored and retained after failed ensemble restart: %s", calls)
 			}
 		})
+	}
+}
+
+func TestZeroTailRestoreErrorLoggedBeforeRestartPanic(t *testing.T) {
+	output := gbytes.NewBuffer()
+	ginkgo.GinkgoWriter.TeeTo(output)
+	t.Cleanup(ginkgo.GinkgoWriter.ClearTeeWriters)
+	node := &zeroTailTestNode{name: "failed-member", fail: "cp"}
+	members := map[string]*zeroTailMember{
+		"failed-member": {node: node, backup: "member.backup", backedUp: true},
+	}
+	panicked := false
+	var cleanupErr error
+	func() {
+		defer func() { panicked = recover() != nil }()
+		cleanupErr = cleanupZeroTailRecovery(members, "database.db", true, func() error {
+			panic("injected rollout assertion")
+		})
+	}()
+	if !panicked {
+		t.Fatalf("restart assertion must propagate; cleanup returned %v", cleanupErr)
+	}
+	for _, want := range []string{"restore failed-member", "stderr=injected failure"} {
+		if logged := string(output.Contents()); !strings.Contains(logged, want) {
+			t.Errorf("restore diagnostic %q lost when restart panicked: %s", want, logged)
+		}
+	}
+	if calls := strings.Join(node.called, "\n"); strings.Contains(calls, "rm ") {
+		t.Fatalf("failed recovery must retain its backup: %s", calls)
 	}
 }

@@ -103,6 +103,10 @@ func cleanupZeroTailRecovery(members map[string]*zeroTailMember, path string, re
 	var restoreErr error
 	if restore {
 		restoreErr = restoreZeroTailFiles(members, path)
+		if restoreErr != nil {
+			// Restart assertions can panic before the combined error returns.
+			framework.Logf("database file restoration failed before central restart: %v", restoreErr)
+		}
 	}
 	restartErr := restart()
 	// Keep every backup until both the files and the running ensemble recover.
