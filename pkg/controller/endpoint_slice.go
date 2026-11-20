@@ -330,14 +330,14 @@ func (c *Controller) endpointSliceServiceProfile(svc *v1.Service) (endpointSlice
 		distributedLocal:     serviceUsesDistributedLB(svc),
 	}
 
-	if vip := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; vip != "" {
-		profile.addVIP(vip, serviceLBExternalTraffic, svc, true)
+	if vips := svc.Annotations[util.SwitchLBRuleVipsAnnotation]; vips != "" {
+		for _, vip := range splitRuleVIPs(vips) {
+			profile.addVIP(vip, serviceLBExternalTraffic, svc, true)
+		}
 	} else if vips := svc.Annotations[util.RouterLBRuleVipsAnnotation]; vips != "" {
 		enableHealthCheck := svc.Annotations[util.ServiceHealthCheck] == "true"
-		for vip := range strings.SplitSeq(vips, ",") {
-			if vip = strings.TrimSpace(vip); vip != "" {
-				profile.addVIP(vip, serviceLBExternalTraffic, svc, enableHealthCheck)
-			}
+		for _, vip := range splitRuleVIPs(vips) {
+			profile.addVIP(vip, serviceLBExternalTraffic, svc, enableHealthCheck)
 		}
 	} else {
 		for _, vip := range util.ServiceClusterIPs(*svc) {
@@ -359,6 +359,16 @@ func (c *Controller) endpointSliceServiceProfile(svc *v1.Service) (endpointSlice
 		}
 	}
 	return profile, nil
+}
+
+func splitRuleVIPs(vips string) []string {
+	result := make([]string, 0, 2)
+	for vip := range strings.SplitSeq(vips, ",") {
+		if vip = strings.TrimSpace(vip); vip != "" {
+			result = append(result, vip)
+		}
+	}
+	return result
 }
 
 func (p *endpointSliceServiceProfile) addVIP(vip string, trafficClass serviceLBTrafficClass, svc *v1.Service, enableHealthCheck bool) {
@@ -534,6 +544,10 @@ func (c *Controller) reconcileServiceEndpointVIPs(reconcileCtx *endpointSliceRec
 }
 
 func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReconcileContext, lbVip string, port v1.ServicePort) error {
+	if util.CheckProtocol(lbVip) != kubeovnv1.ProtocolIPv4 && !reconcileCtx.profile.ignoreHealthCheck {
+		reconcileCtx.profile.ignoreHealthCheck = true
+		defer func() { reconcileCtx.profile.ignoreHealthCheck = false }()
+	}
 	svc, profile := reconcileCtx.service, reconcileCtx.profile
 	state := &serviceEndpointVIPState{
 		port:         port,
