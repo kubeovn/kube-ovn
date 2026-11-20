@@ -683,6 +683,29 @@ func sortedServices(services []*v1.Service) []*v1.Service {
 	return sorted
 }
 
+func serviceHostSNATIPsForProtocol(service *v1.Service, protocol string) []string {
+	ips := serviceClusterIPsForProtocol(service, protocol)
+	ips = append(ips, serviceLoadBalancerVIPsForProtocol(service, protocol)...)
+	slices.Sort(ips)
+	return slices.Compact(ips)
+}
+
+func serviceLoadBalancerVIPsForProtocol(service *v1.Service, protocol string) []string {
+	var ips []string
+	for _, ingress := range service.Status.LoadBalancer.Ingress {
+		if ingress.IPMode != nil && *ingress.IPMode != v1.LoadBalancerIPModeVIP {
+			continue
+		}
+		ip := net.ParseIP(ingress.IP)
+		if ip == nil || util.CheckProtocol(ip.String()) != protocol {
+			continue
+		}
+		ips = append(ips, ip.String())
+	}
+	slices.Sort(ips)
+	return slices.Compact(ips)
+}
+
 func generateHostServiceSNATRules(services []*v1.Service, protocol, matchset, nodeIP string) []util.IPTableRule {
 	if nodeIP == "" {
 		return nil
@@ -690,7 +713,7 @@ func generateHostServiceSNATRules(services []*v1.Service, protocol, matchset, no
 
 	rules := make([]util.IPTableRule, 0)
 	for _, service := range sortedServices(services) {
-		for _, clusterIP := range serviceClusterIPsForProtocol(service, protocol) {
+		for _, serviceIP := range serviceHostSNATIPsForProtocol(service, protocol) {
 			for _, port := range service.Spec.Ports {
 				proto, ok := serviceIptablesProtocol(port.Protocol)
 				if !ok {
@@ -701,7 +724,35 @@ func generateHostServiceSNATRules(services []*v1.Service, protocol, matchset, no
 					Chain: OvnPostrouting,
 					Rule: strings.Fields(fmt.Sprintf(
 						`-p %[1]s -m addrtype --src-type LOCAL -m set --match-set %[2]s dst -m conntrack --ctstate DNAT --ctorigdst %[3]s --ctorigdstport %[4]d -j SNAT --to-source %[5]s`,
-						proto, matchset, clusterIP, port.Port, nodeIP,
+						proto, matchset, serviceIP, port.Port, nodeIP,
+					)),
+				})
+			}
+		}
+	}
+	return rules
+}
+
+// generateHostServiceIPVSSNATRules handles host connections translated by IPVS,
+// which do not necessarily have conntrack's virtual DNAT state set.
+func generateHostServiceIPVSSNATRules(services []*v1.Service, protocol, matchset, nodeIP string) []util.IPTableRule {
+	if nodeIP == "" {
+		return nil
+	}
+	var rules []util.IPTableRule
+	for _, service := range sortedServices(services) {
+		for _, vip := range serviceLoadBalancerVIPsForProtocol(service, protocol) {
+			for _, port := range service.Spec.Ports {
+				proto, ok := serviceIptablesProtocol(port.Protocol)
+				if !ok {
+					continue
+				}
+				rules = append(rules, util.IPTableRule{
+					Table: NAT,
+					Chain: OvnPostrouting,
+					Rule: strings.Fields(fmt.Sprintf(
+						`-p %s -m addrtype --src-type LOCAL -m set --match-set %s dst -m ipvs --vaddr %s --vport %d --vdir ORIGINAL -j SNAT --to-source %s`,
+						proto, matchset, vip, port.Port, nodeIP,
 					)),
 				})
 			}
@@ -939,6 +990,9 @@ func (c *Controller) setIptables() error {
 			}
 			iptablesRules = rules
 			hostServiceSNATRules := generateHostServiceSNATRules(allServices, protocol, matchset, nodeIP)
+			if existingIPSets.Has(fmt.Sprintf("KUBE-%sIPVS-IPS", kubeProxyIpsetProtocol)) {
+				hostServiceSNATRules = append(generateHostServiceIPVSSNATRules(allServices, protocol, matchset, nodeIP), hostServiceSNATRules...)
+			}
 			if len(hostServiceSNATRules) != 0 {
 				rules := make([]util.IPTableRule, 0, len(iptablesRules)+len(hostServiceSNATRules))
 				rules = append(rules, iptablesRules[:2]...)
