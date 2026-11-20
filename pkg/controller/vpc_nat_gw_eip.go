@@ -198,7 +198,7 @@ func (c *Controller) handleResetIptablesEip(key string) error {
 		klog.Errorf("failed to patch label for eip %s, %v", key, err)
 		return err
 	}
-	if err := c.patchEipStatus(key, "", "", "", true); err != nil {
+	if err := c.refreshEipNat(key); err != nil {
 		klog.Errorf("failed to reset nat for eip %s, %v", key, err)
 		return err
 	}
@@ -1036,75 +1036,31 @@ func (c *Controller) getIptablesEipNat(eip *kubeovnv1.IptablesEIP) (string, erro
 	return nat, nil
 }
 
-// patchEipStatus refreshes Nat and the ordinary EIP status fields. A non-empty redo is the replay
-// invalidation path, while an empty redo leaves readiness untouched so a stale NAT refresh cannot
-// resurrect an EIP whose API status is still pending replay.
-func (c *Controller) patchEipStatus(key, v4ip, redo, qos string, ready bool) error {
+func (c *Controller) refreshEipNat(key string) error {
 	eip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-		klog.Error(err)
 		return err
-	}
-	patch := util.KVPatch{}
-	if redo != "" {
-		patch = natStatusPatch(eip.Status.Ready, eip.Status.Redo, ready, redo, false)
-	}
-	if ready && v4ip != "" && eip.Status.IP != v4ip {
-		patch["ip"] = v4ip
 	}
 	nat, err := c.getIptablesEipNat(eip)
 	if err != nil {
-		err = fmt.Errorf("failed to get eip nat: %w", err)
-		klog.Error(err)
-		return err
+		return fmt.Errorf("failed to get eip nat: %w", err)
 	}
 	klog.V(3).Infof("nat of eip %s is %s", eip.Name, nat)
 	if eip.Status.Nat != nat {
-		patch["nat"] = nat
-	}
-	if qos != "" && eip.Status.QoSPolicy != qos {
-		patch["qosPolicy"] = qos
-	}
-
-	if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, patch); err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to patch eip %s, %v", key, err)
-		return err
+		if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, util.KVPatch{"nat": nat}); err != nil && !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("failed to patch eip %s: %w", key, err)
+		}
 	}
 	return nil
 }
 
-// patchEipReplayStatus records replay progress and the applied QoS policy. NAT associations
-// are refreshed separately because the rule informers can lag behind the API.
-func (c *Controller) patchEipReplayStatus(key, redo, qos string, ready bool) error {
-	eip, err := c.iptablesEipsLister.Get(key)
-	if err != nil {
-		if k8serrors.IsNotFound(err) {
-			return nil
-		}
-		klog.Error(err)
-		return err
-	}
-	if redo != "" {
-		current, err := c.replayTokenMatchesGateway(eip.Spec.NatGwDp, redo)
-		if err != nil {
-			return err
-		}
-		if !current {
-			return nil
-		}
-	}
-	patch := natStatusPatch(eip.Status.Ready, eip.Status.Redo, ready, redo, ready)
-	if qos != "" && eip.Status.QoSPolicy != qos {
-		patch["qosPolicy"] = qos
-	}
-	if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, patch); err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to patch eip %s, %v", key, err)
-		return err
-	}
-	return nil
+func (c *Controller) markEipNotReady(key, redo string) error {
+	return updateIptablesStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, func(eip *kubeovnv1.IptablesEIP) bool {
+		return markNatStatusNotReady(&eip.Status.Ready, &eip.Status.Redo, redo)
+	})
 }
 
 // completeEipReplay marks an EIP ready only when the replay token observed by its worker is
