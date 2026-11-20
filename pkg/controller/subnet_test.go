@@ -793,7 +793,6 @@ func Test_reconcileVips(t *testing.T) {
 		err := ctrl.reconcileVips(subnet)
 		require.NoError(t, err)
 	})
-
 }
 
 func Test_reconcileVipsPreservesVipCRPort(t *testing.T) {
