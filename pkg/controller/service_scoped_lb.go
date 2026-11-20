@@ -69,6 +69,28 @@ func serviceUsesScopedLB(svc *v1.Service) bool {
 	return svc.Spec.Type != v1.ServiceTypeExternalName && svc.Spec.ClusterIP != v1.ClusterIPNone
 }
 
+func serviceRejectsEmptyBackends(svc *v1.Service, trafficClass serviceLBTrafficClass) bool {
+	// Legacy VPC load balancers are shared across services and do not carry the
+	// service-scoped reject option. Keep their headless Service behavior, which
+	// removes an empty VIP instead of retaining it without a rejection action.
+	if !serviceUsesScopedLB(svc) {
+		return false
+	}
+	// Keep distributed and external-local template load balancers' drop semantics.
+	// Other service-scoped load balancers reject an empty backend set so their VIP
+	// remains present and OVN rejects new connections until an endpoint returns.
+	if (trafficClass == serviceLBInternalTraffic && serviceUsesDistributedLB(svc)) ||
+		(trafficClass == serviceLBExternalTraffic && serviceUsesExternalLocalTemplate(svc)) {
+		return false
+	}
+	switch serviceScopedLBOwner(svc).kind {
+	case serviceLBOwnerKind, switchLBRuleLBOwnerKind, routerLBRuleLBOwnerKind:
+		return true
+	default:
+		return false
+	}
+}
+
 func serviceScopedLBOwner(svc *v1.Service) serviceLBOwner {
 	owner := serviceLBOwner{
 		kind:      serviceLBOwnerKind,
@@ -398,6 +420,11 @@ func (c *Controller) ensureServiceScopedLBForTrafficClass(svc *v1.Service, proto
 	distributed := trafficClass == serviceLBInternalTraffic && serviceUsesDistributedLB(svc)
 	options := make(map[string]string)
 	deleteOptions := make([]string, 0, 2)
+	if serviceRejectsEmptyBackends(svc, trafficClass) {
+		options["reject"] = "true"
+	} else {
+		deleteOptions = append(deleteOptions, "reject")
+	}
 	if svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP {
 		options["affinity_timeout"] = strconv.Itoa(timeout)
 	} else {
