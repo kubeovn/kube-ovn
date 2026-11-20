@@ -497,6 +497,23 @@ func Test_reconcileVips(t *testing.T) {
 		err := ctrl.reconcileVips(subnet)
 		require.NoError(t, err)
 	})
+
+	t.Run("a subnet vip port with stale virtual ip is recreated", func(t *testing.T) {
+		subnet := &kubeovnv1.Subnet{
+			Name: "ovn-test",
+			Spec: kubeovnv1.SubnetSpec{
+				Vips: []string{"192.168.123.20"},
+			},
+		}
+		stalePort := mockLsp(subnet.Name, lspName("192.168.123.20"), "192.168.123.21")
+
+		mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitchPort{stalePort}, nil)
+		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspName("192.168.123.20")).Return(nil)
+		mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name, "192.168.123.20").Return(nil)
+
+		err := ctrl.reconcileVips(subnet)
+		require.NoError(t, err)
+	})
 }
 
 func Test_syncVirtualPort(t *testing.T) {
