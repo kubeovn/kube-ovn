@@ -489,7 +489,7 @@ func (c *Controller) handleUpdateVpcEip(natGwKey string) error {
 	for _, eip := range eips {
 		if eip.Spec.NatGwDp == natGwKey && eip.Status.Redo != natGwCreatedAT {
 			klog.V(3).Infof("redo eip %s", eip.Name)
-			if err = c.patchEipReplayStatus(eip.Name, natGwCreatedAT, "", false); err != nil {
+			if err = c.markEipNotReady(eip.Name, natGwCreatedAT); err != nil {
 				klog.Errorf("failed to update eip '%s' to re-apply, %v", eip.Name, err)
 				return err
 			}
