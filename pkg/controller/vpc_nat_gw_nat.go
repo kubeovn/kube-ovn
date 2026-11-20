@@ -318,7 +318,7 @@ func (c *Controller) fipTryUseEip(fipName, eipV4IP string) error {
 //     b. createFipInPod  (create dimension 1 with new values from Spec+EIP)
 //     c. patchFipStatus  (update dimension 2 to match new iptables rule)
 //     d. patchFipLabel   (update dimension 3 to match new EIP)
-//     e. patchEipStatus  (update dimension 4 on new EIP)
+//     e. patchEipStatus (update dimension 4 on new EIP)
 //     f. resetOldEip     (async clean dimension 4 on old EIP, if EIP changed)
 //     If any step fails, returns error to retry. Iptables operations are idempotent.
 //
@@ -1373,7 +1373,7 @@ func (c *Controller) redoFip(key, redo string, eipReady bool) error {
 				klog.Error(err)
 				return err
 			}
-			if err = c.patchEipStatus(fip.Spec.EIP, "", redo, "", false); err != nil {
+			if err = c.patchEipReplayStatus(fip.Spec.EIP, redo, "", false); err != nil {
 				err = fmt.Errorf("failed to patch eip %s, %w", fip.Spec.EIP, err)
 				klog.Error(err)
 				return err
@@ -1490,7 +1490,7 @@ func (c *Controller) redoDnat(key, redo string, eipReady bool) error {
 	}
 	if redo != "" && redo != dnat.Status.Redo {
 		if !eipReady {
-			if err = c.patchEipStatus(dnat.Spec.EIP, "", redo, "", false); err != nil {
+			if err = c.patchEipReplayStatus(dnat.Spec.EIP, redo, "", false); err != nil {
 				err = fmt.Errorf("failed to patch eip %s, %w", dnat.Spec.EIP, err)
 				klog.Error(err)
 				return err
@@ -1601,7 +1601,7 @@ func (c *Controller) redoSnat(key, redo string, eipReady bool) error {
 	}
 	if redo != "" && redo != snat.Status.Redo {
 		if !eipReady {
-			if err = c.patchEipStatus(snat.Spec.EIP, "", redo, "", false); err != nil {
+			if err = c.patchEipReplayStatus(snat.Spec.EIP, redo, "", false); err != nil {
 				err = fmt.Errorf("failed to patch eip %s, %w", snat.Spec.EIP, err)
 				klog.Error(err)
 				return err
