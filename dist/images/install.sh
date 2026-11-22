@@ -3536,9 +3536,9 @@ spec:
                 type: string
                 x-kubernetes-validations:
                 - message: vip must be one IP address or one IPv4 and one IPv6 address
-                  rule: self.split(',').size() <= 2 && self.split(',').all(s, isIP(s.trim()))
-                    && (self.split(',').size() == 1 || ip(self.split(',')[0].trim()).family()
-                    != ip(self.split(',')[1].trim()).family())
+                  rule: self.split(',').size() <= 2 && self.split(',').all(s, s.trim().matches('^(((25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])[.]){3}(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])|[0-9a-fA-F:.]*:[0-9a-fA-F:.]*)$'))
+                    && (self.split(',').size() == 1 || self.split(',')[0].contains(':')
+                    != self.split(',')[1].contains(':'))
             type: object
           status:
             properties:
