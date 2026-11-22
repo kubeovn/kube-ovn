@@ -33,8 +33,10 @@ func newTestDNSDeployment(namespace, name, k8sApp, containerName, image string) 
 func saveVpcDNSGlobals(t *testing.T) {
 	t.Helper()
 	image, vip, nad, provider, version, host, port, enabled := corednsImage, corednsVip, nadName, nadProvider, cmVersion, k8sServiceHost, k8sServicePort, enableCoreDNS
+	applied, synced := appliedEnableCoreDNS, vpcDNSConfigSynced
 	t.Cleanup(func() {
 		corednsImage, corednsVip, nadName, nadProvider, cmVersion, k8sServiceHost, k8sServicePort, enableCoreDNS = image, vip, nad, provider, version, host, port, enabled
+		appliedEnableCoreDNS, vpcDNSConfigSynced = applied, synced
 	})
 }
 
@@ -141,6 +143,7 @@ func TestResyncVpcDNSConfigImage(t *testing.T) {
 		objects       []runtime.Object
 		expectedImage string
 		expectEnabled bool
+		expectVersion string
 	}{
 		{
 			name:          "coredns-image set",
@@ -148,6 +151,7 @@ func TestResyncVpcDNSConfigImage(t *testing.T) {
 			objects:       []runtime.Object{rke2DNS},
 			expectedImage: "example.com/coredns:custom",
 			expectEnabled: true,
+			expectVersion: "1",
 		},
 		{
 			name:          "coredns-image not set, rke2 deployment",
@@ -155,12 +159,15 @@ func TestResyncVpcDNSConfigImage(t *testing.T) {
 			objects:       []runtime.Object{rke2DNS},
 			expectedImage: "rancher/hardened-coredns:v1.14.7-build20261020",
 			expectEnabled: true,
+			expectVersion: "1",
 		},
 		{
 			name:          "coredns-image not set, no coredns deployment",
 			data:          map[string]string{"enable-vpc-dns": "true"},
 			expectedImage: "",
 			expectEnabled: false,
+			// not applied, so the lookup is retried on the next resync
+			expectVersion: "",
 		},
 	}
 
@@ -168,6 +175,7 @@ func TestResyncVpcDNSConfigImage(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			saveVpcDNSGlobals(t)
 			cmVersion, enableCoreDNS, corednsImage = "", false, "example.com/coredns:stale"
+			appliedEnableCoreDNS, vpcDNSConfigSynced = false, false
 			cm := &corev1.ConfigMap{
 				Namespace:       metav1.NamespaceSystem,
 				Name:            util.VpcDNSConfig,
@@ -180,7 +188,7 @@ func TestResyncVpcDNSConfigImage(t *testing.T) {
 
 			require.Equal(t, tt.expectedImage, corednsImage)
 			require.Equal(t, tt.expectEnabled, enableCoreDNS)
-			require.Equal(t, "1", cmVersion)
+			require.Equal(t, tt.expectVersion, cmVersion)
 			if _, ok := tt.data["coredns-image"]; ok {
 				require.Empty(t, c.config.KubeClient.(*fake.Clientset).Actions(), "no coredns deployment lookup expected")
 			}
