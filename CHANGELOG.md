@@ -842,6 +842,22 @@
  * zhaoxuan
  * 张祖建
 
+## v1.16.20 (2026-11-18)
+
+ * [fca3416ff](https://github.com/kubeovn/kube-ovn/commit/fca3416ffc311875f3872bd4eb098d4b9c3f6a19) release v1.16.20
+ * [9454a2dec](https://github.com/kubeovn/kube-ovn/commit/9454a2dec7a422c7da239cfe0575300bc247d144) fix(deps): update golang (release-1.16) (#8017)
+ * [a09498fdd](https://github.com/kubeovn/kube-ovn/commit/a09498fdd5200dc36055ca6128c32c2754de73a8) [release-1.16] fix(gc): skip default-provider VM LSP in non-primary CNI mode (#8015)
+ * [fe9be0d4b](https://github.com/kubeovn/kube-ovn/commit/fe9be0d4b1009e3e9d0223b3583fe92434ca35a2) [release-1.16] fix(tproxy): support startup probe ports (#8013)
+ * [6ab9dc443](https://github.com/kubeovn/kube-ovn/commit/6ab9dc443963053b648b9edb5c6a6fd07d15e86e) [release-1.16] fix(deps): update OpenTelemetry to v1.47.0 (#8006)
+ * [bd854dd21](https://github.com/kubeovn/kube-ovn/commit/bd854dd217078f9e2dcb6ed52e1eec0ed4f5fd44) [release-1.16] fix(ovn): keep comma separated list values in ipv6RAConfigs (#8004)
+ * [2119ac6cf](https://github.com/kubeovn/kube-ovn/commit/2119ac6cf615a4411dc7bc15719fdc253eb6e5fa) prepare for next release
+
+### Contributors
+
+ * renovate[bot]
+ * zhangzujian
+ * 张祖建
+
 ## v1.16.19 (2026-11-13)
 
  * [547f61442](https://github.com/kubeovn/kube-ovn/commit/547f61442ad0f6ac8c1ad7fc20d43bcbf1323ffd) release v1.16.19
@@ -1658,6 +1674,19 @@
  * jskrill
  * renovate[bot]
  * zbb88888
+ * zhangzujian
+ * 张祖建
+
+## v1.15.35 (2026-11-18)
+
+ * [a2dace098](https://github.com/kubeovn/kube-ovn/commit/a2dace098bbaaee6a2954a1527bbefa25165086f) release v1.15.35
+ * [6f35eb20f](https://github.com/kubeovn/kube-ovn/commit/6f35eb20f3b26f49b47871d644138804838b7e42) test(controller): cover both SwitchLB VIP cache timings (#8024)
+ * [e2223c186](https://github.com/kubeovn/kube-ovn/commit/e2223c1869562bcdc7f3a1d70cc17a8179a2dd17) fix(deps): update golang (release-1.15) (#8019)
+ * [41f8aba41](https://github.com/kubeovn/kube-ovn/commit/41f8aba417a00497ac9b5d59fb2059f3c7ffc36e) [release-1.15] fix(deps): update OpenTelemetry to v1.47.0 (#8009)
+ * [1a87ae9b1](https://github.com/kubeovn/kube-ovn/commit/1a87ae9b1cff42d09702946d472b804ba0bbdbfa) prepare for next release
+
+### Contributors
+
  * zhangzujian
  * 张祖建
 

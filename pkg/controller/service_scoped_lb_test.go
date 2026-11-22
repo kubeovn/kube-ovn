@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -1299,6 +1300,144 @@ func TestGetDistributedIPPortMapping(t *testing.T) {
 	endpointSlice.Endpoints = []discoveryv1.Endpoint{endpoint}
 	if _, err := ctrl.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{endpointSlice}, service, servicePort, "10.96.0.10"); err == nil {
 		t.Fatal("expected ready endpoint without target to fail")
+	}
+}
+
+func TestGetDistributedIPPortMappingHostNetwork(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		serviceIP   string
+		backendIP   string
+		nodeName    string
+		missingPort bool
+		wantErr     string
+	}{
+		{name: "ipv4", serviceIP: "10.96.0.10", backendIP: "192.0.2.10", nodeName: "worker"},
+		{name: "ipv6", serviceIP: "fd00:10:96::a", backendIP: "2001:db8::10", nodeName: "worker"},
+		{name: "unassigned node", serviceIP: "10.96.0.10", backendIP: "192.0.2.10", wantErr: "has no node assigned"},
+		{name: "missing node port", serviceIP: "10.96.0.10", backendIP: "192.0.2.10", nodeName: "worker", missingPort: true, wantErr: "does not exist"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := &corev1.Pod{
+				Namespace: "default", Name: "agent",
+				Spec: corev1.PodSpec{HostNetwork: true, NodeName: tt.nodeName},
+			}
+			fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Pods:    []*corev1.Pod{pod},
+				Subnets: []*kubeovnv1.Subnet{{Name: util.DefaultSubnet}},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			portName := util.NodeLspName(pod.Spec.NodeName)
+			if tt.nodeName != "" {
+				var port *ovnnb.LogicalSwitchPort
+				if !tt.missingPort {
+					port = &ovnnb.LogicalSwitchPort{Name: portName}
+				}
+				fake.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, true).Return(port, nil)
+			}
+			service := &corev1.Service{Namespace: "default", Name: "agent", Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "agent"}}}
+			endpointSlice := &discoveryv1.EndpointSlice{
+				Ports: []discoveryv1.EndpointPort{{Port: new(int32(8080))}},
+				Endpoints: []discoveryv1.Endpoint{{
+					Addresses: []string{tt.backendIP},
+					TargetRef: &corev1.ObjectReference{Kind: "Pod", Namespace: pod.Namespace, Name: pod.Name},
+				}},
+			}
+			mapping, err := fake.fakeController.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{endpointSlice}, service, corev1.ServicePort{Port: 80}, tt.serviceIP)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("getDistributedIPPortMapping() error = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("host-network agent must map to its node port: %v", err)
+			}
+			key := tt.backendIP
+			if util.CheckProtocol(key) == kubeovnv1.ProtocolIPv6 {
+				key = "[" + key + "]"
+			}
+			if len(mapping) != 1 || mapping[key] != portName {
+				t.Fatalf("distributed mapping = %v, want %s mapped to %s", mapping, key, portName)
+			}
+		})
+	}
+}
+
+func TestGetDistributedIPPortMappingHostNetworkCacheSkew(t *testing.T) {
+	for _, tt := range []struct {
+		name         string
+		podUID       types.UID
+		endpointUID  types.UID
+		podNode      string
+		endpointNode string
+		regularPod   bool
+		wantErr      string
+	}{
+		{name: "pod cache behind endpoint", podUID: "old", endpointUID: "new", podNode: "old-node", endpointNode: "new-node", wantErr: "UID"},
+		{name: "endpoint cache behind pod", podUID: "new", endpointUID: "old", podNode: "new-node", endpointNode: "old-node", wantErr: "UID"},
+		{name: "node mismatch without UID", podNode: "old-node", endpointNode: "new-node", wantErr: "node"},
+		{name: "regular pod replaced by host-network pod", podUID: "old", endpointUID: "new", podNode: "old-node", endpointNode: "new-node", regularPod: true, wantErr: "UID"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := &corev1.Pod{
+				Namespace: "default", Name: "agent", UID: tt.podUID,
+				Annotations: map[string]string{util.LogicalSwitchAnnotation: util.DefaultSubnet},
+				Spec:        corev1.PodSpec{HostNetwork: !tt.regularPod, NodeName: tt.podNode},
+			}
+			fake, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Pods:    []*corev1.Pod{pod},
+				Subnets: []*kubeovnv1.Subnet{{Name: util.DefaultSubnet}},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Both ports exist: stale cache data must fail before choosing a chassis.
+			for _, node := range []string{"old-node", "new-node"} {
+				portName := util.NodeLspName(node)
+				fake.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, true).
+					Return(&ovnnb.LogicalSwitchPort{Name: portName}, nil).AnyTimes()
+			}
+			if tt.regularPod {
+				portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
+				fake.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, true).
+					Return(&ovnnb.LogicalSwitchPort{Name: portName}, nil).AnyTimes()
+			}
+			svc := &corev1.Service{Namespace: "default", Name: "agent", Spec: corev1.ServiceSpec{Selector: map[string]string{"app": "agent"}}}
+			endpointSlice := &discoveryv1.EndpointSlice{
+				Ports: []discoveryv1.EndpointPort{{Port: new(int32(8080))}},
+				Endpoints: []discoveryv1.Endpoint{{
+					Addresses: []string{"192.0.2.20"}, NodeName: new(tt.endpointNode),
+					TargetRef: &corev1.ObjectReference{Kind: "Pod", Namespace: pod.Namespace, Name: pod.Name, UID: tt.endpointUID},
+				}},
+			}
+			if tt.endpointUID == "old" {
+				endpointSlice.Endpoints[0].Addresses = []string{"192.0.2.10"}
+			}
+			mapping, err := fake.fakeController.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{endpointSlice}, svc, corev1.ServicePort{Port: 80}, "10.96.0.10")
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("cache skew must retry instead of installing mapping %v: error = %v, want %q", mapping, err, tt.wantErr)
+			}
+
+			// Once both caches converge on the replacement Pod, retry must succeed.
+			pod = pod.DeepCopy()
+			pod.UID, pod.Spec.NodeName, pod.Spec.HostNetwork = "new", "new-node", true
+			if err := fake.fakeInformers.podInformer.Informer().GetIndexer().Update(pod); err != nil {
+				t.Fatal(err)
+			}
+			endpointSlice.Endpoints[0].TargetRef.UID = pod.UID
+			endpointSlice.Endpoints[0].NodeName = new(pod.Spec.NodeName)
+			endpointSlice.Endpoints[0].Addresses = []string{"192.0.2.20"}
+			mapping, err = fake.fakeController.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{endpointSlice}, svc, corev1.ServicePort{Port: 80}, "10.96.0.10")
+			if err != nil {
+				t.Fatalf("retry after cache convergence: %v", err)
+			}
+			if len(mapping) != 1 || mapping["192.0.2.20"] != util.NodeLspName("new-node") {
+				t.Fatalf("replacement backend mapping = %v, want new-node", mapping)
+			}
+		})
 	}
 }
 
