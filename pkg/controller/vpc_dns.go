@@ -11,6 +11,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"text/template"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
@@ -38,6 +39,11 @@ var (
 	k8sServiceHost = ""
 	k8sServicePort = ""
 	enableCoreDNS  = false
+	// enable-vpc-dns of the ConfigMap version in cmVersion; enableCoreDNS is closed earlier when a cleanup fails
+	appliedEnableCoreDNS = false
+	vpcDNSConfigSynced   = false
+	// serializes the vpc-dns-config sync with handleAddOrUpdateVPCDNS, which share the values above
+	vpcDNSConfigMutex sync.Mutex
 
 	corednsTemplateContent = string(kubeovnyaml.CorednsTemplateContent)
 )
@@ -107,8 +113,9 @@ func (c *Controller) handleAddOrUpdateVPCDNS(key string) (retErr error) {
 		newVPCDNS := vpcDNS.DeepCopy()
 		newVPCDNS.Status.Active = retErr == nil
 
+		// NotFound: the config sync below can delete this VpcDns, so there is no status to update
 		if _, statusErr := c.config.KubeOvnClient.KubeovnV1().VpcDnses().UpdateStatus(context.Background(),
-			newVPCDNS, metav1.UpdateOptions{}); statusErr != nil {
+			newVPCDNS, metav1.UpdateOptions{}); statusErr != nil && !k8serrors.IsNotFound(statusErr) {
 			statusErr = fmt.Errorf("failed to update vpc dns status: %w", statusErr)
 			klog.Error(statusErr)
 			_ = c.recordResourceError(vpcDNS, "UpdateStatusFailed", statusErr)
@@ -125,6 +132,10 @@ func (c *Controller) handleAddOrUpdateVPCDNS(key string) (retErr error) {
 				fmt.Sprintf("VpcDns %s reconciled successfully", vpcDNS.Name))
 		}
 	}()
+	// the periodic resync can be up to 5 seconds late, so apply the current vpc-dns-config first
+	vpcDNSConfigMutex.Lock()
+	defer vpcDNSConfigMutex.Unlock()
+	c.syncVpcDNSConfig()
 	if !enableCoreDNS {
 		return errors.New("failed to add or update vpc-dns, not enabled")
 	}
@@ -454,6 +465,14 @@ func (c *Controller) checkOvnNad() error {
 }
 
 func (c *Controller) resyncVpcDNSConfig() {
+	vpcDNSConfigMutex.Lock()
+	defer vpcDNSConfigMutex.Unlock()
+	c.syncVpcDNSConfig()
+}
+
+// syncVpcDNSConfig applies vpc-dns-config; the caller must hold vpcDNSConfigMutex.
+// cmVersion is updated only after a version is fully applied, so a failed step is retried on the next call.
+func (c *Controller) syncVpcDNSConfig() {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcDNSConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to get configmap %q: %v", util.VpcDNSConfig, err)
@@ -461,21 +480,22 @@ func (c *Controller) resyncVpcDNSConfig() {
 	}
 
 	if k8serrors.IsNotFound(err) {
-		klog.V(3).Infof("the vpc-dns configuration is not set")
-		if len(cmVersion) != 0 {
-			if err := c.cleanVpcDNS(); err != nil {
-				klog.Errorf("failed to clear all vpc-dns, %v", err)
-				return
-			}
-			cmVersion = ""
+		if vpcDNSConfigSynced && len(cmVersion) == 0 {
+			return
 		}
+		klog.V(3).Infof("the vpc-dns configuration is not set")
+		// on the first sync too: the ConfigMap may have been deleted while the controller was down
+		if err := c.disableVpcDNS(); err != nil {
+			klog.Errorf("failed to clear all vpc-dns, %v", err)
+			return
+		}
+		cmVersion, appliedEnableCoreDNS, vpcDNSConfigSynced = "", false, true
 		return
 	}
 
-	if cmVersion == cm.ResourceVersion {
+	if vpcDNSConfigSynced && cmVersion == cm.ResourceVersion {
 		return
 	}
-	cmVersion = cm.ResourceVersion
 	klog.V(3).Infof("the vpc-dns ConfigMap update")
 
 	getValue := func(key string) string {
@@ -484,23 +504,6 @@ func (c *Controller) resyncVpcDNSConfig() {
 		}
 		return ""
 	}
-
-	corednsImage = getValue("coredns-image")
-	if len(corednsImage) == 0 {
-		defaultImage, err := c.getDefaultCoreDNSImage()
-		if err != nil {
-			klog.Errorf("failed to get the default coredns image, %v", err)
-			return
-		}
-		corednsImage = defaultImage
-		klog.V(3).Infof("use the cluster default coredns image version, %s", corednsImage)
-	}
-
-	nadName = getValue("nad-name")
-	nadProvider = getValue("nad-provider")
-	corednsVip = getValue("coredns-vip")
-	k8sServiceHost = getValue("k8s-service-host")
-	k8sServicePort = getValue("k8s-service-port")
 
 	newEnableCoreDNS := true
 	if v, ok := cm.Data["enable-vpc-dns"]; ok {
@@ -512,18 +515,52 @@ func (c *Controller) resyncVpcDNSConfig() {
 		newEnableCoreDNS = raw
 	}
 
-	if enableCoreDNS && !newEnableCoreDNS {
-		if err := c.cleanVpcDNS(); err != nil {
-			klog.Errorf("failed to clear all vpc-dns, %v", err)
-			return
+	if !newEnableCoreDNS {
+		// on the first sync too: vpc-dns may have been disabled while the controller was down
+		if appliedEnableCoreDNS || !vpcDNSConfigSynced {
+			if err := c.disableVpcDNS(); err != nil {
+				klog.Errorf("failed to clear all vpc-dns, %v", err)
+				return
+			}
 		}
-	} else {
-		if err := c.updateVpcDNS(); err != nil {
-			klog.Errorf("failed to update vpc-dns deployment")
-			return
-		}
+		enableCoreDNS = false
+		cmVersion, appliedEnableCoreDNS, vpcDNSConfigSynced = cm.ResourceVersion, false, true
+		return
 	}
-	enableCoreDNS = newEnableCoreDNS
+
+	image := getValue("coredns-image")
+	if len(image) == 0 {
+		defaultImage, err := c.getDefaultCoreDNSImage()
+		if err != nil {
+			klog.Errorf("failed to get the default coredns image, %v", err)
+			// no VpcDns is deployed with the previous image until the lookup succeeds on a later resync
+			corednsImage = ""
+			return
+		}
+		image = defaultImage
+		klog.V(3).Infof("use the cluster default coredns image version, %s", image)
+	}
+
+	corednsImage = image
+	nadName = getValue("nad-name")
+	nadProvider = getValue("nad-provider")
+	corednsVip = getValue("coredns-vip")
+	k8sServiceHost = getValue("k8s-service-host")
+	k8sServicePort = getValue("k8s-service-port")
+	enableCoreDNS = true
+
+	if err := c.updateVpcDNS(); err != nil {
+		klog.Errorf("failed to update vpc-dns deployment")
+		return
+	}
+	cmVersion, appliedEnableCoreDNS, vpcDNSConfigSynced = cm.ResourceVersion, true, true
+}
+
+// disableVpcDNS closes the vpc-dns gate before deleting all VpcDns, so that a failed cleanup that is retried later
+// does not let any VpcDns be deployed in the meantime
+func (c *Controller) disableVpcDNS() error {
+	enableCoreDNS, corednsImage = false, ""
+	return c.cleanVpcDNS()
 }
 
 func (c *Controller) getDefaultCoreDNSImage() (string, error) {
@@ -577,14 +614,24 @@ func (c *Controller) initVpcDNSConfig() error {
 
 func (c *Controller) cleanVpcDNS() error {
 	klog.Infof("clear all vpc-dns")
-	err := c.config.KubeOvnClient.KubeovnV1().VpcDnses().DeleteCollection(context.Background(), metav1.DeleteOptions{},
-		metav1.ListOptions{})
+	// list from the API server, not the lister: a VpcDns missing from the informer cache would never be deleted
+	list, err := c.config.KubeOvnClient.KubeovnV1().VpcDnses().List(context.Background(), metav1.ListOptions{})
 	if err != nil {
-		klog.Errorf("Failed to clear all vpc-dns %s", err)
+		klog.Errorf("failed to list vpc-dns, %v", err)
 		return err
 	}
 
-	return nil
+	// delete one by one: the controller ClusterRole grants delete, not deletecollection, on vpc-dnses
+	var errs []error
+	for _, vd := range list.Items {
+		err := c.config.KubeOvnClient.KubeovnV1().VpcDnses().Delete(context.Background(), vd.Name, metav1.DeleteOptions{})
+		if err != nil && !k8serrors.IsNotFound(err) {
+			err = fmt.Errorf("failed to delete vpc-dns %s: %w", vd.Name, err)
+			klog.Error(err)
+			errs = append(errs, err)
+		}
+	}
+	return errors.Join(errs...)
 }
 
 func (c *Controller) updateVpcDNS() error {
