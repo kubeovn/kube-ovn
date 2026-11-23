@@ -143,11 +143,9 @@ func (n *Node) WaitLinkToDisappear(linkName string, interval time.Duration, dead
 	}
 
 	if errors.Is(err, context.DeadlineExceeded) {
-		framework.Failf("timed out while waiting for link %s in node %s to disappear", linkName, n.Name())
+		return fmt.Errorf("timed out while waiting for link %s in node %s to disappear: %w", linkName, n.Name(), err)
 	}
-	framework.Failf("error occurred while waiting for link %s in node %s to disappear: %v", linkName, n.Name(), err)
-
-	return err
+	return fmt.Errorf("error occurred while waiting for link %s in node %s to disappear: %w", linkName, n.Name(), err)
 }
 
 func ListClusters() ([]string, error) {

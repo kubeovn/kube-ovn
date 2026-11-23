@@ -3,20 +3,16 @@ package ipam
 import (
 	"context"
 	"fmt"
-	"slices"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/onsi/ginkgo/v2"
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/test/e2e/framework"
@@ -96,1060 +92,345 @@ func waitForIPPoolCounts(f *framework.Framework, client *framework.IPPoolClient,
 }
 
 var _ = framework.Describe("[group:ipam]", func() {
-	f := framework.NewDefaultFramework("ipam")
+	t := &ipamTest{f: framework.NewDefaultFramework("ipam")}
+	ginkgo.BeforeEach(t.setup)
+	ginkgo.AfterEach(t.cleanup)
+	framework.ConformanceIt("should allocate static ipv4 and mac for pod", t.allocateStaticPod)
+	framework.ConformanceIt("should allocate requested IP family for pod on dual-stack subnet", t.allocatePodFamily)
+	framework.ConformanceIt("should allocate requested IP family from named dual-stack IPPool", t.allocatePoolFamily)
+	framework.ConformanceIt("should reject requested IP family that does not match single-stack subnet", t.rejectPodFamily)
+	framework.ConformanceIt("should allocate static ip for pod with comma separated ippool", t.allocateCommaPool)
+	framework.ConformanceIt("should allocate static ip for deployment with ippool", t.allocateDeployment)
+	framework.ConformanceIt("should allocate static ip for statefulset", t.allocateStatefulSet)
+	framework.ConformanceIt("should allocate static ip for statefulset with ippool", t.allocateStatefulSetPool)
+	framework.ConformanceIt("should allocate static ip for statefulset with ippool separated by comma", t.allocateStatefulSetCommaPool)
+	framework.ConformanceIt("should consider statefulset's start ordinal", t.allocateStatefulSetOrdinal)
+	framework.ConformanceIt("should infer the default subnet from a named ippool", t.inferSubnet)
+	framework.ConformanceIt("should support IPPool feature", t.manageIPPool)
+	framework.ConformanceIt("should allocate right IPs for the statefulset when there are multiple IP Pools added to its namespace", t.allocateMultipleStatefulSetPools)
+	framework.ConformanceIt("should allocate right IPs for the statefulset when there are multiple ippools added in the namespace and there are no available ips in the first ippool", t.allocateExhaustedStatefulSetPools)
+	framework.ConformanceIt("should block IP allocation if the ippool bound by namespace annotation has no available IPs", t.blockExhaustedPool)
+	framework.ConformanceIt("should not allocate newly excluded addresses from a named IPPool", t.excludePoolAddress)
+	framework.ConformanceIt("should not make an excluded IPPool address available after release", t.releaseExcludedPoolAddress)
+	framework.ConformanceIt("should preserve named IPPool ownership after subnet reconciliation", t.preservePoolOwnership)
+	framework.ConformanceIt("should return deleted IPPool addresses to the default pool", t.deletePool)
+	framework.ConformanceIt("should be able to allocate IP from IPPools in different subnets", t.allocateMultipleSubnets)
+	framework.ConformanceIt("should pick IPs from the subnet when spec.ipCount is set", t.resizeCountPool)
+	framework.ConformanceIt("should transition between spec.ips and spec.ipCount cleanly", t.switchCountPoolMode)
+	framework.ConformanceIt("should keep ipCount addresses stable across controller restarts", t.restartCountPool)
+	framework.ConformanceIt("should sync the address set of an ipCount ippool", t.syncCountPoolAddressSet)
+	framework.ConformanceIt("should isolate ipCount pool addresses from other pools and the default pool", t.isolateCountPools)
+	framework.ConformanceIt("should bind an ipCount ippool to the namespace", t.bindCountPoolNamespace)
+	framework.ConformanceIt("should recycle released pod addresses within the ippool", t.recycleCountPool)
+	framework.ConformanceIt("should allocate addresses for a deployment from an ipCount ippool", t.scaleCountPoolDeployment)
+	framework.ConformanceIt("should reconcile an ipCount ippool when the subnet CIDR shrinks", t.shrinkCountPoolSubnet)
+	framework.ConformanceIt("should manage address set when EnableAddressSet is true", t.manageAddressSet)
+})
 
-	var cs clientset.Interface
-	var nsClient *framework.NamespaceClient
-	var podClient *framework.PodClient
-	var deployClient *framework.DeploymentClient
-	var stsClient *framework.StatefulSetClient
-	var subnetClient *framework.SubnetClient
-	var ippoolClient *framework.IPPoolClient
-	var ipClient *framework.IPClient
-	var namespaceName, subnetName, subnetName2, ippoolName, ippoolName2, podName, deployName, stsName, stsName2 string
-	var subnet *apiv1.Subnet
-	var cidr string
+type ipamTest struct {
+	f                                                                                                       *framework.Framework
+	cs                                                                                                      clientset.Interface
+	nsClient                                                                                                *framework.NamespaceClient
+	podClient                                                                                               *framework.PodClient
+	deployClient                                                                                            *framework.DeploymentClient
+	stsClient                                                                                               *framework.StatefulSetClient
+	subnetClient                                                                                            *framework.SubnetClient
+	ippoolClient                                                                                            *framework.IPPoolClient
+	ipClient                                                                                                *framework.IPClient
+	namespaceName, subnetName, subnetName2, ippoolName, ippoolName2, podName, deployName, stsName, stsName2 string
+	subnet                                                                                                  *apiv1.Subnet
+	cidr                                                                                                    string
+}
 
-	ginkgo.BeforeEach(func() {
-		cs = f.ClientSet
-		nsClient = f.NamespaceClient()
-		podClient = f.PodClient()
-		deployClient = f.DeploymentClient()
-		stsClient = f.StatefulSetClient()
-		subnetClient = f.SubnetClient()
-		ippoolClient = f.IPPoolClient()
-		ipClient = f.IPClient()
-		namespaceName = f.Namespace.Name
-		subnetName = "subnet-" + framework.RandomSuffix()
-		subnetName2 = "subnet2-" + framework.RandomSuffix()
-		ippoolName = "ippool-" + framework.RandomSuffix()
-		ippoolName2 = "ippool2-" + framework.RandomSuffix()
-		podName = "pod-" + framework.RandomSuffix()
-		deployName = "deploy-" + framework.RandomSuffix()
-		stsName = "sts-" + framework.RandomSuffix()
-		stsName2 = "sts2-" + framework.RandomSuffix()
+func (t *ipamTest) setup() {
+	t.cs = t.f.ClientSet
+	t.nsClient = t.f.NamespaceClient()
+	t.podClient = t.f.PodClient()
+	t.deployClient = t.f.DeploymentClient()
+	t.stsClient = t.f.StatefulSetClient()
+	t.subnetClient = t.f.SubnetClient()
+	t.ippoolClient = t.f.IPPoolClient()
+	t.ipClient = t.f.IPClient()
+	t.namespaceName = t.f.Namespace.Name
+	t.subnetName = "subnet-" + framework.RandomSuffix()
+	t.subnetName2 = "subnet2-" + framework.RandomSuffix()
+	t.ippoolName = "ippool-" + framework.RandomSuffix()
+	t.ippoolName2 = "ippool2-" + framework.RandomSuffix()
+	t.podName = "pod-" + framework.RandomSuffix()
+	t.deployName = "deploy-" + framework.RandomSuffix()
+	t.stsName = "sts-" + framework.RandomSuffix()
+	t.stsName2 = "sts2-" + framework.RandomSuffix()
 
-		cidr = framework.RandomCIDR(f.ClusterIPFamily)
+	t.cidr = framework.RandomCIDR(t.f.ClusterIPFamily)
 
-		ginkgo.By("Creating subnet " + subnetName)
-		subnet = framework.MakeSubnet(subnetName, "", cidr, "", "", "", nil, nil, []string{namespaceName})
-		subnet = subnetClient.CreateSync(subnet)
-	})
-	ginkgo.AfterEach(func() {
-		// Level 1: Delete all workloads in parallel
-		ginkgo.By("Deleting pod " + podName + ", deployment " + deployName + ", statefulsets " + stsName + " and " + stsName2)
-		podClient.DeleteGracefully(podName)
-		deployClient.Delete(deployName)
-		stsClient.Delete(stsName)
-		stsClient.Delete(stsName2)
+	ginkgo.By("Creating subnet " + t.subnetName)
+	t.subnet = framework.MakeSubnet(t.subnetName, "", t.cidr, "", "", "", nil, nil, []string{t.namespaceName})
+	t.subnet = t.subnetClient.CreateSync(t.subnet)
+}
 
-		podClient.WaitForNotFound(podName)
-		framework.ExpectNoError(deployClient.WaitToDisappear(deployName, 0, 2*time.Minute))
-		framework.ExpectNoError(stsClient.WaitToDisappear(stsName, 0, 2*time.Minute))
-		framework.ExpectNoError(stsClient.WaitToDisappear(stsName2, 0, 2*time.Minute))
+func (t *ipamTest) cleanup() {
+	// Level 1: Delete all workloads in parallel
+	ginkgo.By("Deleting pod " + t.podName + ", deployment " + t.deployName + ", statefulsets " + t.stsName + " and " + t.stsName2)
+	t.podClient.DeleteGracefully(t.podName)
+	t.deployClient.Delete(t.deployName)
+	t.stsClient.Delete(t.stsName)
+	t.stsClient.Delete(t.stsName2)
 
-		// Level 2: Delete ippools in parallel (needs workloads gone)
-		ginkgo.By("Deleting ippool " + ippoolName + " and " + ippoolName2)
-		ippoolClient.Delete(ippoolName)
-		ippoolClient.Delete(ippoolName2)
-		framework.ExpectNoError(ippoolClient.WaitToDisappear(ippoolName, 0, 2*time.Minute))
-		framework.ExpectNoError(ippoolClient.WaitToDisappear(ippoolName2, 0, 2*time.Minute))
-
-		// Level 3: Delete subnets in parallel (needs ippools gone)
-		ginkgo.By("Deleting subnet " + subnetName + " and " + subnetName2)
-		subnetClient.Delete(subnetName)
-		subnetClient.Delete(subnetName2)
-		framework.ExpectNoError(subnetClient.WaitToDisappear(subnetName, 0, 2*time.Minute))
-		framework.ExpectNoError(subnetClient.WaitToDisappear(subnetName2, 0, 2*time.Minute))
-	})
-
-	framework.ConformanceIt("should allocate static ipv4 and mac for pod", func() {
-		mac := util.GenerateMac()
-		ip := framework.RandomIPs(cidr, ";", 1)
-
-		ginkgo.By("Creating pod " + podName + " with ip " + ip + " and mac " + mac)
-		annotations := map[string]string{
-			util.IPAddressAnnotation:  ip,
-			util.MacAddressAnnotation: mac,
+	t.podClient.WaitForNotFound(t.podName)
+	framework.ExpectNoError(t.deployClient.WaitToDisappear(t.deployName, 0, 2*time.Minute))
+	framework.ExpectNoError(t.stsClient.WaitToDisappear(t.stsName, 0, 2*time.Minute))
+	framework.ExpectNoError(t.stsClient.WaitToDisappear(t.stsName2, 0, 2*time.Minute))
+	framework.WaitUntil(time.Second, 2*time.Minute, func(context.Context) (bool, error) {
+		ips, err := t.ipClient.List(context.Background(), metav1.ListOptions{})
+		if err != nil {
+			return false, err
 		}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
-		pod = podClient.CreateSync(pod)
-
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, ip)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.MacAddressAnnotation, mac)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-
-		framework.ExpectConsistOf(util.PodIPs(*pod), strings.Split(ip, ","))
-	})
-
-	framework.ConformanceIt("should allocate requested IP family for pod on dual-stack subnet", func() {
-		f.SkipVersionPriorTo(1, 17, "Per-pod IP family selection was introduced in v1.17")
-		if !f.IsDual() {
-			ginkgo.Skip("This test requires a dual-stack cluster")
-		}
-
-		cmd := []string{"sleep", "infinity"}
-		cases := []struct {
-			name        string
-			annotations map[string]string
-			family      string
-		}{
-			{
-				name:   "default dual-stack allocation",
-				family: apiv1.ProtocolDual,
-			},
-			{
-				name:        "IPv4-only allocation",
-				annotations: map[string]string{util.IPFamilyAnnotation: strings.ToLower(apiv1.ProtocolIPv4)},
-				family:      apiv1.ProtocolIPv4,
-			},
-			{
-				name:        "IPv6-only allocation",
-				annotations: map[string]string{util.IPFamilyAnnotation: strings.ToLower(apiv1.ProtocolIPv6)},
-				family:      apiv1.ProtocolIPv6,
-			},
-		}
-
-		for _, tt := range cases {
-			ginkgo.By("Creating pod " + podName + " with " + tt.name)
-			pod := framework.MakePrivilegedPod(namespaceName, podName, nil, tt.annotations, f.KubeOVNImage, cmd, nil)
-			pod = podClient.CreateSync(pod)
-
-			ginkgo.By("Validating pod annotations")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-			expectPodIPFamily(pod, tt.family)
-			expectDefaultIPCRFamily(f, pod, subnetName, tt.family)
-			expectEth0IPs(pod, util.PodIPs(*pod))
-
-			ginkgo.By("Deleting pod " + podName)
-			podClient.DeleteSync(podName)
-			f.IPClient().DeleteSync(ovs.PodNameToPortName(podName, namespaceName, util.OvnProvider))
-		}
-	})
-
-	framework.ConformanceIt("should allocate requested IP family from named dual-stack IPPool", func() {
-		f.SkipVersionPriorTo(1, 17, "Per-pod IP family selection was introduced in v1.17")
-		if !f.IsDual() {
-			ginkgo.Skip("This test requires a dual-stack cluster")
-		}
-
-		ginkgo.By("Creating IPPool " + ippoolName)
-		poolIPs := strings.Split(framework.RandomIPs(cidr, ",", 2), ",")
-		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, []string{namespaceName})
-		ippool = ippoolClient.CreateSync(ippool)
-		framework.ExpectNotEmpty(ippool.Status.V4AvailableIPRange)
-		framework.ExpectNotEmpty(ippool.Status.V6AvailableIPRange)
-
-		cmd := []string{"sleep", "infinity"}
-		for _, family := range []string{apiv1.ProtocolIPv6, apiv1.ProtocolIPv4} {
-			ginkgo.By("Creating pod " + podName + " with " + family + " IP family from IPPool " + ippoolName)
-			annotations := map[string]string{
-				util.IPFamilyAnnotation: strings.ToLower(family),
-				util.IPPoolAnnotation:   ippoolName,
+		for _, ip := range ips.Items {
+			if ip.Spec.Namespace == t.namespaceName {
+				return false, nil
 			}
-			pod := framework.MakePrivilegedPod(namespaceName, podName, nil, annotations, f.KubeOVNImage, cmd, nil)
-			pod = podClient.CreateSync(pod)
-
-			ginkgo.By("Validating pod allocation")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippoolName)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
-			expectPodIPFamily(pod, family)
-			expectDefaultIPCRFamily(f, pod, subnetName, family)
-			framework.ExpectContainElement(poolIPs, pod.Annotations[util.IPAddressAnnotation])
-			expectEth0IPs(pod, util.PodIPs(*pod))
-
-			ginkgo.By("Deleting pod " + podName)
-			podClient.DeleteSync(podName)
-			f.IPClient().DeleteSync(ovs.PodNameToPortName(podName, namespaceName, util.OvnProvider))
 		}
-	})
+		return true, nil
+	}, "all suite IP resources are released")
 
-	framework.ConformanceIt("should reject requested IP family that does not match single-stack subnet", func() {
-		f.SkipVersionPriorTo(1, 17, "Per-pod IP family selection was introduced in v1.17")
-		if f.IsDual() {
-			ginkgo.Skip("This test requires a single-stack cluster")
-		}
+	// Level 2: Delete ippools in parallel (needs workloads gone)
+	ginkgo.By("Deleting ippool " + t.ippoolName + " and " + t.ippoolName2)
+	t.ippoolClient.Delete(t.ippoolName)
+	t.ippoolClient.Delete(t.ippoolName2)
+	framework.ExpectNoError(t.ippoolClient.WaitToDisappear(t.ippoolName, 0, 2*time.Minute))
+	framework.ExpectNoError(t.ippoolClient.WaitToDisappear(t.ippoolName2, 0, 2*time.Minute))
 
-		requestedFamily := apiv1.ProtocolIPv4
-		if f.HasIPv4() {
-			requestedFamily = apiv1.ProtocolIPv6
-		}
+	// Level 3: Delete subnets in parallel (needs ippools gone)
+	ginkgo.By("Deleting subnet " + t.subnetName + " and " + t.subnetName2)
+	t.subnetClient.Delete(t.subnetName)
+	t.subnetClient.Delete(t.subnetName2)
+	framework.ExpectNoError(t.subnetClient.WaitToDisappear(t.subnetName, 0, 2*time.Minute))
+	framework.ExpectNoError(t.subnetClient.WaitToDisappear(t.subnetName2, 0, 2*time.Minute))
+}
 
-		ginkgo.By("Creating pod " + podName + " with mismatched " + requestedFamily + " IP family on " + subnet.Spec.Protocol + " subnet")
-		annotations := map[string]string{util.IPFamilyAnnotation: strings.ToLower(requestedFamily)}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
-		_ = podClient.Create(pod)
+func (t *ipamTest) allocateStaticPod() {
+	mac := util.GenerateMac()
+	ip := framework.RandomIPs(t.cidr, ";", 1)
 
-		ginkgo.By("Waiting for pod " + podName + " to have event indicating IP family mismatch")
-		events := f.EventClient().WaitToHaveEvent(util.KindPod, podName, corev1.EventTypeWarning, "AcquireAddressFailed", "kube-ovn-controller", "")
-		framework.ExpectContainSubstring(events[0].Message, fmt.Sprintf("requested ip family %s does not match subnet %s protocol %s", requestedFamily, subnetName, subnet.Spec.Protocol))
+	ginkgo.By("Creating pod " + t.podName + " with ip " + ip + " and mac " + mac)
+	annotations := map[string]string{
+		util.IPAddressAnnotation:  ip,
+		util.MacAddressAnnotation: mac,
+	}
+	pod := framework.MakePod(t.namespaceName, t.podName, nil, annotations, "", nil, nil)
+	pod = t.podClient.CreateSync(pod)
 
-		ginkgo.By("Validating pod " + podName + " is not allocated")
-		pod = podClient.GetPod(podName)
-		framework.ExpectNotHaveKey(pod.Annotations, util.AllocatedAnnotation)
-	})
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, t.subnet.Spec.CIDRBlock)
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, t.subnet.Spec.Gateway)
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, ip)
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, t.subnet.Name)
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.MacAddressAnnotation, mac)
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
 
-	framework.ConformanceIt("should allocate static ip for pod with comma separated ippool", func() {
-		if f.IsDual() {
-			ginkgo.Skip("Comma separated ippool is not supported for dual stack")
-		}
+	framework.ExpectConsistOf(util.PodIPs(*pod), strings.Split(ip, ","))
+}
 
-		pool := framework.RandomIPs(cidr, ",", 3)
-		ginkgo.By("Creating pod " + podName + " with ippool " + pool)
-		annotations := map[string]string{util.IPPoolAnnotation: pool}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
-		pod = podClient.CreateSync(pod)
+func (t *ipamTest) allocatePodFamily() {
+	t.f.SkipVersionPriorTo(1, 17, "Per-pod IP family selection was introduced in v1.17")
+	if !t.f.IsDual() {
+		ginkgo.Skip("This test requires a dual-stack cluster")
+	}
 
+	cmd := []string{"sleep", "infinity"}
+	cases := []struct {
+		name        string
+		annotations map[string]string
+		family      string
+	}{
+		{
+			name:   "default dual-stack allocation",
+			family: apiv1.ProtocolDual,
+		},
+		{
+			name:        "IPv4-only allocation",
+			annotations: map[string]string{util.IPFamilyAnnotation: strings.ToLower(apiv1.ProtocolIPv4)},
+			family:      apiv1.ProtocolIPv4,
+		},
+		{
+			name:        "IPv6-only allocation",
+			annotations: map[string]string{util.IPFamilyAnnotation: strings.ToLower(apiv1.ProtocolIPv6)},
+			family:      apiv1.ProtocolIPv6,
+		},
+	}
+
+	for _, tt := range cases {
+		ginkgo.By("Creating pod " + t.podName + " with " + tt.name)
+		pod := framework.MakePrivilegedPod(t.namespaceName, t.podName, nil, tt.annotations, t.f.KubeOVNImage, cmd, nil)
+		pod = t.podClient.CreateSync(pod)
+
+		ginkgo.By("Validating pod annotations")
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, pool)
-		framework.ExpectEqual(pod.Annotations[util.IPAddressAnnotation], pod.Status.PodIP)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, t.subnet.Spec.CIDRBlock)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, t.subnet.Spec.Gateway)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, t.subnet.Name)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+		framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+		expectPodIPFamily(pod, tt.family)
+		expectDefaultIPCRFamily(t.f, pod, t.subnetName, tt.family)
+		expectEth0IPs(pod, util.PodIPs(*pod))
+
+		ginkgo.By("Deleting pod " + t.podName)
+		t.podClient.DeleteSync(t.podName)
+		t.f.IPClient().DeleteSync(ovs.PodNameToPortName(t.podName, t.namespaceName, util.OvnProvider))
+	}
+}
+
+func (t *ipamTest) allocatePoolFamily() {
+	t.f.SkipVersionPriorTo(1, 17, "Per-pod IP family selection was introduced in v1.17")
+	if !t.f.IsDual() {
+		ginkgo.Skip("This test requires a dual-stack cluster")
+	}
+
+	ginkgo.By("Creating IPPool " + t.ippoolName)
+	poolIPs := strings.Split(framework.RandomIPs(t.cidr, ",", 2), ",")
+	ippool := framework.MakeIPPool(t.ippoolName, t.subnetName, poolIPs, []string{t.namespaceName})
+	ippool = t.ippoolClient.CreateSync(ippool)
+	framework.ExpectNotEmpty(ippool.Status.V4AvailableIPRange)
+	framework.ExpectNotEmpty(ippool.Status.V6AvailableIPRange)
+
+	cmd := []string{"sleep", "infinity"}
+	for _, family := range []string{apiv1.ProtocolIPv6, apiv1.ProtocolIPv4} {
+		ginkgo.By("Creating pod " + t.podName + " with " + family + " IP family from IPPool " + t.ippoolName)
+		annotations := map[string]string{
+			util.IPFamilyAnnotation: strings.ToLower(family),
+			util.IPPoolAnnotation:   t.ippoolName,
+		}
+		pod := framework.MakePrivilegedPod(t.namespaceName, t.podName, nil, annotations, t.f.KubeOVNImage, cmd, nil)
+		pod = t.podClient.CreateSync(pod)
+
+		ginkgo.By("Validating pod allocation")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, t.ippoolName)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, t.subnet.Spec.CIDRBlock)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, t.subnet.Name)
+		expectPodIPFamily(pod, family)
+		expectDefaultIPCRFamily(t.f, pod, t.subnetName, family)
+		framework.ExpectContainElement(poolIPs, pod.Annotations[util.IPAddressAnnotation])
+		expectEth0IPs(pod, util.PodIPs(*pod))
+
+		ginkgo.By("Deleting pod " + t.podName)
+		t.podClient.DeleteSync(t.podName)
+		t.f.IPClient().DeleteSync(ovs.PodNameToPortName(t.podName, t.namespaceName, util.OvnProvider))
+	}
+}
+
+func (t *ipamTest) rejectPodFamily() {
+	t.f.SkipVersionPriorTo(1, 17, "Per-pod IP family selection was introduced in v1.17")
+	if t.f.IsDual() {
+		ginkgo.Skip("This test requires a single-stack cluster")
+	}
+
+	requestedFamily := apiv1.ProtocolIPv4
+	if t.f.HasIPv4() {
+		requestedFamily = apiv1.ProtocolIPv6
+	}
+
+	ginkgo.By("Creating pod " + t.podName + " with mismatched " + requestedFamily + " IP family on " + t.subnet.Spec.Protocol + " subnet")
+	annotations := map[string]string{util.IPFamilyAnnotation: strings.ToLower(requestedFamily)}
+	pod := framework.MakePod(t.namespaceName, t.podName, nil, annotations, "", nil, nil)
+	_ = t.podClient.Create(pod)
+
+	ginkgo.By("Waiting for pod " + t.podName + " to have event indicating IP family mismatch")
+	events := t.f.EventClient().WaitToHaveEvent(util.KindPod, t.podName, corev1.EventTypeWarning, "AcquireAddressFailed", "kube-ovn-controller", "")
+	framework.ExpectContainSubstring(events[0].Message, fmt.Sprintf("requested ip family %s does not match subnet %s protocol %s", requestedFamily, t.subnetName, t.subnet.Spec.Protocol))
+
+	ginkgo.By("Validating pod " + t.podName + " is not allocated")
+	pod = t.podClient.GetPod(t.podName)
+	framework.ExpectNotHaveKey(pod.Annotations, util.AllocatedAnnotation)
+}
+
+func (t *ipamTest) allocateCommaPool() {
+	if t.f.IsDual() {
+		ginkgo.Skip("Comma separated ippool is not supported for dual stack")
+	}
+
+	pool := framework.RandomIPs(t.cidr, ",", 3)
+	ginkgo.By("Creating pod " + t.podName + " with ippool " + pool)
+	annotations := map[string]string{util.IPPoolAnnotation: pool}
+	pod := framework.MakePod(t.namespaceName, t.podName, nil, annotations, "", nil, nil)
+	pod = t.podClient.CreateSync(pod)
+
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, t.subnet.Spec.CIDRBlock)
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, t.subnet.Spec.Gateway)
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, pool)
+	framework.ExpectEqual(pod.Annotations[util.IPAddressAnnotation], pod.Status.PodIP)
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, t.subnet.Name)
+	framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+	framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+	framework.ExpectContainElement(strings.Split(pool, ","), pod.Status.PodIP)
+}
+
+func (t *ipamTest) allocateDeployment() {
+	ippoolSep := ";"
+	if t.f.VersionPriorTo(1, 11) {
+		if t.f.IsDual() {
+			ginkgo.Skip("Support for dual stack ippool was introduced in v1.11")
+		}
+		ippoolSep = ","
+	}
+
+	replicas := 3
+	ippool := framework.RandomIPs(t.cidr, ippoolSep, replicas)
+
+	ginkgo.By("Creating deployment " + t.deployName + " with ippool " + ippool)
+	labels := map[string]string{"app": t.deployName}
+	annotations := map[string]string{util.IPPoolAnnotation: ippool}
+	deploy := framework.MakeDeployment(t.deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
+	deploy = t.deployClient.CreateSync(deploy)
+
+	ginkgo.By("Getting pods for deployment " + t.deployName)
+	pods, err := t.deployClient.GetPods(deploy)
+	framework.ExpectNoError(err, "failed to get pods for deployment "+t.deployName)
+	framework.ExpectHaveLen(pods.Items, replicas)
+
+	ips := strings.Split(ippool, ippoolSep)
+	for _, pod := range pods.Items {
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, t.subnet.Spec.CIDRBlock)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, t.subnet.Spec.Gateway)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
+		framework.ExpectContainElement(ips, pod.Annotations[util.IPAddressAnnotation])
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, t.subnet.Name)
 		framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		framework.ExpectContainElement(strings.Split(pool, ","), pod.Status.PodIP)
-	})
 
-	framework.ConformanceIt("should allocate static ip for deployment with ippool", func() {
-		ippoolSep := ";"
-		if f.VersionPriorTo(1, 11) {
-			if f.IsDual() {
-				ginkgo.Skip("Support for dual stack ippool was introduced in v1.11")
-			}
-			ippoolSep = ","
-		}
+		framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+	}
 
-		replicas := 3
-		ippool := framework.RandomIPs(cidr, ippoolSep, replicas)
+	ginkgo.By("Deleting pods for deployment " + t.deployName)
+	for _, pod := range pods.Items {
+		t.podClient.DeleteGracefully(pod.Name)
+	}
+	for _, pod := range pods.Items {
+		t.podClient.WaitForNotFound(pod.Name)
+	}
 
-		ginkgo.By("Creating deployment " + deployName + " with ippool " + ippool)
-		labels := map[string]string{"app": deployName}
-		annotations := map[string]string{util.IPPoolAnnotation: ippool}
-		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
-		deploy = deployClient.CreateSync(deploy)
+	ginkgo.By("Waiting for new pods to be ready")
+	err = t.deployClient.WaitToComplete(deploy)
+	framework.ExpectNoError(err)
+	err = e2epod.WaitForPodsRunningReady(context.Background(), t.cs, t.namespaceName, int(*deploy.Spec.Replicas), time.Minute)
+	framework.ExpectNoError(err, "timed out waiting for pods to be ready")
 
-		ginkgo.By("Getting pods for deployment " + deployName)
-		pods, err := deployClient.GetPods(deploy)
-		framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
-		framework.ExpectHaveLen(pods.Items, replicas)
-
-		ips := strings.Split(ippool, ippoolSep)
-		for _, pod := range pods.Items {
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
-			framework.ExpectContainElement(ips, pod.Annotations[util.IPAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
-			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-
-			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
-		}
-
-		ginkgo.By("Deleting pods for deployment " + deployName)
-		for _, pod := range pods.Items {
-			podClient.DeleteGracefully(pod.Name)
-		}
-		for _, pod := range pods.Items {
-			podClient.WaitForNotFound(pod.Name)
-		}
-
-		ginkgo.By("Waiting for new pods to be ready")
-		err = deployClient.WaitToComplete(deploy)
-		framework.ExpectNoError(err)
-		err = e2epod.WaitForPodsRunningReady(context.Background(), cs, namespaceName, int(*deploy.Spec.Replicas), time.Minute)
-		framework.ExpectNoError(err, "timed out waiting for pods to be ready")
-
-		ginkgo.By("Getting pods for deployment " + deployName + " after deletion")
-		pods, err = deployClient.GetPods(deploy)
-		framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
-		framework.ExpectHaveLen(pods.Items, replicas)
-		for _, pod := range pods.Items {
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
-			framework.ExpectContainElement(ips, pod.Annotations[util.IPAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
-			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
-		}
-	})
-
-	framework.ConformanceIt("should allocate static ip for statefulset", func() {
-		replicas := 3
-		labels := map[string]string{"app": stsName}
-
-		ginkgo.By("Creating statefulset " + stsName)
-		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
-		sts = stsClient.CreateSync(sts)
-
-		ginkgo.By("Getting pods for statefulset " + stsName)
-		pods := stsClient.GetPods(sts)
-		framework.ExpectHaveLen(pods.Items, replicas)
-
-		ips := make([]string, 0, replicas)
-		for _, pod := range pods.Items {
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
-			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
-			ips = append(ips, pod.Annotations[util.IPAddressAnnotation])
-		}
-
-		ginkgo.By("Deleting pods for statefulset " + stsName)
-		for _, pod := range pods.Items {
-			err := podClient.Delete(pod.Name)
-			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
-		}
-		stsClient.WaitForRunningAndReady(sts)
-
-		ginkgo.By("Getting pods for statefulset " + stsName)
-		pods = stsClient.GetPods(sts)
-		framework.ExpectHaveLen(pods.Items, replicas)
-
-		for i, pod := range pods.Items {
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, ips[i])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
-			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		}
-	})
-
-	framework.ConformanceIt("should allocate static ip for statefulset with ippool", func() {
-		ippoolSep := ";"
-		if f.VersionPriorTo(1, 11) {
-			if f.IsDual() {
-				ginkgo.Skip("Support for dual stack ippool was introduced in v1.11")
-			}
-			ippoolSep = ","
-		}
-
-		for replicas := 3; replicas <= 3; replicas++ {
-			stsName = "sts-" + framework.RandomSuffix()
-			ippool := framework.RandomIPs(cidr, ippoolSep, replicas)
-			labels := map[string]string{"app": stsName}
-
-			ginkgo.By("Creating statefulset " + stsName + " with ippool " + ippool)
-			sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
-			sts.Spec.Template.Annotations = map[string]string{util.IPPoolAnnotation: ippool}
-			sts = stsClient.CreateSync(sts)
-
-			ginkgo.By("Getting pods for statefulset " + stsName)
-			pods := stsClient.GetPods(sts)
-			framework.ExpectHaveLen(pods.Items, replicas)
-
-			ips := make([]string, 0, replicas)
-			for _, pod := range pods.Items {
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
-				framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-				framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
-				ips = append(ips, pod.Annotations[util.IPAddressAnnotation])
-			}
-			framework.ExpectConsistOf(ips, strings.Split(ippool, ippoolSep))
-
-			ginkgo.By("Deleting pods for statefulset " + stsName)
-			for _, pod := range pods.Items {
-				err := podClient.Delete(pod.Name)
-				framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
-			}
-			stsClient.WaitForRunningAndReady(sts)
-
-			ginkgo.By("Getting pods for statefulset " + stsName)
-			pods = stsClient.GetPods(sts)
-			framework.ExpectHaveLen(pods.Items, replicas)
-
-			for i, pod := range pods.Items {
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, ips[i])
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
-				framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-				framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-				framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
-			}
-
-			ginkgo.By("Deleting statefulset " + stsName)
-			stsClient.DeleteSync(stsName)
-		}
-	})
-
-	// separate ippool annotation by comma
-	framework.ConformanceIt("should allocate static ip for statefulset with ippool separated by comma", func() {
-		if f.IsDual() {
-			ginkgo.Skip("Comma separated ippool is not supported for dual stack")
-		}
-
-		ippoolSep := ","
-		replicas := 3
-		ippool := framework.RandomIPs(cidr, ippoolSep, replicas)
-		labels := map[string]string{"app": stsName}
-
-		ginkgo.By("Creating statefulset " + stsName + " with ippool " + ippool)
-		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
-		sts.Spec.Template.Annotations = map[string]string{util.IPPoolAnnotation: ippool}
-		sts = stsClient.CreateSync(sts)
-
-		ginkgo.By("Getting pods for statefulset " + stsName)
-		pods := stsClient.GetPods(sts)
-		framework.ExpectHaveLen(pods.Items, replicas)
-
-		ips := make([]string, 0, replicas)
-		for _, pod := range pods.Items {
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
-			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
-			ips = append(ips, pod.Annotations[util.IPAddressAnnotation])
-		}
-		framework.ExpectConsistOf(ips, strings.Split(ippool, ippoolSep))
-
-		ginkgo.By("Deleting pods for statefulset " + stsName)
-		for _, pod := range pods.Items {
-			err := podClient.Delete(pod.Name)
-			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
-		}
-		stsClient.WaitForRunningAndReady(sts)
-
-		ginkgo.By("Getting pods for statefulset " + stsName)
-		pods = stsClient.GetPods(sts)
-		framework.ExpectHaveLen(pods.Items, replicas)
-
-		for i, pod := range pods.Items {
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, ips[i])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnet.Name)
-			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
-		}
-	})
-
-	framework.ConformanceIt("should consider statefulset's start ordinal", func() {
-		f.SkipVersionPriorTo(1, 11, "Support for start ordinal was introduced in v1.11")
-
-		replicas, startOrdinal := int32(3), int32(10)
-		labels := map[string]string{"app": stsName}
-
-		ginkgo.By("Creating statefulset " + stsName + " with start ordinal " + strconv.Itoa(int(startOrdinal)))
-		sts := framework.MakeStatefulSet(stsName, stsName, replicas, labels, framework.PauseImage)
-		sts.Spec.Ordinals = &appsv1.StatefulSetOrdinals{Start: startOrdinal}
-		sts = stsClient.CreateSync(sts)
-
-		ginkgo.By("Getting pods for statefulset " + stsName)
-		pods := stsClient.GetPods(sts)
-		framework.ExpectHaveLen(pods.Items, int(replicas))
-
-		ips := make([]string, 0, int(replicas))
-		for _, pod := range pods.Items {
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-			framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
-			ips = append(ips, pod.Annotations[util.IPAddressAnnotation])
-		}
-
-		ginkgo.By("Deleting pods for statefulset " + stsName)
-		for _, pod := range pods.Items {
-			err := podClient.Delete(pod.Name)
-			framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
-		}
-		stsClient.WaitForRunningAndReady(sts)
-
-		ginkgo.By("Getting pods for statefulset " + stsName)
-		pods = stsClient.GetPods(sts)
-		framework.ExpectHaveLen(pods.Items, int(replicas))
-
-		for i, pod := range pods.Items {
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, ips[i])
-			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		}
-	})
-
-	framework.ConformanceIt("should infer the default subnet from a named ippool", func() {
-		f.SkipVersionPriorTo(1, 15, "Default subnet inference from a named IPPool was introduced in v1.15")
-
-		poolCIDR := framework.RandomCIDR(f.ClusterIPFamily)
-		ginkgo.By("Creating subnet " + subnetName2 + " without binding it to the namespace")
-		poolSubnet := framework.MakeSubnet(subnetName2, "", poolCIDR, "", "", "", nil, nil, nil)
-		poolSubnet = subnetClient.CreateSync(poolSubnet)
-
-		poolIPs := framework.RandomIPPool(poolCIDR, 3)
-		poolV4, poolV6 := util.SplitIpsByProtocol(poolIPs)
-		v4Range, err := ipam.NewIPRangeListFrom(poolV4...)
-		framework.ExpectNoError(err)
-		v6Range, err := ipam.NewIPRangeListFrom(poolV6...)
-		framework.ExpectNoError(err)
-		ginkgo.By("Creating ippool " + ippoolName2 + " in subnet " + subnetName2)
-		ippool := framework.MakeIPPool(ippoolName2, subnetName2, poolIPs, nil)
-		_ = ippoolClient.CreateSync(ippool)
-
-		ginkgo.By("Creating deployment " + deployName + " with only the ippool annotation")
-		annotations := map[string]string{util.IPPoolAnnotation: ippoolName2}
-		deploy := framework.MakeDeployment(deployName, 1, map[string]string{"app": deployName}, annotations, "pause", framework.PauseImage, "")
-		deploy = deployClient.CreateSync(deploy)
-
-		pods, err := deployClient.GetPods(deploy)
-		framework.ExpectNoError(err)
-		framework.ExpectHaveLen(pods.Items, 1)
-		pod := pods.Items[0]
+	ginkgo.By("Getting pods for deployment " + t.deployName + " after deletion")
+	pods, err = t.deployClient.GetPods(deploy)
+	framework.ExpectNoError(err, "failed to get pods for deployment "+t.deployName)
+	framework.ExpectHaveLen(pods.Items, replicas)
+	for _, pod := range pods.Items {
 		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, poolSubnet.Name)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, poolSubnet.Spec.CIDRBlock)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, poolSubnet.Spec.Gateway)
-		for _, podIP := range util.PodIPs(pod) {
-			ip, err := ipam.NewIP(podIP)
-			framework.ExpectNoError(err)
-			poolRange := v4Range
-			if strings.ContainsRune(podIP, ':') {
-				poolRange = v6Range
-			}
-			framework.ExpectTrue(poolRange.Contains(ip), "Pod IP %s should be contained by IPPool %v", podIP, poolIPs)
-		}
-
-		ginkgo.By("Waiting for ippool usage to reflect the pod allocation")
-		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			pool := ippoolClient.Get(ippoolName2)
-			v4Allocated := !f.HasIPv4() || !pool.Status.V4UsingIPs.EqualInt64(0)
-			v6Allocated := !f.HasIPv6() || !pool.Status.V6UsingIPs.EqualInt64(0)
-			return v4Allocated && v6Allocated, nil
-		}, "")
-
-		ginkgo.By("Deleting deployment " + deployName + " and waiting for ippool addresses to be released")
-		deployClient.DeleteSync(deployName)
-		framework.ExpectNoError(ipClient.WaitToDisappear(fmt.Sprintf("%s.%s", pod.Name, pod.Namespace), 0, 30*time.Second))
-		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			pool := ippoolClient.Get(ippoolName2)
-			return pool.Status.V4UsingIPs.EqualInt64(0) && pool.Status.V6UsingIPs.EqualInt64(0), nil
-		}, "")
-	})
-
-	framework.ConformanceIt("should support IPPool feature", func() {
-		f.SkipVersionPriorTo(1, 12, "Support for IPPool feature was introduced in v1.12")
-
-		ipsCount := 12
-		ips := framework.RandomIPPool(cidr, ipsCount)
-		ipv4, ipv6 := util.SplitIpsByProtocol(ips)
-		if f.HasIPv4() {
-			framework.ExpectHaveLen(ipv4, ipsCount)
-		}
-		if f.HasIPv6() {
-			framework.ExpectHaveLen(ipv6, ipsCount)
-		}
-
-		ipv4Range, err := ipam.NewIPRangeListFrom(ipv4...)
-		framework.ExpectNoError(err)
-		ipv6Range, err := ipam.NewIPRangeListFrom(ipv6...)
-		framework.ExpectNoError(err)
-
-		excludeV4, excludeV6 := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
-		excludeV4Range, err := ipam.NewIPRangeListFrom(excludeV4...)
-		framework.ExpectNoError(err)
-		excludeV6Range, err := ipam.NewIPRangeListFrom(excludeV6...)
-		framework.ExpectNoError(err)
-
-		ipv4Range = ipv4Range.Separate(excludeV4Range)
-		ipv6Range = ipv6Range.Separate(excludeV6Range)
-
-		ginkgo.By(fmt.Sprintf("Creating ippool %s with ips %v", ippoolName, ips))
-		ippool := framework.MakeIPPool(ippoolName, subnetName, ips, nil)
-		ippool = ippoolClient.CreateSync(ippool)
-
-		ginkgo.By("Validating ippool status")
-		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			if !ippool.Status.V4UsingIPs.EqualInt64(0) {
-				framework.Logf("unexpected .status.v4UsingIPs: %s", ippool.Status.V4UsingIPs)
-				return false, nil
-			}
-			if !ippool.Status.V6UsingIPs.EqualInt64(0) {
-				framework.Logf("unexpected .status.v6UsingIPs: %s", ippool.Status.V6UsingIPs)
-				return false, nil
-			}
-			if ippool.Status.V4UsingIPRange != "" {
-				framework.Logf("unexpected .status.v4UsingIPRange: %s", ippool.Status.V4UsingIPRange)
-				return false, nil
-			}
-			if ippool.Status.V6UsingIPRange != "" {
-				framework.Logf("unexpected .status.v6UsingIPRange: %s", ippool.Status.V6UsingIPRange)
-				return false, nil
-			}
-			if !ippool.Status.V4AvailableIPs.Equal(ipv4Range.Count()) {
-				framework.Logf(".status.v4AvailableIPs mismatch: expect %s, actual %s", ipv4Range.Count(), ippool.Status.V4AvailableIPs)
-				return false, nil
-			}
-			if !ippool.Status.V6AvailableIPs.Equal(ipv6Range.Count()) {
-				framework.Logf(".status.v6AvailableIPs mismatch: expect %s, actual %s", ipv6Range.Count(), ippool.Status.V6AvailableIPs)
-				return false, nil
-			}
-			if ippool.Status.V4AvailableIPRange != ipv4Range.String() {
-				framework.Logf(".status.v4AvailableIPRange mismatch: expect %s, actual %s", ipv4Range, ippool.Status.V4AvailableIPRange)
-				return false, nil
-			}
-			if ippool.Status.V6AvailableIPRange != ipv6Range.String() {
-				framework.Logf(".status.v6AvailableIPRange mismatch: expect %s, actual %s", ipv6Range, ippool.Status.V6AvailableIPRange)
-				return false, nil
-			}
-			return true, nil
-		}, "")
-
-		ginkgo.By("Creating deployment " + deployName + " within ippool " + ippoolName)
-		replicas := 3
-		labels := map[string]string{"app": deployName}
-		annotations := map[string]string{util.IPPoolAnnotation: ippoolName}
-		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
-		deploy = deployClient.CreateSync(deploy)
-
-		checkFn := func() {
-			ginkgo.GinkgoHelper()
-
-			ginkgo.By("Getting pods for deployment " + deployName)
-			pods, err := deployClient.GetPods(deploy)
-			framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
-			framework.ExpectHaveLen(pods.Items, replicas)
-
-			v4Using, v6Using := ipam.NewEmptyIPRangeList(), ipam.NewEmptyIPRangeList()
-			for _, pod := range pods.Items {
-				for _, podIP := range pod.Status.PodIPs {
-					ip, err := ipam.NewIP(podIP.IP)
-					framework.ExpectNoError(err)
-					if strings.ContainsRune(podIP.IP, ':') {
-						framework.ExpectTrue(ipv6Range.Contains(ip), "Pod IP %s should be contained by %v", ip.String(), ipv6Range.String())
-						v6Using.Add(ip)
-					} else {
-						framework.ExpectTrue(ipv4Range.Contains(ip), "Pod IP %s should be contained by %v", ip.String(), ipv4Range.String())
-						v4Using.Add(ip)
-					}
-				}
-			}
-
-			ginkgo.By("Validating ippool status")
-			framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-				ippool = ippoolClient.Get(ippoolName)
-				v4Available, v6Available := ipv4Range.Separate(v4Using), ipv6Range.Separate(v6Using)
-				if !ippool.Status.V4UsingIPs.Equal(v4Using.Count()) {
-					framework.Logf(".status.v4UsingIPs mismatch: expect %s, actual %s", v4Using.Count(), ippool.Status.V4UsingIPs)
-					return false, nil
-				}
-				if !ippool.Status.V6UsingIPs.Equal(v6Using.Count()) {
-					framework.Logf(".status.v6UsingIPs mismatch: expect %s, actual %s", v6Using.Count(), ippool.Status.V6UsingIPs)
-					return false, nil
-				}
-				if ippool.Status.V4UsingIPRange != v4Using.String() {
-					framework.Logf(".status.v4UsingIPRange mismatch: expect %s, actual %s", v4Using, ippool.Status.V4UsingIPRange)
-					return false, nil
-				}
-				if ippool.Status.V6UsingIPRange != v6Using.String() {
-					framework.Logf(".status.v6UsingIPRange mismatch: expect %s, actual %s", v6Using, ippool.Status.V6UsingIPRange)
-					return false, nil
-				}
-				if !ippool.Status.V4AvailableIPs.Equal(v4Available.Count()) {
-					framework.Logf(".status.v4AvailableIPs mismatch: expect %s, actual %s", v4Available.Count(), ippool.Status.V4AvailableIPs)
-					return false, nil
-				}
-				if !ippool.Status.V6AvailableIPs.Equal(v6Available.Count()) {
-					framework.Logf(".status.v6AvailableIPs mismatch: expect %s, actual %s", v6Available.Count(), ippool.Status.V6AvailableIPs)
-					return false, nil
-				}
-				if ippool.Status.V4AvailableIPRange != v4Available.String() {
-					framework.Logf(".status.v4AvailableIPRange mismatch: expect %s, actual %s", v4Available, ippool.Status.V4AvailableIPRange)
-					return false, nil
-				}
-				if ippool.Status.V6AvailableIPRange != v6Available.String() {
-					framework.Logf(".status.v6AvailableIPRange mismatch: expect %s, actual %s", v6Available, ippool.Status.V6AvailableIPRange)
-					return false, nil
-				}
-				return true, nil
-			}, "")
-		}
-		checkFn()
-
-		ginkgo.By("Restarting deployment " + deployName)
-		deploy = deployClient.RestartSync(deploy)
-		checkFn()
-
-		ginkgo.By("Adding namespace " + namespaceName + " to ippool " + ippoolName)
-		patchedIPPool := ippool.DeepCopy()
-		patchedIPPool.Spec.Namespaces = []string{namespaceName}
-		ippool = ippoolClient.Patch(ippool, patchedIPPool, 10*time.Second)
-
-		ginkgo.By("Validating namespace annotations")
-		framework.WaitUntil(time.Second, 30*time.Second, func(_ context.Context) (bool, error) {
-			ns := nsClient.Get(namespaceName)
-			return len(ns.Annotations) != 0 && ns.Annotations[util.IPPoolAnnotation] == ippoolName, nil
-		}, "")
-
-		ginkgo.By("Patching deployment " + deployName)
-		deploy = deployClient.RestartSync(deploy)
-		patchedDeploy := deploy.DeepCopy()
-		patchedDeploy.Spec.Template.Annotations = nil
-		deploy = deployClient.PatchSync(deploy, patchedDeploy)
-		checkFn()
-	})
-
-	framework.ConformanceIt("should allocate right IPs for the statefulset when there are multiple IP Pools added to its namespace", func() {
-		f.SkipVersionPriorTo(1, 14, "Multiple IP Pools per namespace support was introduced in v1.14")
-		replicas := 1
-		ipsCount := 12
-
-		ginkgo.By("Creating a new subnet " + subnetName2)
-		testCidr := framework.RandomCIDR(f.ClusterIPFamily)
-		testSubnet := framework.MakeSubnet(subnetName2, "", testCidr, "", "", "", nil, nil, []string{namespaceName})
-		testSubnet = subnetClient.CreateSync(testSubnet)
-
-		ginkgo.By("Creating IPPool resources")
-		ipsRange1 := framework.RandomIPPool(cidr, ipsCount)
-		ipsRange2 := framework.RandomIPPool(testCidr, ipsCount)
-		ippool1 := framework.MakeIPPool(ippoolName, subnetName, ipsRange1, []string{namespaceName})
-		ippool2 := framework.MakeIPPool(ippoolName2, subnetName2, ipsRange2, []string{namespaceName})
-		ippoolClient.CreateSync(ippool1)
-		ippoolClient.CreateSync(ippool2)
-
-		ginkgo.By("Creating statefulset " + stsName + " with logical switch annotation and no ippool annotation")
-		labels := map[string]string{"app": stsName}
-		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), labels, framework.PauseImage)
-		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName2}
-		sts = stsClient.CreateSync(sts)
-
-		ginkgo.By("Getting pods for statefulset " + stsName)
-		pods := stsClient.GetPods(sts)
-		framework.ExpectHaveLen(pods.Items, replicas)
-
-		for _, pod := range pods.Items {
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, testSubnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, testSubnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnetName2)
-			framework.ExpectIPInCIDR(pod.Annotations[util.IPAddressAnnotation], testSubnet.Spec.CIDRBlock)
-			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-		}
-	})
-
-	framework.ConformanceIt("should allocate right IPs for the statefulset when there are multiple ippools added in the namespace and there are no available ips in the first ippool", func() {
-		f.SkipVersionPriorTo(1, 14, "Multiple IP Pools per namespace support was introduced in v1.14")
-		replicas := 1
-		ipsCount := 1
-
-		ginkgo.By("Creating IPPool resources")
-		ipsRange := framework.RandomIPPool(cidr, ipsCount*2)
-		ipv4Range, ipv6Range := util.SplitIpsByProtocol(ipsRange)
-		var ipsRange1, ipsRange2 []string
-		if f.HasIPv4() {
-			ipsRange1, ipsRange2 = slices.Clone(ipv4Range[:ipsCount]), slices.Clone(ipv4Range[ipsCount:])
-		}
-		if f.HasIPv6() {
-			ipsRange1 = append(ipsRange1, ipv6Range[:ipsCount]...)
-			ipsRange2 = append(ipsRange2, ipv6Range[ipsCount:]...)
-		}
-		ippool1 := framework.MakeIPPool(ippoolName, subnetName, ipsRange1, []string{namespaceName})
-		ippool2 := framework.MakeIPPool(ippoolName2, subnetName, ipsRange2, []string{namespaceName})
-		ippoolClient.CreateSync(ippool1)
-		ippoolClient.CreateSync(ippool2)
-
-		ginkgo.By("Creating first statefulset " + stsName + " with logical switch annotation and no ippool annotation")
-		sts := framework.MakeStatefulSet(stsName, stsName, int32(replicas), map[string]string{"app": stsName}, framework.PauseImage)
-		sts.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
-		sts = stsClient.CreateSync(sts)
-
-		ginkgo.By("Getting pods for the first statefulset " + stsName)
-		pods := stsClient.GetPods(sts)
-		framework.ExpectHaveLen(pods.Items, replicas)
-
-		for _, pod := range pods.Items {
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnetName)
-			framework.ExpectIPInCIDR(pod.Annotations[util.IPAddressAnnotation], subnet.Spec.CIDRBlock)
-			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-			for _, ip := range util.PodIPs(pod) {
-				framework.ExpectContainElement(append(ipsRange1, ipsRange2...), ip)
-			}
-		}
-
-		ginkgo.By("Creating second statefulset " + stsName2 + " with logical switch annotation and no ippool annotation")
-		sts2 := framework.MakeStatefulSet(stsName2, stsName2, int32(replicas), map[string]string{"app": stsName2}, framework.PauseImage)
-		sts2.Spec.Template.Annotations = map[string]string{util.LogicalSwitchAnnotation: subnetName}
-		sts2 = stsClient.CreateSync(sts2)
-
-		ginkgo.By("Getting pods for the second statefulset " + stsName2)
-		pods2 := stsClient.GetPods(sts2)
-		framework.ExpectHaveLen(pods2.Items, replicas)
-
-		for _, pod := range pods2.Items {
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, subnet.Spec.CIDRBlock)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, subnet.Spec.Gateway)
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, subnetName)
-			framework.ExpectIPInCIDR(pod.Annotations[util.IPAddressAnnotation], subnet.Spec.CIDRBlock)
-			framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
-			for _, ip := range util.PodIPs(pod) {
-				framework.ExpectContainElement(append(ipsRange1, ipsRange2...), ip)
-			}
-		}
-	})
-
-	framework.ConformanceIt("should block IP allocation if the ippool bound by namespace annotation has no available IPs", func() {
-		f.SkipVersionPriorTo(1, 14, "This feature was introduced in v1.14")
-
-		ginkgo.By("Creating IPPool " + ippoolName)
-		ipsCount := 1
-		ips := framework.RandomIPPool(cidr, ipsCount)
-		ippool := framework.MakeIPPool(ippoolName, subnetName, ips, []string{namespaceName})
-		_ = ippoolClient.CreateSync(ippool)
-
-		ginkgo.By("Waiting for namespace " + namespaceName + " to have IPPool annotation")
-		nsClient.WaitUntil(namespaceName, func(ns *corev1.Namespace) (bool, error) {
-			return strings.Contains(ns.Annotations[util.IPPoolAnnotation], ippoolName), nil
-		}, "IPPool annotation contains "+ippoolName, 2*time.Second, 30*time.Second)
-
-		ginkgo.By("Creating deployment " + deployName + " with replicas equal to the number of IPs in the ippool")
-		labels := map[string]string{"app": deployName}
-		deploy := framework.MakeDeployment(deployName, int32(ipsCount), labels, nil, "pause", framework.PauseImage, "")
-		_ = deployClient.CreateSync(deploy)
-
-		ginkgo.By("Creating pod " + podName + " which should be blocked for IP allocation")
-		pod := framework.MakePod(namespaceName, podName, nil, nil, "", nil, nil)
-		_ = podClient.Create(pod)
-
-		ginkgo.By("Waiting for pod " + podName + " to have event indicating IP allocation failure")
-		eventClient := f.EventClient()
-		_ = eventClient.WaitToHaveEvent(util.KindPod, podName, corev1.EventTypeWarning, "AcquireAddressFailed", "kube-ovn-controller", "")
-	})
-
-	framework.ConformanceIt("should not allocate newly excluded addresses from a named IPPool", func() {
-		f.SkipVersionPriorTo(1, 15, "Preserving named IPPool state during subnet reconciliation was introduced in v1.15")
-
-		staticIP := framework.RandomIPs(cidr, ",", 1)
-		poolIPs := strings.Split(staticIP, ",")
-		ginkgo.By("Creating IPPool " + ippoolName + " with addresses " + staticIP)
-		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, nil)
-		_ = ippoolClient.CreateSync(ippool)
-
-		ginkgo.By("Adding the IPPool addresses to subnet excludeIps")
-		modifiedSubnet := subnet.DeepCopy()
-		modifiedSubnet.Spec.ExcludeIps = append(slices.Clone(subnet.Spec.ExcludeIps), poolIPs...)
-		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-
-		ginkgo.By("Waiting for the IPPool to become exhausted")
-		_ = waitForIPPoolCounts(f, ippoolClient, ippoolName, 0, 0)
-
-		ginkgo.By("Creating pod " + podName + " from the exhausted IPPool")
-		annotations := map[string]string{util.IPPoolAnnotation: ippoolName}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
-		_ = podClient.Create(pod)
-
-		ginkgo.By("Waiting for pod " + podName + " to report IP allocation failure")
-		_ = f.EventClient().WaitToHaveEvent(util.KindPod, podName, corev1.EventTypeWarning, "AcquireAddressFailed", "kube-ovn-controller", "")
-		pod = podClient.GetPod(podName)
-		framework.ExpectNotHaveKey(pod.Annotations, util.AllocatedAnnotation)
-
-		ippool = waitForIPPoolCounts(f, ippoolClient, ippoolName, 0, 0)
-		framework.ExpectEmpty(ippool.Status.V4AvailableIPRange)
-		framework.ExpectEmpty(ippool.Status.V6AvailableIPRange)
-	})
-
-	framework.ConformanceIt("should not make an excluded IPPool address available after release", func() {
-		f.SkipVersionPriorTo(1, 15, "Preserving named IPPool state during subnet reconciliation was introduced in v1.15")
-
-		staticIP := framework.RandomIPs(cidr, ",", 1)
-		poolIPs := strings.Split(staticIP, ",")
-		ginkgo.By("Creating IPPool " + ippoolName + " with addresses " + staticIP)
-		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, nil)
-		_ = ippoolClient.CreateSync(ippool)
-
-		ginkgo.By("Creating pod " + podName + " from IPPool " + ippoolName)
-		annotations := map[string]string{util.IPPoolAnnotation: ippoolName}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
-		pod = podClient.CreateSync(pod)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, staticIP)
-
-		ginkgo.By("Adding the allocated addresses to subnet excludeIps")
-		modifiedSubnet := subnet.DeepCopy()
-		modifiedSubnet.Spec.ExcludeIps = append(slices.Clone(subnet.Spec.ExcludeIps), poolIPs...)
-		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-		_ = waitForIPPoolCounts(f, ippoolClient, ippoolName, 0, 1)
-
-		ginkgo.By("Deleting pod " + podName + " and waiting for its addresses to be released")
-		podClient.DeleteSync(podName)
-		framework.ExpectNoError(ipClient.WaitToDisappear(ovs.PodNameToPortName(podName, namespaceName, util.OvnProvider), 0, 30*time.Second))
-
-		ippool = waitForIPPoolCounts(f, ippoolClient, ippoolName, 0, 0)
-		framework.ExpectEmpty(ippool.Status.V4AvailableIPRange)
-		framework.ExpectEmpty(ippool.Status.V6AvailableIPRange)
-	})
-
-	framework.ConformanceIt("should preserve named IPPool ownership after subnet reconciliation", func() {
-		f.SkipVersionPriorTo(1, 15, "Preserving named IPPool state during subnet reconciliation was introduced in v1.15")
-
-		replicas := 5
-		candidates := strings.Split(framework.RandomIPs(cidr, ";", replicas+1), ";")
-		staticIPs := candidates[:replicas]
-		poolIPs := make([]string, 0, replicas*2)
-		for _, staticIP := range staticIPs {
-			poolIPs = append(poolIPs, strings.Split(staticIP, ",")...)
-		}
-
-		ginkgo.By("Creating IPPool " + ippoolName + " with addresses " + strings.Join(staticIPs, ";"))
-		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, nil)
-		_ = ippoolClient.CreateSync(ippool)
-
-		ginkgo.By("Updating subnet excludeIps with addresses outside the named IPPool")
-		modifiedSubnet := subnet.DeepCopy()
-		modifiedSubnet.Spec.ExcludeIps = append(slices.Clone(subnet.Spec.ExcludeIps), strings.Split(candidates[replicas], ",")...)
-		subnet = subnetClient.PatchSync(subnet, modifiedSubnet)
-
-		ginkgo.By("Creating deployment " + deployName + " with static addresses owned by IPPool " + ippoolName)
-		labels := map[string]string{"app": deployName}
-		annotations := map[string]string{util.IPPoolAnnotation: strings.Join(staticIPs, ";")}
-		deploy := framework.MakeDeployment(deployName, int32(replicas), labels, annotations, "pause", framework.PauseImage, "")
-		deploy = deployClient.CreateSync(deploy)
-
-		pods, err := deployClient.GetPods(deploy)
-		framework.ExpectNoError(err, "failed to get pods for deployment "+deployName)
-		framework.ExpectHaveLen(pods.Items, replicas)
-		allocatedIPs := make([]string, 0, replicas)
-		for _, pod := range pods.Items {
-			framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-			framework.ExpectContainElement(staticIPs, pod.Annotations[util.IPAddressAnnotation])
-			allocatedIPs = append(allocatedIPs, pod.Annotations[util.IPAddressAnnotation])
-		}
-		framework.ExpectConsistOf(allocatedIPs, staticIPs)
-		_ = waitForIPPoolCounts(f, ippoolClient, ippoolName, 0, int64(replicas))
-	})
-
-	framework.ConformanceIt("should return deleted IPPool addresses to the default pool", func() {
-		f.SkipVersionPriorTo(1, 15, "Returning deleted IPPool addresses to the default pool was introduced in v1.15")
-
-		staticIP := framework.RandomIPs(cidr, ",", 1)
-		poolIPs := strings.Split(staticIP, ",")
-		ginkgo.By("Creating IPPool " + ippoolName + " with addresses " + staticIP)
-		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, nil)
-		_ = ippoolClient.CreateSync(ippool)
-
-		ginkgo.By("Deleting IPPool " + ippoolName)
-		ippoolClient.DeleteSync(ippoolName)
-
-		ginkgo.By("Creating pod " + podName + " with the former IPPool addresses from the default pool")
-		annotations := map[string]string{
-			util.IPAddressAnnotation:     staticIP,
-			util.LogicalSwitchAnnotation: subnetName,
-		}
-		pod := framework.MakePod(namespaceName, podName, nil, annotations, "", nil, nil)
-		pod = podClient.CreateSync(pod)
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.AllocatedAnnotation, "true")
-		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPAddressAnnotation, staticIP)
-		framework.ExpectConsistOf(util.PodIPs(*pod), poolIPs)
-	})
-
-	framework.ConformanceIt("should be able to allocate IP from IPPools in different subnets", func() {
-		f.SkipVersionPriorTo(1, 14, "This feature was introduced in v1.14")
-		ipsCount := 1
-
-		ginkgo.By("Creating subnet " + subnetName2)
-		cidr2 := framework.RandomCIDR(f.ClusterIPFamily)
-		subnet2 := framework.MakeSubnet(subnetName2, "", cidr2, "", "", "", nil, nil, []string{namespaceName})
-		_ = subnetClient.CreateSync(subnet2)
-
-		ginkgo.By("Creating IPPool " + ippoolName)
-		ips := framework.RandomIPPool(cidr, ipsCount)
-		ippool := framework.MakeIPPool(ippoolName, subnetName, ips, []string{namespaceName})
-		_ = ippoolClient.CreateSync(ippool)
-
-		ginkgo.By("Creating IPPool " + ippoolName2)
-		ips2 := framework.RandomIPPool(cidr2, ipsCount)
-		ippool2 := framework.MakeIPPool(ippoolName2, subnetName2, ips2, []string{namespaceName})
-		_ = ippoolClient.CreateSync(ippool2)
-
-		ginkgo.By("Waiting for namespace " + namespaceName + " to have both IPPool annotations")
-		nsClient.WaitUntil(namespaceName, func(ns *corev1.Namespace) (bool, error) {
-			ann := ns.Annotations[util.IPPoolAnnotation]
-			return strings.Contains(ann, ippoolName) && strings.Contains(ann, ippoolName2), nil
-		}, "IPPool annotation contains both "+ippoolName+" and "+ippoolName2, 2*time.Second, 30*time.Second)
-
-		ginkgo.By("Creating deployment " + deployName + " with replicas equal to the number of IPs in the ippool " + ippoolName)
-		labels := map[string]string{"app": deployName}
-		deploy := framework.MakeDeployment(deployName, int32(ipsCount), labels, nil, "pause", framework.PauseImage, "")
-		_ = deployClient.CreateSync(deploy)
-
-		ginkgo.By("Creating pod " + podName + " which should have IP allocated from ippool " + ippoolName2)
-		pod := framework.MakePod(namespaceName, podName, nil, nil, "", nil, nil)
-		_ = podClient.CreateSync(pod)
-	})
-
-	framework.ConformanceIt("should manage address set when EnableAddressSet is true", func() {
-		f.SkipVersionPriorTo(1, 15, "This feature was introduced in v1.15")
-
-		ginkgo.By("Creating ippool " + ippoolName + " with EnableAddressSet enabled")
-		// Use only IPv4 or IPv6 addresses to avoid mixed IP family issue in OVN address set
-		cidrV4, cidrV6 := util.SplitStringIP(cidr)
-		var poolCIDR string
-		if cidrV4 != "" {
-			poolCIDR = cidrV4
-		} else {
-			poolCIDR = cidrV6
-		}
-		poolIPs := framework.RandomIPPool(poolCIDR, 4)
-		framework.ExpectTrue(len(poolIPs) >= 2, "expected at least two IPs in pool")
-		ippool := framework.MakeIPPool(ippoolName, subnetName, poolIPs, nil)
-		ippool.Spec.EnableAddressSet = true
-		_ = ippoolClient.CreateSync(ippool)
-
-		ginkgo.By("Verifying address set contains pool IPs")
-		framework.WaitForAddressSetIPs(ippoolName, poolIPs)
-
-		ginkgo.By("Updating ippool to remove one IP entry")
-		// Get the latest version to avoid resourceVersion conflict
-		updated := ippoolClient.Get(ippoolName)
-		updated.Spec.IPs = updated.Spec.IPs[:len(updated.Spec.IPs)-1]
-		updated = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
-
-		ginkgo.By("Checking address set reflects IP removal")
-		framework.WaitForAddressSetIPs(ippoolName, updated.Spec.IPs)
-
-		ginkgo.By("Disabling EnableAddressSet to trigger address set deletion")
-		// Get the latest version to avoid resourceVersion conflict
-		updated = ippoolClient.Get(ippoolName)
-		updated.Spec.EnableAddressSet = false
-		_ = ippoolClient.UpdateSync(updated, metav1.UpdateOptions{}, ippoolUpdateTimeout)
-		framework.WaitForAddressSetDeletion(ippoolName)
-	})
-})
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.CidrAnnotation, t.subnet.Spec.CIDRBlock)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.GatewayAnnotation, t.subnet.Spec.Gateway)
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.IPPoolAnnotation, ippool)
+		framework.ExpectContainElement(ips, pod.Annotations[util.IPAddressAnnotation])
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.LogicalSwitchAnnotation, t.subnet.Name)
+		framework.ExpectMAC(pod.Annotations[util.MacAddressAnnotation])
+		framework.ExpectHaveKeyWithValue(pod.Annotations, util.RoutedAnnotation, "true")
+		framework.ExpectConsistOf(util.PodIPs(pod), strings.Split(pod.Annotations[util.IPAddressAnnotation], ","))
+	}
+}

@@ -267,6 +267,30 @@ family=4 if sys.argv[1]=="IPv4" else 6
 addresses=[a["address"] for a in json.load(sys.stdin)["status"]["addresses"] if a["type"]=="InternalIP" and ipaddress.ip_address(a["address"]).version==family]
 assert len(addresses)==1, "expected one peer InternalIP for the requested address family"
 print(addresses[0])' "$overlay_family")
+wait_for_overlay_connectivity() {
+  local direction=$1 destination=$2 pod_ip=$3
+  for attempt in {1..60}; do
+    if kubectl -n ipsec-overlay exec "$direction" -- timeout 5 "$overlay_ping" -c 1 "$pod_ip" >/dev/null 2>&1; then
+      echo "Cross-node $overlay_family $overlay_tunnel connectivity ready: $direction -> $destination"
+      return 0
+    fi
+    if [[ "$attempt" == 60 ]]; then
+      echo "Cross-node $overlay_family $overlay_tunnel connectivity did not converge: $direction -> $destination" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+for direction in control-plane worker; do
+  destination=control-plane
+  if [[ "$direction" == control-plane ]]; then
+    destination=worker
+  fi
+  overlay_pod_ip=$(kubectl -n ipsec-overlay get pod "$destination" -o jsonpath='{.status.podIP}')
+  # Pod Ready only covers the container; wait for the encrypted OVN tunnel to
+  # carry traffic before running the packet-counting assertion below.
+  wait_for_overlay_connectivity "$direction" "$destination" "$overlay_pod_ip"
+done
 docker volume create "$overlay_capture_volume" >/dev/null
 start_capture ipsec-overlay "host $overlay_peer and (udp port 6081 or udp port 4789 or udp port 4500 or ip proto 50 or ip6 proto 50)"
 start_capture ipsec-overlay-egress -Q out "host $overlay_peer and (udp port 6081 or udp port 4789 or udp port 4500 or ip proto 50 or ip6 proto 50)"

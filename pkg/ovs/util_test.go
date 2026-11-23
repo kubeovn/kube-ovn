@@ -1,9 +1,7 @@
 package ovs
 
 import (
-	"context"
 	"testing"
-	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -40,6 +38,25 @@ func Test_parseIpv6RaConfigs(t *testing.T) {
 		t.Parallel()
 		config := parseIpv6RaConfigs("send_periodic=,test")
 		require.Empty(t, config)
+	})
+
+	t.Run("keep comma separated list values", func(t *testing.T) {
+		t.Parallel()
+		config := parseIpv6RaConfigs("address_mode=dhcpv6_stateful,route_info=MEDIUM-fd78::/48,MEDIUM-fd79::/48, HIGH-fd7a::/48,dnssl=a.example,b.example,send_periodic=true")
+		require.Equal(t, map[string]string{
+			"address_mode":  "dhcpv6_stateful",
+			"route_info":    "MEDIUM-fd78::/48,MEDIUM-fd79::/48,HIGH-fd7a::/48",
+			"dnssl":         "a.example,b.example",
+			"send_periodic": "true",
+		}, config)
+	})
+
+	t.Run("list item after a dropped option is dropped", func(t *testing.T) {
+		t.Parallel()
+		config := parseIpv6RaConfigs("route_info=,MEDIUM-fd78::/48,a=b=c,MEDIUM-fd79::/48,send_periodic=true")
+		require.Equal(t, map[string]string{
+			"send_periodic": "true",
+		}, config)
 	})
 }
 
@@ -304,102 +321,6 @@ func Test_GroupAclMatch_Match(t *testing.T) {
 		match := NewGroupACLMatch(NewACLMatch("", "", "", ""))
 		_, err := match.Match()
 		require.Error(t, err)
-	})
-}
-
-func Test_Limiter(t *testing.T) {
-	t.Parallel()
-
-	t.Run("without limit", func(t *testing.T) {
-		t.Parallel()
-
-		var (
-			limiter *Limiter
-			err     error
-		)
-
-		limiter = new(Limiter)
-
-		err = limiter.Wait(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, int32(1), limiter.Current())
-
-		err = limiter.Wait(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, int32(2), limiter.Current())
-
-		limiter.Done()
-		require.Equal(t, int32(1), limiter.Current())
-
-		limiter.Done()
-		require.Equal(t, int32(0), limiter.Current())
-	})
-
-	t.Run("with limit", func(t *testing.T) {
-		t.Parallel()
-
-		var (
-			limiter *Limiter
-			err     error
-		)
-
-		limiter = new(Limiter)
-		limiter.Update(2)
-
-		err = limiter.Wait(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, int32(1), limiter.Current())
-
-		err = limiter.Wait(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, int32(2), limiter.Current())
-
-		time.AfterFunc(10*time.Second, func() {
-			limiter.Done()
-			require.Equal(t, int32(1), limiter.Current())
-		})
-
-		err = limiter.Wait(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, int32(2), limiter.Current())
-	})
-
-	t.Run("with timeout", func(t *testing.T) {
-		t.Parallel()
-
-		var (
-			limiter *Limiter
-			err     error
-		)
-
-		limiter = new(Limiter)
-		limiter.Update(2)
-
-		err = limiter.Wait(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, int32(1), limiter.Current())
-
-		err = limiter.Wait(context.Background())
-		require.NoError(t, err)
-		require.Equal(t, int32(2), limiter.Current())
-
-		time.AfterFunc(10*time.Second, func() {
-			limiter.Done()
-		})
-
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		defer cancel()
-
-		err = limiter.Wait(ctx)
-		require.ErrorContains(t, err, "context canceled by timeout")
-		require.Equal(t, int32(2), limiter.Current())
-	})
-
-	t.Run("default limit", func(t *testing.T) {
-		t.Parallel()
-
-		limiter := new(Limiter)
-		require.Equal(t, int32(0), limiter.Limit())
 	})
 }
 

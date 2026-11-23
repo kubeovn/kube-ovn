@@ -15,6 +15,7 @@ import (
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	ktesting "k8s.io/client-go/testing"
@@ -22,10 +23,272 @@ import (
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnfake "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/fake"
 	"github.com/kubeovn/kube-ovn/pkg/internal"
+	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
+
+func TestSubnetRuntimeHelpersHonorCanceledContext(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	controller := &Controller{}
+	subnet := &kubeovnv1.Subnet{Name: "subnet-a"}
+
+	_, err := controller.prepareOvnSubnet(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.finishOvnSubnetReconcile(ctx, subnet, nil)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.handleDeleteLogicalSwitchWithContext(ctx, subnet.Name)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.recordSubnetGatewayMACWithContext(ctx, subnet, "router-port")
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.patchSubnetStatusWithContext(ctx, subnet, "Canceled", "")
+	require.ErrorIs(t, err, context.Canceled)
+	_, err = controller.calcSubnetStatusIPWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.deleteSubnetHealthCheckVipWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	_, err = controller.acquireMcastQuerierIPWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.updateVlanStatusForSubnetDeletionWithContext(ctx, nil, subnet.Name)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.reconcileVlanWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.releaseU2OIPWithContext(ctx, subnet, "u2o")
+	require.ErrorIs(t, err, context.Canceled)
+	_, err = controller.releaseMcastQuerierIPWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.checkSubnetConflictWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	err = controller.reconcileOvnDefaultVpcRouteWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	fenceErr := errors.New("subnet fence lost")
+	fenced := &Controller{subnetRuntimeFence: func(context.Context) error { return fenceErr }}
+	err = fenced.reconcileOvnDefaultVpcRouteWithContext(context.Background(), subnet)
+	require.ErrorIs(t, err, fenceErr)
+}
+
+func TestEnqueueDeleteSubnetRuntimeWriterOwnership(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name   string
+		mode   string
+		queued int
+	}{
+		{name: "legacy mode", mode: ControllerRuntimeModeDisabled, queued: 1},
+		{name: "runtime writer mode", mode: ControllerRuntimeModeSubnetWriter, queued: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			controller := &Controller{
+				config:            &Configuration{ControllerRuntimeMode: tc.mode},
+				deleteSubnetQueue: newTypedRateLimitingQueue[*kubeovnv1.Subnet]("DeleteSubnetTest", nil),
+			}
+			t.Cleanup(controller.deleteSubnetQueue.ShutDown)
+
+			controller.enqueueDeleteSubnet(&kubeovnv1.Subnet{Name: "subnet-a"})
+			require.Equal(t, tc.queued, controller.deleteSubnetQueue.Len())
+		})
+	}
+}
+
+func TestReconcileSubnetRuntimeInvalidatesPolicySelectorCache(t *testing.T) {
+	t.Parallel()
+
+	controller := &Controller{}
+	before := controller.policySelectorCacheGeneration()
+	err := controller.ReconcileSubnetRuntime(t.Context(), nil)
+	require.Error(t, err)
+	require.Equal(t, before+1, controller.policySelectorCacheGeneration())
+}
+
+func TestEnqueueDeleteSubnetRuntimeWriterLeavesNativeDeleteWatchOwnership(t *testing.T) {
+	t.Parallel()
+
+	controller := &Controller{
+		config:              &Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetWriter},
+		subnetRuntimeEvents: newSubnetRuntimeEventFanout(),
+	}
+	controller.enqueueDeleteSubnet(&kubeovnv1.Subnet{Name: "subnet-a"})
+	require.Empty(t, controller.subnetRuntimeEvents.pending)
+}
+
+func TestEnqueueAddSubnetRuntimeWriterLeavesNativeCreateWatchOwnership(t *testing.T) {
+	t.Parallel()
+
+	controller := &Controller{
+		config:              &Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetWriter},
+		subnetRuntimeEvents: newSubnetRuntimeEventFanout(),
+	}
+	controller.enqueueAddSubnet(&kubeovnv1.Subnet{Name: "subnet-a"})
+	require.Empty(t, controller.subnetRuntimeEvents.pending)
+}
+
+func TestEnqueueUpdateSubnetRuntimeWriterFansOutStatusOnlyReadyEvent(t *testing.T) {
+	t.Parallel()
+
+	deletionTimestamp := metav1.Now()
+	controller := &Controller{
+		config:              &Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetWriter},
+		subnetRuntimeEvents: newSubnetRuntimeEventFanout(),
+	}
+	oldSubnet := &kubeovnv1.Subnet{
+		Name:              "subnet-a",
+		Generation:        2,
+		DeletionTimestamp: &deletionTimestamp,
+		Status:            kubeovnv1.SubnetStatus{V4UsingIPs: internal.NewBigInt(1)},
+	}
+	statusOnly := oldSubnet.DeepCopy()
+	statusOnly.Status.V4UsingIPs = internal.NewBigInt(0)
+	controller.enqueueUpdateSubnet(oldSubnet, statusOnly)
+	require.Contains(t, controller.subnetRuntimeEvents.pending, oldSubnet.Name)
+
+	clear(controller.subnetRuntimeEvents.pending)
+	active := statusOnly.DeepCopy()
+	active.DeletionTimestamp = nil
+	controller.enqueueUpdateSubnet(active, statusOnly)
+	require.Empty(t, controller.subnetRuntimeEvents.pending)
+
+	clear(controller.subnetRuntimeEvents.pending)
+	generationUpdate := statusOnly.DeepCopy()
+	generationUpdate.Generation++
+	controller.enqueueUpdateSubnet(statusOnly, generationUpdate)
+	require.Empty(t, controller.subnetRuntimeEvents.pending)
+
+	clear(controller.subnetRuntimeEvents.pending)
+	finalizerUpdate := statusOnly.DeepCopy()
+	finalizerUpdate.Finalizers = []string{"example.com/finalizer"}
+	controller.enqueueUpdateSubnet(statusOnly, finalizerUpdate)
+	require.Empty(t, controller.subnetRuntimeEvents.pending)
+}
+
+func TestAcquireU2OIPWithContextPreservesExistingAndOtherNICAllocations(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		name     string
+		existing bool
+	}{
+		{name: "new allocation is compensated", existing: false},
+		{name: "existing allocation is retained", existing: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			const (
+				subnetName = "subnet-a"
+				podName    = "u2o"
+				nicName    = "vpc-subnet-a"
+				otherNIC   = "other-nic"
+			)
+			controller := &Controller{ipam: ovnipam.NewIPAM()}
+			require.NoError(t, controller.ipam.AddOrUpdateSubnet(subnetName, "10.0.0.0/24", "10.0.0.1", nil))
+			if tc.existing {
+				_, _, _, err := controller.ipam.GetStaticAddress(podName, nicName, "10.0.0.2", nil, subnetName, true)
+				require.NoError(t, err)
+			}
+			_, _, _, err := controller.ipam.GetStaticAddress(podName, otherNIC, "10.0.0.3", nil, subnetName, true)
+			require.NoError(t, err)
+
+			fenceErr := errors.New("subnet fence lost")
+			checks := 0
+			controller.subnetRuntimeFence = func(context.Context) error {
+				checks++
+				if checks >= 2 {
+					return fenceErr
+				}
+				return nil
+			}
+			subnet := &kubeovnv1.Subnet{
+				Name: subnetName,
+				Spec: kubeovnv1.SubnetSpec{
+					Protocol:             kubeovnv1.ProtocolIPv4,
+					U2OInterconnectionIP: "10.0.0.2",
+					U2OInterconnection:   true,
+				},
+			}
+			_, _, _, err = controller.acquireU2OIPWithContext(context.Background(), subnet, podName, nicName)
+			require.ErrorIs(t, err, fenceErr)
+
+			_, _, _, targetFound := controller.ipam.GetPodAddressByNic(podName, nicName, subnetName)
+			require.Equal(t, tc.existing, targetFound)
+			_, _, _, otherFound := controller.ipam.GetPodAddressByNic(podName, otherNIC, subnetName)
+			require.True(t, otherFound)
+		})
+	}
+}
+
+func TestReleaseU2OIPWithContextOnlyReleasesU2ONIC(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	controller := fakeController.fakeController
+	const (
+		subnetName = "subnet-a"
+		podName    = "u2o-interconnection.vpc.subnet-a"
+		nicName    = "vpc-subnet-a"
+		otherNIC   = "other-nic"
+	)
+	require.NoError(t, controller.ipam.AddOrUpdateSubnet(subnetName, "10.0.0.0/24", "10.0.0.1", nil))
+	_, _, _, err := controller.ipam.GetStaticAddress(podName, nicName, "10.0.0.2", nil, subnetName, true)
+	require.NoError(t, err)
+	_, _, _, err = controller.ipam.GetStaticAddress(podName, otherNIC, "10.0.0.3", nil, subnetName, true)
+	require.NoError(t, err)
+
+	subnet := &kubeovnv1.Subnet{
+		Name:   subnetName,
+		Spec:   kubeovnv1.SubnetSpec{Vpc: "vpc"},
+		Status: kubeovnv1.SubnetStatus{U2OInterconnectionIP: "10.0.0.2"},
+	}
+	err = controller.releaseU2OIPWithContext(t.Context(), subnet, "u2o-interconnection.vpc.subnet-a")
+	require.NoError(t, err)
+
+	_, _, _, targetFound := controller.ipam.GetPodAddressByNic(podName, nicName, subnetName)
+	require.False(t, targetFound)
+	_, _, _, otherFound := controller.ipam.GetPodAddressByNic(podName, otherNIC, subnetName)
+	require.True(t, otherFound)
+}
+
+func TestValidateSubnetRuntimeDeleteTarget(t *testing.T) {
+	t.Parallel()
+
+	deleting := metav1.Now()
+	snapshot := &kubeovnv1.Subnet{Name: "subnet-a", UID: "uid-a", Generation: 2, DeletionTimestamp: &deleting}
+	tests := []struct {
+		name string
+		live *kubeovnv1.Subnet
+		want bool
+	}{
+		{
+			name: "same identity",
+			live: snapshot.DeepCopy(),
+			want: true,
+		},
+		{
+			name: "replacement uid",
+			live: &kubeovnv1.Subnet{Name: snapshot.Name, UID: "uid-b", Generation: snapshot.Generation},
+		},
+		{
+			name: "updated generation",
+			live: &kubeovnv1.Subnet{Name: snapshot.Name, UID: snapshot.UID, Generation: 3},
+		},
+		{
+			name: "replacement is not terminating",
+			live: &kubeovnv1.Subnet{Name: snapshot.Name, UID: snapshot.UID, Generation: snapshot.Generation},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateSubnetRuntimeDeleteTarget(snapshot, tc.live)
+			if tc.want {
+				require.NoError(t, err)
+				return
+			}
+			require.True(t, k8serrors.IsConflict(err))
+		})
+	}
+}
 
 func TestHandleDeleteLogicalSwitchResources(t *testing.T) {
 	t.Parallel()
@@ -743,7 +1006,10 @@ func Test_reconcileVips(t *testing.T) {
 	ctrl := fakeController.fakeController
 	mockOvnClient := fakeController.mockOvnClient
 
-	lspNamePrefix := "reconcile-vip-lsp"
+	lspNamePrefix := "ovn-test-vip"
+	lspName := func(ip string) string {
+		return lspNamePrefix + "-" + ip
+	}
 
 	subnet := &kubeovnv1.Subnet{
 		Name: "ovn-test",
@@ -752,28 +1018,16 @@ func Test_reconcileVips(t *testing.T) {
 		},
 	}
 
-	mockLsp := func(lsName, lspName, vip string) ovnnb.LogicalSwitchPort {
-		return ovnnb.LogicalSwitchPort{
-			Name: lspName,
-			ExternalIDs: map[string]string{
-				"ls": lsName,
-			},
-			Options: map[string]string{
-				"virtual-ip": vip,
-			},
-		}
-	}
-
 	lsps := []ovnnb.LogicalSwitchPort{
-		mockLsp("", lspNamePrefix+"-0", "192.168.123.8"),
-		mockLsp("", lspNamePrefix+"-1", "192.168.123.9"),
-		mockLsp("", lspNamePrefix+"-2", "192.168.123.10"),
+		mockReconcileVipsLSP("", lspName("192.168.123.8"), "192.168.123.8"),
+		mockReconcileVipsLSP("", lspName("192.168.123.9"), "192.168.123.9"),
+		mockReconcileVipsLSP("", lspName("192.168.123.10"), "192.168.123.10"),
 	}
 
 	t.Run("existent vips and new vips has intersection", func(t *testing.T) {
 		mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return(lsps, nil)
-		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspNamePrefix + "-0").Return(nil)
-		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspNamePrefix + "-1").Return(nil)
+		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspName("192.168.123.8")).Return(nil)
+		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspName("192.168.123.9")).Return(nil)
 		mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name, "192.168.123.11", "192.168.123.12", "192.168.123.13").Return(nil)
 
 		err := ctrl.reconcileVips(subnet)
@@ -794,14 +1048,80 @@ func Test_reconcileVips(t *testing.T) {
 		}
 
 		mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return(lsps, nil)
-		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspNamePrefix + "-0").Return(nil)
-		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspNamePrefix + "-1").Return(nil)
-		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspNamePrefix + "-2").Return(nil)
+		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspName("192.168.123.8")).Return(nil)
+		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspName("192.168.123.9")).Return(nil)
+		mockOvnClient.EXPECT().DeleteLogicalSwitchPort(lspName("192.168.123.10")).Return(nil)
 		mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name).Return(nil)
 
 		err := ctrl.reconcileVips(subnet)
 		require.NoError(t, err)
 	})
+}
+
+func Test_reconcileVipsPreservesVipCRPort(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	subnet := &kubeovnv1.Subnet{Name: "ovn-test"}
+	vipCRPort := mockReconcileVipsLSP(subnet.Name, "vip:demo:ipv4", "192.168.123.20")
+	managedPort := mockReconcileVipsLSP(subnet.Name, "ovn-test-vip-192.168.123.8", "192.168.123.8")
+
+	mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitchPort{vipCRPort, managedPort}, nil)
+	mockOvnClient.EXPECT().DeleteLogicalSwitchPort("ovn-test-vip-192.168.123.8").Return(nil)
+	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name).Return(nil)
+
+	require.NoError(t, ctrl.reconcileVips(subnet))
+}
+
+func Test_reconcileVipsIgnoresSamePrefixNonOwnedPort(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	subnet := &kubeovnv1.Subnet{
+		Name: "ovn-test",
+		Spec: kubeovnv1.SubnetSpec{Vips: []string{"192.168.123.20"}},
+	}
+	nonOwnedPort := mockReconcileVipsLSP(subnet.Name, "ovn-test-vip-owned", "192.168.123.20")
+
+	mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitchPort{nonOwnedPort}, nil)
+	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name, "192.168.123.20").Return(nil)
+
+	require.NoError(t, ctrl.reconcileVips(subnet))
+}
+
+func Test_reconcileVipsRecreatesStaleVirtualIP(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	mockOvnClient := fakeController.mockOvnClient
+	subnet := &kubeovnv1.Subnet{
+		Name: "ovn-test",
+		Spec: kubeovnv1.SubnetSpec{Vips: []string{"192.168.123.20"}},
+	}
+	stalePort := mockReconcileVipsLSP(subnet.Name, "ovn-test-vip-192.168.123.20", "192.168.123.21")
+
+	mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, gomock.Any(), gomock.Any()).Return([]ovnnb.LogicalSwitchPort{stalePort}, nil)
+	mockOvnClient.EXPECT().DeleteLogicalSwitchPort("ovn-test-vip-192.168.123.20").Return(nil)
+	mockOvnClient.EXPECT().CreateVirtualLogicalSwitchPorts(subnet.Name, "192.168.123.20").Return(nil)
+
+	require.NoError(t, ctrl.reconcileVips(subnet))
+}
+
+func mockReconcileVipsLSP(lsName, lspName, vip string) ovnnb.LogicalSwitchPort {
+	return ovnnb.LogicalSwitchPort{
+		Name: lspName,
+		ExternalIDs: map[string]string{
+			"ls": lsName,
+		},
+		Options: map[string]string{
+			"virtual-ip": vip,
+		},
+	}
 }
 
 func Test_syncVirtualPort(t *testing.T) {
@@ -1018,6 +1338,44 @@ func Test_formatSubnet(t *testing.T) {
 			require.NoError(t, err)
 		})
 	}
+}
+
+func TestFormatSubnetWithContextStopsBeforeUpdateWhenCanceled(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	subnet := &kubeovnv1.Subnet{
+		Name: "canceled-format",
+		Spec: kubeovnv1.SubnetSpec{CIDRBlock: "192.168.0.1/24"},
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	client := fakeController.fakeController.config.KubeOvnClient.(*kubeovnfake.Clientset)
+	actionsBefore := len(client.Actions())
+
+	_, err := ctrl.formatSubnetWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, client.Actions()[actionsBefore:])
+}
+
+func TestCalcSubnetStatusIPWithContextStopsBeforePatchWhenCanceled(t *testing.T) {
+	t.Parallel()
+
+	fakeController := newFakeController(t)
+	ctrl := fakeController.fakeController
+	subnet := &kubeovnv1.Subnet{
+		Name: "canceled-status",
+		Spec: kubeovnv1.SubnetSpec{CIDRBlock: "192.168.0.0/24"},
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	client := fakeController.fakeController.config.KubeOvnClient.(*kubeovnfake.Clientset)
+	actionsBefore := len(client.Actions())
+
+	_, err := ctrl.calcSubnetStatusIPWithContext(ctx, subnet)
+	require.ErrorIs(t, err, context.Canceled)
+	require.Empty(t, client.Actions()[actionsBefore:])
 }
 
 func Test_handleAddOrUpdateSubnet_vlanValidationError(t *testing.T) {

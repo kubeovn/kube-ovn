@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -16,12 +17,16 @@ import (
 )
 
 var (
-	ErrOutOfRange      = errors.New("AddressOutOfRange")
-	ErrConflict        = errors.New("AddressConflict")
-	ErrNoAvailable     = errors.New("NoAvailableAddress")
-	ErrNoSubnet        = errors.New("NoSubnet")
-	ErrInvalidCIDR     = errors.New("CIDRInvalid")
-	ErrInvalidIPFamily = errors.New("InvalidIPFamily")
+	ErrOutOfRange              = errors.New("AddressOutOfRange")
+	ErrConflict                = errors.New("AddressConflict")
+	ErrNoAvailable             = errors.New("NoAvailableAddress")
+	ErrNoSubnet                = errors.New("NoSubnet")
+	ErrInvalidCIDR             = errors.New("CIDRInvalid")
+	ErrInvalidIPFamily         = errors.New("InvalidIPFamily")
+	ErrAddressOwnershipChanged = errors.New("AddressOwnershipChanged")
+	// ErrSelectionChanged rejects committing an ippool selection that is no longer
+	// reproducible, see Subnet.ActivateIPPoolIPs
+	ErrSelectionChanged = errors.New("SelectionChanged")
 )
 
 type IPAM struct {
@@ -47,14 +52,18 @@ func (ipam *IPAM) GetRandomAddress(podName, nicName string, mac *string, subnetN
 }
 
 func (ipam *IPAM) GetRandomAddressWithFamily(podName, nicName string, mac *string, subnetName, poolName, ipFamily string, skippedAddrs []string, checkConflict bool) (string, string, string, error) {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+	return getRandomAddressWithFamily(ipam.Subnets, podName, nicName, mac, subnetName, poolName, ipFamily, skippedAddrs, checkConflict)
+}
+
+func getRandomAddressWithFamily(subnets map[string]*Subnet, podName, nicName string, mac *string, subnetName, poolName, ipFamily string, skippedAddrs []string, checkConflict bool) (string, string, string, error) {
 	ipFamily = util.NormalizeIPFamily(ipFamily)
 	if err := validateRequestedIPFamily(ipFamily); err != nil {
 		return "", "", "", err
 	}
-	ipam.mutex.Lock()
-	defer ipam.mutex.Unlock()
 	var v4, v6 string
-	subnet, ok := ipam.Subnets[subnetName]
+	subnet, ok := subnets[subnetName]
 	if !ok {
 		return "", "", "", ErrNoSubnet
 	}
@@ -79,16 +88,20 @@ func (ipam *IPAM) GetStaticAddress(podName, nicName, ip string, mac *string, sub
 }
 
 func (ipam *IPAM) GetStaticAddressWithFamily(podName, nicName, ip string, mac *string, subnetName, ipFamily string, checkConflict bool) (string, string, string, error) {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+	return getStaticAddressWithFamily(ipam.Subnets, podName, nicName, ip, mac, subnetName, ipFamily, checkConflict)
+}
+
+func getStaticAddressWithFamily(subnets map[string]*Subnet, podName, nicName, ip string, mac *string, subnetName, ipFamily string, checkConflict bool) (string, string, string, error) {
 	ipFamily = util.NormalizeIPFamily(ipFamily)
 	if err := validateRequestedIPFamily(ipFamily); err != nil {
 		return "", "", "", err
 	}
-	ipam.mutex.Lock()
-	defer ipam.mutex.Unlock()
 	var subnet *Subnet
 	var ok bool
 	klog.Infof("allocating static ip %s from subnet %s", ip, subnetName)
-	if subnet, ok = ipam.Subnets[subnetName]; !ok {
+	if subnet, ok = subnets[subnetName]; !ok {
 		return "", "", "", ErrNoSubnet
 	}
 
@@ -205,12 +218,16 @@ func checkAndAppendIpsForDual(ips []IP, mac, podName, nicName string, subnet *Su
 func (ipam *IPAM) ReleaseAddressByPod(podName, subnetName string) {
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
+	releaseAddressByPod(ipam.Subnets, podName, subnetName)
+}
+
+func releaseAddressByPod(subnets map[string]*Subnet, podName, subnetName string) {
 	if subnetName != "" {
-		if subnet, ok := ipam.Subnets[subnetName]; ok {
+		if subnet, ok := subnets[subnetName]; ok {
 			subnet.ReleaseAddress(podName)
 		}
 	} else {
-		for _, subnet := range ipam.Subnets {
+		for _, subnet := range subnets {
 			subnet.ReleaseAddress(podName)
 		}
 	}
@@ -219,12 +236,16 @@ func (ipam *IPAM) ReleaseAddressByPod(podName, subnetName string) {
 func (ipam *IPAM) ReleaseAddressByNic(podName, nicName, subnetName string) {
 	ipam.mutex.Lock()
 	defer ipam.mutex.Unlock()
+	releaseAddressByNic(ipam.Subnets, podName, nicName, subnetName)
+}
+
+func releaseAddressByNic(subnets map[string]*Subnet, podName, nicName, subnetName string) {
 	if subnetName != "" {
-		if subnet, ok := ipam.Subnets[subnetName]; ok {
+		if subnet, ok := subnets[subnetName]; ok {
 			subnet.ReleaseAddressWithNicName(podName, nicName)
 		}
 	} else {
-		for _, subnet := range ipam.Subnets {
+		for _, subnet := range subnets {
 			subnet.ReleaseAddressWithNicName(podName, nicName)
 		}
 	}
@@ -457,6 +478,48 @@ func (ipam *IPAM) GetPodAddress(podName string) []*SubnetAddress {
 	return addresses
 }
 
+// GetPodAddressByNic returns the addresses owned by one pod/NIC pair on one
+// subnet. The NIC must be listed for the pod; looking up the NIC maps alone
+// could return an address that has since been rebound to another pod.
+func (ipam *IPAM) GetPodAddressByNic(podName, nicName, subnetName string) (string, string, string, bool) {
+	ipam.mutex.RLock()
+	defer ipam.mutex.RUnlock()
+
+	subnet, ok := ipam.Subnets[subnetName]
+	if !ok {
+		return "", "", "", false
+	}
+	subnet.Mutex.RLock()
+	defer subnet.Mutex.RUnlock()
+	return subnet.getPodAddressByNic(podName, nicName)
+}
+
+func (s *Subnet) getPodAddressByNic(podName, nicName string) (string, string, string, bool) {
+	if !slices.Contains(s.PodToNicList[podName], nicName) {
+		return "", "", "", false
+	}
+	v4IP, v6IP, mac, protocol := s.GetPodAddress(nicName)
+	var v4, v6 string
+	switch protocol {
+	case kubeovnv1.ProtocolIPv4:
+		if v4IP != nil {
+			v4 = v4IP.String()
+		}
+	case kubeovnv1.ProtocolIPv6:
+		if v6IP != nil {
+			v6 = v6IP.String()
+		}
+	case kubeovnv1.ProtocolDual:
+		if v4IP != nil {
+			v4 = v4IP.String()
+		}
+		if v6IP != nil {
+			v6 = v6IP.String()
+		}
+	}
+	return v4, v6, mac, v4 != "" || v6 != "" || mac != ""
+}
+
 func (ipam *IPAM) ContainAddress(address string) bool {
 	// check if pod is using the address in any subnet of ipam
 	ipam.mutex.RLock()
@@ -531,6 +594,46 @@ func (ipam *IPAM) AddOrUpdateIPPool(subnet, ippool string, ips []string) error {
 	}
 
 	return s.AddOrUpdateIPPool(ippool, ips)
+}
+
+// SelectIPPoolIPs picks the addresses of a named pool by per-family counts without
+// committing them, see Subnet.SelectIPPoolIPs.
+func (ipam *IPAM) SelectIPPoolIPs(subnet, name string, keep []string, v4Count, v6Count int) ([]string, []string, error) {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+
+	s := ipam.Subnets[subnet]
+	if s == nil {
+		return nil, nil, fmt.Errorf("subnet %s does not exist in IPAM", subnet)
+	}
+	return s.SelectIPPoolIPs(name, keep, v4Count, v6Count)
+}
+
+// ActivateIPPoolIPs verifies and commits a membership previously picked by
+// SelectIPPoolIPs, see Subnet.ActivateIPPoolIPs.
+func (ipam *IPAM) ActivateIPPoolIPs(subnet, name string, selected []string, v4Count, v6Count int, prepareAndPersist func() error) error {
+	ipam.mutex.Lock()
+	defer ipam.mutex.Unlock()
+
+	s := ipam.Subnets[subnet]
+	if s == nil {
+		return fmt.Errorf("subnet %s does not exist in IPAM", subnet)
+	}
+	var prepare func() error
+	if prepareAndPersist != nil {
+		prepare = func() (err error) {
+			// Reserved, blocked members allow unrelated allocations to proceed during IO.
+			ipam.mutex.Unlock()
+			defer func() {
+				ipam.mutex.Lock()
+				if ipam.Subnets[subnet] != s {
+					err = errors.Join(err, fmt.Errorf("%w: subnet %s changed during preparation", ErrSelectionChanged, subnet))
+				}
+			}()
+			return prepareAndPersist()
+		}
+	}
+	return s.ActivateIPPoolIPs(name, selected, v4Count, v6Count, prepare)
 }
 
 func (ipam *IPAM) RemoveIPPool(subnet, ippool string) {

@@ -73,9 +73,7 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		vpcClient.DeleteSync(vpcName)
 	})
 
-	framework.ConformanceIt("should support http and tcp readiness probe in custom vpc pod", func() {
-		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
-
+	configureTProxy := func() {
 		ginkgo.By("Getting kube-ovn-cni daemonset")
 		daemonSetClient := f.DaemonSetClientNS(framework.KubeOvnNamespace)
 		originDs := daemonSetClient.Get("kube-ovn-cni")
@@ -132,7 +130,9 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 			daemonSetClient.PatchSync(current, restored)
 		})
 		daemonSetClient.PatchSync(originDs, modifyDs)
+	}
 
+	createCustomVPC := func() {
 		ginkgo.By("Creating VPC " + vpcName)
 		vpcName = "vpc-" + framework.RandomSuffix()
 		customVPC := framework.MakeVpc(vpcName, "", false, false, nil)
@@ -142,103 +142,90 @@ var _ = framework.SerialDescribe("[group:pod]", func() {
 		cidr = framework.RandomCIDR(f.ClusterIPFamily)
 		subnet := framework.MakeSubnet(custVPCSubnetName, "", cidr, "", vpcName, "", nil, nil, nil)
 		_ = subnetClient.CreateSync(subnet)
+	}
 
-		ginkgo.By("Creating pod with HTTP readiness probe that port is accessible " + podName)
+	framework.ConformanceIt("should support HTTP and TCP readiness probes in a custom VPC pod", func() {
+		f.SkipVersionPriorTo(1, 12, "This feature was introduced in v1.12")
+
+		configureTProxy()
+		createCustomVPC()
 		port := 8000 + rand.Int32N(1000)
-		portStr := strconv.Itoa(int(port))
-		args := []string{"netexec", "--http-port", portStr}
-		pod := framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
-		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
-			HTTPGet: &corev1.HTTPGetAction{
-				Port: intstr.FromInt32(port),
-			},
-			PeriodSeconds:    1,
-			FailureThreshold: 1,
-		}
-		pod = podClient.CreateSync(pod)
-		checkTProxyRules(f, pod, port, true)
+		args := []string{"netexec", "--http-port", strconv.Itoa(int(port))}
+		runReadinessProbeCases(f, podClient, eventClient, namespaceName, custVPCSubnetName, args, port, &podName)
+	})
+	framework.ConformanceIt("should support an HTTP startup probe on an independent port in a custom VPC pod", func() {
+		f.SkipVersionPriorTo(1, 16, "Startup probes require Kubernetes 1.16 or newer")
+		configureTProxy()
+		createCustomVPC()
 
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
-
-		// Use a new name so readiness events cannot belong to a previous Pod.
-		podName = "pod-" + framework.RandomSuffix()
-		ginkgo.By("Creating pod with HTTP readiness probe that port is not accessible " + podName)
-		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
-		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
-			HTTPGet: &corev1.HTTPGetAction{
-				Port: intstr.FromInt32(port + 1),
-			},
-			PeriodSeconds:    1,
-			FailureThreshold: 1,
-		}
-		_ = podClient.Create(pod)
-
-		ginkgo.By("Waiting for pod readiness probe failure")
-		events := eventClient.WaitToHaveEvent(util.KindPod, podName, corev1.EventTypeWarning, kubeletevents.ContainerUnhealthy, kubeletserver.ComponentKubelet, "")
-		var found bool
-		for _, event := range events {
-			if strings.Contains(event.Message, "Readiness probe failed") {
-				found = true
-				framework.Logf("Found pod event: %s", event.Message)
-				break
-			}
-		}
-		framework.ExpectTrue(found, "Pod readiness probe is expected to fail")
-
-		pod = podClient.GetPod(podName)
-		checkTProxyRules(f, pod, port+1, true)
-
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
-
-		podName = "pod-" + framework.RandomSuffix()
-		ginkgo.By("Creating pod with TCP readiness probe that port is accessible " + podName)
-		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
-		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
-			TCPSocket: &corev1.TCPSocketAction{
-				Port: intstr.FromInt32(port),
-			},
-			PeriodSeconds:    1,
-			FailureThreshold: 1,
-		}
-		pod = podClient.CreateSync(pod)
-		checkTProxyRules(f, pod, port, true)
-
-		ginkgo.By("Deleting pod " + podName)
-		podClient.DeleteSync(podName)
-
-		podName = "pod-" + framework.RandomSuffix()
-		ginkgo.By("Creating pod with TCP readiness probe that port is not accessible " + podName)
-		pod = framework.MakePod(namespaceName, podName, nil, map[string]string{util.LogicalSwitchAnnotation: custVPCSubnetName}, framework.AgnhostImage, nil, args)
-		pod.Spec.Containers[0].ReadinessProbe = &corev1.Probe{
-			TCPSocket: &corev1.TCPSocketAction{
-				Port: intstr.FromInt32(port - 1),
-			},
-			PeriodSeconds:    1,
-			FailureThreshold: 1,
-		}
-		_ = podClient.Create(pod)
-		podClient.WaitForRunning(podName)
-
-		ginkgo.By("Waiting for pod readiness probe failure")
-		events = eventClient.WaitToHaveEvent(util.KindPod, podName, corev1.EventTypeWarning, kubeletevents.ContainerUnhealthy, kubeletserver.ComponentKubelet, "")
-		found = false
-		for _, event := range events {
-			if strings.Contains(event.Message, "Readiness probe failed") {
-				found = true
-				framework.Logf("Found pod event: %s", event.Message)
-				break
-			}
-		}
-		framework.ExpectTrue(found, "Pod readiness probe is expected to fail")
-
-		pod = podClient.GetPod(podName)
-		// The TCP reachability gate is fixed in v1.16 and master; older
-		// versions keep the interception rule when the backend port is closed.
-		checkTProxyRules(f, pod, port-1, f.VersionPriorTo(1, 16))
+		startupPort := 8000 + rand.Int32N(1000)
+		args := []string{"netexec", "--http-port", strconv.Itoa(int(startupPort))}
+		runTProxyProbeCase(f, podClient, eventClient, namespaceName, custVPCSubnetName,
+			"Creating pod with an HTTP startup probe on an independent port", args, startupPort,
+			&podName,
+			func(container *corev1.Container) {
+				container.StartupProbe = &corev1.Probe{
+					HTTPGet:       &corev1.HTTPGetAction{Port: intstr.FromInt32(startupPort)},
+					PeriodSeconds: 1, FailureThreshold: 1,
+				}
+			}, true, true)
 	})
 })
+
+func runReadinessProbeCases(f *framework.Framework, podClient *framework.PodClient, eventClient *framework.EventClient, namespaceName, subnetName string, args []string, port int32, podName *string) {
+	runTProxyProbeCase(f, podClient, eventClient, namespaceName, subnetName, "Creating pod with an HTTP readiness probe that is accessible", args, port, podName, func(container *corev1.Container) {
+		container.ReadinessProbe = &corev1.Probe{
+			HTTPGet:       &corev1.HTTPGetAction{Port: intstr.FromInt32(port)},
+			PeriodSeconds: 1, FailureThreshold: 1,
+		}
+	}, true, true)
+	runTProxyProbeCase(f, podClient, eventClient, namespaceName, subnetName, "Creating pod with an HTTP readiness probe that is inaccessible", args, port+1, podName, func(container *corev1.Container) {
+		container.ReadinessProbe = &corev1.Probe{
+			HTTPGet:       &corev1.HTTPGetAction{Port: intstr.FromInt32(port + 1)},
+			PeriodSeconds: 1, FailureThreshold: 1,
+		}
+	}, false, true)
+	runTProxyProbeCase(f, podClient, eventClient, namespaceName, subnetName, "Creating pod with an accessible TCP readiness probe", args, port, podName, func(container *corev1.Container) {
+		container.ReadinessProbe = &corev1.Probe{
+			TCPSocket:     &corev1.TCPSocketAction{Port: intstr.FromInt32(port)},
+			PeriodSeconds: 1, FailureThreshold: 1,
+		}
+	}, true, true)
+	runTProxyProbeCase(f, podClient, eventClient, namespaceName, subnetName, "Creating pod with an inaccessible TCP readiness probe", args, port-1, podName, func(container *corev1.Container) {
+		container.ReadinessProbe = &corev1.Probe{
+			TCPSocket:     &corev1.TCPSocketAction{Port: intstr.FromInt32(port - 1)},
+			PeriodSeconds: 1, FailureThreshold: 1,
+		}
+	}, false, f.VersionPriorTo(1, 16))
+}
+
+func runTProxyProbeCase(f *framework.Framework, podClient *framework.PodClient, eventClient *framework.EventClient, namespaceName, subnetName, description string, args []string, probePort int32, podName *string, configure func(*corev1.Container), waitForReady, expectRule bool) {
+	currentPodName := "pod-" + framework.RandomSuffix()
+	*podName = currentPodName
+	ginkgo.By(description + " " + currentPodName)
+	pod := framework.MakePod(namespaceName, currentPodName, nil, map[string]string{util.LogicalSwitchAnnotation: subnetName}, framework.AgnhostImage, nil, args)
+	configure(&pod.Spec.Containers[0])
+	if waitForReady {
+		pod = podClient.CreateSync(pod)
+	} else {
+		_ = podClient.Create(pod)
+		podClient.WaitForRunning(currentPodName)
+		events := eventClient.WaitToHaveEvent(util.KindPod, currentPodName, corev1.EventTypeWarning, kubeletevents.ContainerUnhealthy, kubeletserver.ComponentKubelet, "")
+		found := false
+		for _, event := range events {
+			if strings.Contains(event.Message, "Readiness probe failed") {
+				found = true
+				framework.Logf("Found pod event: %s", event.Message)
+				break
+			}
+		}
+		framework.ExpectTrue(found, "Pod readiness probe is expected to fail")
+		pod = podClient.GetPod(currentPodName)
+	}
+	checkTProxyRules(f, pod, probePort, expectRule)
+	ginkgo.By("Deleting pod " + currentPodName)
+	podClient.DeleteSync(currentPodName)
+}
 
 func dumpTProxyLogs(f *framework.Framework) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

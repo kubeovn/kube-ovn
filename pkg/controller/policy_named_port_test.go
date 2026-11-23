@@ -11,7 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/keymutex"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	v1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
@@ -51,9 +51,9 @@ func TestDeletePolicyRetriesNamedPortGroupFailure(t *testing.T) {
 			externalValue: "example",
 			baseGroup:     "example",
 			deletePolicy: func(c *Controller) error {
-				return c.handleDeleteCnp(&v1alpha2.ClusterNetworkPolicy{
+				return c.handleDeleteCnp(&v1beta1.ClusterNetworkPolicy{
 					Name: "example",
-					Spec: v1alpha2.ClusterNetworkPolicySpec{Tier: v1alpha2.AdminTier},
+					Spec: v1beta1.ClusterNetworkPolicySpec{Tier: v1beta1.AdminTier},
 				})
 			},
 		},
@@ -148,7 +148,7 @@ func TestPolicyNamedPortSelectorsAndResolution(t *testing.T) {
 	}}, "http")
 	require.NoError(t, err)
 	require.Len(t, banpAddresses, 2)
-	cnpAddresses, err := c.namedPortAddressesForCnpEgressPeers([]v1alpha2.ClusterNetworkPolicyEgressPeer{{
+	cnpAddresses, err := c.namedPortAddressesForCnpEgressPeers([]v1beta1.ClusterNetworkPolicyEgressPeer{{
 		Namespaces: &metav1.LabelSelector{MatchLabels: map[string]string{"tenant": "prod"}},
 	}}, "http")
 	require.NoError(t, err)
@@ -169,10 +169,10 @@ func TestPolicyNamedPortPeerSelectors(t *testing.T) {
 			return namedPortSelectorsForAnpSubject(&v1alpha1.AdminNetworkPolicySubject{Pods: &v1alpha1.NamespacedPod{NamespaceSelector: *allNamespaces, PodSelector: *allPods}})
 		}},
 		{name: "cnp subject namespaces", got: func() (*metav1.LabelSelector, *metav1.LabelSelector) {
-			return namedPortSelectorsForCnpSubject(&v1alpha2.ClusterNetworkPolicySubject{Namespaces: allNamespaces})
+			return namedPortSelectorsForCnpSubject(&v1beta1.ClusterNetworkPolicySubject{Namespaces: allNamespaces})
 		}},
 		{name: "cnp subject pods", got: func() (*metav1.LabelSelector, *metav1.LabelSelector) {
-			return namedPortSelectorsForCnpSubject(&v1alpha2.ClusterNetworkPolicySubject{Pods: &v1alpha2.NamespacedPod{NamespaceSelector: *allNamespaces, PodSelector: *allPods}})
+			return namedPortSelectorsForCnpSubject(&v1beta1.ClusterNetworkPolicySubject{Pods: &v1beta1.NamespacedPod{NamespaceSelector: *allNamespaces, PodSelector: *allPods}})
 		}},
 		{name: "anp egress namespaces", got: func() (*metav1.LabelSelector, *metav1.LabelSelector) {
 			return namedPortSelectorsForAnpEgressPeer(&v1alpha1.AdminNetworkPolicyEgressPeer{Namespaces: allNamespaces})
@@ -181,10 +181,10 @@ func TestPolicyNamedPortPeerSelectors(t *testing.T) {
 			return namedPortSelectorsForAnpEgressPeer(&v1alpha1.AdminNetworkPolicyEgressPeer{Pods: &v1alpha1.NamespacedPod{NamespaceSelector: *allNamespaces, PodSelector: *allPods}})
 		}},
 		{name: "cnp egress namespaces", got: func() (*metav1.LabelSelector, *metav1.LabelSelector) {
-			return namedPortSelectorsForCnpEgressPeer(&v1alpha2.ClusterNetworkPolicyEgressPeer{Namespaces: allNamespaces})
+			return namedPortSelectorsForCnpEgressPeer(&v1beta1.ClusterNetworkPolicyEgressPeer{Namespaces: allNamespaces})
 		}},
 		{name: "cnp egress pods", got: func() (*metav1.LabelSelector, *metav1.LabelSelector) {
-			return namedPortSelectorsForCnpEgressPeer(&v1alpha2.ClusterNetworkPolicyEgressPeer{Pods: &v1alpha2.NamespacedPod{NamespaceSelector: *allNamespaces, PodSelector: *allPods}})
+			return namedPortSelectorsForCnpEgressPeer(&v1beta1.ClusterNetworkPolicyEgressPeer{Pods: &v1beta1.NamespacedPod{NamespaceSelector: *allNamespaces, PodSelector: *allPods}})
 		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -199,7 +199,7 @@ func TestPolicyNamedPortPeerSelectors(t *testing.T) {
 	nsSelector, podSelector := namedPortSelectorsForAnpEgressPeer(&v1alpha1.AdminNetworkPolicyEgressPeer{})
 	require.Nil(t, nsSelector)
 	require.Nil(t, podSelector)
-	nsSelector, podSelector = namedPortSelectorsForCnpEgressPeer(&v1alpha2.ClusterNetworkPolicyEgressPeer{})
+	nsSelector, podSelector = namedPortSelectorsForCnpEgressPeer(&v1beta1.ClusterNetworkPolicyEgressPeer{})
 	require.Nil(t, nsSelector)
 	require.Nil(t, podSelector)
 }
@@ -216,20 +216,20 @@ func TestPolicyNamedPortHelperVariants(t *testing.T) {
 	require.Equal(t, map[string]struct{}{name: {}}, requestedNamedPortNamesBanpEgress([]v1alpha1.BaselineAdminNetworkPolicyEgressRule{{Ports: &anpPorts}}))
 	require.True(t, hasBanpNamedPort([]v1alpha1.BaselineAdminNetworkPolicyIngressRule{{Ports: &anpPorts}}, nil))
 
-	protocols := []v1alpha2.ClusterNetworkPolicyProtocol{{DestinationNamedPort: name}}
-	require.Equal(t, map[string]struct{}{name: {}}, requestedNamedPortNamesCnp([]v1alpha2.ClusterNetworkPolicyIngressRule{{Protocols: protocols}}))
-	require.Equal(t, map[string]struct{}{name: {}}, requestedNamedPortNamesCnpEgress([]v1alpha2.ClusterNetworkPolicyEgressRule{{Protocols: protocols}}))
-	require.True(t, hasCnpNamedPort(&v1alpha2.ClusterNetworkPolicy{Spec: v1alpha2.ClusterNetworkPolicySpec{
-		Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{{Protocols: protocols}},
+	protocols := []v1beta1.ClusterNetworkPolicyProtocol{{DestinationNamedPort: name}}
+	require.Equal(t, map[string]struct{}{name: {}}, requestedNamedPortNamesCnp([]v1beta1.ClusterNetworkPolicyIngressRule{{Protocols: protocols}}))
+	require.Equal(t, map[string]struct{}{name: {}}, requestedNamedPortNamesCnpEgress([]v1beta1.ClusterNetworkPolicyEgressRule{{Protocols: protocols}}))
+	require.True(t, hasCnpNamedPort(&v1beta1.ClusterNetworkPolicy{Spec: v1beta1.ClusterNetworkPolicySpec{
+		Ingress: []v1beta1.ClusterNetworkPolicyIngressRule{{Protocols: protocols}},
 	}}))
 
 	for _, test := range []struct {
 		protocol corev1.Protocol
-		check    func(v1alpha2.ClusterNetworkPolicyProtocol) bool
+		check    func(v1beta1.ClusterNetworkPolicyProtocol) bool
 	}{
-		{corev1.ProtocolTCP, func(p v1alpha2.ClusterNetworkPolicyProtocol) bool { return p.TCP != nil }},
-		{corev1.ProtocolUDP, func(p v1alpha2.ClusterNetworkPolicyProtocol) bool { return p.UDP != nil }},
-		{corev1.ProtocolSCTP, func(p v1alpha2.ClusterNetworkPolicyProtocol) bool { return p.SCTP != nil }},
+		{corev1.ProtocolTCP, func(p v1beta1.ClusterNetworkPolicyProtocol) bool { return p.TCP != nil }},
+		{corev1.ProtocolUDP, func(p v1beta1.ClusterNetworkPolicyProtocol) bool { return p.UDP != nil }},
+		{corev1.ProtocolSCTP, func(p v1beta1.ClusterNetworkPolicyProtocol) bool { return p.SCTP != nil }},
 	} {
 		protocol := cnpNamedPortProtocol(namedPortKey{protocol: test.protocol, port: 80})
 		require.True(t, test.check(protocol))
@@ -311,11 +311,11 @@ func TestNamedPortPolicyUpdatesRecreatePolicies(t *testing.T) {
 	banpController.enqueueUpdateBanp(banpOld, banpNew)
 	require.Equal(t, 1, banpController.addBanpQueue.Len())
 
-	cnpOld := &v1alpha2.ClusterNetworkPolicy{
+	cnpOld := &v1beta1.ClusterNetworkPolicy{
 		Name: "cnp",
-		Spec: v1alpha2.ClusterNetworkPolicySpec{
-			Subject: v1alpha2.ClusterNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
-			Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{{Protocols: []v1alpha2.ClusterNetworkPolicyProtocol{{DestinationNamedPort: portName}}}},
+		Spec: v1beta1.ClusterNetworkPolicySpec{
+			Subject: v1beta1.ClusterNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
+			Ingress: []v1beta1.ClusterNetworkPolicyIngressRule{{Protocols: []v1beta1.ClusterNetworkPolicyProtocol{{DestinationNamedPort: portName}}}},
 		},
 	}
 	cnpNew := cnpOld.DeepCopy()

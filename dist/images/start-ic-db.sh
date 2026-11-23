@@ -4,6 +4,7 @@ set -eo pipefail
 LOCAL_IP=${LOCAL_IP:-$POD_IP}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_OVN_LEADER_CHECK=${ENABLE_OVN_LEADER_CHECK:-true}
+readonly UUID_RE='[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}'
 
 DB_ADDR=::
 if [[ $ENABLE_BIND_LOCAL_IP == "true" ]]; then
@@ -16,8 +17,9 @@ function get_leader_addr {
 }
 
 function quit {
-    /usr/share/ovn/scripts/ovn-ctl stop_ic_ovsdb
-    exit 0
+    local status=$?
+    /usr/share/ovn/scripts/ovn-ctl stop_ic_ovsdb || echo "failed to stop interconnection databases during cleanup" >&2
+    exit "$status"
 }
 
 function ovndb_query_leader {
@@ -47,6 +49,60 @@ function ovndb_query_leader {
     fi
 }
 
+function ovndb_query_cluster_id {
+    local db=""
+    local port=""
+    case $1 in
+    ic_nb) db=OVN_IC_Northbound; port=6645 ;;
+    ic_sb) db=OVN_IC_Southbound; port=6646 ;;
+    *) echo "invalid database: $1"; return 2 ;;
+    esac
+    local query='["_Server",{"table":"Database","where":[["name","==","'$db'"]],"columns":["cid"],"op":"select"}]'
+    if [[ "$ENABLE_SSL" == "false" ]]; then
+        timeout 10 ovsdb-client query "$(gen_conn_addr "$2" "$port")" "$query"
+    else
+        timeout 10 ovsdb-client -p /var/run/tls/key -c /var/run/tls/cert -C /var/run/tls/cacert query "$(gen_conn_addr "$2" "$port")" "$query"
+    fi
+}
+
+function get_live_cluster_id {
+    local db_type="$1"
+    local require_quorum="${2:-false}"
+    local live_cid=""
+    local total_nodes=0
+    local live_nodes=0
+    local node_ip
+    for node_ip in ${NODE_IPS//,/ }; do
+        ((total_nodes += 1))
+        [[ "$node_ip" == "$POD_IP" ]] && continue
+        local cid=""
+        cid=$(ovndb_query_cluster_id "$db_type" "$node_ip" 2>/dev/null | grep -oEm1 "$UUID_RE" || true)
+        [[ "$cid" =~ ^${UUID_RE}$ ]] || continue
+        ((live_nodes += 1))
+        cid="${cid,,}"
+        if [[ -n "$live_cid" && "$live_cid" != "$cid" ]]; then
+            echo "conflicting live cluster IDs $live_cid and $cid for $db_type" >&2
+            return 2
+        fi
+        live_cid="$cid"
+    done
+    [[ -n "$live_cid" ]] || return 1
+    if [[ "$require_quorum" == "true" ]]; then
+        local quorum=$((total_nodes / 2 + 1))
+        if ((live_nodes < quorum)); then
+            echo "only $live_nodes of $quorum required $db_type peers are reachable" >&2
+            return 1
+        fi
+    fi
+    echo "$live_cid"
+}
+
+function is_valid_uuid {
+    local uuid="${1,,}"
+    [[ "$uuid" =~ ^${UUID_RE}$ ]] && \
+        [[ "$uuid" != "00000000-0000-0000-0000-000000000000" ]]
+}
+
 function format_ovsdb_addr {
     if [[ "$1" =~ ^[0-9.]+$ || "$1" == *:* ]]; then
         echo "[$1]"
@@ -73,6 +129,89 @@ function gen_conn_addr {
     fi
 }
 
+function random_str {
+    echo $RANDOM | md5sum | head -c 6
+}
+
+function archive_recovery_file {
+    local source_file="$1"
+    local backup_base="$2"
+    local suffix="$3"
+    local description="$4"
+    if [[ ! -e "$source_file" ]]; then
+        return 0
+    fi
+
+    local backup_file="$backup_base.$suffix-$(date +%s)-$(random_str)"
+    echo "backup $description $source_file to $backup_file"
+    mv "$source_file" "$backup_file"
+}
+
+function rebuild_clustered_database_from_raft_header {
+    local db_file="$1"
+    local hdr_file="$2"
+    local db_name="$3"
+    local db_type="$4"
+    local local_addr="$5"
+    shift 5
+    local remote_addr=("$@")
+
+    if [[ ! -s "$hdr_file" || ${#remote_addr[@]} -eq 0 ]]; then
+        echo "cannot rebuild $db_name from missing raft header or peer addresses" >&2
+        return 1
+    fi
+
+    local header_cid=""
+    local server_id=""
+    header_cid=$(sed -nE 's/.*"cluster_id"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$hdr_file" | head -n 1)
+    server_id=$(sed -nE 's/.*"server_id"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' "$hdr_file" | head -n 1)
+    header_cid="${header_cid,,}"
+    server_id="${server_id,,}"
+    if ! is_valid_uuid "$header_cid" || ! is_valid_uuid "$server_id"; then
+        echo "raft header $hdr_file has an invalid cluster or server ID" >&2
+        return 1
+    fi
+
+    local live_cid=""
+    live_cid=$(get_live_cluster_id "$db_type" true) || {
+        echo "no consistent live $db_type quorum is reachable; keeping $db_file unchanged" >&2
+        return 1
+    }
+    if [[ "$header_cid" != "$live_cid" ]]; then
+        echo "raft header cluster ID $header_cid does not match live cluster ID $live_cid" >&2
+        return 1
+    fi
+
+    local db_new
+    db_new="$db_file.rejoin-$(date +%s)-$(random_str)"
+    echo "rebuilding $db_name from raft header $hdr_file with server ID $server_id"
+    if ! ovsdb-tool rejoin-cluster "$db_new" "$hdr_file" "$local_addr" "${remote_addr[@]}"; then
+        echo "failed to create a clean $db_name member from raft header" >&2
+        rm -f "$db_new"
+        return 1
+    fi
+    if [[ ! -s "$db_new" ]]; then
+        echo "ovsdb-tool rejoin-cluster created no database file for $db_name" >&2
+        rm -f "$db_new"
+        return 1
+    fi
+
+    local db_backup
+    db_backup="$db_file.backup-$(date +%s)-$(random_str)"
+    if ! mv "$db_file" "$db_backup"; then
+        echo "failed to preserve original database $db_file; refusing to replace it" >&2
+        rm -f "$db_new"
+        return 1
+    fi
+    if ! mv "$db_new" "$db_file"; then
+        mv "$db_backup" "$db_file" || true
+        echo "failed to install rebuilt database $db_file; keeping the member unavailable" >&2
+        rm -f "$db_new"
+        return 1
+    fi
+    echo "rebuilt $db_name with server ID $server_id; waiting for Raft synchronization"
+}
+
 function ovn_db_pre_start() {
     local db=""
     local port=""
@@ -91,47 +230,42 @@ function ovn_db_pre_start() {
         ;;
     esac
 
-    local db_file="/etc/ovn/ovn${1}_db.db"
-    [ ! -e "$db_file" ] && return
-    ! ovsdb-tool db-is-clustered "$db_file" && return
-    ovsdb-tool check-cluster "$db_file" && return
-
-    local db_bak="$db_file.backup-$(date +%s)-$(random_str)"
-    echo "backup $db_file to $db_bak"
-    cp "$db_file" "$db_bak" || return 1
-
-    echo "detected database corruption for file $db_file, try to fix it."
-    if ovsdb-tool fix-cluster "$db_file"; then
-        echo "checking whether database file $db_file has been fixed."
-        ovsdb-tool check-cluster "$db_file" && return
-    fi
-
-    echo "failed to fix database file $db_file, rebuild it."
-    local sid=$(ovsdb-tool db-sid "$db_file")
-    if ! echo -n "$sid" | grep -qE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'; then
-        echo "failed to get sid from $1 db file $db_file"
+    local db_file="/etc/ovn/ovn_${1}_db.db"
+    local hdr_file="/etc/ovn/ovn_${1}_db.hdr"
+    [[ ! -e "$db_file" ]] && return 0
+    local actual_db_name
+    if ! actual_db_name=$(ovsdb-tool db-name "$db_file"); then
+        echo "ERROR! cannot read database identity from $db_file; preserve it for explicit recovery" >&2
         return 1
     fi
-    echo "get local server id $sid"
-
-    local local_addr="$(gen_conn_addr $POD_IP $port)"
-    echo "local address: $local_addr"
-
-    local remote_addr=()
-    local ips=$(echo -n "${NODE_IPS}" | sed 's/,/ /g')
-    for ip in ${ips[*]}; do
-        if [ ! "$POD_IP" = "$ip" ]; then
-            remote_addr=(${remote_addr[*]} "$(gen_conn_addr $ip $port)")
+    if [[ "$actual_db_name" != "$db" ]]; then
+        echo "ERROR! expected $db in $db_file, found $actual_db_name; refusing to replace the database" >&2
+        return 1
+    fi
+    if ovsdb-tool db-is-clustered "$db_file"; then
+        local message
+        local status=0
+        message=$(ovsdb-tool check-cluster "$db_file" 2>&1) || status=$?
+        if grep -Fxq "$db_file has not joined the cluster, omitting" <<< "$message"; then
+            return 0
         fi
-    done
-    echo "remote addresses: ${remote_addr[*]}"
-
-    local db_new="$db_file.init-$(random_str)"
-    echo "generating new database file $db_new"
-    ovsdb-tool --sid $sid join-cluster "$db_new" $db $local_addr ${remote_addr[*]} || return 1
-
-    echo "use new database file $db_new"
-    mv "$db_new" "$db_file"
+        if [[ $status -ne 0 ]]; then
+            echo "$message" >&2
+            local local_addr="$(gen_conn_addr "$POD_IP" "$port")"
+            local remote_addr=()
+            local ip
+            for ip in ${NODE_IPS//,/ }; do
+                if [[ "$POD_IP" != "$ip" ]]; then
+                    remote_addr+=("$(gen_conn_addr "$ip" "$port")")
+                fi
+            done
+            rebuild_clustered_database_from_raft_header "$db_file" "$hdr_file" "$db" "$1" "$local_addr" "${remote_addr[@]}" || return 1
+        fi
+    elif ! ovsdb-tool db-is-standalone "$db_file"; then
+        echo "ERROR! cannot determine the storage model of $db_file; preserve it for explicit recovery" >&2
+        return 1
+    fi
+    return 0
 }
 
 

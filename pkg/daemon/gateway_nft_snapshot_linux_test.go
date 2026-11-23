@@ -95,6 +95,9 @@ func TestBuildNFTGatewaySnapshot(t *testing.T) {
 	tproxyPod := &corev1.Pod{
 		Name: "probe", Namespace: "default", UID: "uid-probe",
 		Spec: corev1.PodSpec{Containers: []corev1.Container{{
+			StartupProbe: &corev1.Probe{
+				HTTPGet: &corev1.HTTPGetAction{Port: intstr.FromInt32(8081)},
+			},
 			LivenessProbe: &corev1.Probe{
 				TCPSocket: &corev1.TCPSocketAction{Port: intstr.FromInt32(8080)},
 			},
@@ -134,6 +137,7 @@ func TestBuildNFTGatewaySnapshot(t *testing.T) {
 	})
 	require.Contains(t, v4.CentralizedSNATs, nftCentralizedSNAT{CIDR: "10.17.0.0/24", IP: "192.168.1.10"})
 	require.Contains(t, v4.TProxyTargets, nftTProxyTarget{Address: "10.30.0.2", Port: 8080})
+	require.Contains(t, v4.TProxyTargets, nftTProxyTarget{Address: "10.30.0.2", Port: 8081})
 	require.Len(t, v4.SubnetCounters, 2)
 
 	v6 := nftFamilySnapshotForTest(t, snapshot, knftables.IPv6Family)
@@ -142,6 +146,7 @@ func TestBuildNFTGatewaySnapshot(t *testing.T) {
 	require.Equal(t, []string{"fd00::11"}, v6.OtherNodeIPs)
 	require.Equal(t, []string{"fd00:10:16::/120"}, v6.Subnets)
 	require.Contains(t, v6.TProxyTargets, nftTProxyTarget{Address: "fd00:30::2", Port: 8080})
+	require.Contains(t, v6.TProxyTargets, nftTProxyTarget{Address: "fd00:30::2", Port: 8081})
 }
 
 func TestBuildNFTGatewaySnapshotOmitsUnreachableTCPProbe(t *testing.T) {

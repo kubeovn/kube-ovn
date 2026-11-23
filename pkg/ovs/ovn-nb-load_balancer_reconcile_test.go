@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 )
 
 func newResourceLoadBalancerTestClient(t *testing.T) *OVNNbClient {
@@ -68,7 +69,7 @@ func TestReconcileResourceLoadBalancers(t *testing.T) {
 	nbClient := newResourceLoadBalancerTestClient(t)
 	reconciliation := resourceLoadBalancerFixture(t, nbClient)
 	recorder := &recordingOVSDBClient{Client: nbClient.Client}
-	nbClient.Client = recorder
+	nbClient.Database = table.NewDatabase(recorder, nbClient.Timeout, table.RetryPolicy{})
 	require.NoError(t, nbClient.ReconcileLoadBalancers(reconciliation))
 	require.Len(t, recorder.transactions, 1, "create, update, delete, migrations and attachments must share one transaction")
 
@@ -129,7 +130,7 @@ func TestReconcileResourceLoadBalancersRollsBack(t *testing.T) {
 	lrBefore, err := nbClient.GetLogicalRouter("router", false)
 	require.NoError(t, err)
 	recorder := &templateVIPTransactionClient{Client: nbClient.Client, fail: true}
-	nbClient.Client = recorder
+	nbClient.Database = table.NewDatabase(recorder, nbClient.Timeout, table.RetryPolicy{})
 	require.Error(t, nbClient.ReconcileLoadBalancers(reconciliation))
 	require.Len(t, recorder.transactions, 1)
 	after, err := nbClient.ListLoadBalancers(nil)
@@ -177,7 +178,7 @@ func TestReconcileResourceLoadBalancersDeleteAll(t *testing.T) {
 	reconciliation.LoadBalancers = nil
 	reconciliation.TemplateVariables = nil
 	recorder := &recordingOVSDBClient{Client: nbClient.Client}
-	nbClient.Client = recorder
+	nbClient.Database = table.NewDatabase(recorder, nbClient.Timeout, table.RetryPolicy{})
 	require.NoError(t, nbClient.ReconcileLoadBalancers(reconciliation))
 	require.Len(t, recorder.transactions, 1)
 	for _, name := range []string{"tcp", "sctp"} {

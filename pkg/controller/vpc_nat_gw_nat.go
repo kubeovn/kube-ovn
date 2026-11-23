@@ -1364,8 +1364,21 @@ func (c *Controller) handleDelIptablesSnatFinalizer(key string) error {
 	return nil
 }
 
+func natStatusPatch(currentReady bool, currentRedo string, ready bool, redo string, forceReady bool) util.KVPatch {
+	patch := util.KVPatch{}
+	if redo != "" && redo != currentRedo {
+		// A new replay invalidates readiness even when the cache has not yet
+		// observed the API server's Ready=true.
+		patch["redo"] = redo
+		patch["ready"] = ready
+	} else if currentReady != ready || (forceReady && ready) {
+		patch["ready"] = ready
+	}
+	return patch
+}
+
 func (c *Controller) patchFipStatus(key, v4ip, v6ip, natGwDp, redo string, ready bool) error {
-	oriFip, err := c.iptablesFipsLister.Get(key)
+	fip, err := c.iptablesFipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1373,42 +1386,19 @@ func (c *Controller) patchFipStatus(key, v4ip, v6ip, natGwDp, redo string, ready
 		klog.Error(err)
 		return err
 	}
-	fip := oriFip.DeepCopy()
-	var changed bool
-	if fip.Status.Ready != ready {
-		fip.Status.Ready = ready
-		changed = true
-	}
-	if redo != "" && fip.Status.Redo != redo {
-		fip.Status.Redo = redo
-		changed = true
-	}
-
+	patch := natStatusPatch(fip.Status.Ready, fip.Status.Redo, ready, redo, ready)
 	if ready && v4ip != "" && fip.Status.V4ip != v4ip {
-		fip.Status.V4ip = v4ip
-		fip.Status.V6ip = v6ip
-		fip.Status.NatGwDp = natGwDp
-		changed = true
+		patch["v4ip"] = v4ip
+		patch["v6ip"] = v6ip
+		patch["natGwDp"] = natGwDp
 	}
 	if ready && fip.Spec.InternalIP != "" && fip.Status.InternalIP != fip.Spec.InternalIP {
-		fip.Status.InternalIP = fip.Spec.InternalIP
-		changed = true
+		patch["internalIp"] = fip.Spec.InternalIP
 	}
 
-	if changed {
-		bytes, err := fip.Status.Bytes()
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules().Patch(context.Background(), fip.Name,
-			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-			if k8serrors.IsNotFound(err) {
-				return nil
-			}
-			klog.Errorf("failed to patch fip %s, %v", fip.Name, err)
-			return err
-		}
+	if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesFIPRules(), key, patch); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to patch fip %s, %v", key, err)
+		return err
 	}
 	return nil
 }
@@ -1509,7 +1499,7 @@ func (c *Controller) patchDnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 }
 
 func (c *Controller) patchDnatStatus(key, v4ip, v6ip, natGwDp, redo string, ready bool) error {
-	oriDnat, err := c.iptablesDnatRulesLister.Get(key)
+	dnat, err := c.iptablesDnatRulesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1517,53 +1507,28 @@ func (c *Controller) patchDnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		klog.Error(err)
 		return err
 	}
-	var changed bool
-	dnat := oriDnat.DeepCopy()
-	if dnat.Status.Ready != ready {
-		dnat.Status.Ready = ready
-		changed = true
-	}
-	if redo != "" && dnat.Status.Redo != redo {
-		dnat.Status.Redo = redo
-		changed = true
-	}
+	patch := natStatusPatch(dnat.Status.Ready, dnat.Status.Redo, ready, redo, ready)
 	if ready && v4ip != "" && dnat.Status.V4ip != v4ip {
-		dnat.Status.V4ip = v4ip
-		dnat.Status.V6ip = v6ip
-		dnat.Status.NatGwDp = natGwDp
-		changed = true
+		patch["v4ip"] = v4ip
+		patch["v6ip"] = v6ip
+		patch["natGwDp"] = natGwDp
 	}
 	if ready && dnat.Spec.Protocol != "" && dnat.Status.Protocol != dnat.Spec.Protocol {
-		dnat.Status.Protocol = dnat.Spec.Protocol
-		changed = true
+		patch["protocol"] = dnat.Spec.Protocol
 	}
 	if ready && dnat.Spec.InternalIP != "" && dnat.Status.InternalIP != dnat.Spec.InternalIP {
-		dnat.Status.InternalIP = dnat.Spec.InternalIP
-		changed = true
+		patch["internalIp"] = dnat.Spec.InternalIP
 	}
 	if ready && dnat.Spec.InternalPort != "" && dnat.Status.InternalPort != dnat.Spec.InternalPort {
-		dnat.Status.InternalPort = dnat.Spec.InternalPort
-		changed = true
+		patch["internalPort"] = dnat.Spec.InternalPort
 	}
 	if ready && dnat.Spec.ExternalPort != "" && dnat.Status.ExternalPort != dnat.Spec.ExternalPort {
-		dnat.Status.ExternalPort = dnat.Spec.ExternalPort
-		changed = true
+		patch["externalPort"] = dnat.Spec.ExternalPort
 	}
 
-	if changed {
-		bytes, err := dnat.Status.Bytes()
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules().Patch(context.Background(), dnat.Name,
-			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-			if k8serrors.IsNotFound(err) {
-				return nil
-			}
-			klog.Errorf("failed to patch dnat %s, %v", dnat.Name, err)
-			return err
-		}
+	if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesDnatRules(), key, patch); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to patch dnat %s, %v", key, err)
+		return err
 	}
 	return nil
 }
@@ -1654,7 +1619,7 @@ func (c *Controller) patchSnatLabel(key string, eip *kubeovnv1.IptablesEIP) erro
 }
 
 func (c *Controller) patchSnatStatus(key, v4ip, v6ip, natGwDp, redo string, ready bool) error {
-	oriSnat, err := c.iptablesSnatRulesLister.Get(key)
+	snat, err := c.iptablesSnatRulesLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1662,21 +1627,11 @@ func (c *Controller) patchSnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 		klog.Error(err)
 		return err
 	}
-	snat := oriSnat.DeepCopy()
-	var changed bool
-	if snat.Status.Ready != ready {
-		snat.Status.Ready = ready
-		changed = true
-	}
-	if redo != "" && snat.Status.Redo != redo {
-		snat.Status.Redo = redo
-		changed = true
-	}
+	patch := natStatusPatch(snat.Status.Ready, snat.Status.Redo, ready, redo, ready)
 	if ready && v4ip != "" && snat.Status.V4ip != v4ip {
-		snat.Status.V4ip = v4ip
-		snat.Status.V6ip = v6ip
-		snat.Status.NatGwDp = natGwDp
-		changed = true
+		patch["v4ip"] = v4ip
+		patch["v6ip"] = v6ip
+		patch["natGwDp"] = natGwDp
 	}
 	if ready && snat.Spec.InternalCIDR != "" {
 		// Status.InternalCIDR is always stored in canonical "<ip>/len" form so that
@@ -1689,26 +1644,14 @@ func (c *Controller) patchSnatStatus(key, v4ip, v6ip, natGwDp, redo string, read
 			v4Cidr, _ := util.SplitStringIP(snat.Status.InternalCIDR)
 			v4Cidr = normalizeSnatInternalCIDR(v4Cidr)
 			if v4Cidr != v4CidrSpec {
-				snat.Status.InternalCIDR = v4CidrSpec
-				changed = true
+				patch["internalCIDR"] = v4CidrSpec
 			}
 		}
 	}
 
-	if changed {
-		bytes, err := snat.Status.Bytes()
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules().Patch(context.Background(), snat.Name,
-			types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
-			if k8serrors.IsNotFound(err) {
-				return nil
-			}
-			klog.Errorf("failed to patch snat %s, %v", snat.Name, err)
-			return err
-		}
+	if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesSnatRules(), key, patch); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to patch snat %s, %v", key, err)
+		return err
 	}
 	return nil
 }

@@ -2,7 +2,17 @@
 set -euo pipefail
 
 REGISTRY="docker.io/kubeovn"
-VERSION="v1.17.0"
+VERSION="v1.18.0"
+
+# Keep the legacy implementation by default; enable the pilot explicitly.
+CONTROLLER_RUNTIME_MODE=${CONTROLLER_RUNTIME_MODE:-disabled}
+case "$CONTROLLER_RUNTIME_MODE" in
+  disabled|manager|vlan|ippool) ;;
+  *)
+    echo "CONTROLLER_RUNTIME_MODE must be disabled, manager, vlan, or ippool" >&2
+    exit 1
+    ;;
+esac
 
 DEL_NON_HOST_NET_POD=${DEL_NON_HOST_NET_POD:-true}
 IPV6=${IPV6:-false}
@@ -33,7 +43,7 @@ ACL_SAMPLING_ALLOW_PROBABILITY_PERCENT=${ACL_SAMPLING_ALLOW_PROBABILITY_PERCENT:
 ACL_SAMPLING_DEFAULT_DENY_PROBABILITY_PERCENT=${ACL_SAMPLING_DEFAULT_DENY_PROBABILITY_PERCENT:-100}
 ENABLE_EIP_SNAT=${ENABLE_EIP_SNAT:-true}
 LS_DNAT_MOD_DL_DST=${LS_DNAT_MOD_DL_DST:-true}
-LS_CT_SKIP_DST_LPORT_IPS=${LS_CT_SKIP_DST_LPORT_IPS:-true}
+LS_CT_SKIP_DST_LPORT_IPS=${LS_CT_SKIP_DST_LPORT_IPS:-false}
 ENABLE_EXTERNAL_VPC=${ENABLE_EXTERNAL_VPC:-false}
 CNI_CONFIG_PRIORITY=${CNI_CONFIG_PRIORITY:-01}
 # Set to false to preserve CNI plugins already installed on the host.
@@ -65,7 +75,6 @@ DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_TPROXY=${ENABLE_TPROXY:-false}
 ENABLE_RECOMPUTE=${ENABLE_RECOMPUTE:-false}
-OVS_VSCTL_CONCURRENCY=${OVS_VSCTL_CONCURRENCY:-100}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
 ENABLE_OVN_IPSEC=${ENABLE_OVN_IPSEC:-false}
@@ -74,6 +83,7 @@ IPSEC_CERT_DURATION=${IPSEC_CERT_DURATION:-63072000} # 2 years in seconds
 CERT_MANAGER_ISSUER_NAME=${CERT_MANAGER_ISSUER_NAME:-kube-ovn}
 ENABLE_ANP=${ENABLE_ANP:-false}
 ENABLE_DNS_NAME_RESOLVER=${ENABLE_DNS_NAME_RESOLVER:-false}
+SET_GENEVE_TX_OFF=${SET_GENEVE_TX_OFF:-false}
 SET_VXLAN_TX_OFF=${SET_VXLAN_TX_OFF:-false}
 HOST_TUNNEL_SRC=${HOST_TUNNEL_SRC:-false}
 OVSDB_CON_TIMEOUT=${OVSDB_CON_TIMEOUT:-3}
@@ -835,9 +845,25 @@ spec:
                 description: EnableAddressSet to work with policy-based routing and
                   ACL
                 type: boolean
+              ipCount:
+                description: |-
+                  Number of addresses to pick automatically from the subnet's free addresses,
+                  per IP family (a dual-stack subnet yields ipCount IPv4 plus ipCount IPv6 addresses).
+                  The picked addresses are recorded in status.ips and stay stable; increasing the
+                  value appends addresses, decreasing it releases the most recently added ones first.
+                  Mutually exclusive with ips.
+                  An ippool carves a small set of addresses out of a subnet; needing more than a few
+                  dozen is better served by a dedicated subnet, or by spelling out ranges in ips.
+                  This bound must stay in sync with maxIPPoolIPCount in the controller, which still
+                  guards pools created before the limit was introduced.
+                format: int32
+                maximum: 32
+                minimum: 1
+                type: integer
               ips:
-                description: IP addresses or ranges in the pool (IPv4/IPv6 addresses
-                  or CIDR ranges)
+                description: |-
+                  IP addresses or ranges in the pool (IPv4/IPv6 addresses or CIDR ranges).
+                  Mutually exclusive with ipCount.
                 items:
                   type: string
                 type: array
@@ -850,9 +876,11 @@ spec:
                 description: Subnet name for the IP pool. This field is immutable.
                 type: string
             required:
-            - ips
             - subnet
             type: object
+            x-kubernetes-validations:
+            - message: exactly one of spec.ips and spec.ipCount must be set
+              rule: has(self.ips) != has(self.ipCount)
           status:
             properties:
               conditions:
@@ -891,6 +919,15 @@ spec:
                       description: Type of condition.
                       type: string
                   type: object
+                type: array
+              ips:
+                description: |-
+                  IP addresses the pool currently consists of, in allocation order.
+                  Maintained by the controller for pools using spec.ipCount, and cleared when the
+                  pool leaves that mode, so the recorded selection is never mistaken for the
+                  members of a pool that lists spec.ips.
+                items:
+                  type: string
                 type: array
               v4AvailableIPRange:
                 description: Available IPv4 address range
@@ -7680,6 +7717,29 @@ subjects:
     namespace: kube-system
 EOF
 
+IPSEC_CSR_SIGNER_RULES=""
+if [[ "$ENABLE_OVN_IPSEC" == "true" ]]; then
+  IPSEC_CSR_SIGNER_RULES=$(cat <<EOF
+  - apiGroups:
+    - certificates.k8s.io
+    resources:
+    - certificatesigningrequests/status
+    - certificatesigningrequests/approval
+    verbs:
+    - update
+  - apiGroups:
+    - certificates.k8s.io
+    resourceNames:
+    - kubeovn.io/signer
+    resources:
+    - signers
+    verbs:
+    - approve
+    - sign
+EOF
+)
+fi
+
 cat <<EOF > kube-ovn-sa.yaml
 ---
 apiVersion: v1
@@ -7960,22 +8020,7 @@ rules:
       - "get"
       - "list"
       - "watch"
-  - apiGroups:
-    - certificates.k8s.io
-    resources:
-    - certificatesigningrequests/status
-    - certificatesigningrequests/approval
-    verbs:
-    - update
-  - apiGroups:
-    - certificates.k8s.io
-    resourceNames:
-    - kubeovn.io/signer
-    resources:
-    - signers
-    verbs:
-    - approve
-    - sign
+$IPSEC_CSR_SIGNER_RULES
   - apiGroups:
       - kubevirt.io
     resources:
@@ -8641,7 +8686,6 @@ spec:
                 - NET_BIND_SERVICE
                 - NET_RAW
                 - SYS_NICE
-                - SYS_ADMIN
           env:
             - name: ENABLE_OVN_IPSEC
               value: "$ENABLE_OVN_IPSEC"
@@ -9270,6 +9314,7 @@ spec:
           imagePullPolicy: $IMAGE_PULL_POLICY
           args:
           - /kube-ovn/start-controller.sh
+          - --controller-runtime-mode=$CONTROLLER_RUNTIME_MODE
           - --leader-elect-lease-duration=$LEADER_ELECT_LEASE_DURATION
           - --leader-elect-renew-deadline=$LEADER_ELECT_RENEW_DEADLINE
           - --leader-elect-retry-period=$LEADER_ELECT_RETRY_PERIOD
@@ -9541,8 +9586,8 @@ ${IPSEC_CLEANUP_INIT}
           - --kubelet-dir=$KUBELET_DIR
           - --enable-tproxy=$ENABLE_TPROXY
           - --enable-recompute=$ENABLE_RECOMPUTE
-          - --ovs-vsctl-concurrency=$OVS_VSCTL_CONCURRENCY
           - --secure-serving=${SECURE_SERVING}
+          - --set-geneve-tx-off=$SET_GENEVE_TX_OFF
           - --set-vxlan-tx-off=$SET_VXLAN_TX_OFF
           - --host-tunnel-src=$HOST_TUNNEL_SRC
           - --enable-acl-sampling=$ENABLE_ACL_SAMPLING

@@ -27,12 +27,12 @@ FRR_IMAGE = quay.io/frrouting/frr:$(FRR_VERSION)
 CLAB_IMAGE = ghcr.io/srl-labs/clab:0.72.0
 
 # renovate: datasource=github-releases depName=multus packageName=k8snetworkplumbingwg/multus-cni
-MULTUS_VERSION = v4.3.1
+MULTUS_VERSION = v4.3.2
 MULTUS_IMAGE = ghcr.io/k8snetworkplumbingwg/multus-cni:$(MULTUS_VERSION)-thick
 MULTUS_YAML = https://raw.githubusercontent.com/k8snetworkplumbingwg/multus-cni/$(MULTUS_VERSION)/deployments/multus-daemonset-thick.yml
 
 # renovate: datasource=github-releases depName=metallb packageName=metallb/metallb
-METALLB_VERSION = v0.16.0
+METALLB_VERSION = v0.16.2
 METALLB_CHART_REPO = https://metallb.github.io/metallb
 METALLB_CONTROLLER_IMAGE = quay.io/metallb/controller:$(METALLB_VERSION)
 METALLB_SPEAKER_IMAGE = quay.io/metallb/speaker:$(METALLB_VERSION)
@@ -49,7 +49,7 @@ KUBEVIRT_OPERATOR_YAML = https://github.com/kubevirt/kubevirt/releases/download/
 KUBEVIRT_CR_YAML = https://github.com/kubevirt/kubevirt/releases/download/$(KUBEVIRT_VERSION)/kubevirt-cr.yaml
 
 # renovate: datasource=github-releases depName=cilium packageName=cilium/cilium
-CILIUM_VERSION = v1.20.4
+CILIUM_VERSION = v1.20.5
 CILIUM_IMAGE_REPO = quay.io/cilium
 
 # renovate: datasource=github-releases depName=cert-manager packageName=cert-manager/cert-manager
@@ -83,12 +83,12 @@ KWOK_VERSION = v0.8.0
 KWOK_IMAGE = registry.k8s.io/kwok/kwok:$(KWOK_VERSION)
 
 ANP_TEST_IMAGE = registry.k8s.io/e2e-test-images/agnhost:2.45
-# ANP and BANP CRDs are not published in network-policy-api v0.2.1.
+# ANP and BANP CRDs are not published in network-policy-api v0.3.0.
 NETWORK_POLICY_API_VERSION = v0.1.7
 ANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/refs/tags/$(NETWORK_POLICY_API_VERSION)/config/crd/experimental/policy.networking.k8s.io_adminnetworkpolicies.yaml
 BANP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/refs/tags/$(NETWORK_POLICY_API_VERSION)/config/crd/experimental/policy.networking.k8s.io_baselineadminnetworkpolicies.yaml
 # renovate: datasource=github-releases depName=network-policy-api-cnp packageName=kubernetes-sigs/network-policy-api
-CNP_CRD_VERSION = v0.2.1
+CNP_CRD_VERSION = v0.3.0
 CNP_CR_YAML = https://raw.githubusercontent.com/kubernetes-sigs/network-policy-api/refs/tags/$(CNP_CRD_VERSION)/config/crd/experimental/policy.networking.k8s.io_clusternetworkpolicies.yaml
 
 define docker_ensure_image_exists

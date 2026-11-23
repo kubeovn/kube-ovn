@@ -107,6 +107,46 @@ func TestLeaderElectionConfigurationValidation(t *testing.T) {
 	}
 }
 
+func TestValidateControllerRuntimeMode(t *testing.T) {
+	for _, mode := range []string{ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool, ControllerRuntimeModeSubnetShadow, ControllerRuntimeModeSubnetStatus, ControllerRuntimeModeSubnetWriter} {
+		t.Run(mode, func(t *testing.T) {
+			require.NoError(t, validateControllerRuntimeMode(mode))
+		})
+	}
+	require.EqualError(t, validateControllerRuntimeMode("unknown"), `--controller-runtime-mode must be "disabled", "manager", "vlan", "ippool", "subnet-shadow", "subnet-status", or "subnet-writer", got "unknown"`)
+}
+
+func TestControllerRuntimeVlanEnabled(t *testing.T) {
+	require.False(t, controllerRuntimeVlanEnabled(nil))
+	require.False(t, controllerRuntimeVlanEnabled(&Configuration{ControllerRuntimeMode: ControllerRuntimeModeDisabled}))
+	require.False(t, controllerRuntimeVlanEnabled(&Configuration{ControllerRuntimeMode: ControllerRuntimeModeManager}))
+	require.True(t, controllerRuntimeVlanEnabled(&Configuration{ControllerRuntimeMode: ControllerRuntimeModeVlan}))
+	require.True(t, controllerRuntimeVlanEnabled(&Configuration{ControllerRuntimeMode: ControllerRuntimeModeIPPool}))
+}
+
+func TestControllerRuntimeIPPoolEnabled(t *testing.T) {
+	require.False(t, controllerRuntimeIPPoolEnabled(nil))
+	for _, mode := range []string{ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool, ControllerRuntimeModeSubnetShadow} {
+		require.Equal(t, mode == ControllerRuntimeModeIPPool, controllerRuntimeIPPoolEnabled(&Configuration{ControllerRuntimeMode: mode}))
+	}
+}
+
+func TestControllerRuntimeSubnetShadowEnabled(t *testing.T) {
+	require.False(t, controllerRuntimeSubnetShadowEnabled(nil))
+	for _, mode := range []string{ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool} {
+		require.False(t, controllerRuntimeSubnetShadowEnabled(&Configuration{ControllerRuntimeMode: mode}))
+	}
+	require.True(t, controllerRuntimeSubnetShadowEnabled(&Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetShadow}))
+}
+
+func TestControllerRuntimeSubnetStatusEnabled(t *testing.T) {
+	require.False(t, controllerRuntimeSubnetStatusEnabled(nil))
+	for _, mode := range []string{ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool, ControllerRuntimeModeSubnetShadow} {
+		require.False(t, controllerRuntimeSubnetStatusEnabled(&Configuration{ControllerRuntimeMode: mode}))
+	}
+	require.True(t, controllerRuntimeSubnetStatusEnabled(&Configuration{ControllerRuntimeMode: ControllerRuntimeModeSubnetStatus}))
+}
+
 func TestConfigurationValidateServiceFeatureGates(t *testing.T) {
 	t.Parallel()
 

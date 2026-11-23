@@ -132,7 +132,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 	if cachedEip.Spec.Type == util.OvnEipTypeLSP {
 		klog.Infof("create lsp type ovn eip %s", key)
 		mergedIP := util.GetStringIP(v4ip, v6ip)
-		if err := c.OVNNbClient.CreateBareLogicalSwitchPort(subnet.Name, portName, mergedIP, mac); err != nil {
+		if err := c.createBareLogicalSwitchPort(subnet.Name, portName, mergedIP, mac); err != nil {
 			klog.Errorf("failed to create lsp for ovn eip %s, %v", key, err)
 			return err
 		}
@@ -153,7 +153,7 @@ func (c *Controller) handleAddOvnEip(key string) error {
 
 	// Trigger subnet status update after all operations complete
 	// At this point: IPAM allocated, OvnEip CR created with labels+status+finalizer
-	c.updateSubnetStatusQueue.Add(subnet.Name)
+	c.enqueueSubnetStatus(subnet.Name, "EIP")
 	return nil
 }
 
@@ -186,13 +186,13 @@ func (c *Controller) handleUpdateOvnEip(key string) error {
 
 		// Clean up resources before removing finalizer
 		if cachedEip.Spec.Type == util.OvnEipTypeLSP {
-			if err := c.OVNNbClient.DeleteLogicalSwitchPort(cachedEip.Name); err != nil {
+			if err := c.deleteLogicalSwitchPort(cachedEip.Name); err != nil {
 				klog.Errorf("failed to delete lsp %s, %v", cachedEip.Name, err)
 				return err
 			}
 		}
 		if cachedEip.Spec.Type == util.OvnEipTypeLRP {
-			if err := c.OVNNbClient.DeleteLogicalRouterPort(cachedEip.Name); err != nil {
+			if err := c.deleteLogicalRouterPort(cachedEip.Name); err != nil {
 				klog.Errorf("failed to delete lrp %s, %v", cachedEip.Name, err)
 				return err
 			}
@@ -289,13 +289,13 @@ func (c *Controller) handleDelOvnEip(eip *kubeovnv1.OvnEip) error {
 
 	// Clean up resources if they still exist
 	if eip.Spec.Type == util.OvnEipTypeLSP {
-		if err := c.OVNNbClient.DeleteLogicalSwitchPort(eip.Name); err != nil {
+		if err := c.deleteLogicalSwitchPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lsp %s, %v", eip.Name, err)
 			return err
 		}
 	}
 	if eip.Spec.Type == util.OvnEipTypeLRP {
-		if err := c.OVNNbClient.DeleteLogicalRouterPort(eip.Name); err != nil {
+		if err := c.deleteLogicalRouterPort(eip.Name); err != nil {
 			klog.Errorf("failed to delete lrp %s, %v", eip.Name, err)
 			return err
 		}
@@ -306,7 +306,7 @@ func (c *Controller) handleDelOvnEip(eip *kubeovnv1.OvnEip) error {
 
 	// Ensure subnet status is updated
 	if eip.Spec.ExternalSubnet != "" {
-		c.updateSubnetStatusQueue.Add(eip.Spec.ExternalSubnet)
+		c.enqueueSubnetStatus(eip.Spec.ExternalSubnet, "EIP")
 	}
 
 	return nil
@@ -425,7 +425,7 @@ func (c *Controller) createOrUpdateOvnEipCR(key, subnet, v4ip, v6ip, mac, usageT
 		}
 	}
 	// Trigger subnet status update after CR creation or update
-	c.updateSubnetStatusQueue.AddAfter(subnet, 300*time.Millisecond)
+	c.enqueueSubnetStatusAfter(subnet, "EIP", 300*time.Millisecond)
 	return nil
 }
 
@@ -569,7 +569,7 @@ func (c *Controller) handleAddOrUpdateOvnEipFinalizer(cachedEip *kubeovnv1.OvnEi
 	// Trigger subnet status update after finalizer is processed as a fallback
 	// This handles cases where finalizer was not added during creation
 	// AddFinalizer is idempotent, so this is safe even if finalizer already exists
-	c.updateSubnetStatusQueue.Add(cachedEip.Spec.ExternalSubnet)
+	c.enqueueSubnetStatus(cachedEip.Spec.ExternalSubnet, "EIP")
 	return nil
 }
 
@@ -609,7 +609,7 @@ func (c *Controller) handleDelOvnEipFinalizer(cachedEip *kubeovnv1.OvnEip) error
 	// Trigger subnet status update after finalizer is removed
 	// This ensures subnet status reflects the IP release
 	// Add delay to ensure API server completes the finalizer removal
-	c.updateSubnetStatusQueue.AddAfter(cachedEip.Spec.ExternalSubnet, 300*time.Millisecond)
+	c.enqueueSubnetStatusAfter(cachedEip.Spec.ExternalSubnet, "EIP", 300*time.Millisecond)
 	return nil
 }
 

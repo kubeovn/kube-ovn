@@ -41,7 +41,7 @@ func newServiceHook(t *testing.T, existing ...*v1.Service) *ValidatingHook {
 	for _, svc := range existing {
 		cache.services = append(cache.services, *svc)
 	}
-	return &ValidatingHook{decoder: admission.NewDecoder(scheme), cache: cache}
+	return &ValidatingHook{decoder: admission.NewDecoder(scheme), cache: cache, apiReader: cache}
 }
 
 func TestServiceHookEipGateway(t *testing.T) {
@@ -177,6 +177,15 @@ func TestServiceCreateHookEipPortConflict(t *testing.T) {
 		resp := hook.ServiceCreateHook(context.Background(), createRequest(t, plain))
 		require.True(t, resp.Allowed, "expected allowed, got: %+v", resp.Result)
 	})
+}
+
+func TestServiceCreateHookEipPortConflictUsesAPIReader(t *testing.T) {
+	hook := newServiceHook(t, nftableLbService("web", 80, v1.ProtocolTCP, nil))
+	hook.cache = &mockCache{}
+
+	resp := hook.ServiceCreateHook(context.Background(), createRequest(t, nftableLbService("other", 80, v1.ProtocolTCP, nil)))
+	require.False(t, resp.Allowed)
+	require.Contains(t, resp.Result.Message, "already used by service default/web")
 }
 
 // TestServiceUpdateHookBinding pins how the gateway and EIP binding of a Service may change: not

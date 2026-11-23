@@ -97,8 +97,8 @@ func getTProxyRulePorts(pod *corev1.Pod, podIP string) set.Set[int32] {
 func getProbePorts(pod *corev1.Pod) (set.Set[int32], set.Set[int32]) {
 	ports := set.New[int32]()
 	tcpPorts := set.New[int32]()
-	for _, container := range pod.Spec.Containers {
-		for _, probe := range [...]*corev1.Probe{container.LivenessProbe, container.ReadinessProbe} {
+	addContainerPorts := func(container *corev1.Container) {
+		for _, probe := range [...]*corev1.Probe{container.StartupProbe, container.LivenessProbe, container.ReadinessProbe} {
 			if probe == nil {
 				continue
 			}
@@ -132,6 +132,15 @@ func getProbePorts(pod *corev1.Pod) (set.Set[int32], set.Set[int32]) {
 			}
 		}
 	}
+	for i := range pod.Spec.Containers {
+		addContainerPorts(&pod.Spec.Containers[i])
+	}
+	for i := range pod.Spec.InitContainers {
+		container := &pod.Spec.InitContainers[i]
+		if container.RestartPolicy != nil && *container.RestartPolicy == corev1.ContainerRestartPolicyAlways {
+			addContainerPorts(container)
+		}
+	}
 	klog.V(3).Infof("probe ports for pod %s/%s: %v", pod.Namespace, pod.Name, ports.SortedList())
 	return ports, tcpPorts
 }
@@ -159,7 +168,7 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 			podName = vmName
 		}
 		iface := ovs.PodNameToPortName(podName, pod.Namespace, provider)
-		nsName, err := ovs.GetInterfacePodNs(iface)
+		nsName, err := c.getInterfacePodNs(iface)
 		_, tcpPorts := getProbePorts(pod)
 		if err != nil {
 			klog.Errorf("failed to get netns for pod %s/%s: %v", pod.Namespace, pod.Name, err)
@@ -193,6 +202,13 @@ func (c *Controller) StartTProxyTCPPortProbe() {
 			}
 		}
 	}
+}
+
+func (c *Controller) getInterfacePodNs(ifaceID string) (string, error) {
+	if c.vswitchTables == nil {
+		return "", errors.New("vswitch table provider is not configured")
+	}
+	return getVswitchInterfacePodNs(c.vswitchTables, ifaceID)
 }
 
 func (c *Controller) runTProxyConfigWorker() {

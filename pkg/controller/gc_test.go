@@ -30,9 +30,9 @@ import (
 	kubevirtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	v1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 	anplisters "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
-	cnplisters "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha2"
+	cnplisters "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1beta1"
 
 	mockovs "github.com/kubeovn/kube-ovn/mocks/pkg/ovs"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -336,6 +336,61 @@ func TestGetVMLsps(t *testing.T) {
 			ovs.PodNameToPortName("vm-nad", "ns3", nadProvider),
 		}, lsps)
 	})
+
+	t.Run("non-primary cni mode keeps only attachment lsps", func(t *testing.T) {
+		vms := &kubevirtv1.VirtualMachineList{Items: []kubevirtv1.VirtualMachine{
+			{
+				// The default network is the primary CNI's: no default-provider lsp.
+				Name: "vm-primary", Namespace: "ns1",
+				Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate(nil, nil)},
+			},
+			{
+				Name: "vm-attached", Namespace: "ns2",
+				Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate([]kubevirtv1.Network{{
+					Name:   "secondary",
+					Multus: &kubevirtv1.MultusNetwork{NetworkName: "ns2/net2"},
+				}}, map[string]string{nadv1.NetworkAttachmentAnnot: "netx"})},
+			},
+		}}
+		c := &Controller{config: &Configuration{
+			EnableKeepVMIP:      true,
+			EnableNonPrimaryCNI: true,
+			KubevirtClient:      mockKubevirtList(t, vms, nil),
+		}}
+
+		lsps, err := c.getVMLsps()
+		require.NoError(t, err)
+
+		net2Provider := fmt.Sprintf("%s.%s.%s", "net2", "ns2", util.OvnProvider)
+		nadProvider := fmt.Sprintf("%s.%s.%s", "netx", "ns2", util.OvnProvider)
+		require.ElementsMatch(t, []string{
+			ovs.PodNameToPortName("vm-attached", "ns2", net2Provider),
+			ovs.PodNameToPortName("vm-attached", "ns2", nadProvider),
+		}, lsps)
+	})
+
+	t.Run("non-primary cni mode with default multus network", func(t *testing.T) {
+		vms := &kubevirtv1.VirtualMachineList{Items: []kubevirtv1.VirtualMachine{
+			{
+				Name: "vm-default-multus", Namespace: "ns1",
+				Spec: kubevirtv1.VirtualMachineSpec{Template: vmTemplate([]kubevirtv1.Network{{
+					Name:   "default",
+					Multus: &kubevirtv1.MultusNetwork{Default: true, NetworkName: "ns1/net1"},
+				}}, nil)},
+			},
+		}}
+		c := &Controller{config: &Configuration{
+			EnableKeepVMIP:      true,
+			EnableNonPrimaryCNI: true,
+			KubevirtClient:      mockKubevirtList(t, vms, nil),
+		}}
+
+		lsps, err := c.getVMLsps()
+		require.NoError(t, err)
+
+		net1Provider := fmt.Sprintf("%s.%s.%s", "net1", "ns1", util.OvnProvider)
+		require.Equal(t, []string{ovs.PodNameToPortName("vm-default-multus", "ns1", net1Provider)}, lsps)
+	})
 }
 
 func TestMarkAndCleanLSPEnqueuesMissingNodeLSP(t *testing.T) {
@@ -600,10 +655,10 @@ func TestGcDisabledDNSNameResolversDeletesPoliciesWithDomains(t *testing.T) {
 			To: []v1alpha1.AdminNetworkPolicyEgressPeer{{DomainNames: []v1alpha1.DomainName{"example.test."}}},
 		}}},
 	}
-	cnp := &v1alpha2.ClusterNetworkPolicy{
+	cnp := &v1beta1.ClusterNetworkPolicy{
 		Name: "uses-dns",
-		Spec: v1alpha2.ClusterNetworkPolicySpec{Egress: []v1alpha2.ClusterNetworkPolicyEgressRule{{
-			To: []v1alpha2.ClusterNetworkPolicyEgressPeer{{DomainNames: []v1alpha2.DomainName{"example.test."}}},
+		Spec: v1beta1.ClusterNetworkPolicySpec{Egress: []v1beta1.ClusterNetworkPolicyEgressRule{{
+			To: []v1beta1.ClusterNetworkPolicyEgressPeer{{DomainNames: []v1beta1.DomainName{"example.test."}}},
 		}}},
 	}
 	anpIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
@@ -611,7 +666,7 @@ func TestGcDisabledDNSNameResolversDeletesPoliciesWithDomains(t *testing.T) {
 	require.NoError(t, anpIndexer.Add(anp))
 	require.NoError(t, cnpIndexer.Add(cnp))
 	require.NoError(t, anpIndexer.Add(&v1alpha1.AdminNetworkPolicy{Name: "without-dns"}))
-	require.NoError(t, cnpIndexer.Add(&v1alpha2.ClusterNetworkPolicy{Name: "without-dns"}))
+	require.NoError(t, cnpIndexer.Add(&v1beta1.ClusterNetworkPolicy{Name: "without-dns"}))
 	ctrl.anpsLister = anplisters.NewAdminNetworkPolicyLister(anpIndexer)
 	ctrl.cnpsLister = cnplisters.NewClusterNetworkPolicyLister(cnpIndexer)
 
@@ -678,7 +733,7 @@ func TestGcDisabledDNSNameResolversPreservesPoliciesWithoutDomains(t *testing.T)
 	ctrl := fakeController.fakeController
 
 	anp := &v1alpha1.AdminNetworkPolicy{Name: "live-anp"}
-	cnp := &v1alpha2.ClusterNetworkPolicy{Name: "live-cnp"}
+	cnp := &v1beta1.ClusterNetworkPolicy{Name: "live-cnp"}
 	anpIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	cnpIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
 	require.NoError(t, anpIndexer.Add(anp))

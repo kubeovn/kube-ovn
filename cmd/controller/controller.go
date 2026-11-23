@@ -23,6 +23,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/apis/kubeovn"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/controller"
+	controllerruntime "github.com/kubeovn/kube-ovn/pkg/controller/runtime"
 	"github.com/kubeovn/kube-ovn/pkg/metrics"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 	"github.com/kubeovn/kube-ovn/versions"
@@ -92,6 +93,35 @@ func CmdMain() {
 		RetryPeriod:   config.LeaderElection.RetryPeriod,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(ctx context.Context) {
+				if config.ControllerRuntimeMode == controller.ControllerRuntimeModeSubnetWriter {
+					controller.RunWithRuntime(ctx, config, func(ctx context.Context, backend *controller.Controller) error {
+						return controllerruntime.RunWithSubnetWriter(ctx, config, backend)
+					})
+					return
+				}
+				if config.ControllerRuntimeMode == controller.ControllerRuntimeModeSubnetStatus {
+					controller.RunWithRuntime(ctx, config, func(ctx context.Context, backend *controller.Controller) error {
+						return controllerruntime.RunWithSubnetStatus(ctx, config, backend)
+					})
+					return
+				}
+				if config.ControllerRuntimeMode == controller.ControllerRuntimeModeIPPool {
+					controller.RunWithRuntime(ctx, config, func(ctx context.Context, backend *controller.Controller) error {
+						return controllerruntime.RunWithIPPool(ctx, config, backend)
+					})
+					return
+				}
+				if config.ControllerRuntimeMode == controller.ControllerRuntimeModeManager ||
+					config.ControllerRuntimeMode == controller.ControllerRuntimeModeVlan {
+					// The legacy controller still owns every resource that has not
+					// migrated. The runtime manager is layered on top of it while the
+					// outer leader lease remains the single ownership boundary.
+					go controller.Run(ctx, config)
+					if err := controllerruntime.Run(ctx, config); err != nil {
+						util.LogFatalAndExit(err, "controller-runtime manager failed")
+					}
+					return
+				}
 				controller.Run(ctx, config)
 			},
 			OnStoppedLeading: func() {

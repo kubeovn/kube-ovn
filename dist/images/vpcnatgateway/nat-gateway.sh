@@ -1076,6 +1076,13 @@ function escape_for_regex() {
     echo "$1" | sed 's/\./\\./g'
 }
 
+# Preserve backslashes when passing an escaped expression through awk -v.
+# awk parses backslash escapes in -v values before evaluating the expression,
+# so a grep-compatible "\." must be passed as "\\." to retain the literal dot.
+function escape_for_awk_regex() {
+    printf '%s\n' "$1" | sed 's/\\/\\\\/g'
+}
+
 # Convert burst value (in MB, may be decimal like 1.5) to bytes for tc command
 # tc has issues parsing decimal values with unit suffixes (e.g., "1.5m" for cburst)
 # By converting to bytes (integer), we avoid these parsing issues
@@ -1227,7 +1234,9 @@ function find_available_classid() {
     if echo "$filter_output" | grep -qE "$class_pattern"; then
         local target_ip_escaped
         target_ip_escaped=$(escape_for_regex "$target_ip/32")
-        if echo "$filter_output" | awk -v class_pattern="$class_pattern" -v match_pattern="match ip $match_direction $target_ip_escaped([^0-9./]|$)" '
+        local target_ip_awk_escaped
+        target_ip_awk_escaped=$(escape_for_awk_regex "$target_ip_escaped")
+        if echo "$filter_output" | awk -v class_pattern="$class_pattern" -v match_pattern="match ip $match_direction $target_ip_awk_escaped([^0-9./]|$)" '
             /flowid/ { owns_class = $0 ~ class_pattern }
             tolower($0) ~ tolower(match_pattern) && owns_class { found = 1 }
             END { exit !found }
@@ -1300,7 +1309,9 @@ function delete_htb_filter_and_class() {
             *) echo "ERROR: unknown QoS class range '$class_range'" >&2; return 1 ;;
         esac
         local flowid_line
-        flowid_line=$(echo "$filter_output" | awk -v pattern="$match_pattern" -v class_pattern="$class_pattern" -v priority="$priority" '
+        local awk_match_pattern
+        awk_match_pattern=$(escape_for_awk_regex "$match_pattern")
+        flowid_line=$(echo "$filter_output" | awk -v pattern="$awk_match_pattern" -v class_pattern="$class_pattern" -v priority="$priority" '
             /flowid/ {
                 priority_pattern = "pref " priority "([^0-9]|$)"
                 flowid = ($0 ~ class_pattern && (priority == "" || $0 ~ priority_pattern)) ? $0 : ""
@@ -1315,7 +1326,7 @@ function delete_htb_filter_and_class() {
         # belonging to a different rule is never picked up by accident.
         if [ -z "$flowid_line" ] && [ -n "$priority" ]; then
             local candidates
-            candidates=$(echo "$filter_output" | awk -v pattern="$match_pattern" -v class_pattern="$class_pattern" '
+            candidates=$(echo "$filter_output" | awk -v pattern="$awk_match_pattern" -v class_pattern="$class_pattern" '
                 /flowid/ { flowid = ($0 ~ class_pattern) ? $0 : "" }
                 tolower($0) ~ tolower(pattern) && flowid != "" { print flowid }
             ')
@@ -1719,7 +1730,9 @@ function find_available_classid_for_cidr() {
     if echo "$filter_output" | grep -qE "$class_pattern"; then
         local target_cidr_escaped
         target_cidr_escaped=$(escape_for_regex "$target_cidr")
-        if echo "$filter_output" | awk -v class_pattern="$class_pattern" -v match_pattern="match ip $match_direction $target_cidr_escaped([^0-9./]|$)" -v priority="$priority" '
+        local target_cidr_awk_escaped
+        target_cidr_awk_escaped=$(escape_for_awk_regex "$target_cidr_escaped")
+        if echo "$filter_output" | awk -v class_pattern="$class_pattern" -v match_pattern="match ip $match_direction $target_cidr_awk_escaped([^0-9./]|$)" -v priority="$priority" '
             /flowid/ {
                 same_rule = $0 ~ class_pattern && $0 ~ ("pref " priority "([^0-9]|$)")
             }

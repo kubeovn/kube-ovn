@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -1895,6 +1897,7 @@ func TestHandleAddOrUpdatePodRecordsAllocationSuccess(t *testing.T) {
 	portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
 	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return(nil, nil)
 	fc.mockOvnClient.EXPECT().ReconcilePortDHCPOptions(subnet.Name, portName, gomock.Any(), subnet.Spec.CIDRBlock, "", "", "", 0).Return(&ovs.DHCPOptionsUUIDs{}, false, nil).Times(2)
+	fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(gomock.Any(), true).Return(nil, nil)
 	fc.mockOvnClient.EXPECT().CreateLogicalSwitchPort(subnet.Name, portName, gomock.Any(), gomock.Any(), pod.Name, pod.Namespace, false, "", "", false, gomock.Any(), util.DefaultVpc).Return(nil)
 
 	err = fc.fakeController.handleAddOrUpdatePod("default/test-pod")
@@ -1929,6 +1932,7 @@ func TestHandleAddOrUpdatePodReportsOnlyAllocatedNetworks(t *testing.T) {
 	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{{Name: defaultPort}}, nil)
 	fc.mockOvnClient.EXPECT().ReconcilePortDHCPOptions(attachmentSubnet.Name, attachmentPort, gomock.Any(), attachmentSubnet.Spec.CIDRBlock, "", "", "", 0).Return(&ovs.DHCPOptionsUUIDs{}, false, nil).Times(2)
 	fc.mockOvnClient.EXPECT().ReconcilePortDHCPOptions(defaultSubnet.Name, defaultPort, gomock.Any(), defaultSubnet.Spec.CIDRBlock, "", "", "", 0).Return(&ovs.DHCPOptionsUUIDs{}, false, nil)
+	fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(gomock.Any(), true).Return(nil, nil)
 	fc.mockOvnClient.EXPECT().CreateLogicalSwitchPort(attachmentSubnet.Name, attachmentPort, gomock.Any(), gomock.Any(), pod.Name, pod.Namespace, false, "", "", false, gomock.Any(), util.DefaultVpc).Return(nil)
 
 	err = fc.fakeController.handleAddOrUpdatePod("default/test-pod")
@@ -1974,6 +1978,7 @@ func TestHandleAddOrUpdatePodCombinesAllocatedAndRemovedNetworks(t *testing.T) {
 	fc.mockOvnClient.EXPECT().DeleteLogicalSwitchPort(removedPort).Return(nil)
 	fc.mockOvnClient.EXPECT().ReconcilePortDHCPOptions(attachmentSubnet.Name, allocatedPort, gomock.Any(), attachmentSubnet.Spec.CIDRBlock, "", "", "", 0).Return(&ovs.DHCPOptionsUUIDs{}, false, nil).Times(2)
 	fc.mockOvnClient.EXPECT().ReconcilePortDHCPOptions(defaultSubnet.Name, defaultPort, gomock.Any(), defaultSubnet.Spec.CIDRBlock, "", "", "", 0).Return(&ovs.DHCPOptionsUUIDs{}, false, nil)
+	fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(gomock.Any(), true).Return(nil, nil)
 	fc.mockOvnClient.EXPECT().CreateLogicalSwitchPort(attachmentSubnet.Name, allocatedPort, gomock.Any(), gomock.Any(), pod.Name, pod.Namespace, false, "", "", false, gomock.Any(), util.DefaultVpc).Return(nil)
 
 	err = fc.fakeController.handleAddOrUpdatePod("default/test-pod")
@@ -2075,6 +2080,7 @@ func TestReconcileAllocateSubnetsSpecificFailureEventsIncludeStage(t *testing.T)
 		require.NoError(t, err)
 		require.NoError(t, fc.fakeController.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
 		fc.mockOvnClient.EXPECT().ReconcilePortDHCPOptions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&ovs.DHCPOptionsUUIDs{}, false, nil)
+		fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(gomock.Any(), true).Return(nil, nil)
 		fc.mockOvnClient.EXPECT().CreateLogicalSwitchPort(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(errors.New("create port failed"))
 
 		_, err = fc.fakeController.reconcileAllocateSubnets(pod, []*kubeovnNet{{Type: providerTypeOriginal, ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}})
@@ -2090,6 +2096,7 @@ func TestReconcileAllocateSubnetsSpecificFailureEventsIncludeStage(t *testing.T)
 		require.NoError(t, err)
 		require.NoError(t, fc.fakeController.ipam.AddOrUpdateSubnet(subnet.Name, subnet.Spec.CIDRBlock, subnet.Spec.Gateway, nil))
 		fc.mockOvnClient.EXPECT().ReconcilePortDHCPOptions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&ovs.DHCPOptionsUUIDs{}, false, nil)
+		fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(gomock.Any(), true).Return(nil, nil)
 		fc.mockOvnClient.EXPECT().CreateLogicalSwitchPort(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil)
 		fc.mockOvnClient.EXPECT().EnablePortLayer2forward(gomock.Any()).Return(errors.New("enable layer2 forward failed"))
 
@@ -2147,6 +2154,7 @@ func TestHandleAddOrUpdatePodReportsActualAllocatedSubnet(t *testing.T) {
 	require.NoError(t, fc.fakeController.ipam.AddOrUpdateSubnet(subnetB.Name, subnetB.Spec.CIDRBlock, subnetB.Spec.Gateway, nil))
 	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return(nil, nil)
 	fc.mockOvnClient.EXPECT().ReconcilePortDHCPOptions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&ovs.DHCPOptionsUUIDs{}, false, nil).Times(2)
+	fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(gomock.Any(), true).Return(nil, nil)
 	fc.mockOvnClient.EXPECT().CreateLogicalSwitchPort("subnet-b", gomock.Any(), "10.1.0.2", "00:00:00:00:00:01", pod.Name, pod.Namespace, false, "", "10.1.0.100", false, gomock.Any(), util.DefaultVpc).Return(nil)
 
 	err = fc.fakeController.handleAddOrUpdatePod("default/test-pod")
@@ -2280,12 +2288,14 @@ func TestReconcileRouteSubnetsEIPUsesPerFamilyPolicyMatch(t *testing.T) {
 	)
 
 	tests := []struct {
-		name          string
-		podIP         string
-		nextHop       string
-		snat          bool
-		wantPolicies  []policyRouteMatch
-		wantLegacyDel string
+		name           string
+		podIP          string
+		nextHop        string
+		snat           bool
+		eip            string
+		additionalSnat string
+		wantPolicies   []policyRouteMatch
+		wantLegacyDel  string
 	}{
 		{
 			name:    "dual-stack pod with IPv4 external gateway",
@@ -2308,15 +2318,17 @@ func TestReconcileRouteSubnetsEIPUsesPerFamilyPolicyMatch(t *testing.T) {
 			name:    "dual-stack pod with IPv6 external gateway",
 			podIP:   dualPodIP,
 			nextHop: "2001:db8:2::1",
+			eip:     "2001:db8:2::26",
 			wantPolicies: []policyRouteMatch{
 				{match: "ip6.src == " + podIPv6, nextHopIP: "2001:db8:2::1"},
 			},
 			wantLegacyDel: "ip4.src == " + dualPodIP,
 		},
 		{
-			name:    "dual-stack pod with dual-stack external gateway",
-			podIP:   dualPodIP,
-			nextHop: nextHop + "/26,2001:db8:2::1/64",
+			name:           "dual-stack pod with dual-stack external gateway",
+			podIP:          dualPodIP,
+			nextHop:        nextHop + "/26,2001:db8:2::1/64",
+			additionalSnat: "2001:db8:2::26",
 			wantPolicies: []policyRouteMatch{
 				{match: "ip4.src == " + podIPv4, nextHopIP: nextHop},
 				{match: "ip6.src == " + podIPv6, nextHopIP: "2001:db8:2::1"},
@@ -2385,17 +2397,30 @@ func TestReconcileRouteSubnetsEIPUsesPerFamilyPolicyMatch(t *testing.T) {
 			portName := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
 			fc.mockOvnClient.EXPECT().ListPortGroups(gomock.Any()).Return(nil, nil).AnyTimes()
 			fc.mockOvnClient.EXPECT().PortGroupAddPorts(gomock.Any(), portName).Return(nil)
-			fc.mockOvnClient.EXPECT().PortGroupRemovePorts(gomock.Any(), portName).Return(nil)
+			fc.mockOvnClient.EXPECT().PortGroupRemovePorts(gomock.Any(), portName).Return(nil).AnyTimes()
 			if tc.snat {
 				pod.Annotations[util.SnatAnnotation] = eipV4
 			} else {
 				pod.Annotations[util.EipAnnotation] = eipV4
+				if tc.eip != "" {
+					pod.Annotations[util.EipAnnotation] = tc.eip
+				}
+				if tc.additionalSnat != "" {
+					pod.Annotations[util.SnatAnnotation] = tc.additionalSnat
+				}
 			}
 			fc.mockOvnClient.EXPECT().UpdateDnatAndSnat(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			fc.mockOvnClient.EXPECT().EnsureSnat(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
+			fc.mockOvnClient.EXPECT().ListNats(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(nil, nil).AnyTimes()
 			fc.mockOvnClient.EXPECT().DeleteNats(gomock.Any(), gomock.Any(), gomock.Any()).Return(nil).AnyTimes()
 			if tc.wantLegacyDel != "" {
 				fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicy(util.DefaultVpc, util.NorthGatewayRoutePolicyPriority, tc.wantLegacyDel).Return(nil)
+			}
+			for ip := range strings.SplitSeq(tc.podIP, ",") {
+				match := fmt.Sprintf("%s.src == %s", getIPSuffix(util.CheckProtocol(ip)), ip)
+				if !slices.ContainsFunc(tc.wantPolicies, func(policy policyRouteMatch) bool { return policy.match == match }) {
+					fc.mockOvnClient.EXPECT().DeleteLogicalRouterPolicy(util.DefaultVpc, util.NorthGatewayRoutePolicyPriority, match).Return(nil)
+				}
 			}
 			for _, policy := range tc.wantPolicies {
 				fc.mockOvnClient.EXPECT().AddLogicalRouterPolicy(

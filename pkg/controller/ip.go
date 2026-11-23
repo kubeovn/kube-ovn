@@ -47,10 +47,10 @@ func (c *Controller) enqueueAddIP(obj any) {
 		return
 	}
 	klog.V(3).Infof("enqueue update status subnet %s", ipObj.Spec.Subnet)
-	c.updateSubnetStatusQueue.Add(ipObj.Spec.Subnet)
+	c.enqueueSubnetStatus(ipObj.Spec.Subnet, "IP")
 	for _, as := range ipObj.Spec.AttachSubnets {
 		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
-		c.updateSubnetStatusQueue.Add(as)
+		c.enqueueSubnetStatus(as, "IP")
 	}
 
 	key := cache.MetaObjectToName(ipObj).String()
@@ -66,8 +66,8 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 		err := fmt.Errorf("ip %s subnet changed from %s to %s", newIP.Name, oldIP.Spec.Subnet, newIP.Spec.Subnet)
 		klog.Warning(err)
 		c.recordIPError(newIP, reasonUpdateIPFailed, err)
-		c.updateSubnetStatusQueue.Add(oldIP.Spec.Subnet)
-		c.updateSubnetStatusQueue.Add(newIP.Spec.Subnet)
+		c.enqueueSubnetStatus(oldIP.Spec.Subnet, "IP")
+		c.enqueueSubnetStatus(newIP.Spec.Subnet, "IP")
 		return
 	}
 	if oldIP.Spec.Namespace != "" && newIP.Spec.Namespace != oldIP.Spec.Namespace {
@@ -127,7 +127,7 @@ func (c *Controller) enqueueUpdateIP(oldObj, newObj any) {
 		klog.V(3).Infof("enqueue update status subnet %s", newIP.Spec.Subnet)
 		for _, as := range newIP.Spec.AttachSubnets {
 			klog.V(3).Infof("enqueue update status for attach subnet %s", as)
-			c.updateSubnetStatusQueue.Add(as)
+			c.enqueueSubnetStatus(as, "IP")
 		}
 	}
 }
@@ -152,7 +152,7 @@ func (c *Controller) enqueueDelIP(obj any) {
 	if strings.HasPrefix(ipObj.Name, util.McastQuerierName[0:14]) {
 		// Recheck deletion only after the informer has removed the querier IP
 		// from its cache, so stale usage cannot keep the subnet finalizer.
-		c.addOrUpdateSubnetQueue.Add(ipObj.Spec.Subnet)
+		c.enqueueSubnetReconcile(ipObj.Spec.Subnet)
 		return
 	}
 	if strings.HasPrefix(ipObj.Name, util.U2OInterconnName[0:20]) {
@@ -218,7 +218,7 @@ func (c *Controller) handleAddReservedIP(key string) (err error) {
 	}
 
 	// not handle add the ip, which created in pod process, lsp created before ip
-	lsp, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
+	lsp, err := c.getLogicalSwitchPort(portName, true)
 	if err != nil {
 		klog.Errorf("failed to list logical switch ports %s, %v", portName, err)
 		return err
@@ -307,14 +307,14 @@ func (c *Controller) handleUpdateIP(key string) (err error) {
 		}
 		portName := cachedIP.Name
 		if isOvnSubnet(subnet) {
-			port, err := c.OVNNbClient.GetLogicalSwitchPort(portName, true)
+			port, err := c.getLogicalSwitchPort(portName, true)
 			if err != nil {
 				klog.Errorf("failed to get logical switch port %s: %v", portName, err)
 				return err
 			}
 			if port != nil {
 				klog.Infof("delete ip cr lsp %s from switch %s", portName, subnet.Name)
-				if err := c.OVNNbClient.DeleteLogicalSwitchPort(portName); err != nil {
+				if err := c.deleteLogicalSwitchPort(portName); err != nil {
 					klog.Errorf("failed to delete ip cr lsp %s from switch %s: %v", portName, subnet.Name, err)
 					return err
 				}
@@ -343,17 +343,17 @@ func (c *Controller) handleUpdateIP(key string) (err error) {
 			klog.Errorf("failed to handle del ip finalizer %v", err)
 			return err
 		}
-		c.updateSubnetStatusQueue.Add(cachedIP.Spec.Subnet)
+		c.enqueueSubnetStatus(cachedIP.Spec.Subnet, "IP")
 	}
 	return nil
 }
 
 func (c *Controller) handleDelIP(ip *kubeovnv1.IP) error {
 	klog.Infof("deleting ip %s enqueue update status subnet %s", ip.Name, ip.Spec.Subnet)
-	c.updateSubnetStatusQueue.Add(ip.Spec.Subnet)
+	c.enqueueSubnetStatus(ip.Spec.Subnet, "IP")
 	for _, as := range ip.Spec.AttachSubnets {
 		klog.V(3).Infof("enqueue update attach status for subnet %s", as)
-		c.updateSubnetStatusQueue.Add(as)
+		c.enqueueSubnetStatus(as, "IP")
 	}
 	return nil
 }
@@ -441,6 +441,13 @@ func (c *Controller) acquireStaticIPAddress(subnetName, name, nicName, ip string
 }
 
 func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string) error {
+	return c.createOrUpdateIPCRWithContext(context.Background(), ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType)
+}
+
+func (c *Controller) createOrUpdateIPCRWithContext(ctx context.Context, ipCRName, podName, ip, mac, subnetName, ns, nodeName, podType string) error {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	// `ipCRName`: pod or vm IP name must set ip CR name when creating ip CR
 	var key, ipName string
 	var owner *metav1.OwnerReference
@@ -532,7 +539,10 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		if owner != nil {
 			ipCR.OwnerReferences = []metav1.OwnerReference{*owner}
 		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(context.Background(), ipCR, metav1.CreateOptions{}); err != nil {
+		if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+			return err
+		}
+		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Create(ctx, ipCR, metav1.CreateOptions{}); err != nil {
 			errMsg := fmt.Errorf("failed to create ip CR %s: %w", ipName, err)
 			klog.Error(errMsg)
 			return errMsg
@@ -572,18 +582,25 @@ func (c *Controller) createOrUpdateIPCR(ipCRName, podName, ip, mac, subnetName, 
 		newIPCR.Spec.AttachMacs = []string{}
 		newIPCR.Spec.AttachSubnets = []string{}
 		newIPCR.Spec.PodType = podType
-		if maps.Equal(newIPCR.Labels, ipCR.Labels) && reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) &&
-			reflect.DeepEqual(newIPCR.OwnerReferences, ipCR.OwnerReferences) {
-			return nil
-		}
-		controllerutil.AddFinalizer(newIPCR, util.KubeOVNControllerFinalizer)
+		if !maps.Equal(newIPCR.Labels, ipCR.Labels) || !reflect.DeepEqual(newIPCR.Spec, ipCR.Spec) ||
+			!reflect.DeepEqual(newIPCR.OwnerReferences, ipCR.OwnerReferences) {
+			controllerutil.AddFinalizer(newIPCR, util.KubeOVNControllerFinalizer)
 
-		if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(context.Background(), newIPCR, metav1.UpdateOptions{}); err != nil {
-			err := fmt.Errorf("failed to update ip CR %s: %w", ipName, err)
-			klog.Error(err)
-			return err
+			if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+				return err
+			}
+			if _, err = c.config.KubeOvnClient.KubeovnV1().IPs().Update(ctx, newIPCR, metav1.UpdateOptions{}); err != nil {
+				err := fmt.Errorf("failed to update ip CR %s: %w", ipName, err)
+				klog.Error(err)
+				return err
+			}
 		}
 	}
+	// The subnet/ippool statistics are refreshed from IP CR watch events, which are not
+	// delivered when the CR is already up to date or when an immutable field change (e.g.
+	// a MAC regenerated after a controller restart) is rejected by the update handler.
+	// Trigger the refresh here so the statistics converge with what IPAM just committed.
+	c.enqueueSubnetStatus(subnetName, "IP")
 	return nil
 }
 

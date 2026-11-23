@@ -1,5 +1,5 @@
 # renovate: datasource=golang-version depName=go
-ARG GO_VERSION=1.27.3
+ARG GO_VERSION=1.27.4
 
 FROM ubuntu:26.04 AS openssl-builder
 
@@ -43,6 +43,7 @@ ADD patches/increase-election-timer.patch $SRC_DIR
 ADD patches/add-fdb-update-log.patch $SRC_DIR
 ADD patches/fdb-fix-mac-learning-in-environments-with-hairpin-enabled.patch $SRC_DIR
 ADD patches/ovsdb-tool-add-optional-server-id-parameter-for-join-cluster-command.patch $SRC_DIR
+ADD patches/ovsdb-tool-add-optional-cluster-id-parameter-for-create-cluster-command.patch $SRC_DIR
 ADD patches/fix-memory-leak-in-qos.patch $SRC_DIR
 ADD patches/ovsdb-tool-add-command-fix-cluster.patch $SRC_DIR
 ADD patches/ovsdb-tool-add-commands-db-raft-header-rejoin-cluster.patch $SRC_DIR
@@ -78,6 +79,8 @@ RUN cd /usr/src/ && \
     git apply --unidiff-zero $SRC_DIR/fdb-fix-mac-learning-in-environments-with-hairpin-enabled.patch && \
     # ovsdb-tool: add optional server id parameter for "join-cluster" command
     git apply --unidiff-zero $SRC_DIR/ovsdb-tool-add-optional-server-id-parameter-for-join-cluster-command.patch && \
+    # ovsdb-tool: add optional cluster id parameter for "create-cluster" command
+    git apply --unidiff-zero $SRC_DIR/ovsdb-tool-add-optional-cluster-id-parameter-for-create-cluster-command.patch && \
     # fix memory leak in qos
     git apply --unidiff-zero $SRC_DIR/fix-memory-leak-in-qos.patch && \
     # ovsdb-tool: add command fix-cluster
@@ -177,7 +180,7 @@ FROM ghcr.io/aquasecurity/trivy:latest AS trivy
 
 ARG ARCH
 # renovate: datasource=github-releases depName=cni-plugin packageName=containernetworking/plugins versioning=semver
-ARG CNI_PLUGINS_VERSION=v1.9.1
+ARG CNI_PLUGINS_VERSION=v1.10.0
 # renovate: datasource=github-releases depName=kubectl packageName=kubernetes/kubernetes versioning=semver
 ARG KUBECTL_VERSION=v1.37.2
 # renovate: datasource=github-releases depName=gobgp packageName=osrg/gobgp versioning=semver
@@ -283,7 +286,7 @@ RUN --mount=type=bind,target=/packages,from=ovs-builder,source=/packages \
     setcap CAP_NET_ADMIN+eip $(readlink -f $(which ovs-dpctl)) && \
     if [ "${DEBUG}" != "true" ]; then \
         setcap CAP_NET_BIND_SERVICE+eip $(readlink -f $(which ovsdb-server)) && \
-        setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE,CAP_SYS_ADMIN+eip $(readlink -f $(which ovs-vswitchd)) && \
+        setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE+eip $(readlink -f $(which ovs-vswitchd)) && \
         dpkg --purge gpgv apt; \
     else \
         apt update && apt install -y --no-install-recommends gdb valgrind tcpdump ncat && \

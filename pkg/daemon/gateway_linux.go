@@ -13,7 +13,6 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/kubeovn/felix/ipsets"
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
@@ -25,7 +24,9 @@ import (
 	"k8s.io/utils/set"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipsets"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -137,12 +138,14 @@ func (c *Controller) setIPSet() error {
 		if err := c.reconcileNatOutGoingPolicyIPset(allSubnets, protocol); err != nil {
 			return err
 		}
-		c.ipsets[protocol].ApplyUpdates()
+		if err := c.ipsets[protocol].ApplyUpdates(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (c *Controller) gcIPSet() {
+func (c *Controller) gcIPSet() error {
 	protocols := make([]string, 0, 2)
 	if c.protocol == kubeovnv1.ProtocolDual {
 		protocols = append(protocols, kubeovnv1.ProtocolIPv4, kubeovnv1.ProtocolIPv6)
@@ -154,8 +157,11 @@ func (c *Controller) gcIPSet() {
 		if c.ipsets[protocol] == nil {
 			continue
 		}
-		c.ipsets[protocol].ApplyDeletions()
+		if err := c.ipsets[protocol].ApplyDeletions(); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (c *Controller) addNatOutGoingPolicyRuleIPset(rule kubeovnv1.NatOutgoingPolicyRuleStatus, protocol string) {
@@ -185,7 +191,7 @@ func (c *Controller) removeNatOutGoingPolicyRuleIPset(protocol string, natPolicy
 		return err
 	}
 	for _, set := range sets {
-		if isNatOutGoingPolicyRuleIPSet(set) {
+		if setProtocol, owned := kubeOVNIPSetProtocol(set); owned && setProtocol == protocol && isNatOutGoingPolicyRuleIPSet(set) {
 			ruleID, _ := getNatOutGoingPolicyRuleIPSetItem(set)
 			if !natPolicyRuleIDs.Has(ruleID) {
 				c.ipsets[protocol].RemoveIPSet(formatIPsetUnPrefix(set))
@@ -1162,27 +1168,11 @@ func (c *Controller) cleanupKubeOVNIptablesAndIPSets() error {
 		}
 	}
 
-	if c.k8sipsets == nil {
-		return nil
-	}
-	sets, err := c.k8sipsets.ListSets()
-	if err != nil {
-		return fmt.Errorf("list Kube-OVN ipsets: %w", err)
-	}
-	for _, name := range sets {
-		protocol, owned := kubeOVNIPSetProtocol(name)
-		if !owned {
-			continue
-		}
-		if manager := c.ipsets[protocol]; manager != nil {
-			manager.RemoveIPSet(formatIPsetUnPrefix(name))
-		}
-	}
 	for _, protocol := range getProtocols(c.protocol) {
 		if manager := c.ipsets[protocol]; manager != nil {
-			manager.QueueResync()
-			manager.ApplyUpdates()
-			manager.ApplyDeletions()
+			if err := manager.Cleanup(); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -1820,13 +1810,16 @@ func (c *Controller) removeEgressConfig(subnet, ip string) error {
 }
 
 func (c *Controller) setExGateway() error {
+	if c.vswitchTables == nil {
+		return errors.New("vswitch table provider is nil")
+	}
 	node, err := c.nodesLister.Get(c.config.NodeName)
 	if err != nil {
 		klog.Errorf("failed to get node, %v", err)
 		return err
 	}
 	var isUserspaceDP bool
-	isUserspaceDP, err = ovs.IsUserspaceDataPath()
+	isUserspaceDP, err = ovs.IsUserspaceDataPath(c.vswitchTables)
 	if err != nil {
 		klog.Error(err)
 		return err
@@ -1871,13 +1864,14 @@ func (c *Controller) setExGateway() error {
 
 		externalBrReady := false
 		// if external nic already attached into another bridge
-		if existBr, err := ovs.Exec("port-to-br", linkName); err == nil {
+		if existBr, err := c.vswitchPortToBridge(linkName); err == nil {
 			if existBr == externalBridge {
 				externalBrReady = true
 			} else {
 				klog.Infof("external bridge should change from %s to %s, delete external bridge %s", existBr, externalBridge, existBr)
-				if _, err := ovs.Exec(ovs.IfExists, "del-br", existBr); err != nil {
-					err = fmt.Errorf("failed to del external br %s, %w", existBr, err)
+				deleteErr := ovs.DeleteVswitchBridge(context.Background(), c.vswitchTables, existBr)
+				if deleteErr != nil {
+					err = fmt.Errorf("failed to del external br %s, %w", existBr, deleteErr)
 					klog.Error(err)
 					return err
 				}
@@ -1886,16 +1880,18 @@ func (c *Controller) setExGateway() error {
 
 		if !externalBrReady {
 			klog.Infof("create external bridge %s and add nic %s", externalBridge, linkName)
-			if _, err := ovs.Exec(
-				ovs.MayExist, "add-br", externalBridge, "--",
-				ovs.MayExist, "add-port", externalBridge, linkName,
-			); err != nil {
-				err = fmt.Errorf("failed to enable external gateway, %w", err)
-				klog.Error(err)
-				return err
+			if err := ovs.EnsureVswitchBridge(context.Background(), c.vswitchTables, ovs.VswitchBridgeConfig{Name: externalBridge}); err != nil {
+				return fmt.Errorf("failed to enable external gateway bridge: %w", err)
+			}
+			if err := ovs.EnsureVswitchPort(context.Background(), c.vswitchTables, ovs.VswitchPortConfig{
+				BridgeName: externalBridge,
+				Port:       &vswitch.Port{Name: linkName},
+				Interface:  &vswitch.Interface{Name: linkName},
+			}); err != nil {
+				return fmt.Errorf("failed to enable external gateway port: %w", err)
 			}
 		}
-		if err = addOvnMapping("ovn-bridge-mappings", c.config.ExternalGatewaySwitch, externalBridge, true); err != nil {
+		if err = c.config.addOvnMapping("ovn-bridge-mappings", c.config.ExternalGatewaySwitch, externalBridge, true); err != nil {
 			klog.Error(err)
 			return err
 		}
@@ -1906,7 +1902,7 @@ func (c *Controller) setExGateway() error {
 }
 
 func (c *Controller) disableExGateway(externalBridge string, isUserspaceDP bool) error {
-	brExists, err := ovs.BridgeExists(externalBridge)
+	brExists, err := c.vswitchBridgeExists(externalBridge)
 	if err != nil {
 		return fmt.Errorf("failed to check OVS bridge existence: %w", err)
 	}
@@ -1941,9 +1937,7 @@ func (c *Controller) disableExGateway(externalBridge string, isUserspaceDP bool)
 
 	if !isUserspaceDP && !keepExternalSubnet {
 		klog.Infof("delete external bridge %s", externalBridge)
-		if _, err := ovs.Exec(
-			ovs.IfExists, "del-br", externalBridge,
-		); err != nil {
+		if err := ovs.DeleteVswitchBridge(context.Background(), c.vswitchTables, externalBridge); err != nil {
 			err = fmt.Errorf("failed to disable external gateway, %w", err)
 			klog.Error(err)
 			return err

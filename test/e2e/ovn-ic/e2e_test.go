@@ -191,7 +191,13 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 					protocol := strings.ToLower(util.CheckProtocol(ip))
 					ginkgo.By("Checking connection from cluster " + clusters[i] + " to cluster " + clusters[j] + " via " + protocol)
 					cmd := fmt.Sprintf("curl -q -s --connect-timeout 2 --max-time 2 %s/clientip", net.JoinHostPort(ip, ports[j]))
-					output := execPodOrDie(frameworks[i].KubeContext, pods[i].Namespace, pods[i].Name, cmd)
+					// IC server updates restart the singleton IC DB in the Kind topology.
+					// Route entries can be restored before the inter-cluster dataplane has
+					// converged, so retry this idempotent probe within a bounded window.
+					ginkgo.By(fmt.Sprintf("Executing %q in pod %s/%s", cmd, pods[i].Namespace, pods[i].Name))
+					k8sframework.TestContext.KubeContext = frameworks[i].KubeContext
+					output, err := e2epodoutput.RunHostCmdWithRetries(pods[i].Namespace, pods[i].Name, cmd, time.Second, time.Minute)
+					framework.ExpectNoError(err)
 					client, _, err := net.SplitHostPort(strings.TrimSpace(output))
 					framework.ExpectNoError(err)
 					framework.ExpectContainElement(sourceIPs, client)
@@ -311,6 +317,12 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		fnCheckPodHTTP()
 	})
 
+	scaleICServer := func(tsNum string) {
+		k8sframework.TestContext.KubeContext = "kind-kube-ovn"
+		e2ekubectl.NewKubectlCommand("kube-system", "patch", "deployment", "ovn-ic-server", "--type=json", "-p", fmt.Sprintf(`[{"op":"replace","path":"/spec/template/spec/containers/0/env/1/value","value":"%s"}]`, tsNum)).ExecOrDie("")
+		e2ekubectl.NewKubectlCommand("kube-system", "rollout", "status", "deployment/ovn-ic-server", "--timeout=90s").ExecOrDie("")
+	}
+
 	framework.ConformanceIt("Should Support ECMP OVN Interconnection", func() {
 		frameworks[0].SkipVersionPriorTo(1, 11, "This feature was introduced in v1.11")
 		ginkgo.By("case 1: ecmp gateway network test")
@@ -359,8 +371,7 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 4: scale ecmp path from 3 to 5")
-		k8sframework.TestContext.KubeContext = "kind-kube-ovn"
-		e2ekubectl.NewKubectlCommand("kube-system", "patch", "deployment", "ovn-ic-server", "--type=json", "-p", `[{"op":"replace","path":"/spec/template/spec/containers/0/env/1/value","value":"5"}]`).ExecOrDie("")
+		scaleICServer("5")
 		if frameworks[0].ClusterIPFamily == "dual" {
 			checkECMPCount(10)
 		} else {
@@ -369,8 +380,7 @@ var _ = framework.OrderedDescribe("[group:ovn-ic]", func() {
 		fnCheckPodHTTP()
 
 		ginkgo.By("case 5: reduce ecmp path from 5 to 3")
-		k8sframework.TestContext.KubeContext = "kind-kube-ovn"
-		e2ekubectl.NewKubectlCommand("kube-system", "patch", "deployment", "ovn-ic-server", "--type=json", "-p", `[{"op":"replace","path":"/spec/template/spec/containers/0/env/1/value","value":"3"}]`).ExecOrDie("")
+		scaleICServer("3")
 		if frameworks[0].ClusterIPFamily == "dual" {
 			checkECMPCount(6)
 		} else {

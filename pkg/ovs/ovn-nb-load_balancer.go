@@ -133,7 +133,7 @@ func (c *OVNNbClient) ReconcileLoadBalancer(config LoadBalancerConfig) error {
 		lb.Options = desiredOptions
 		fields = append(fields, &lb.Options)
 	}
-	ops, err := c.ovsDbClient.Where(lb).Update(lb, fields...)
+	ops, err := c.Database.Where(lb).Update(lb, fields...)
 	if err != nil {
 		return fmt.Errorf("generate operations for updating load balancer %s: %w", config.Name, err)
 	}
@@ -235,7 +235,7 @@ func (c *OVNNbClient) UpdateLoadBalancer(lb *ovnnb.LoadBalancer, fields ...any) 
 		err error
 	)
 
-	if ops, err = c.ovsDbClient.Where(lb).Update(lb, fields...); err != nil {
+	if ops, err = c.Database.Where(lb).Update(lb, fields...); err != nil {
 		klog.Error(err)
 		return fmt.Errorf("generate operations for updating load balancer %s: %w", lb.Name, err)
 	}
@@ -385,7 +385,7 @@ func (c *OVNNbClient) loadBalancerAttachmentOps(lbName string, attachments []Loa
 			Value:   []string{lb.UUID},
 			Mutator: attachment.Operation,
 		}
-		attachmentOps, err := c.ovsDbClient.Where(ls).Mutate(ls, mutation)
+		attachmentOps, err := c.Database.Where(ls).Mutate(ls, mutation)
 		if err != nil {
 			return nil, fmt.Errorf("generate operations for logical switch %s: %w", attachment.LogicalSwitch, err)
 		}
@@ -420,31 +420,11 @@ func (c *OVNNbClient) loadBalancerDeleteVIPOps(lbName, vipEndpoint string, ignor
 		ignoreHealthCheck = false
 	}
 
-	mutations := make([]model.Mutation, 0, 3)
-	if value, ok := lb.Vips[vipEndpoint]; ok {
-		mutations = append(mutations, model.Mutation{
-			Field: &lb.Vips, Value: map[string]string{vipEndpoint: value}, Mutator: ovsdb.MutateOperationDelete,
-		})
-		backendIPs, err := c.extractBackendIPsFromVIP(lb, vipEndpoint)
-		if err != nil {
-			return nil, err
-		}
-		if unused := c.findUnusedBackendIPs(lb, vipEndpoint, backendIPs); len(unused) != 0 {
-			mutations = append(mutations, model.Mutation{
-				Field: &lb.IPPortMappings, Value: unused, Mutator: ovsdb.MutateOperationDelete,
-			})
-		}
-	}
-	key := localExternalVIPKeyPrefix + vipEndpoint
-	if value, ok := lb.ExternalIDs[key]; ok {
-		mutations = append(mutations, model.Mutation{
-			Field: &lb.ExternalIDs, Value: map[string]string{key: value}, Mutator: ovsdb.MutateOperationDelete,
-		})
-	}
+	mutations := LoadBalancerDeleteVIPMutations(lb, vipEndpoint)
 
 	var ops []ovsdb.Operation
 	if len(mutations) != 0 {
-		ops, err = c.ovsDbClient.Where(lb).Mutate(lb, mutations...)
+		ops, err = c.Database.Where(lb).Mutate(lb, mutations...)
 		if err != nil {
 			return nil, fmt.Errorf("generate operations for deleting vip %s from load balancer %s: %w", vipEndpoint, lbName, err)
 		}
@@ -457,6 +437,31 @@ func (c *OVNNbClient) loadBalancerDeleteVIPOps(lbName, vipEndpoint string, ignor
 		ops = append(ops, healthCheckOps...)
 	}
 	return ops, nil
+}
+
+// LoadBalancerDeleteVIPMutations builds cleanup from one load balancer snapshot.
+// Both legacy clients and table providers use the same VIP deletion contract.
+func LoadBalancerDeleteVIPMutations(lb *ovnnb.LoadBalancer, vipEndpoint string) []model.Mutation {
+	mutations := make([]model.Mutation, 0, 3)
+	if value, ok := lb.Vips[vipEndpoint]; ok {
+		mutations = append(mutations, model.Mutation{
+			Field: &lb.Vips, Value: map[string]string{vipEndpoint: value}, Mutator: ovsdb.MutateOperationDelete,
+		})
+		backendIPs := extractBackendIPs(value)
+		klog.V(4).Infof("VIP %s uses %d backend IPs: %v", vipEndpoint, len(backendIPs), getMapKeys(backendIPs))
+		if unused := findUnusedBackendIPs(lb, vipEndpoint, backendIPs); len(unused) != 0 {
+			mutations = append(mutations, model.Mutation{
+				Field: &lb.IPPortMappings, Value: unused, Mutator: ovsdb.MutateOperationDelete,
+			})
+		}
+	}
+	key := localExternalVIPKeyPrefix + vipEndpoint
+	if value, ok := lb.ExternalIDs[key]; ok {
+		mutations = append(mutations, model.Mutation{
+			Field: &lb.ExternalIDs, Value: map[string]string{key: value}, Mutator: ovsdb.MutateOperationDelete,
+		})
+	}
+	return mutations
 }
 
 // SetLoadBalancerVIPExternalTrafficLocal records the node LSP of the chassis
@@ -643,7 +648,7 @@ func (c *OVNNbClient) reconcileChassisTemplateVariablesOps(chassis, prefix strin
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 	var rows []ovnnb.ChassisTemplateVar
-	if err := c.ovsDbClient.WhereCache(func(row *ovnnb.ChassisTemplateVar) bool {
+	if err := c.Database.WhereCache(func(row *ovnnb.ChassisTemplateVar) bool {
 		return row.Chassis == chassis
 	}).List(ctx, &rows); err != nil {
 		return nil, fmt.Errorf("list template variables for chassis %s: %w", chassis, err)
@@ -683,7 +688,7 @@ func (c *OVNNbClient) reconcileChassisTemplateVariablesOps(chassis, prefix strin
 	if len(variables) != 0 {
 		mutations = append(mutations, model.Mutation{Field: &row.Variables, Mutator: ovsdb.MutateOperationInsert, Value: variables})
 	}
-	ops, err := c.ovsDbClient.Where(row).Mutate(row, mutations...)
+	ops, err := c.Database.Where(row).Mutate(row, mutations...)
 	if err != nil {
 		return nil, fmt.Errorf("generate template variable reconciliation for chassis %s: %w", chassis, err)
 	}
@@ -776,7 +781,7 @@ func (c *OVNNbClient) loadBalancerDeleteUnusedVIPMappingsOps(lbName string, dele
 	if len(unused) == 0 {
 		return nil, nil
 	}
-	ops, err := c.ovsDbClient.Where(lb).Mutate(lb, model.Mutation{
+	ops, err := c.Database.Where(lb).Mutate(lb, model.Mutation{
 		Field:   &lb.IPPortMappings,
 		Value:   unused,
 		Mutator: ovsdb.MutateOperationDelete,
@@ -792,7 +797,7 @@ func (c *OVNNbClient) DeleteChassisTemplateVariables(filter func(name string) bo
 	ctx, cancel := context.WithTimeout(context.Background(), c.Timeout)
 	defer cancel()
 	var rows []ovnnb.ChassisTemplateVar
-	if err := c.ovsDbClient.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(ctx, &rows); err != nil {
+	if err := c.Database.WhereCache(func(*ovnnb.ChassisTemplateVar) bool { return true }).List(ctx, &rows); err != nil {
 		return fmt.Errorf("list chassis template variables: %w", err)
 	}
 	var ops []ovsdb.Operation
@@ -807,7 +812,7 @@ func (c *OVNNbClient) DeleteChassisTemplateVariables(filter func(name string) bo
 		if len(deletes) == 0 {
 			continue
 		}
-		rowOps, err := c.ovsDbClient.Where(row).Mutate(row, model.Mutation{
+		rowOps, err := c.Database.Where(row).Mutate(row, model.Mutation{
 			Field: &row.Variables, Mutator: ovsdb.MutateOperationDelete, Value: deletes,
 		})
 		if err != nil {
@@ -925,7 +930,7 @@ func (c *OVNNbClient) DeleteLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bo
 		err error
 	)
 
-	if ops, err = c.ovsDbClient.WhereCache(
+	if ops, err = c.Database.WhereCache(
 		func(lb *ovnnb.LoadBalancer) bool {
 			if filter != nil {
 				return filter(lb)
@@ -976,7 +981,7 @@ func (c *OVNNbClient) GetLoadBalancer(lbName string, ignoreNotFound bool) (*ovnn
 	)
 
 	lbList = make([]ovnnb.LoadBalancer, 0)
-	if err = c.ovsDbClient.WhereCache(
+	if err = c.Database.WhereCache(
 		func(lb *ovnnb.LoadBalancer) bool {
 			return lb.Name == lbName
 		},
@@ -1016,7 +1021,7 @@ func (c *OVNNbClient) ListLoadBalancers(filter func(lb *ovnnb.LoadBalancer) bool
 	)
 
 	lbList = make([]ovnnb.LoadBalancer, 0)
-	if err = c.ovsDbClient.WhereCache(
+	if err = c.Database.WhereCache(
 		func(lb *ovnnb.LoadBalancer) bool {
 			if filter != nil {
 				return filter(lb)
@@ -1058,7 +1063,7 @@ func (c *OVNNbClient) LoadBalancerOp(lbName string, mutationsFunc ...func(lb *ov
 		return nil, nil
 	}
 
-	if ops, err = c.ovsDbClient.Where(lb).Mutate(lb, mutations...); err != nil {
+	if ops, err = c.Database.Where(lb).Mutate(lb, mutations...); err != nil {
 		klog.Error(err)
 		return nil, fmt.Errorf("generate operations for mutating load balancer %s: %w", lb.Name, err)
 	}
@@ -1177,24 +1182,32 @@ func (c *OVNNbClient) extractBackendIPsFromVIP(lb *ovnnb.LoadBalancer, vipEndpoi
 		return nil, nil
 	}
 
-	backendIPs := make(map[string]bool)
+	backendIPs := extractBackendIPs(vipBackends)
+	klog.V(4).Infof("VIP %s uses %d backend IPs: %v", vipEndpoint, len(backendIPs), getMapKeys(backendIPs))
+	return backendIPs, nil
+}
 
+func extractBackendIPs(vipBackends string) map[string]bool {
+	backendIPs := make(map[string]bool)
 	for backend := range strings.SplitSeq(vipBackends, ",") {
 		if backendIP, _, err := net.SplitHostPort(backend); err == nil {
 			backendIPs[backendIP] = true
 		}
 	}
 
-	klog.V(4).Infof("VIP %s uses %d backend IPs: %v", vipEndpoint, len(backendIPs), getMapKeys(backendIPs))
-	return backendIPs, nil
+	return backendIPs
 }
 
 // findUnusedBackendIPs identifies which backend IPs are no longer used by any other VIP
 func (c *OVNNbClient) findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP string, targetBackendIPs map[string]bool) map[string]string {
+	return findUnusedBackendIPs(lb, targetVIP, targetBackendIPs)
+}
+
+func findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP string, targetBackendIPs map[string]bool) map[string]string {
 	unusedBackendIPs := make(map[string]string)
 
 	for backendIP := range targetBackendIPs {
-		if !c.isBackendIPStillUsed(lb, targetVIP, backendIP) {
+		if !isBackendIPStillUsed(lb, targetVIP, backendIP) {
 			if portMapping, exists := lb.IPPortMappings[backendIP]; exists {
 				unusedBackendIPs[backendIP] = portMapping
 			}
@@ -1207,6 +1220,10 @@ func (c *OVNNbClient) findUnusedBackendIPs(lb *ovnnb.LoadBalancer, targetVIP str
 
 // isBackendIPStillUsed checks if a backend IP is still referenced by any other VIP
 func (c *OVNNbClient) isBackendIPStillUsed(lb *ovnnb.LoadBalancer, targetVIP, backendIP string) bool {
+	return isBackendIPStillUsed(lb, targetVIP, backendIP)
+}
+
+func isBackendIPStillUsed(lb *ovnnb.LoadBalancer, targetVIP, backendIP string) bool {
 	for otherVIP, otherBackends := range lb.Vips {
 		if otherVIP == targetVIP {
 			continue

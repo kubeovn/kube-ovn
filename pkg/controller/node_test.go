@@ -248,6 +248,26 @@ func TestHandleUpdateNodeRecordsFailureEvent(t *testing.T) {
 	require.Equal(t, "Warning UpdateNodeFailed "+failure.Error(), requireRecorderEvent(t, fc.fakeController.recorder.(*record.FakeRecorder)))
 }
 
+func TestProviderNetworkNodeDeletionLeavesStatusToRuntimeReconciler(t *testing.T) {
+	const nodeName = "node-a"
+	pn := &kubeovnv1.ProviderNetwork{
+		Name:   "provider-a",
+		Status: kubeovnv1.ProviderNetworkStatus{ReadyNodes: []string{nodeName}},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		ProviderNetworks: []*kubeovnv1.ProviderNetwork{pn},
+	})
+	require.NoError(t, err)
+	c := fc.fakeController
+	c.config.ControllerRuntimeMode = ControllerRuntimeModeVlan
+
+	require.NoError(t, c.updateProviderNetworkForNodeDeletion(pn, nodeName))
+
+	updated, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Get(t.Context(), pn.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, []string{nodeName}, updated.Status.ReadyNodes)
+}
+
 func TestHandleDeleteNodeRecordsFailureEvent(t *testing.T) {
 	t.Parallel()
 

@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -985,7 +985,7 @@ func (suite *OvnClientTestSuite) testDeleteLogicalRouterPolicyIfUnchanged() {
 // beforePolicyUpdateClient runs a hook right before the first update of a logical router policy,
 // which is after AddLogicalRouterPolicy has read the row it is about to relabel.
 type beforePolicyUpdateClient struct {
-	client.Client
+	*table.Client
 	beforeUpdate func()
 }
 
@@ -998,7 +998,7 @@ func (c *beforePolicyUpdateClient) Transact(ctx context.Context, ops ...ovsdb.Op
 			break
 		}
 	}
-	return c.Client.Transact(ctx, ops...)
+	return c.TransactResults(ctx, ops...)
 }
 
 func (suite *OvnClientTestSuite) testAddLogicalRouterPolicyRecreatesVanishedPolicy() {
@@ -1022,13 +1022,12 @@ func (suite *OvnClientTestSuite) testAddLogicalRouterPolicyRecreatesVanishedPoli
 	// gc deletes the policy after the new node read it and before the new node relabels it
 	gcRan := false
 	takeover := &OVNNbClient{
-		Client: &beforePolicyUpdateClient{Client: nbClient.Client, beforeUpdate: func() {
+		Database: table.NewDatabase(&beforePolicyUpdateClient{Client: nbClient.Client, beforeUpdate: func() {
 			gcRan = true
 			deleted, err := nbClient.DeleteLogicalRouterPolicyIfUnchanged(lrName, observed)
 			require.NoError(t, err)
 			require.True(t, deleted)
-		}},
-		Timeout: nbClient.Timeout,
+		}}, nbClient.Timeout, table.RetryPolicy{}),
 	}
 	require.NoError(t, takeover.AddLogicalRouterPolicy(lrName, priority, match, action, nextHops, nil, map[string]string{"vendor": "kube-ovn", "node": "new-node"}))
 	require.True(t, gcRan)

@@ -46,6 +46,53 @@ func TestClassifyICConfig(t *testing.T) {
 	})
 }
 
+func TestObserveTransitSwitchesRequiresStableSnapshot(t *testing.T) {
+	t.Parallel()
+
+	last := []string{"ts0"}
+	current := []string{"ts0", "ts1"}
+	var pending []string
+	checks := 0
+
+	for i := 1; i < transitSwitchStabilityChecks; i++ {
+		var stable bool
+		pending, checks, stable = observeTransitSwitches(last, current, pending, checks)
+		require.False(t, stable)
+		require.Equal(t, i, checks)
+		require.Equal(t, current, pending)
+	}
+
+	var stable bool
+	pending, checks, stable = observeTransitSwitches(last, current, pending, checks)
+	require.True(t, stable)
+	require.Equal(t, transitSwitchStabilityChecks, checks)
+	require.Equal(t, current, pending)
+}
+
+func TestObserveTransitSwitchesResetsWhenSnapshotChanges(t *testing.T) {
+	t.Parallel()
+
+	last := []string{"ts0"}
+	pending := []string{"ts0", "ts1"}
+	current := []string{"ts0", "ts2"}
+
+	got, checks, stable := observeTransitSwitches(last, current, pending, transitSwitchStabilityChecks-1)
+	require.False(t, stable)
+	require.Equal(t, 1, checks)
+	require.Equal(t, current, got)
+}
+
+func TestObserveTransitSwitchesClearsStableBaseline(t *testing.T) {
+	t.Parallel()
+
+	pending, checks, stable := observeTransitSwitches(
+		[]string{"ts0"}, []string{"ts0"}, []string{"ts0", "ts1"}, transitSwitchStabilityChecks,
+	)
+	require.True(t, stable)
+	require.Empty(t, pending)
+	require.Zero(t, checks)
+}
+
 func TestCloneICConfigIsIndependent(t *testing.T) {
 	t.Parallel()
 

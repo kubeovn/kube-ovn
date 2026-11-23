@@ -14,7 +14,11 @@ func printCaps() {
 	klog.Infof("current capabilities: %s", currentCaps.String())
 }
 
-func initForOS() error {
+func initForOS(setGeneveTxOff bool) error {
+	if !setGeneveTxOff {
+		return nil
+	}
+
 	if _, err := netlink.LinkByName(util.GeneveNic); err != nil {
 		if _, ok := err.(netlink.LinkNotFoundError); ok {
 			return nil

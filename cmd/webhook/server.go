@@ -83,7 +83,7 @@ func CmdMain() {
 	}
 
 	controllerUserName := fmt.Sprintf("system:serviceaccount:%s:%s", os.Getenv(util.EnvPodNamespace), util.KubeOvnControllerServiceAccountName)
-	validatingHook, err := ovnwebhook.NewValidatingHook(mgr.GetClient(), mgr.GetScheme(), mgr.GetCache(), controllerUserName)
+	validatingHook, err := ovnwebhook.NewValidatingHook(mgr.GetClient(), mgr.GetAPIReader(), mgr.GetScheme(), mgr.GetCache(), controllerUserName)
 	if err != nil {
 		panic(err)
 	}

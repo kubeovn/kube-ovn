@@ -15,7 +15,9 @@ func NewBigInt(n int64) BigInt {
 }
 
 func (b BigInt) DeepCopyInto(n *BigInt) {
-	n.Set(&b.Int)
+	// Generated deep copies first assign the struct, so n may already share
+	// b's backing words. Copy through a fresh Int rather than reusing them.
+	n.Int = *new(big.Int).Set(&b.Int)
 }
 
 func (b BigInt) Clone() BigInt {

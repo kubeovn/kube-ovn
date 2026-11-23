@@ -2,6 +2,7 @@ package ovn_ic_controller
 
 import (
 	"maps"
+	"slices"
 	"sort"
 	"strings"
 
@@ -17,6 +18,26 @@ const (
 	icConfigChange
 	icGatewayChange
 )
+
+// resyncInterConnection runs once per second; three observations cover the
+// leader checker's asynchronous create/delete window without delaying normal
+// gateway reconciliation.
+const transitSwitchStabilityChecks = 3
+
+// observeTransitSwitches reports whether a changed Transit_Switch snapshot has
+// remained unchanged for enough reconciliation cycles to be used as a new
+// baseline. The leader checker creates and removes transit switches
+// asynchronously, so a single changed snapshot can be an intermediate state.
+func observeTransitSwitches(last, current, pending []string, checks int) ([]string, int, bool) {
+	if slices.Equal(last, current) {
+		return nil, 0, true
+	}
+	if !slices.Equal(pending, current) {
+		return slices.Clone(current), 1, false
+	}
+	checks++
+	return pending, checks, checks >= transitSwitchStabilityChecks
+}
 
 func cloneICConfig(data map[string]string) map[string]string {
 	if data == nil {

@@ -1,14 +1,11 @@
 package ovs
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
-	"sync/atomic"
-	"time"
 
 	"k8s.io/klog/v2"
 
@@ -32,6 +29,17 @@ func GetLocalnetName(subnet string) string {
 
 func trimCommandOutput(raw []byte) string {
 	return strings.Trim(strings.TrimSpace(string(raw)), `"`)
+}
+
+func splitNonEmptyLines(output string) []string {
+	lines := strings.Split(output, "\n")
+	result := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if line = strings.TrimSpace(line); line != "" {
+			result = append(result, line)
+		}
+	}
+	return result
 }
 
 func LogicalRouterPortName(lr, ls string) string {
@@ -59,7 +67,8 @@ func GetSgV6AssociatedName(sgName string) string {
 
 // parseIpv6RaConfigs parses the ipv6 ra config,
 // return default Ipv6RaConfigs when raw="",
-// the raw config's format is: address_mode=dhcpv6_stateful,max_interval=30,min_interval=5,send_periodic=true
+// the raw config's format is: address_mode=dhcpv6_stateful,max_interval=30,min_interval=5,send_periodic=true,
+// list values such as route_info and dnssl are comma separated too: route_info=HIGH-fd00::/64,LOW-fd01::/64
 func parseIpv6RaConfigs(raw string) map[string]string {
 	// return default Ipv6RaConfigs
 	if len(raw) == 0 {
@@ -75,14 +84,24 @@ func parseIpv6RaConfigs(raw string) map[string]string {
 
 	// trim blank
 	raw = strings.ReplaceAll(raw, " ", "")
-	options := strings.SplitSeq(raw, ",")
-	for option := range options {
+	// lastKey is the key of the last accepted option, a field without "="
+	// is the next item of its value, e.g. route_info=HIGH-fd00::/64,LOW-fd01::/64
+	var lastKey string
+	for option := range strings.SplitSeq(raw, ",") {
+		if !strings.Contains(option, "=") {
+			if lastKey != "" && option != "" {
+				Ipv6RaConfigs[lastKey] += "," + option
+			}
+			continue
+		}
+		lastKey = ""
 		kv := strings.Split(option, "=")
 		// TODO: ignore invalidate option, maybe need further validation
 		if len(kv) != 2 || len(kv[0]) == 0 || len(kv[1]) == 0 {
 			continue
 		}
 		Ipv6RaConfigs[kv[0]] = kv[1]
+		lastKey = kv[0]
 	}
 
 	return Ipv6RaConfigs
@@ -133,6 +152,13 @@ func buildDHCPv4Options(options, gateway, mac string, mtu int, necessaryOptions 
 	return parsedOptions
 }
 
+// BuildDHCPv4Options returns the normalized DHCPv4 option map used by OVN.
+// It is exported so generic controller table helpers can share the exact
+// option defaults without depending on an OVNNbClient method.
+func BuildDHCPv4Options(options, gateway, mac string, mtu int, necessaryOptions []string) map[string]string {
+	return buildDHCPv4Options(options, gateway, mac, mtu, necessaryOptions)
+}
+
 // buildDHCPv6Options constructs the DHCP options string for ipv6
 func buildDHCPv6Options(options, mac string, necessaryOptions []string) map[string]string {
 	if len(options) == 0 {
@@ -151,6 +177,11 @@ func buildDHCPv6Options(options, mac string, necessaryOptions []string) map[stri
 	}
 
 	return parsedOptions
+}
+
+// BuildDHCPv6Options returns the normalized DHCPv6 option map used by OVN.
+func BuildDHCPv6Options(options, mac string, necessaryOptions []string) map[string]string {
+	return buildDHCPv6Options(options, mac, necessaryOptions)
 }
 
 // formatDHCPOptions converts the parsed options map into a string format
@@ -223,6 +254,11 @@ func parseDHCPOptions(raw string) map[string]string {
 	}
 
 	return dhcpOpt
+}
+
+// ParseDHCPOptions parses an OVN DHCP option string into its model form.
+func ParseDHCPOptions(raw string) map[string]string {
+	return parseDHCPOptions(raw)
 }
 
 func matchAddressSetName(asName string) bool {
@@ -369,45 +405,4 @@ func (m groupACLMatch) Match() (string, error) {
 func (m groupACLMatch) String() string {
 	match, _ := m.Match()
 	return match
-}
-
-type Limiter struct {
-	limit   int32
-	current atomic.Int32
-}
-
-func (l *Limiter) Limit() int32 {
-	return l.limit
-}
-
-func (l *Limiter) Current() int32 {
-	return l.current.Load()
-}
-
-func (l *Limiter) Update(limit int32) {
-	l.limit = limit
-}
-
-func (l *Limiter) Wait(ctx context.Context) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return errors.New("context canceled by timeout")
-		default:
-			if l.limit == 0 {
-				l.current.Add(1)
-				return nil
-			}
-
-			if l.current.Load() < l.limit {
-				l.current.Add(1)
-				return nil
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-	}
-}
-
-func (l *Limiter) Done() {
-	l.current.Add(-1)
 }

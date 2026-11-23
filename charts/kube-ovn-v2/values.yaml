@@ -7,7 +7,7 @@ global:
   images:
     kubeovn:
       repository: kube-ovn
-      tag: v1.17.0
+      tag: v1.18.0
 
 # -- Image configuration.
 # @section -- Global parameters
@@ -279,9 +279,10 @@ features:
 
   ENABLE_BIND_LOCAL_IP: true
   LS_DNAT_MOD_DL_DST: true
-  LS_CT_SKIP_DST_LPORT_IPS: true
+  LS_CT_SKIP_DST_LPORT_IPS: false
   ENABLE_ANP: false
   ENABLE_DNS_NAME_RESOLVER: false
+  SET_GENEVE_TX_OFF: false
   SET_VXLAN_TX_OFF: false
   OVSDB_CON_TIMEOUT: 3
   OVSDB_INACTIVITY_TIMEOUT: 10
@@ -360,6 +361,11 @@ validatingWebhook:
   # -- Labels to be added to kube-ovn-webhook pods.
   # @section -- Validating webhook configuration
   podLabels: {}
+  # -- Tolerations for kube-ovn-webhook pods.
+  # @section -- Validating webhook configuration
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
   # -- Extra environment variables to be added to kube-ovn-webhook pods.
   # @section -- Validating webhook configuration
   extraEnv: []
@@ -461,7 +467,7 @@ natGw:
     repository: docker.io/kubeovn/vpc-nat-gateway
     # -- Image tag.
     # @section -- NAT gateways configuration
-    tag: v1.17.0
+    tag: v1.18.0
     # -- Image pull policy.
     # @section -- NAT gateways configuration
     pullPolicy: IfNotPresent
@@ -478,7 +484,7 @@ natGw:
       repository: docker.io/kubeovn/kube-ovn
       # -- Image tag.
       # @section -- NAT gateways configuration
-      tag: v1.17.0
+      tag: v1.18.0
       # -- Image pull policy.
       # @section -- NAT gateways configuration
       pullPolicy: IfNotPresent
@@ -677,7 +683,7 @@ ovsOvn:
       pullPolicy: ""
     # -- DPDK image tag.
     # @section -- OVS/OVN daemons configuration
-    tag: v1.17.0
+    tag: v1.18.0-dpdk
     # -- Affinity for the ovs-ovn-dpdk DaemonSet.
     # @section -- OVS/OVN daemons configuration
     affinity: {}
@@ -900,6 +906,13 @@ monitor:
   # -- Labels to be added to kube-ovn-monitor pods.
   # @section -- OVN monitoring daemon configuration
   podLabels: {}
+  # -- Tolerations for kube-ovn-monitor pods.
+  # @section -- OVN monitoring daemon configuration
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - key: CriticalAddonsOnly
+      operator: Exists
 
   # -- Extra environment variables to be added to kube-ovn-monitor pods.
   # @section -- OVN monitoring daemon configuration
@@ -962,6 +975,9 @@ monitor:
 # @section -- Kube-OVN controller configuration
 # @default -- "{}"
 controller:
+  # -- Controller-runtime migration mode. Keep disabled until a resource cohort is ready.
+  # @section -- Kube-OVN controller configuration
+  controllerRuntimeMode: disabled
   # -- Leader election timing configuration.
   # @section -- Kube-OVN controller configuration
   leaderElection:
@@ -1001,6 +1017,13 @@ controller:
   # -- Labels to be added to kube-ovn-controller pods.
   # @section -- Kube-OVN controller configuration
   podLabels: {}
+  # -- Tolerations for kube-ovn-controller pods.
+  # @section -- Kube-OVN controller configuration
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - key: CriticalAddonsOnly
+      operator: Exists
 
   # -- Extra environment variables to be added to kube-ovn-controller pods.
   # @section -- Kube-OVN controller configuration
@@ -1090,6 +1113,15 @@ central:
   # -- Labels to be added to ovn-central pods.
   # @section -- OVN-central daemon configuration
   podLabels: {}
+  # -- Tolerations for ovn-central pods.
+  # @section -- OVN-central daemon configuration
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - effect: NoExecute
+      operator: Exists
+    - key: CriticalAddonsOnly
+      operator: Exists
   # -- Extra environment variables to be added to ovn-central pods.
   # @section -- OVN-central daemon configuration
   extraEnv: []
@@ -1263,6 +1295,15 @@ ic:
     # --     - antarctica-east1
     # --     - antarctica-west1
     requiredDuringSchedulingIgnoredDuringExecution: []
+  # -- Tolerations for ovn-ic-controller pods.
+  # @section -- OVN IC controller configuration
+  tolerations:
+    - effect: NoSchedule
+      operator: Exists
+    - effect: NoExecute
+      operator: Exists
+    - key: CriticalAddonsOnly
+      operator: Exists
 
   # -- Extra environment variables to be added to ovn-ic-controller pods.
   # @section -- OVN IC controller configuration
@@ -1391,9 +1432,6 @@ performance:
   # -- ""
   # @section -- Performance configuration
   inspectInterval: 20
-  # -- ""
-  # @section -- Performance configuration
-  ovsVsctlConcurrency: 100
 
 # -- Array of extra K8s manifests to deploy.
 # Note: Supports use of custom Helm templates (Go templating)

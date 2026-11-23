@@ -61,7 +61,7 @@ func TestDeletingSubnetWithInvalidVlan(t *testing.T) {
 					require.Eventually(t, func() bool {
 						ips, err := c.ipIndexer.ByIndex(IndexIPBySubnet, subnet.Name)
 						return err == nil && len(ips) == 0
-					}, time.Second, time.Millisecond)
+					}, fakeInformerTimeout, time.Millisecond)
 					require.NoError(t, c.handleAddOrUpdateSubnet(subnet.Name))
 					updated, err = c.config.KubeOvnClient.KubeovnV1().Subnets().Get(t.Context(), subnet.Name, metav1.GetOptions{})
 					require.NoError(t, err)
@@ -155,7 +155,7 @@ func TestDeletingSubnetMulticastQuerier(t *testing.T) {
 			if !tc.enabled {
 				// Consume the real deletion event: cleanup must wake the subnet
 				// after the IP leaves the informer cache, without a manual retry.
-				require.Eventually(t, func() bool { return c.addOrUpdateSubnetQueue.Len() == 1 }, time.Second, time.Millisecond)
+				require.Eventually(t, func() bool { return c.addOrUpdateSubnetQueue.Len() == 1 }, fakeInformerTimeout, time.Millisecond)
 				key, shutdown := c.addOrUpdateSubnetQueue.Get()
 				require.False(t, shutdown)
 				require.Equal(t, subnet.Name, key)

@@ -11,9 +11,9 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/util/workqueue"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	v1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 	anplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
-	cnplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha2"
+	cnplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1beta1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -127,7 +127,7 @@ func addPolicyLabelTestFixtures(t *testing.T, c *Controller, namespaceEvent bool
 		}
 		anp := &v1alpha1.AdminNetworkPolicy{Name: name}
 		banp := &v1alpha1.BaselineAdminNetworkPolicy{Name: name}
-		cnp := &v1alpha2.ClusterNetworkPolicy{Name: name}
+		cnp := &v1beta1.ClusterNetworkPolicy{Name: name}
 		selectors := []metav1.LabelSelector{selector}
 		if name == "both" {
 			key := "app"
@@ -145,7 +145,7 @@ func addPolicyLabelTestFixtures(t *testing.T, c *Controller, namespaceEvent bool
 				podSelector = peerSelector
 			}
 			podsV1 := &v1alpha1.NamespacedPod{NamespaceSelector: nsSelector, PodSelector: podSelector}
-			podsV2 := &v1alpha2.NamespacedPod{NamespaceSelector: nsSelector, PodSelector: podSelector}
+			podsV2 := &v1beta1.NamespacedPod{NamespaceSelector: nsSelector, PodSelector: podSelector}
 			if index == 0 {
 				anp.Spec.Subject.Pods = podsV1
 				banp.Spec.Subject.Pods = podsV1
@@ -156,8 +156,8 @@ func addPolicyLabelTestFixtures(t *testing.T, c *Controller, namespaceEvent bool
 			anp.Spec.Egress = append(anp.Spec.Egress, v1alpha1.AdminNetworkPolicyEgressRule{Name: egressName, To: []v1alpha1.AdminNetworkPolicyEgressPeer{{Pods: podsV1}}})
 			banp.Spec.Ingress = append(banp.Spec.Ingress, v1alpha1.BaselineAdminNetworkPolicyIngressRule{Name: ingressName, From: []v1alpha1.AdminNetworkPolicyIngressPeer{{Pods: podsV1}}})
 			banp.Spec.Egress = append(banp.Spec.Egress, v1alpha1.BaselineAdminNetworkPolicyEgressRule{Name: egressName, To: []v1alpha1.BaselineAdminNetworkPolicyEgressPeer{{Pods: podsV1}}})
-			cnp.Spec.Ingress = append(cnp.Spec.Ingress, v1alpha2.ClusterNetworkPolicyIngressRule{Name: ingressName, From: []v1alpha2.ClusterNetworkPolicyIngressPeer{{Pods: podsV2}}})
-			cnp.Spec.Egress = append(cnp.Spec.Egress, v1alpha2.ClusterNetworkPolicyEgressRule{Name: egressName, To: []v1alpha2.ClusterNetworkPolicyEgressPeer{{Pods: podsV2}}})
+			cnp.Spec.Ingress = append(cnp.Spec.Ingress, v1beta1.ClusterNetworkPolicyIngressRule{Name: ingressName, From: []v1beta1.ClusterNetworkPolicyIngressPeer{{Pods: podsV2}}})
+			cnp.Spec.Egress = append(cnp.Spec.Egress, v1beta1.ClusterNetworkPolicyEgressRule{Name: egressName, To: []v1beta1.ClusterNetworkPolicyEgressPeer{{Pods: podsV2}}})
 		}
 		require.NoError(t, anpIndexer.Add(anp))
 		require.NoError(t, banpIndexer.Add(banp))
@@ -195,7 +195,7 @@ func TestLabelMatchersTreatNamespaceEventsWithoutPodLabelsAsNamespaceMatches(t *
 		NamespaceSelector: *nsSelector,
 		PodSelector:       metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
 	}
-	podSelectorV2 := &v1alpha2.NamespacedPod{
+	podSelectorV2 := &v1beta1.NamespacedPod{
 		NamespaceSelector: *nsSelector,
 		PodSelector:       metav1.LabelSelector{MatchLabels: map[string]string{"app": "web"}},
 	}
@@ -220,15 +220,15 @@ func TestBaselineAdminPolicyLabelMatcherIncludesIngressPeers(t *testing.T) {
 func TestCnpLabelMatcherEnqueuesUnnamedRules(t *testing.T) {
 	controller := newPolicyLabelTestController(t, &corev1.Namespace{Name: metav1.NamespaceDefault})
 	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	selector := &v1alpha2.NamespacedPod{
+	selector := &v1beta1.NamespacedPod{
 		NamespaceSelector: metav1.LabelSelector{},
 		PodSelector:       metav1.LabelSelector{MatchLabels: map[string]string{"app": "new"}},
 	}
-	cnp := &v1alpha2.ClusterNetworkPolicy{
+	cnp := &v1beta1.ClusterNetworkPolicy{
 		Name: "unnamed",
-		Spec: v1alpha2.ClusterNetworkPolicySpec{
-			Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{{From: []v1alpha2.ClusterNetworkPolicyIngressPeer{{Pods: selector}}}},
-			Egress:  []v1alpha2.ClusterNetworkPolicyEgressRule{{To: []v1alpha2.ClusterNetworkPolicyEgressPeer{{Pods: selector}}}},
+		Spec: v1beta1.ClusterNetworkPolicySpec{
+			Ingress: []v1beta1.ClusterNetworkPolicyIngressRule{{From: []v1beta1.ClusterNetworkPolicyIngressPeer{{Pods: selector}}}},
+			Egress:  []v1beta1.ClusterNetworkPolicyEgressRule{{To: []v1beta1.ClusterNetworkPolicyEgressPeer{{Pods: selector}}}},
 		},
 	}
 	require.NoError(t, indexer.Add(cnp))

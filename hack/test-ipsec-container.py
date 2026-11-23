@@ -103,6 +103,31 @@ def validate_signer_permissions(text):
                     assert rule["resourceNames"] == ["ovn-ipsec-ca"]
 
 
+def validate_csr_permissions(text, enabled):
+    documents = [item for item in yaml.safe_load_all(text) if item]
+    controller = next(item for item in documents if item.get("kind") == "ClusterRole" and item["metadata"]["name"] == "system:ovn")
+    csr_rules = [rule for rule in controller["rules"] if "certificates.k8s.io" in rule.get("apiGroups", [])]
+    read_verbs = {verb for rule in csr_rules if "certificatesigningrequests" in rule["resources"] for verb in rule["verbs"]}
+    assert read_verbs == {"get", "list", "watch"}, "CSR reads are needed for informer sync and IPsec cleanup"
+    signing_resources = {"certificatesigningrequests/status", "certificatesigningrequests/approval", "signers"}
+    permissions = {(resource, verb) for rule in csr_rules for resource in rule["resources"] if resource in signing_resources for verb in rule["verbs"]}
+    expected = {("certificatesigningrequests/status", "update"), ("certificatesigningrequests/approval", "update"),
+                ("signers", "approve"), ("signers", "sign")} if enabled else set()
+    assert permissions == expected, f"incorrect CSR signing permissions for IPsec enabled={enabled}: {permissions}"
+    for rule in csr_rules:
+        if "signers" in rule["resources"]:
+            assert rule["resourceNames"] == ["kubeovn.io/signer"]
+
+
+def installer_csr_permissions(enabled, cert_manager):
+    source = (ROOT / "dist/images/install.sh").read_text()
+    start = source.index('IPSEC_CSR_SIGNER_RULES=""')
+    end = source.index("cat <<EOF > kube-ovn-cni-sa.yaml", start)
+    script = source[start:end].replace("cat <<EOF > kube-ovn-sa.yaml", "cat <<EOF", 1)
+    env = dict(os.environ, ENABLE_OVN_IPSEC=str(enabled).lower(), CERT_MANAGER_IPSEC_CERT=str(cert_manager).lower())
+    return subprocess.check_output(["bash", "-c", "set -euo pipefail\n" + script], env=env, text=True)
+
+
 def validate_cert_manager(text):
     documents = [item for item in yaml.safe_load_all(text) if item]
     controller = next(item for item in documents if item.get("kind") == "Deployment" and item["metadata"]["name"] == "kube-ovn-controller")
@@ -288,17 +313,23 @@ def main():
                 rendered = subprocess.check_output(args, text=True, stderr=subprocess.DEVNULL)
                 validate(rendered, enabled)
                 validate_signer_permissions(rendered)
+                validate_csr_permissions(rendered, enabled)
         args = ["helm", "template", "ipsec-test", str(ROOT / "charts" / chart), "--set", f"{switch}=true", "--set", "ipsec.certManager.enabled=true"]
         rendered = subprocess.check_output(args, text=True, stderr=subprocess.DEVNULL)
         validate_cert_manager(rendered)
+        validate_csr_permissions(rendered, True)
         chart_policy = [item for item in yaml.safe_load_all(rendered) if item and item.get("kind") in ("ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding")]
         if chart == "kube-ovn-v2":
             assert chart_policy == installer_issuer_policy()
+        rendered = subprocess.check_output(args + ["--set", f"{switch}=false"], text=True, stderr=subprocess.DEVNULL)
+        validate_csr_permissions(rendered, False)
     for enabled in (False, True):
+        for cert_manager in (False, True):
+            validate_csr_permissions(installer_csr_permissions(enabled, cert_manager), enabled)
         validate(installer(enabled), enabled)
         validate(installer(enabled, debug=True), enabled, debug=True)
     assert "CAP_SYS_NICE" not in (ROOT / "dist/images/Dockerfile").read_text()
-    print("IPsec enabled/disabled, CNI UID, nice capability, mount, probe and installer checks passed.")
+    print("IPsec enabled/disabled, CSR signing permissions, CNI UID, nice capability, mount, probe and installer checks passed.")
 
 
 if __name__ == "__main__":

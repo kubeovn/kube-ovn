@@ -8,6 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	k8stesting "k8s.io/client-go/testing"
@@ -235,6 +236,28 @@ func TestHandleDelVlanRecordsSuccess(t *testing.T) {
 	require.Equal(t, "DeleteSuccess", event.reason)
 	require.Equal(t, "Vlan vlan-a deleted successfully", event.message)
 	require.Equal(t, vlan.UID, event.object.(*kubeovnv1.Vlan).UID)
+}
+
+func TestHandleDelVlanLeavesProviderNetworkStatusToRuntimeReconciler(t *testing.T) {
+	const vlanName = "vlan-a"
+	vlan := &kubeovnv1.Vlan{Name: vlanName, UID: "vlan-uid"}
+	pn := &kubeovnv1.ProviderNetwork{
+		Name:   "provider-a",
+		Status: kubeovnv1.ProviderNetworkStatus{Vlans: []string{vlanName}},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		ProviderNetworks: []*kubeovnv1.ProviderNetwork{pn},
+	})
+	require.NoError(t, err)
+	c := fc.fakeController
+	c.config.ControllerRuntimeMode = ControllerRuntimeModeVlan
+	c.vlanKeyMutex = keymutex.NewHashed(0)
+
+	require.NoError(t, c.handleDelVlan(vlan))
+
+	updated, err := c.config.KubeOvnClient.KubeovnV1().ProviderNetworks().Get(t.Context(), pn.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, []string{vlanName}, updated.Status.Vlans)
 }
 
 type deleteVlanRetryTestCase struct {

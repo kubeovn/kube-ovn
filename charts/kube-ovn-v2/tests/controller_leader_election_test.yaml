@@ -7,6 +7,9 @@ tests:
       masterNodes:
         - "10.0.0.1"
     asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --controller-runtime-mode=disabled
       - notContains:
           path: spec.template.spec.containers[0].args
           content: --leader-elect-lease-duration=30s
@@ -33,7 +36,11 @@ tests:
       controller.leaderElection.leaseDuration: 1m
       controller.leaderElection.renewDeadline: 40s
       controller.leaderElection.retryPeriod: 10s
+      controller.controllerRuntimeMode: vlan
     asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --controller-runtime-mode=vlan
       - contains:
           path: spec.template.spec.containers[0].args
           content: --leader-elect-lease-duration=1m

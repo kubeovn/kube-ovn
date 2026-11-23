@@ -5,17 +5,17 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ovn-kubernetes/libovsdb/client"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/stretchr/testify/require"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
 type transactionRecordingClient struct {
-	client.Client
+	*table.Client
 	transactions [][]ovsdb.Operation
 	competingOps []ovsdb.Operation
 	abort        bool
@@ -26,7 +26,7 @@ func (c *transactionRecordingClient) Transact(ctx context.Context, ops ...ovsdb.
 	if len(c.competingOps) != 0 {
 		competingOps := c.competingOps
 		c.competingOps = nil
-		results, err := c.Client.Transact(ctx, competingOps...)
+		results, err := c.TransactResults(ctx, competingOps...)
 		if err != nil {
 			return nil, err
 		}
@@ -45,7 +45,7 @@ func (c *transactionRecordingClient) Transact(ctx context.Context, ops ...ovsdb.
 			Timeout: new(0),
 		})
 	}
-	return c.Client.Transact(ctx, ops...)
+	return c.TransactResults(ctx, ops...)
 }
 
 func newTransactionRecordingNbClient(t *testing.T) (*OVNNbClient, *transactionRecordingClient) {
@@ -57,7 +57,7 @@ func newTransactionRecordingNbClient(t *testing.T) (*OVNNbClient, *transactionRe
 	require.NoError(t, err)
 	t.Cleanup(nbClient.Close)
 	recorder := &transactionRecordingClient{Client: nbClient.Client}
-	nbClient.Client = recorder
+	nbClient.Database = table.NewDatabase(recorder, nbClient.Timeout, table.RetryPolicy{})
 	return nbClient, recorder
 }
 

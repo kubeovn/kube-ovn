@@ -13,7 +13,7 @@ import (
 	"k8s.io/klog/v2"
 
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	v1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 )
 
 type policyEventKind uint8
@@ -331,7 +331,7 @@ func (c *Controller) indexBaselineAdminNetworkPolicy(banp *v1alpha1.BaselineAdmi
 	c.policyEventIndex.upsert(policyEventRef{kind: policyEventBaselineAdminNetworkPolicy, key: banp.Name}, selectors)
 }
 
-func (c *Controller) indexClusterNetworkPolicy(cnp *v1alpha2.ClusterNetworkPolicy) {
+func (c *Controller) indexClusterNetworkPolicy(cnp *v1beta1.ClusterNetworkPolicy) {
 	selectors := clusterNetworkPolicySelectors(cnp.Spec.Subject, cnp.Spec.Ingress, cnp.Spec.Egress)
 	c.policyEventIndex.upsert(policyEventRef{kind: policyEventClusterNetworkPolicy, key: cnp.Name}, selectors)
 }
@@ -408,7 +408,7 @@ func baselineAdminNetworkPolicySelectors(subject v1alpha1.AdminNetworkPolicySubj
 	return selectors
 }
 
-func clusterNetworkPolicySelectors(subject v1alpha2.ClusterNetworkPolicySubject, ingress []v1alpha2.ClusterNetworkPolicyIngressRule, egress []v1alpha2.ClusterNetworkPolicyEgressRule) []policyEventSelector {
+func clusterNetworkPolicySelectors(subject v1beta1.ClusterNetworkPolicySubject, ingress []v1beta1.ClusterNetworkPolicyIngressRule, egress []v1beta1.ClusterNetworkPolicyEgressRule) []policyEventSelector {
 	selectors := make([]policyEventSelector, 0, len(ingress)+len(egress)+1)
 	selectors = append(selectors, clusterSubjectSelector(subject))
 	for _, rule := range ingress {
@@ -424,7 +424,7 @@ func clusterNetworkPolicySelectors(subject v1alpha2.ClusterNetworkPolicySubject,
 	return selectors
 }
 
-func clusterSubjectSelector(subject v1alpha2.ClusterNetworkPolicySubject) policyEventSelector {
+func clusterSubjectSelector(subject v1beta1.ClusterNetworkPolicySubject) policyEventSelector {
 	if subject.Namespaces != nil {
 		return policyEventSelector{namespace: subject.Namespaces}
 	}
@@ -434,7 +434,7 @@ func clusterSubjectSelector(subject v1alpha2.ClusterNetworkPolicySubject) policy
 	return policyEventSelector{}
 }
 
-func clusterIngressPeerSelector(peer v1alpha2.ClusterNetworkPolicyIngressPeer) policyEventSelector {
+func clusterIngressPeerSelector(peer v1beta1.ClusterNetworkPolicyIngressPeer) policyEventSelector {
 	if peer.Namespaces != nil {
 		return policyEventSelector{namespace: peer.Namespaces}
 	}
@@ -444,7 +444,7 @@ func clusterIngressPeerSelector(peer v1alpha2.ClusterNetworkPolicyIngressPeer) p
 	return policyEventSelector{}
 }
 
-func clusterEgressPeerSelector(peer v1alpha2.ClusterNetworkPolicyEgressPeer) policyEventSelector {
+func clusterEgressPeerSelector(peer v1beta1.ClusterNetworkPolicyEgressPeer) policyEventSelector {
 	if peer.Namespaces != nil {
 		return policyEventSelector{namespace: peer.Namespaces}
 	}

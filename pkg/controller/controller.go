@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -32,10 +33,10 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/utils/keymutex"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	netpolv1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	netpolv1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 	anpinformer "sigs.k8s.io/network-policy-api/pkg/client/informers/externalversions"
 	anplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
-	anplisterv1alpha2 "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha2"
+	anplisterv1beta1 "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1beta1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovninformer "github.com/kubeovn/kube-ovn/pkg/client/informers/externalversions"
@@ -43,6 +44,7 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/informer"
 	ovnipam "github.com/kubeovn/kube-ovn/pkg/ipam"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -68,6 +70,10 @@ const (
 type Controller struct {
 	config *Configuration
 
+	// subnetRuntimeFence is installed only by the explicit subnet-writer mode.
+	// Legacy workers leave it nil and retain their existing ownership path.
+	subnetRuntimeFence func(context.Context) error
+
 	ipam             *ovnipam.IPAM
 	namedPort        *NamedPort
 	anpPrioNameMap   map[int32]string
@@ -78,6 +84,10 @@ type Controller struct {
 
 	OVNNbClient ovs.NbClient
 	OVNSbClient ovs.SbClient
+	// OVNNbTables and OVNSbTables expose the generic table seam to reconcile
+	// code while the legacy client interfaces remain unchanged.
+	OVNNbTables table.Provider
+	OVNSbTables table.Provider
 
 	// ExternalGatewayType define external gateway type, centralized
 	ExternalGatewayType string
@@ -87,6 +97,7 @@ type Controller struct {
 	podIndexer             cache.Indexer
 	policySelectorCache    policySelectorCache
 	addOrUpdatePodQueue    workqueue.TypedRateLimitingInterface[string]
+	updatePodRouteQueue    workqueue.TypedRateLimitingInterface[string]
 	deletePodQueue         workqueue.TypedRateLimitingInterface[string]
 	deletingPodObjMap      *xsync.Map[string, *corev1.Pod]
 	deletingNodeObjMap     *xsync.Map[string, *corev1.Node]
@@ -177,6 +188,8 @@ type Controller struct {
 	addOrUpdateSubnetQueue  workqueue.TypedRateLimitingInterface[string]
 	deleteSubnetQueue       workqueue.TypedRateLimitingInterface[*kubeovnv1.Subnet]
 	updateSubnetStatusQueue workqueue.TypedRateLimitingInterface[string]
+	subnetStatusEvents      *subnetStatusEventFanout
+	subnetRuntimeEvents     *subnetRuntimeEventFanout
 	syncVirtualPortsQueue   workqueue.TypedRateLimitingInterface[string]
 	subnetKeyMutex          keymutex.KeyMutex
 
@@ -186,6 +199,13 @@ type Controller struct {
 	updateIPPoolStatusQueue workqueue.TypedRateLimitingInterface[string]
 	deleteIPPoolQueue       workqueue.TypedRateLimitingInterface[*kubeovnv1.IPPool]
 	ippoolKeyMutex          keymutex.KeyMutex
+	ipPoolWriter            IPPoolWriter
+	// ipPoolRecoveryReady keeps native IPPool events owned by the runtime
+	// controller while the shared IPAM state is being restored. The channel is
+	// created before the runtime starts and closed after startup recovery and
+	// prerequisite syncs complete.
+	ipPoolRecoveryReady chan struct{}
+	ipPoolRecoveryOnce  sync.Once
 
 	ipsLister     kubeovnlister.IPLister
 	ipSynced      cache.InformerSynced
@@ -350,11 +370,11 @@ type Controller struct {
 	deleteBanpQueue workqueue.TypedRateLimitingInterface[*v1alpha1.BaselineAdminNetworkPolicy]
 	banpKeyMutex    keymutex.KeyMutex
 
-	cnpsLister     anplisterv1alpha2.ClusterNetworkPolicyLister
+	cnpsLister     anplisterv1beta1.ClusterNetworkPolicyLister
 	cnpsSynced     cache.InformerSynced
 	addCnpQueue    workqueue.TypedRateLimitingInterface[string]
 	updateCnpQueue workqueue.TypedRateLimitingInterface[*ClusterNetworkPolicyChangedDelta]
-	deleteCnpQueue workqueue.TypedRateLimitingInterface[*netpolv1alpha2.ClusterNetworkPolicy]
+	deleteCnpQueue workqueue.TypedRateLimitingInterface[*netpolv1beta1.ClusterNetworkPolicy]
 	cnpKeyMutex    keymutex.KeyMutex
 
 	csrLister           certListerv1.CertificateSigningRequestLister
@@ -441,6 +461,20 @@ func enqueueUpdateIfTerminatingWithFinalizer(queue workqueue.TypedRateLimitingIn
 
 // Run creates and runs a new ovn controller
 func Run(ctx context.Context, config *Configuration) {
+	run(ctx, config, nil)
+}
+
+// RuntimeStarter runs a migration manager using the initialized controller's
+// shared IPAM and OVN backend. It must stop when the leader context is cancelled.
+type RuntimeStarter func(context.Context, *Controller) error
+
+// RunWithRuntime starts the migration manager after durable IPAM recovery and
+// before workers can allocate addresses. The outer leader lease owns both.
+func RunWithRuntime(ctx context.Context, config *Configuration, startRuntime RuntimeStarter) {
+	run(ctx, config, startRuntime)
+}
+
+func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter) {
 	klog.V(4).Info("Creating event broadcaster")
 	eventBroadcaster := record.NewBroadcasterWithCorrelatorOptions(record.CorrelatorOptions{BurstSize: 100})
 	eventBroadcaster.StartLogging(klog.Infof)
@@ -483,17 +517,20 @@ func Run(ctx context.Context, config *Configuration) {
 		anpinformer.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}))
-	attachNetInformerFactory := netAttach.NewSharedInformerFactoryWithOptions(config.AttachNetClient, 0,
+	attachNetInformerFactory := netAttach.NewSharedInformerFactoryWithOptions(
+		config.AttachNetClient, 0,
 		netAttach.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}),
 	)
-	kubevirtInformerFactory := informer.NewKubeVirtInformerFactoryWithOptions(config.KubevirtClient.RestClient(), config.KubevirtClient,
+	kubevirtInformerFactory := informer.NewKubeVirtInformerFactoryWithOptions(
+		config.KubevirtClient.RestClient(), config.KubevirtClient,
 		informer.WithTransform(util.TrimManagedFields),
 	)
 	// Dedicated factory so that on clusters without the ServiceCIDR API the
 	// failed list/watch does not contaminate the main informer factory.
-	serviceCIDRInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(config.KubeClient, 0,
+	serviceCIDRInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(
+		config.KubeClient, 0,
 		kubeinformers.WithTweakListOptions(func(listOption *metav1.ListOptions) {
 			listOption.AllowWatchBookmarks = true
 		}),
@@ -534,7 +571,7 @@ func Run(ctx context.Context, config *Configuration) {
 	ovnDnatRuleInformer := kubeovnInformerFactory.Kubeovn().V1().OvnDnatRules()
 	anpInformer := anpInformerFactory.Policy().V1alpha1().AdminNetworkPolicies()
 	banpInformer := anpInformerFactory.Policy().V1alpha1().BaselineAdminNetworkPolicies()
-	cnpInformer := anpInformerFactory.Policy().V1alpha2().ClusterNetworkPolicies()
+	cnpInformer := anpInformerFactory.Policy().V1beta1().ClusterNetworkPolicies()
 	dnsNameResolverInformer := kubeovnInformerFactory.Kubeovn().V1().DNSNameResolvers()
 	csrInformer := informerFactory.Certificates().V1().CertificateSigningRequests()
 	netAttachInformer := attachNetInformerFactory.K8sCniCncfIo().V1().NetworkAttachmentDefinitions()
@@ -582,6 +619,8 @@ func Run(ctx context.Context, config *Configuration) {
 		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddSubnet", nil),
 		deleteSubnetQueue:       newTypedRateLimitingQueue[*kubeovnv1.Subnet]("DeleteSubnet", nil),
 		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
+		subnetStatusEvents:      newSubnetStatusEventFanoutForConfig(config),
+		subnetRuntimeEvents:     newSubnetRuntimeEventFanoutForConfig(config),
 		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
 		subnetKeyMutex:          keymutex.NewHashed(numKeyLocks),
 
@@ -643,6 +682,7 @@ func Run(ctx context.Context, config *Configuration) {
 		podsLister:          podInformer.Lister(),
 		podsSynced:          podInformer.Informer().HasSynced,
 		addOrUpdatePodQueue: newTypedRateLimitingQueue[string]("AddOrUpdatePod", nil),
+		updatePodRouteQueue: newTypedRateLimitingQueue[string]("UpdatePodRoute", nil),
 		deletePodQueue: workqueue.NewTypedRateLimitingQueueWithConfig(
 			workqueue.DefaultTypedControllerRateLimiter[string](),
 			workqueue.TypedRateLimitingQueueConfig[string]{
@@ -750,7 +790,8 @@ func Run(ctx context.Context, config *Configuration) {
 		anpInformerFactory:     anpInformerFactory,
 	}
 
-	if controller.OVNNbClient, err = ovs.NewOvnNbClient(
+	var nbClient *ovs.OVNNbClient
+	if nbClient, err = ovs.NewOvnNbClient(
 		config.OvnNbAddr,
 		config.OvnTimeout,
 		config.OvsDbConnectTimeout,
@@ -759,7 +800,11 @@ func Run(ctx context.Context, config *Configuration) {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn nb client")
 	}
-	if controller.OVNSbClient, err = ovs.NewOvnSbClient(
+	controller.OVNNbClient = nbClient
+	controller.OVNNbTables = nbClient
+
+	var sbClient *ovs.OVNSbClient
+	if sbClient, err = ovs.NewOvnSbClient(
 		config.OvnSbAddr,
 		config.OvnTimeout,
 		config.OvsDbConnectTimeout,
@@ -768,6 +813,8 @@ func Run(ctx context.Context, config *Configuration) {
 	); err != nil {
 		util.LogFatalAndExit(err, "failed to create ovn sb client")
 	}
+	controller.OVNSbClient = sbClient
+	controller.OVNSbTables = sbClient
 	if config.ACLSampling.Enabled {
 		controller.reconcileACLSampling()
 	} else {
@@ -854,7 +901,7 @@ func Run(ctx context.Context, config *Configuration) {
 		controller.updateCnpQueue = newCoalescingDeltaQueue("UpdateClusterNetworkPolicy", func(delta *ClusterNetworkPolicyChangedDelta) string {
 			return delta.key
 		}, mergeClusterNetworkPolicyDelta)
-		controller.deleteCnpQueue = newTypedRateLimitingQueue[*netpolv1alpha2.ClusterNetworkPolicy]("DeleteClusterNetworkPolicy", nil)
+		controller.deleteCnpQueue = newTypedRateLimitingQueue[*netpolv1beta1.ClusterNetworkPolicy]("DeleteClusterNetworkPolicy", nil)
 		controller.cnpKeyMutex = keymutex.NewHashed(numKeyLocks)
 	}
 
@@ -1028,11 +1075,7 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add subnet event handler")
 	}
 
-	if _, err = ippoolInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddIPPool,
-		UpdateFunc: controller.enqueueUpdateIPPool,
-		DeleteFunc: controller.enqueueDeleteIPPool,
-	}); err != nil {
+	if _, err = ippoolInformer.Informer().AddEventHandler(controller.ipPoolEventHandler()); err != nil {
 		util.LogFatalAndExit(err, "failed to add ippool event handler")
 	}
 
@@ -1044,11 +1087,14 @@ func Run(ctx context.Context, config *Configuration) {
 		util.LogFatalAndExit(err, "failed to add ips event handler")
 	}
 
-	if _, err = vlanInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    controller.enqueueAddVlan,
-		DeleteFunc: controller.enqueueDelVlan,
+	vlanEventHandler := cache.ResourceEventHandlerFuncs{
 		UpdateFunc: controller.enqueueUpdateVlan,
-	}); err != nil {
+		DeleteFunc: controller.enqueueDelVlan,
+	}
+	if !controllerRuntimeVlanEnabled(config) {
+		vlanEventHandler.AddFunc = controller.enqueueAddVlan
+	}
+	if _, err = vlanInformer.Informer().AddEventHandler(vlanEventHandler); err != nil {
 		util.LogFatalAndExit(err, "failed to add vlan event handler")
 	}
 
@@ -1228,7 +1274,7 @@ func Run(ctx context.Context, config *Configuration) {
 		}
 	}
 
-	controller.Run(ctx)
+	controller.run(ctx, startRuntime)
 }
 
 // Run will set up the event handlers for types we are interested in, as well
@@ -1236,25 +1282,30 @@ func Run(ctx context.Context, config *Configuration) {
 // is closed, at which point it will shutdown the workqueue and wait for
 // workers to finish processing their current work items.
 func (c *Controller) Run(ctx context.Context) {
+	c.run(ctx, nil)
+}
+
+func (c *Controller) run(ctx context.Context, startRuntime RuntimeStarter) {
 	// The init process can only be placed here if the init process do really affect the normal process of controller, such as Nodes/Pods/Subnets...
 	// Otherwise, the init process should be placed after all workers have already started working
-	if err := c.OVNNbClient.SetLsDnatModDlDst(c.config.LsDnatModDlDst); err != nil {
+	if err := c.setNBGlobalOption("ls_dnat_mod_dl_dst", strconv.FormatBool(c.config.LsDnatModDlDst), true); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option ls_dnat_mod_dl_dst")
 	}
 
-	if err := c.OVNNbClient.SetUseCtInvMatch(); err != nil {
+	if err := c.setNBGlobalOption("use_ct_inv_match", "false", true); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option use_ct_inv_match to false")
 	}
 
-	if err := c.OVNNbClient.SetLsCtSkipDstLportIPs(c.config.LsCtSkipDstLportIPs); err != nil {
+	if err := c.setNBGlobalOption("ls_ct_skip_dst_lport_ips", strconv.FormatBool(c.config.LsCtSkipDstLportIPs), true); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option ls_ct_skip_dst_lport_ips")
 	}
 
-	if err := c.OVNNbClient.SetNodeLocalDNSIP(strings.Join(c.config.NodeLocalDNSIPs, ",")); err != nil {
+	nodeLocalDNSIP := strings.Join(c.config.NodeLocalDNSIPs, ",")
+	if err := c.setNBGlobalOption("node_local_dns_ip", nodeLocalDNSIP, nodeLocalDNSIP != ""); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option node_local_dns_ip")
 	}
 
-	if err := c.OVNNbClient.SetSkipConntrackCidrs(c.config.SkipConntrackDstCidrs); err != nil {
+	if err := c.setNBGlobalOption("skip_conntrack_dst_cidrs", c.config.SkipConntrackDstCidrs, c.config.SkipConntrackDstCidrs != ""); err != nil {
 		util.LogFatalAndExit(err, "failed to set NB_Global option skip_conntrack_ipcidrs")
 	}
 
@@ -1286,6 +1337,17 @@ func (c *Controller) Run(ctx context.Context) {
 		klog.Errorf("failed to migrate NAT UID labels: %v", err)
 	}
 
+	// In IPPool runtime mode, start native event ownership before recovery and
+	// hold reconcile requests behind the shared IPAM recovery gate. This makes
+	// the handoff atomic: no native event can observe partially restored state,
+	// and the legacy delete snapshot remains the only recovery backstop.
+	runtimeStartedBeforeRecovery := controllerRuntimeIPPoolEnabled(c.config) && startRuntime != nil
+	var runtimeDone <-chan struct{}
+	if runtimeStartedBeforeRecovery {
+		c.beginIPPoolRuntimeRecovery()
+		runtimeDone = startControllerRuntime(ctx, c, startRuntime)
+	}
+
 	if err := c.InitIPAM(); err != nil {
 		util.LogFatalAndExit(err, "failed to initialize ipam")
 	}
@@ -1294,12 +1356,23 @@ func (c *Controller) Run(ctx context.Context) {
 		util.LogFatalAndExit(err, "failed to initialize node routes")
 	}
 
-	if err := c.syncSubnetCR(); err != nil {
-		util.LogFatalAndExit(err, "failed to sync crd subnets")
+	if !controllerRuntimeSubnetWriterEnabled(c.config) {
+		if err := c.syncSubnetCR(); err != nil {
+			util.LogFatalAndExit(err, "failed to sync crd subnets")
+		}
 	}
 
 	if err := c.syncVlanCR(); err != nil {
 		util.LogFatalAndExit(err, "failed to sync crd vlans")
+	}
+	if runtimeStartedBeforeRecovery {
+		c.finishIPPoolRuntimeRecovery()
+	}
+
+	// Recovery above is the allocation barrier for the IPPool runtime backend.
+	// Await the manager before closing its shared OVN clients on shutdown.
+	if !runtimeStartedBeforeRecovery {
+		runtimeDone = startControllerRuntime(ctx, c, startRuntime)
 	}
 
 	c.startKubeOVNTLSManager(ctx)
@@ -1330,17 +1403,18 @@ func (c *Controller) Run(ctx context.Context) {
 	<-ctx.Done()
 	klog.Info("Shutting down workers")
 
-	c.OVNNbClient.Close()
-	c.OVNSbClient.Close()
+	<-runtimeDone
+	c.closeNB()
+	c.closeSB()
 }
 
 func (c *Controller) dbStatus() {
 	done := make(chan error, 2)
 	go func() {
-		done <- c.OVNNbClient.Echo(context.Background())
+		done <- c.echoNB(context.Background())
 	}()
 	go func() {
-		done <- c.OVNSbClient.Echo(context.Background())
+		done <- c.echoSB(context.Background())
 	}()
 
 	resultsReceived := 0
@@ -1378,6 +1452,7 @@ func (c *Controller) shutdown() {
 	utilruntime.HandleCrash()
 
 	c.addOrUpdatePodQueue.ShutDown()
+	c.updatePodRouteQueue.ShutDown()
 	c.deletePodQueue.ShutDown()
 	c.updatePodSecurityQueue.ShutDown()
 
@@ -1553,21 +1628,30 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("update snat for vpc nat gateway", c.updateVpcSnatQueue, c.handleUpdateVpcSnat), time.Second, ctx.Done())
 	go wait.Until(runWorker("update subnet route for vpc nat gateway", c.updateVpcSubnetQueue, c.handleUpdateNatGwSubnetRoute), time.Second, ctx.Done())
 	go wait.Until(runWorker("add/update csr", c.addOrUpdateCsrQueue, c.handleAddOrUpdateCsr), time.Second, ctx.Done())
-	// add default and join subnet and wait them ready
-	for range c.config.WorkerNum {
-		go wait.Until(runWorker("add/update subnet", c.addOrUpdateSubnetQueue, c.handleAddOrUpdateSubnet), time.Second, ctx.Done())
+	// add default and join subnet and wait them ready. In subnet-writer mode
+	// these queues are owned by the controller-runtime reconciler.
+	if !controllerRuntimeSubnetWriterEnabled(c.config) {
+		for range c.config.WorkerNum {
+			go wait.Until(runWorker("add/update subnet", c.addOrUpdateSubnetQueue, c.handleAddOrUpdateSubnet), time.Second, ctx.Done())
+		}
 	}
-	go wait.Until(runWorker("add/update ippool", c.addOrUpdateIPPoolQueue, c.handleAddOrUpdateIPPool), time.Second, ctx.Done())
-	go wait.Until(runWorker("add vlan", c.addVlanQueue, c.handleAddVlan), time.Second, ctx.Done())
+	if !controllerRuntimeIPPoolEnabled(c.config) {
+		go wait.Until(runWorker("add/update ippool", c.addOrUpdateIPPoolQueue, c.handleAddOrUpdateIPPool), time.Second, ctx.Done())
+	}
+	if !controllerRuntimeVlanEnabled(c.config) {
+		go wait.Until(runWorker("add vlan", c.addVlanQueue, c.handleAddVlan), time.Second, ctx.Done())
+	}
 	go wait.Until(runWorker("add namespace", c.addNamespaceQueue, c.handleAddNamespace), time.Second, ctx.Done())
-	err := wait.PollUntilContextCancel(ctx, 3*time.Second, true, func(_ context.Context) (done bool, err error) {
-		subnets := []string{c.config.DefaultLogicalSwitch, c.config.NodeSwitch}
-		klog.Infof("wait for subnets %v ready", subnets)
+	if !controllerRuntimeSubnetWriterEnabled(c.config) {
+		err := wait.PollUntilContextCancel(ctx, 3*time.Second, true, func(_ context.Context) (done bool, err error) {
+			subnets := []string{c.config.DefaultLogicalSwitch, c.config.NodeSwitch}
+			klog.Infof("wait for subnets %v ready", subnets)
 
-		return c.allSubnetReady(subnets...)
-	})
-	if err != nil {
-		klog.Fatalf("wait default and join subnet ready, error: %v", err)
+			return c.allSubnetReady(subnets...)
+		})
+		if err != nil {
+			klog.Fatalf("wait default and join subnet ready, error: %v", err)
+		}
 	}
 
 	go wait.Until(runWorker("add/update security group", c.addOrUpdateSgQueue, func(key string) error { return c.handleAddOrUpdateSg(key, false) }), time.Second, ctx.Done())
@@ -1640,12 +1724,21 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	for range c.config.WorkerNum {
 		go wait.Until(runWorker("delete pod", c.deletePodQueue, c.handleDeletePod), time.Second, ctx.Done())
 		go wait.Until(runWorker("add/update pod", c.addOrUpdatePodQueue, c.handleAddOrUpdatePod), time.Second, ctx.Done())
+		go wait.Until(runWorker("update pod route", c.updatePodRouteQueue, c.handleUpdatePodRoute), time.Second, ctx.Done())
 		go wait.Until(runWorker("update pod security", c.updatePodSecurityQueue, c.handleUpdatePodSecurity), time.Second, ctx.Done())
 
-		go wait.Until(runWorker("delete subnet", c.deleteSubnetQueue, c.handleDeleteSubnet), time.Second, ctx.Done())
-		go wait.Until(runWorker("delete ippool", c.deleteIPPoolQueue, c.handleDeleteIPPool), time.Second, ctx.Done())
-		go wait.Until(runWorker("update status of subnet", c.updateSubnetStatusQueue, c.handleUpdateSubnetStatus), time.Second, ctx.Done())
-		go wait.Until(runWorker("update status of ippool", c.updateIPPoolStatusQueue, c.handleUpdateIPPoolStatus), time.Second, ctx.Done())
+		if !controllerRuntimeSubnetWriterEnabled(c.config) {
+			go wait.Until(runWorker("delete subnet", c.deleteSubnetQueue, c.handleDeleteSubnet), time.Second, ctx.Done())
+		}
+		if !controllerRuntimeIPPoolEnabled(c.config) {
+			go wait.Until(runWorker("delete ippool", c.deleteIPPoolQueue, c.handleDeleteIPPool), time.Second, ctx.Done())
+		}
+		if !controllerRuntimeSubnetWriterEnabled(c.config) {
+			go wait.Until(runWorker("update status of subnet", c.updateSubnetStatusQueue, c.handleUpdateSubnetStatus), time.Second, ctx.Done())
+		}
+		if !controllerRuntimeIPPoolEnabled(c.config) {
+			go wait.Until(runWorker("update status of ippool", c.updateIPPoolStatusQueue, c.handleUpdateIPPoolStatus), time.Second, ctx.Done())
+		}
 		go wait.Until(runWorker("virtual port for subnet", c.syncVirtualPortsQueue, c.syncVirtualPort), time.Second, ctx.Done())
 
 		if c.config.EnableOvnLB || c.podLbSvcEnabled() {
@@ -1664,7 +1757,9 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}
 
 		go wait.Until(runWorker("delete vlan", c.delVlanQueue, c.handleDelVlan), time.Second, ctx.Done())
-		go wait.Until(runWorker("update vlan", c.updateVlanQueue, c.handleUpdateVlan), time.Second, ctx.Done())
+		if !controllerRuntimeVlanEnabled(c.config) {
+			go wait.Until(runWorker("update vlan", c.updateVlanQueue, c.handleUpdateVlan), time.Second, ctx.Done())
+		}
 	}
 
 	if c.config.EnableEipSnat {
@@ -1674,7 +1769,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}, time.Second, ctx.Done())
 
 		// maintain l3 ha about the vpc external lrp binding to the gw chassis
-		c.OVNNbClient.MonitorBFD()
+		c.monitorBFD()
 	}
 	// TODO: we should merge these two vpc nat config into one config and resync them together
 	go wait.Until(func() {
@@ -1701,7 +1796,9 @@ func (c *Controller) startWorkers(ctx context.Context) {
 		}, 5*time.Second, ctx.Done())
 	}
 
-	go wait.Until(c.resyncProviderNetworkStatus, 30*time.Second, ctx.Done())
+	if !controllerRuntimeVlanEnabled(c.config) {
+		go wait.Until(c.resyncProviderNetworkStatus, 30*time.Second, ctx.Done())
+	}
 	go wait.Until(c.exportSubnetMetrics, 30*time.Second, ctx.Done())
 	go wait.Until(c.checkSubnetGateway, 5*time.Second, ctx.Done())
 	go wait.Until(c.syncDistributedSubnetRoutes, 5*time.Second, ctx.Done())
@@ -1785,7 +1882,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 
 func (c *Controller) allSubnetReady(subnets ...string) (bool, error) {
 	for _, lsName := range subnets {
-		exist, err := c.OVNNbClient.LogicalSwitchExists(lsName)
+		exist, err := c.logicalSwitchExists(lsName)
 		if err != nil {
 			klog.Error(err)
 			return false, fmt.Errorf("check logical switch %s exist: %w", lsName, err)

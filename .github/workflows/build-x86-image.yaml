@@ -29,9 +29,9 @@ env:
   # renovate: datasource=github-releases depName=golangci-lint packageName=golangci/golangci-lint
   GOLANGCI_LINT_VERSION: v2.15.0
   # renovate: datasource=github-releases depName=helm packageName=helm/helm
-  HELM_VERSION: v4.3.1
+  HELM_VERSION: v4.3.2
   # renovate: datasource=github-releases depName=talos packageName=siderolabs/talos
-  TALOS_VERSION: v1.14.5
+  TALOS_VERSION: v1.14.6
 
 jobs:
   network-e2e-diagnostics-validation:
@@ -260,7 +260,7 @@ jobs:
           done
           echo "OVSDB_CNI_TEST_BIN_DIR=$RUNNER_TEMP/cni-ovsdb-bin" >> "$GITHUB_ENV"
 
-      - uses: azure/setup-helm@v5.0.1
+      - uses: azure/setup-helm@v5.1.0
 
       - name: Check IPsec installation contracts
         run: |
@@ -312,9 +312,13 @@ jobs:
           docker load --input image-amd64-dpdk.tar
           docker tag kubeovn/kube-ovn-base:$TAG-amd64-dpdk kubeovn/kube-ovn-base:$TAG-dpdk
 
+      - name: Install Trivy
+        uses: ./.github/actions/setup-trivy
+
       - name: Scan base image
         uses: aquasecurity/trivy-action@v0.36.0
         with:
+          skip-setup-trivy: true
           scan-type: image
           scanners: vuln
           image-ref: docker.io/kubeovn/kube-ovn-base:${{ env.TAG }}
@@ -330,6 +334,7 @@ jobs:
           GO_INSTALL: "go install -v -mod=mod -trimpath"
         run: |
           go mod tidy
+          go mod verify
           cat trivy-result.json
           dockerfile=${{ github.workspace }}/dist/images/Dockerfile
           export GOBIN=`dirname "$dockerfile"`
@@ -387,6 +392,7 @@ jobs:
       - name: Build
         run: |
           go mod tidy
+          go mod verify
           git diff --exit-code -- go.mod go.sum
           make verify-crd
           make lint
@@ -447,6 +453,9 @@ jobs:
           make image-vpc-nat-gateway
           make tar-vpc-nat-gateway
 
+      - name: Verify non-root Service LoadBalancer capabilities
+        run: bash hack/test-lb-svc-image.sh "kubeovn/vpc-nat-gateway:$(cat VERSION)"
+
       - name: Upload image to artifact
         uses: actions/upload-artifact@v7
         with:
@@ -483,7 +492,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -625,7 +634,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -642,7 +651,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -783,7 +792,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -912,7 +921,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -931,7 +940,7 @@ jobs:
       - name: Install kind
         env:
           NP_ENFORCEMENT: "${{ matrix.np-enforcement }}"
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1097,7 +1106,7 @@ jobs:
           fi
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1233,7 +1242,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -1250,7 +1259,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1381,7 +1390,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -1398,7 +1407,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1543,7 +1552,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -1560,7 +1569,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1707,7 +1716,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -1724,7 +1733,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -1864,7 +1873,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -1881,7 +1890,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2041,7 +2050,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -2058,7 +2067,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2205,6 +2214,26 @@ jobs:
 
       - uses: actions/checkout@v7
 
+      - name: Create the default branch directory
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        run: mkdir -p test/e2e/source
+
+      - name: Check out the default branch
+        if: (github.base_ref || github.ref_name) != github.event.repository.default_branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+          path: test/e2e/source
+
+      - name: Export E2E directory
+        run: |
+          if [ '${{ github.base_ref || github.ref_name }}' = '${{ github.event.repository.default_branch }}' ]; then
+            echo "E2E_DIR=." >> "$GITHUB_ENV"
+          else
+            echo "E2E_DIR=test/e2e/source" >> "$GITHUB_ENV"
+          fi
+
       - name: Remove DNS search domain
         run: |
           sudo sed -i '/^search/d' /etc/resolv.conf
@@ -2213,7 +2242,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -2226,11 +2255,11 @@ jobs:
           path: |
             ~/.cache/go-build
             ~/go/pkg/mod
-          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles('go.sum') }}
+          key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2246,7 +2275,7 @@ jobs:
           docker tag "kubeovn/kube-ovn:$(cat VERSION)" kubeovn/kube-ovn:dev
 
       - name: Verify hosted OVN central values
-        run: bash hack/kamaji-e2e-test.sh
+        run: bash "$E2E_DIR/hack/kamaji-e2e-test.sh"
 
       - name: Create hosted OVN central environment
         id: install
@@ -2257,8 +2286,9 @@ jobs:
 
       - name: Run hosted OVN central E2E
         id: e2e
+        working-directory: ${{ env.E2E_DIR }}
         env:
-          E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_BRANCH: master
           E2E_IP_FAMILY: ${{ matrix.ip-family }}
           E2E_NETWORK_MODE: overlay
         run: make kube-ovn-kamaji-e2e
@@ -2344,7 +2374,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2397,6 +2427,88 @@ jobs:
       - name: Uninstall Kube-OVN
         run: make uninstall-chart
 
+  controller-runtime-vlan-smoke:
+    name: Controller-runtime Smoke (${{ matrix.mode }})
+    needs:
+      - prepare-kind-node-images
+      - build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [vlan, ippool]
+    steps:
+      - uses: jlumbroso/free-disk-space@v2.0.0
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+
+      - name: Setup Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Install kind
+        uses: helm/kind-action@v1.15.2
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator
+          make kind-init-ipv4
+
+      - name: Install Kube-OVN with the controller-runtime pilot
+        env:
+          CONTROLLER_RUNTIME_MODE: ${{ matrix.mode }}
+        run: make kind-install-underlay-ipv4
+
+      - name: Verify VLAN bootstrap, tag updates, restart, and status convergence
+        env:
+          EXPECTED_RUNTIME_MODE: ${{ matrix.mode }}
+        run: bash hack/controller-runtime-vlan-smoke.sh
+
+      - name: Verify IPPool allocation, statistics, restart, and deletion
+        if: matrix.mode == 'ippool'
+        run: bash hack/controller-runtime-ippool-smoke.sh
+
+      - name: Collect Kind logs
+        if: failure()
+        run: kind export logs --name kube-ovn controller-runtime-smoke-logs
+
+      - name: Upload Kind logs
+        uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: controller-runtime-smoke-${{ matrix.mode }}-logs
+          path: controller-runtime-smoke-logs
+
   underlay-logical-gateway-installation-test:
     name: Underlay Logical Gateway Installation Test
     needs:
@@ -2418,7 +2530,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2469,6 +2581,80 @@ jobs:
       - name: Cleanup
         run: timeout -k 10 180 sh -x dist/images/cleanup.sh
 
+  underlay-u2o-installation-test:
+    name: Underlay U2O Installation Test
+    needs:
+      - prepare-kind-node-images
+      - build-kube-ovn
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: jlumbroso/free-disk-space@v2.0.0
+        with:
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: false
+          large-packages: false
+          tool-cache: false
+          swap-storage: false
+
+      - uses: actions/checkout@v7
+
+      - name: Install kind
+        uses: helm/kind-action@v1.15.2
+        with:
+          version: ${{ env.KIND_VERSION }}
+          install_only: true
+
+      - name: Download image
+        uses: actions/download-artifact@v8
+        with:
+          name: kube-ovn
+
+      - name: Load image
+        run: docker load --input kube-ovn.tar
+
+      - name: Download private Kind node image
+        uses: actions/download-artifact@v8
+        with:
+          name: kind-node-v1.37.0
+
+      - name: Load private Kind node image
+        run: docker load --input kind-node-v1.37.0.tar
+
+      - name: Create kind cluster
+        run: |
+          pipx install jinjanator
+          make kind-init-dual
+
+      - name: Install Kube-OVN with U2O
+        id: install
+        run: |
+          make kind-install-underlay-u2o-dual
+          test "$(kubectl get subnet ovn-default -o jsonpath='{.spec.u2oInterconnection}')" = "true"
+
+      - name: Check kube ovn pod restarts
+        id: check-restarts
+        if: ${{ success() || (failure() && steps.install.conclusion == 'failure') }}
+        run: make check-kube-ovn-pod-restarts
+
+      - name: kubectl ko logs
+        if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        run: |
+          bash .github/scripts/collect-kubectl-ko-log.sh
+          mv kubectl-ko-log.tar.gz underlay-u2o-installation-test-ko-log.tar.gz
+
+      - name: upload kubectl ko logs
+        uses: actions/upload-artifact@v7
+        if: failure() && (steps.install.conclusion == 'failure' || steps.check-restarts.conclusion == 'failure')
+        with:
+          name: underlay-u2o-installation-test-ko-log
+          path: underlay-u2o-installation-test-ko-log.tar.gz
+
+      - name: Cleanup
+        run: timeout -k 10 180 sh -x dist/images/cleanup.sh
+
   no-ovn-lb-test:
     name: Disable OVN LB Test
     needs:
@@ -2490,7 +2676,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2564,7 +2750,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2662,7 +2848,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -2679,7 +2865,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -2812,7 +2998,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -2829,7 +3015,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3025,7 +3211,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -3042,7 +3228,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3172,7 +3358,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -3189,7 +3375,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3314,7 +3500,7 @@ jobs:
           restore-keys: ${{ runner.os }}-netpol-conformance-${{ matrix.suite }}-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3421,7 +3607,7 @@ jobs:
           swap-storage: false
 
       - uses: actions/checkout@v7
-      - uses: azure/setup-helm@v5.0.1
+      - uses: azure/setup-helm@v5.1.0
         with:
           version: '${{ env.HELM_VERSION }}'
 
@@ -3457,7 +3643,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -3474,7 +3660,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3619,7 +3805,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -3636,7 +3822,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3765,7 +3951,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -3782,7 +3968,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -3918,7 +4104,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -3935,7 +4121,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4068,7 +4254,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -4085,7 +4271,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4218,7 +4404,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -4234,10 +4420,10 @@ jobs:
           key: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-${{ hashFiles(format('{0}/go.sum', env.E2E_DIR)) }}
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
-      - uses: azure/setup-helm@v5.0.1
+      - uses: azure/setup-helm@v5.1.0
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4405,7 +4591,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -4422,7 +4608,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4560,7 +4746,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -4577,7 +4763,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4679,7 +4865,7 @@ jobs:
       - uses: actions/setup-go@v7
         id: setup-go
         with:
-          go-version-file: go.mod
+          go-version-file: ${{ env.E2E_DIR }}/go.mod
           check-latest: true
           cache: false
 
@@ -4696,7 +4882,7 @@ jobs:
           restore-keys: ${{ runner.os }}-e2e-go-${{ env.GO_VERSION }}-x86-
 
       - name: Install kind
-        uses: helm/kind-action@v1.15.1
+        uses: helm/kind-action@v1.15.2
         with:
           version: ${{ env.KIND_VERSION }}
           install_only: true
@@ -4795,6 +4981,7 @@ jobs:
       - kube-ovn-hosted-ovn-central-e2e
       - chart-test
       - underlay-logical-gateway-installation-test
+      - underlay-u2o-installation-test
       - no-ovn-lb-test
       - no-np-test
       - lb-svc-e2e

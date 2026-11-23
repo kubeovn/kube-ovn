@@ -17,7 +17,6 @@ import (
 	ovsutil "github.com/digitalocean/go-openvswitch/ovs"
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
-	"github.com/kubeovn/felix/ipsets"
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
@@ -31,7 +30,9 @@ import (
 	k8siptables "k8s.io/kubernetes/pkg/util/iptables"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ipsets"
 	"github.com/kubeovn/kube-ovn/pkg/ovs"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -46,18 +47,20 @@ type podQoSOperations interface {
 	setNetemQoS(podName, podNamespace, iface, latency, limit, loss, jitter string) error
 }
 
-type ovsPodQoSOperations struct{}
-
-func (ovsPodQoSOperations) setInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string) error {
-	return ovs.SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst)
+type ovsPodQoSOperations struct {
+	provider table.Provider
 }
 
-func (ovsPodQoSOperations) configInterfaceMirror(enableMirror bool, mirrorControl, iface string) error {
-	return ovs.ConfigInterfaceMirror(enableMirror, mirrorControl, iface)
+func (o ovsPodQoSOperations) setInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst string) error {
+	return ovs.SetInterfaceBandwidth(podName, podNamespace, iface, ingress, egress, ingressBurst, egressBurst, o.provider)
 }
 
-func (ovsPodQoSOperations) setNetemQoS(podName, podNamespace, iface, latency, limit, loss, jitter string) error {
-	return ovs.SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter)
+func (o ovsPodQoSOperations) configInterfaceMirror(enableMirror bool, mirrorControl, iface string) error {
+	return ovs.ConfigInterfaceMirror(enableMirror, mirrorControl, iface, o.provider)
+}
+
+func (o ovsPodQoSOperations) setNetemQoS(podName, podNamespace, iface, latency, limit, loss, jitter string) error {
+	return ovs.SetNetemQos(podName, podNamespace, iface, latency, limit, loss, jitter, o.provider)
 }
 
 // ControllerRuntime represents runtime specific controller members
@@ -115,7 +118,7 @@ func isLegacyIptablesMode() (bool, error) {
 
 func (c *Controller) initRuntime() error {
 	if c.podQoSOps == nil {
-		c.podQoSOps = ovsPodQoSOperations{}
+		c.podQoSOps = ovsPodQoSOperations{provider: c.vswitchTables}
 	}
 	ok, err := isLegacyIptablesMode()
 	if err != nil {
@@ -158,7 +161,7 @@ func (c *Controller) initRuntime() error {
 				c.iptablesObsolete[kubeovnv1.ProtocolIPv4] = ipt
 			}
 		}
-		c.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV4, IPSetPrefix, nil, nil))
+		c.ipsets[kubeovnv1.ProtocolIPv4] = ipsets.NewIPSets(netlink.FAMILY_V4, IPSetPrefix)
 		c.k8siptables[kubeovnv1.ProtocolIPv4] = k8siptables.New(k8siptables.ProtocolIPv4)
 	}
 	if c.protocol == kubeovnv1.ProtocolIPv6 || c.protocol == kubeovnv1.ProtocolDual {
@@ -181,11 +184,11 @@ func (c *Controller) initRuntime() error {
 				c.iptablesObsolete[kubeovnv1.ProtocolIPv6] = ipt
 			}
 		}
-		c.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(ipsets.NewIPVersionConfig(ipsets.IPFamilyV6, IPSetPrefix, nil, nil))
+		c.ipsets[kubeovnv1.ProtocolIPv6] = ipsets.NewIPSets(netlink.FAMILY_V6, IPSetPrefix)
 		c.k8siptables[kubeovnv1.ProtocolIPv6] = k8siptables.New(k8siptables.ProtocolIPv6)
 	}
 
-	if err = ovs.ClearU2OFlows(c.ovsClient); err != nil {
+	if err = ovs.ClearU2OFlows(c.ovsClient, c.vswitchTables); err != nil {
 		util.LogFatalAndExit(err, "failed to clear obsolete u2o flows")
 	}
 
@@ -907,7 +910,7 @@ func (c *Controller) applyPodQoS(pod *v1.Pod, podName, provider string) (string,
 	}
 	ops := c.podQoSOps
 	if ops == nil {
-		ops = ovsPodQoSOperations{}
+		ops = ovsPodQoSOperations{provider: c.vswitchTables}
 	}
 	recordFailure := func(stage string, err error) {
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodQoSUpdateFailed", "Failed to update pod QoS: stage=%s provider=%s interface=%s node=%s: %v", stage, provider, ifaceID, c.config.NodeName, err)

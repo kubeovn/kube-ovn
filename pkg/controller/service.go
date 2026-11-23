@@ -529,13 +529,14 @@ func (c *Controller) updatePodLbSvcWorkload(svc *v1.Service, svcObject *updateSv
 	if !c.config.EnablePodLbSvc || svc.Spec.Type != v1.ServiceTypeLoadBalancer {
 		return nil
 	}
-	changed, err := c.checkLbSvcDeployAnnotationChanged(svc)
+	changed, err := c.checkLbSvcDeploymentChanged(svc)
 	if err != nil {
-		klog.Errorf("failed to check annotation change for lb svc %s: %v", key, err)
+		klog.Errorf("failed to check deployment change for lb svc %s: %v", key, err)
 		return err
 	}
-	// only process svc.spec.ports update
+	// Rebuild the gateway before applying ports when its template has drifted.
 	if changed {
+		c.addServiceQueue.Add(key)
 		return nil
 	}
 	klog.Infof("update loadbalancer service %s", key)

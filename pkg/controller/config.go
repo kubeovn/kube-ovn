@@ -32,6 +32,16 @@ const (
 	defaultLeaderRetryPeriod   = 6 * time.Second
 )
 
+const (
+	ControllerRuntimeModeDisabled     = "disabled"
+	ControllerRuntimeModeManager      = "manager"
+	ControllerRuntimeModeVlan         = "vlan"
+	ControllerRuntimeModeIPPool       = "ippool"
+	ControllerRuntimeModeSubnetShadow = "subnet-shadow"
+	ControllerRuntimeModeSubnetStatus = "subnet-status"
+	ControllerRuntimeModeSubnetWriter = "subnet-writer"
+)
+
 // LeaderElectionConfiguration contains the timing configuration for controller leader election.
 type LeaderElectionConfiguration struct {
 	LeaseDuration time.Duration
@@ -123,7 +133,9 @@ type Configuration struct {
 	PodNamespace                 string
 	ControllerServiceAccountName string
 	PodNicType                   string
-	LeaderElection               LeaderElectionConfiguration
+	// ControllerRuntimeMode selects the experimental controller-runtime shell.
+	ControllerRuntimeMode string
+	LeaderElection        LeaderElectionConfiguration
 
 	WorkerNum       int
 	PprofPort       int32
@@ -242,11 +254,12 @@ func ParseFlags() (*Configuration, error) {
 		argClusterUDPSessionLoadBalancer  = pflag.String("cluster-udp-session-loadbalancer", "cluster-udp-session-loadbalancer", "The name for cluster udp session loadbalancer")
 		argClusterSctpSessionLoadBalancer = pflag.String("cluster-sctp-session-loadbalancer", "cluster-sctp-session-loadbalancer", "The name for cluster sctp session loadbalancer")
 
-		argWorkerNum       = pflag.Int("worker-num", 3, "The parallelism of each worker")
-		argEnablePprof     = pflag.Bool("enable-pprof", false, "Enable pprof")
-		argPprofPort       = pflag.Int32("pprof-port", 10660, "The port to get profiling data")
-		argSecureServing   = pflag.Bool("secure-serving", false, "Enable secure serving")
-		argNodePgProbeTime = pflag.Int("nodepg-probe-time", 1, "The probe interval for node port-group, the unit is minute")
+		argWorkerNum             = pflag.Int("worker-num", 3, "The parallelism of each worker")
+		argControllerRuntimeMode = pflag.String("controller-runtime-mode", ControllerRuntimeModeDisabled, "Controller-runtime migration mode: disabled, manager, vlan, ippool, subnet-shadow, or subnet-status")
+		argEnablePprof           = pflag.Bool("enable-pprof", false, "Enable pprof")
+		argPprofPort             = pflag.Int32("pprof-port", 10660, "The port to get profiling data")
+		argSecureServing         = pflag.Bool("secure-serving", false, "Enable secure serving")
+		argNodePgProbeTime       = pflag.Int("nodepg-probe-time", 1, "The probe interval for node port-group, the unit is minute")
 
 		argNetworkType                 = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type")
 		argDefaultProviderName         = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
@@ -255,7 +268,7 @@ func ParseFlags() (*Configuration, error) {
 		argDefaultVlanName             = pflag.String("default-vlan-name", "ovn-vlan", "The default vlan name")
 		argDefaultVlanID               = pflag.Int("default-vlan-id", 1, "The default vlan id")
 		argLsDnatModDlDst              = pflag.Bool("ls-dnat-mod-dl-dst", true, "Set ethernet destination address for DNAT on logical switch")
-		argLsCtSkipDstLportIPs         = pflag.Bool("ls-ct-skip-dst-lport-ips", true, "Skip conntrack for direct traffic between lports")
+		argLsCtSkipDstLportIPs         = pflag.Bool("ls-ct-skip-dst-lport-ips", false, "Skip conntrack for direct traffic between lports")
 		argPodNicType                  = pflag.String("pod-nic-type", "veth-pair", "The default pod network nic implementation type")
 		argEnableOvnLB                 = pflag.Bool("enable-lb", true, "Enable the OVN load balancer")
 		argEnableNP                    = pflag.Bool("enable-np", true, "Enable network policy support")
@@ -374,6 +387,7 @@ func ParseFlags() (*Configuration, error) {
 		PodNamespace:                   os.Getenv(util.EnvPodNamespace),
 		ControllerServiceAccountName:   controllerServiceAccountName(),
 		PodNicType:                     *argPodNicType,
+		ControllerRuntimeMode:          *argControllerRuntimeMode,
 		LeaderElection:                 leaderElectionConfig,
 		EnableOvnLB:                    *argEnableOvnLB,
 		EnableNP:                       *argEnableNP,
@@ -421,6 +435,9 @@ func ParseFlags() (*Configuration, error) {
 		EnableNonPrimaryCNI:         *argNonPrimaryCNI,
 		NetworkPolicyEnforcement:    *argNPEnforcement,
 		SkipConntrackDstCidrs:       *argSkipConntrackDstCidrs,
+	}
+	if err := validateControllerRuntimeMode(config.ControllerRuntimeMode); err != nil {
+		return nil, err
 	}
 	if err := config.LeaderElection.validate(); err != nil {
 		return nil, err
@@ -487,6 +504,35 @@ func ParseFlags() (*Configuration, error) {
 
 	klog.Infof("config is %+v", config)
 	return config, nil
+}
+
+func validateControllerRuntimeMode(mode string) error {
+	switch mode {
+	case ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool, ControllerRuntimeModeSubnetShadow, ControllerRuntimeModeSubnetStatus, ControllerRuntimeModeSubnetWriter:
+		return nil
+	default:
+		return fmt.Errorf("--controller-runtime-mode must be %q, %q, %q, %q, %q, %q, or %q, got %q", ControllerRuntimeModeDisabled, ControllerRuntimeModeManager, ControllerRuntimeModeVlan, ControllerRuntimeModeIPPool, ControllerRuntimeModeSubnetShadow, ControllerRuntimeModeSubnetStatus, ControllerRuntimeModeSubnetWriter, mode)
+	}
+}
+
+func controllerRuntimeVlanEnabled(config *Configuration) bool {
+	return config != nil && (config.ControllerRuntimeMode == ControllerRuntimeModeVlan || controllerRuntimeIPPoolEnabled(config))
+}
+
+func controllerRuntimeIPPoolEnabled(config *Configuration) bool {
+	return config != nil && config.ControllerRuntimeMode == ControllerRuntimeModeIPPool
+}
+
+func controllerRuntimeSubnetShadowEnabled(config *Configuration) bool {
+	return config != nil && config.ControllerRuntimeMode == ControllerRuntimeModeSubnetShadow
+}
+
+func controllerRuntimeSubnetStatusEnabled(config *Configuration) bool {
+	return config != nil && config.ControllerRuntimeMode == ControllerRuntimeModeSubnetStatus
+}
+
+func controllerRuntimeSubnetWriterEnabled(config *Configuration) bool {
+	return config != nil && config.ControllerRuntimeMode == ControllerRuntimeModeSubnetWriter
 }
 
 // validateServiceFeatureGates rejects direct conflicts between the Service data plane

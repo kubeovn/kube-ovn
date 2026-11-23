@@ -10,7 +10,7 @@ import (
 )
 
 func TestIPsecConfigurationPreservesOtherModules(t *testing.T) {
-	c := newTestCNIVswitchClient(t)
+	c, backend := newTestCNIVswitchClientWithBackend(t)
 	row, err := c.IPsecConfiguration()
 	require.NoError(t, err)
 	require.NoError(t, c.patchCNIMap(vswitch.OpenvSwitchTable, row.UUID, "other_config", map[string]string{"hw-offload": "true", "certificate": "old-cert", "private_key": "old-key", "ca_cert": "old-ca"}, nil))
@@ -22,7 +22,7 @@ func TestIPsecConfigurationPreservesOtherModules(t *testing.T) {
 	for key, value := range paths {
 		require.Equal(t, value, got.OtherConfig[key])
 	}
-	c.Disconnect()
+	backend.Disconnect()
 	require.Eventually(t, c.Connected, 3e9, 1e7)
 	require.NoError(t, c.SetIPsecConfiguration(row.UUID, paths))
 	require.Error(t, c.SetIPsecConfiguration("00000000-0000-0000-0000-000000000000", paths))

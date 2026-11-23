@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net"
 	"os/exec"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -17,6 +18,7 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	metallbv1beta1 "go.universe.tf/metallb/api/v1beta1"
 	corev1 "k8s.io/api/core/v1"
+	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
@@ -133,6 +135,7 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 	var internalDeployName, externalServiceName string
 
 	ginkgo.BeforeEach(func() {
+		containerID, clientIPv4, clientIPv6 = "", "", ""
 		f.SkipVersionPriorTo(1, 14, "This feature was introduced in v1.14.")
 		templateVIPAssertionsEnabled = !f.VersionPriorTo(1, 17)
 		cs = f.ClientSet
@@ -237,14 +240,14 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		}
 	})
 	ginkgo.AfterEach(func() {
-		// each cleanup step is best-effort: a failure is logged but does not
-		// prevent the remaining steps from running, so one stuck resource
-		// cannot leak all the others.
+		// Separate cleanup nodes let Ginkgo report assertion failures while still
+		// running the remaining steps, including Docker network disconnection.
+		var cleanupSteps []func()
 		cleanup := func(step string, fn func() error) {
-			ginkgo.By(step)
-			if err := fn(); err != nil {
-				framework.Logf("cleanup step %q failed, continuing: %v", step, err)
-			}
+			cleanupSteps = append(cleanupSteps, func() {
+				ginkgo.By(step)
+				framework.ExpectNoError(fn(), "cleanup step %q failed", step)
+			})
 		}
 
 		if serviceName != "" {
@@ -268,15 +271,24 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 		}
 
 		cleanup("Deleting the IPAddressPool for metallb", func() error {
-			return f.MetallbClientSet.DeleteIPAddressPool(metallbIPPoolName)
+			if err := f.MetallbClientSet.DeleteIPAddressPool(metallbIPPoolName); !k8serrors.IsNotFound(err) {
+				return err
+			}
+			return nil
 		})
 
 		cleanup("Deleting the l2 advertisement for metallb", func() error {
-			return f.MetallbClientSet.DeleteL2Advertisement(metallbIPPoolName)
+			if err := f.MetallbClientSet.DeleteL2Advertisement(metallbIPPoolName); !k8serrors.IsNotFound(err) {
+				return err
+			}
+			return nil
 		})
 
-		cleanup("Deleting the deployments "+deployName+" and "+internalDeployName, func() error {
+		cleanup("Deleting deployment "+deployName, func() error {
 			deployClient.DeleteSync(deployName)
+			return nil
+		})
+		cleanup("Deleting deployment "+internalDeployName, func() error {
 			deployClient.DeleteSync(internalDeployName)
 			return nil
 		})
@@ -325,6 +337,11 @@ var _ = framework.SerialDescribe("[group:metallb]", func() {
 			cleanup("Deleting the client container", func() error {
 				return docker.ContainerRemove(containerID)
 			})
+		}
+
+		// DeferCleanup runs in reverse registration order.
+		for _, fn := range slices.Backward(cleanupSteps) {
+			ginkgo.DeferCleanup(fn)
 		}
 	})
 

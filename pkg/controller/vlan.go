@@ -47,12 +47,16 @@ func (c *Controller) enqueueUpdateVlan(oldObj, newObj any) {
 	newVlan := newObj.(*kubeovnv1.Vlan)
 	key := cache.MetaObjectToName(newVlan).String()
 	klog.V(3).Infof("enqueue update vlan %s", key)
-	c.updateVlanQueue.Add(key)
+	if !controllerRuntimeVlanEnabled(c.config) {
+		c.updateVlanQueue.Add(key)
+	}
 
 	if oldVlan.Spec.ID != newVlan.Spec.ID || oldVlan.Spec.Provider != newVlan.Spec.Provider {
-		if err := c.enqueueRelatedVlans(oldVlan, newVlan); err != nil {
-			klog.Errorf("failed to enqueue related vlans for %s: %v", key, err)
-			c.recordVlanEvent(newVlan, corev1.EventTypeWarning, "ListVlansFailed", err.Error())
+		if !controllerRuntimeVlanEnabled(c.config) {
+			if err := c.enqueueRelatedVlans(oldVlan, newVlan); err != nil {
+				klog.Errorf("failed to enqueue related vlans for %s: %v", key, err)
+				c.recordVlanEvent(newVlan, corev1.EventTypeWarning, "ListVlansFailed", err.Error())
+			}
 		}
 	}
 
@@ -70,7 +74,7 @@ func (c *Controller) enqueueUpdateVlan(oldObj, newObj any) {
 
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == newVlan.Name {
-			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			c.enqueueSubnetReconcile(subnet.Name)
 		}
 	}
 }
@@ -178,7 +182,7 @@ func (c *Controller) handleAddVlan(key string) error {
 		// re-enqueue subnets so they can see the conflict status and reject
 		for _, subnet := range subnets {
 			if subnet.Spec.Vlan == vlan.Name {
-				c.addOrUpdateSubnetQueue.Add(subnet.Name)
+				c.enqueueSubnetReconcile(subnet.Name)
 			}
 		}
 		return err
@@ -198,7 +202,7 @@ func (c *Controller) handleAddVlan(key string) error {
 	// now that the vlan is fully processed
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == vlan.Name {
-			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			c.enqueueSubnetReconcile(subnet.Name)
 		}
 	}
 
@@ -271,7 +275,7 @@ func (c *Controller) handleUpdateVlan(key string) error {
 	}
 	for _, subnet := range subnets {
 		if subnet.Spec.Vlan == vlan.Name {
-			c.addOrUpdateSubnetQueue.Add(subnet.Name)
+			c.enqueueSubnetReconcile(subnet.Name)
 		}
 	}
 	newVlan := vlan.DeepCopy()
@@ -331,20 +335,25 @@ func (c *Controller) handleDelVlan(vlan *kubeovnv1.Vlan) error {
 
 	for _, s := range subnet {
 		if s.Spec.Vlan == key {
-			c.addOrUpdateSubnetQueue.Add(s.Name)
+			c.enqueueSubnetReconcile(s.Name)
 		}
 	}
 
-	providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
-	if err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to list provider networks: %v", err)
-		return c.recordVlanError(vlan, "ListProviderNetworksFailed", err)
-	}
+	// Keep this legacy delete coordinator active in runtime modes so subnet and
+	// conflict cleanup still runs, but leave ProviderNetwork status ownership to
+	// the controller-runtime reconciler.
+	if !controllerRuntimeVlanEnabled(c.config) {
+		providerNetworks, err := c.providerNetworksLister.List(labels.Everything())
+		if err != nil && !k8serrors.IsNotFound(err) {
+			klog.Errorf("failed to list provider networks: %v", err)
+			return c.recordVlanError(vlan, "ListProviderNetworksFailed", err)
+		}
 
-	for _, pn := range providerNetworks {
-		if err = c.updateProviderNetworkStatusForVlanDeletion(pn, key); err != nil {
-			klog.Error(err)
-			return c.recordVlanError(vlan, "UpdateProviderNetworkStatusFailed", err)
+		for _, pn := range providerNetworks {
+			if err = c.updateProviderNetworkStatusForVlanDeletion(pn, key); err != nil {
+				klog.Error(err)
+				return c.recordVlanError(vlan, "UpdateProviderNetworkStatusFailed", err)
+			}
 		}
 	}
 
@@ -370,7 +379,7 @@ func (c *Controller) updateProviderNetworkStatusForVlanDeletion(pn *kubeovnv1.Pr
 
 func (c *Controller) setLocalnetTag(subnet string, vlanID int) error {
 	localnetPort := ovs.GetLocalnetName(subnet)
-	if err := c.OVNNbClient.SetLogicalSwitchPortVlanTag(localnetPort, vlanID); err != nil {
+	if err := c.setLogicalSwitchPortVlanTag(localnetPort, vlanID); err != nil {
 		klog.Errorf("set localnet port %s vlan tag %d: %v", localnetPort, vlanID, err)
 		return err
 	}
@@ -380,7 +389,7 @@ func (c *Controller) setLocalnetTag(subnet string, vlanID int) error {
 
 func (c *Controller) delLocalnet(subnet string) error {
 	localnetPort := ovs.GetLocalnetName(subnet)
-	if err := c.OVNNbClient.DeleteLogicalSwitchPort(localnetPort); err != nil {
+	if err := c.deleteLogicalSwitchPort(localnetPort); err != nil {
 		klog.Errorf("delete localnet port %s: %v", localnetPort, err)
 		return err
 	}

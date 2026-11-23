@@ -4,14 +4,14 @@ import (
 	"errors"
 	"fmt"
 
-	"sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	"sigs.k8s.io/network-policy-api/apis/v1beta1"
 )
 
 // ProtocolPort returns the transport and optional numeric destination match.
 // Named ports are resolved by the policy controller before this helper is called.
-func ProtocolPort(p v1alpha2.ClusterNetworkPolicyProtocol) (string, *v1alpha2.Port, error) {
+func ProtocolPort(p v1beta1.ClusterNetworkPolicyProtocol) (string, *v1beta1.Port, error) {
 	count, transport := 0, ""
-	var port *v1alpha2.Port
+	var port *v1beta1.Port
 	if p.TCP != nil {
 		count++
 		transport, port = "tcp", p.TCP.DestinationPort
@@ -43,7 +43,7 @@ func ProtocolPort(p v1alpha2.ClusterNetworkPolicyProtocol) (string, *v1alpha2.Po
 	return transport, port, nil
 }
 
-func ValidateProtocols(policy *v1alpha2.ClusterNetworkPolicy) error {
+func ValidateProtocols(policy *v1beta1.ClusterNetworkPolicy) error {
 	for i, rule := range policy.Spec.Ingress {
 		for _, p := range rule.Protocols {
 			if p.DestinationNamedPort != "" {

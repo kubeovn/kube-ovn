@@ -134,6 +134,7 @@ func TestNamedOnlyPolicyDoesNotAllowOtherPorts(t *testing.T) {
 	c := fake.fakeController
 	nb := newInMemoryOVNNbClient(t)
 	c.OVNNbClient = nb
+	c.OVNNbTables = nb
 	c.npKeyMutex = keymutex.NewHashed(0)
 	c.namedPort = NewNamedPort()
 	c.namedPort.AddNamedPortByPod(pod)

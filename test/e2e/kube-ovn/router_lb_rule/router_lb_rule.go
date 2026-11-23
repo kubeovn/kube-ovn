@@ -235,6 +235,14 @@ var _ = framework.SerialDescribe("[group:rlr]", func() {
 		// Disable the external gateway before deleting its provider subnet. The
 		// default VPC's external EIP otherwise keeps the subnet finalizer alive.
 		cleanupExternalGatewayConfig()
+		framework.WaitUntil(time.Second, 2*time.Minute, func(ctx context.Context) (bool, error) {
+			defaultVpc, err := vpcClient.VpcInterface.Get(ctx, util.DefaultVpc, metav1.GetOptions{})
+			if err != nil {
+				return false, err
+			}
+			return !defaultVpc.Spec.EnableExternal && !defaultVpc.Status.EnableExternal, nil
+		}, "default VPC external gateway is disabled")
+
 		// The default VPC does not remove its external EIP when the gateway
 		// ConfigMap is deleted, so remove it explicitly before deleting the subnet.
 		ovnEipClient.DeleteSync("ovn-cluster-external")

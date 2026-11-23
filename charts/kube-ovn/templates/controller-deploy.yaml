@@ -76,6 +76,9 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           args:
           - /kube-ovn/start-controller.sh
+          {{- if (index .Values "kube-ovn-controller" "controllerRuntimeMode") }}
+          - --controller-runtime-mode={{ index .Values "kube-ovn-controller" "controllerRuntimeMode" }}
+          {{- end }}
           {{- if (index .Values "kube-ovn-controller" "leaderElection" "leaseDuration") }}
           - --leader-elect-lease-duration={{ index .Values "kube-ovn-controller" "leaderElection" "leaseDuration" }}
           {{- end }}

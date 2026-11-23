@@ -256,8 +256,7 @@ func (b *iptablesGatewayBackend) Reconcile(context.Context) error {
 	if err := b.controller.setIptables(); err != nil {
 		return err
 	}
-	b.controller.gcIPSet()
-	return nil
+	return b.controller.gcIPSet()
 }
 
 func (b *iptablesGatewayBackend) Cleanup(context.Context) error {

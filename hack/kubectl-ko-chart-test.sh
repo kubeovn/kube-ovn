@@ -45,7 +45,7 @@ verify_agent() {
   done
   ko_pod=$(kubectl -n "$ko_namespace" get pods -l app=kube-ovn-pinger -o json |
     jq -er 'first(.items[] | select(.status.phase == "Running" and .metadata.deletionTimestamp == null)) | .metadata.namespace + "/" + .metadata.name')
-  dist/images/kubectl-ko --timeout=2m network inspect --pod "$ko_pod" --output=json > "$ko_directory/network.json"
+  dist/images/kubectl-ko --timeout=2m --namespace "${ko_pod%%/*}" network inspect "pod/${ko_pod#*/}" --output=json > "$ko_directory/network.json"
   jq -e '
     (.netns | length) > 0 and (.interfaces | length) > 0 and
     all(.interfaces[]; .statistics.rx.bytes >= 0 and .statistics.tx.bytes >= 0)

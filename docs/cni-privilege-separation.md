@@ -20,7 +20,7 @@ The CNI server runs with the chart's unprivileged service user (root is retained
 
 The installer publishes `kube-ovn` as an atomic symlink to an immutable execution
 bundle under the CNI bin directory. The statically linked CNI uses libovsdb to
-access `/run/openvswitch/db.sock` and ethtool ioctls in the current network
+access `/run/openvswitch/db.sock` and ethtool generic netlink in the current network
 namespace. It does not execute external binaries or scripts, and needs no host
 shell, tool packages, ELF loader, or shared libraries. Installation checks the
 CNI VERSION command before publishing the bundle. Previous bundles are retained

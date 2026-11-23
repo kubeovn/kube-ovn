@@ -3,17 +3,20 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
 	"os"
-	"os/exec"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/ovn-kubernetes/libovsdb/model"
+	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/pflag"
 	corev1 "k8s.io/api/core/v1"
@@ -26,6 +29,8 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/aclsampling"
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	clientset "github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/table"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/vswitch"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -37,20 +42,23 @@ type Configuration struct {
 	CniConfName      string
 
 	// interface being used for tunnel
-	tunnelIface                   string
-	Iface                         string
-	HostTunnelSrc                 bool
-	DPDKTunnelIface               string
-	MTU                           int
-	MaxMTU                        int
-	MSS                           int
-	EnableMirror                  bool
-	MirrorNic                     string
-	BindSocket                    string
-	OvsSocket                     string
-	KubeConfigFile                string
-	KubeClient                    kubernetes.Interface
-	KubeOvnClient                 clientset.Interface
+	tunnelIface     string
+	Iface           string
+	HostTunnelSrc   bool
+	DPDKTunnelIface string
+	MTU             int
+	MaxMTU          int
+	MSS             int
+	EnableMirror    bool
+	MirrorNic       string
+	BindSocket      string
+	OvsSocket       string
+	KubeConfigFile  string
+	KubeClient      kubernetes.Interface
+	KubeOvnClient   clientset.Interface
+	// VswitchTables is injected before Init so startup OVSDB writes use the
+	// same generic database handle as the daemon controller.
+	VswitchTables                 table.Provider
 	PodName                       string
 	PodNamespace                  string
 	NodeName                      string
@@ -77,7 +85,7 @@ type Configuration struct {
 	UDPConnCheckPort              int32
 	EnableTProxy                  bool
 	EnableRecompute               bool
-	OVSVsctlConcurrency           int32
+	SetGeneveTxOff                bool
 	SetVxlanTxOff                 bool
 	LogPerm                       string
 	EnableNonPrimaryCNI           bool
@@ -104,11 +112,11 @@ func ParseFlags() *Configuration {
 		argInstallCNIConfig      = pflag.Bool("install-cni-config", false, "Install CNI config")
 		argCniConfDir            = pflag.String("cni-conf-dir", "/etc/cni/net.d", "Path of the CNI config directory.")
 		argCniConfFile           = pflag.String("cni-conf-file", "/kube-ovn/01-kube-ovn.conflist", "Path of the CNI config file.")
-		argsCniConfName          = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the name of kube ovn conflist name in dir /etc/cni/net.d/, default: 01-kube-ovn.conflist")
-		argIface                 = pflag.String("iface", "", "The iface used to inter-host pod communication, can be a nic name or a group of regex separated by comma (default the default route iface)")
+		argsCniConfName          = pflag.String("cni-conf-name", "01-kube-ovn.conflist", "Specify the kube-ovn conflist name in /etc/cni/net.d/")
+		argIface                 = pflag.String("iface", "", "The interface used for inter-host pod communication; when empty, the interface that owns POD_IP or a node internal IP is used")
 		argHostTunnelSrc         = pflag.Bool("host-tunnel-src", false, "Enable /32 address selection for the tunnel source, excludes localhost addresses unless explicitly allowed.")
-		argDPDKTunnelIface       = pflag.String("dpdk-tunnel-iface", "br-phy", "Specifies the name of the dpdk tunnel iface.")
-		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod iface in overlay networks (default iface MTU - 100)")
+		argDPDKTunnelIface       = pflag.String("dpdk-tunnel-iface", "br-phy", "Specifies the DPDK tunnel interface; the node tunnel interface annotation and DPDK mode take precedence")
+		argMTU                   = pflag.Int("mtu", 0, "The MTU used by pod interfaces in overlay networks; when set to 0, it is derived from the selected interface MTU based on the network type and IP family")
 		argMaxMTU                = pflag.Int("max-mtu", 0, "Upper bound applied to the auto-computed pod MTU (0 disables the cap). Useful when the underlay uses jumbo frames but pod traffic egresses to a 1500-byte path (e.g. the internet), where the uncapped value would cause fragmentation or PMTUD-dependent blackholes. Ignored when --mtu is set explicitly.")
 		argEnableMirror          = pflag.Bool("enable-mirror", false, "Enable traffic mirror (default false)")
 		argMirrorNic             = pflag.String("mirror-iface", "mirror0", "The mirror nic name that will be created by kube-ovn")
@@ -127,17 +135,17 @@ func ParseFlags() *Configuration {
 		argsNetworkType                  = pflag.String("network-type", util.NetworkTypeGeneve, "Tunnel encapsulation protocol in overlay networks")
 		argsDefaultProviderName          = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")
 		argsDefaultInterfaceName         = pflag.String("default-interface-name", "", "The default host interface name in the vlan/vxlan type")
-		argExternalGatewayConfigNS       = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of configmap external-gateway-config, default: kube-system")
-		argExternalGatewaySwitch         = pflag.String("external-gateway-switch", "external", "The name of the external gateway switch which is a ovs bridge to provide external network, default: external")
+		argExternalGatewayConfigNS       = pflag.String("external-gateway-config-ns", "kube-system", "The namespace of the external-gateway-config ConfigMap")
+		argExternalGatewaySwitch         = pflag.String("external-gateway-switch", "external", "The external gateway switch used to provide external network access")
 		argEnableMetrics                 = pflag.Bool("enable-metrics", true, "Whether to support metrics query")
 		argEnableArpDetectIPConflict     = pflag.Bool("enable-arp-detect-ip-conflict", true, "Whether to support arp detect ip conflict in underlay network")
-		argKubeletDir                    = pflag.String("kubelet-dir", "/var/lib/kubelet", "Path of the kubelet dir, default: /var/lib/kubelet")
+		argKubeletDir                    = pflag.String("kubelet-dir", "/var/lib/kubelet", "Path of the kubelet directory")
 		argEnableVerboseConnCheck        = pflag.Bool("enable-verbose-conn-check", false, "enable TCP/UDP connectivity check listen port")
 		argTCPConnectivityCheckPort      = pflag.Int32("tcp-conn-check-port", 8100, "TCP connectivity Check Port")
 		argUDPConnectivityCheckPort      = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
-		argEnableTProxy                  = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod liveness or readiness probe")
 		argEnableRecompute               = pflag.Bool("enable-recompute", false, "Enable periodic ovn-controller recompute")
-		argOVSVsctlConcurrency           = pflag.Int32("ovs-vsctl-concurrency", 100, "concurrency limit of ovs-vsctl")
+		argEnableTProxy                  = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod probes")
+		argSetGeneveTxOff                = pflag.Bool("set-geneve-tx-off", false, "Whether to set genev_sys_6081 tx off")
 		argSetVxlanTxOff                 = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
 		argLogPerm                       = pflag.String("log-perm", "640", "The permission for the log file")
 		argGatewayNetfilterMode          = pflag.String("gateway-netfilter-mode", "auto", "gateway netfilter backend: auto, iptables, or nftables")
@@ -152,6 +160,13 @@ func ParseFlags() *Configuration {
 		argACLSamplingSetID        = pflag.Uint32("acl-sampling-set-id", aclsampling.DefaultSetID, "Observation domain ID used by ACL sample collectors")
 		argACLSamplingLocalGroupID = pflag.Uint32("acl-sampling-local-group-id", aclsampling.DefaultLocalGroupID, "Local psample group ID used to deliver ACL samples")
 	)
+
+	// Older charts still pass this option when upgrading only the daemon image.
+	// Native OVSDB operations no longer use the ovs-vsctl concurrency limiter.
+	pflag.Int32("ovs-vsctl-concurrency", 100, "Deprecated compatibility option; ignored")
+	if err := pflag.CommandLine.MarkDeprecated("ovs-vsctl-concurrency", "native OVSDB operations do not use this limit"); err != nil {
+		util.LogFatalAndExit(err, "failed to deprecate legacy flag")
+	}
 
 	// mute info log for ipset lib
 	logrus.SetLevel(logrus.WarnLevel)
@@ -213,7 +228,7 @@ func ParseFlags() *Configuration {
 		UDPConnCheckPort:          *argUDPConnectivityCheckPort,
 		EnableTProxy:              *argEnableTProxy,
 		EnableRecompute:           *argEnableRecompute,
-		OVSVsctlConcurrency:       *argOVSVsctlConcurrency,
+		SetGeneveTxOff:            *argSetGeneveTxOff,
 		SetVxlanTxOff:             *argSetVxlanTxOff,
 		LogPerm:                   *argLogPerm,
 		TLSMinVersion:             *argTLSMinVersion,
@@ -377,7 +392,7 @@ func (config *Configuration) initNicConfig(nicBridgeMappings map[string]string) 
 
 	config.MSS = config.MTU - util.TCPIPHeaderLength
 
-	if err := setChecksum(config.EncapChecksum); err != nil {
+	if err := config.setChecksum(config.EncapChecksum); err != nil {
 		klog.Errorf("failed to set checksum offload, %v", err)
 	}
 
@@ -562,20 +577,14 @@ func (config *Configuration) setEncapIPs() error {
 	slices.Sort(ips[1:])
 
 	encapIPStr := strings.Join(ips, ",")
-	// #nosec G204
-	raw, err := exec.Command(
-		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-ip="+encapIPStr,
-	).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to set ovn-encap-ip, %s", string(raw))
-	}
-
-	// #nosec G204
-	raw, err = exec.Command(
-		"ovs-vsctl", "set", "open", ".", "external-ids:ovn-encap-ip-default="+defaultIP,
-	).CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("failed to set ovn-encap-ip-default, %s", string(raw))
+	if err := config.updateOpenVSwitchExternalIDs(
+		"daemon-encap-ip-update",
+		map[string]*string{
+			"ovn-encap-ip":         new(encapIPStr),
+			"ovn-encap-ip-default": new(defaultIP),
+		},
+	); err != nil {
+		return err
 	}
 
 	klog.Infof("set ovn-encap-ip=%s, ovn-encap-ip-default=%s", encapIPStr, defaultIP)
@@ -618,12 +627,163 @@ func (config *Configuration) GetEncapIPByNetwork(networkName string) (string, er
 	return "", fmt.Errorf("network %s not found in node networks", networkName)
 }
 
-func setChecksum(encapChecksum bool) error {
-	// #nosec G204
-	raw, err := exec.Command("ovs-vsctl", "set", "open", ".", fmt.Sprintf("external-ids:ovn-encap-csum=%v", encapChecksum)).CombinedOutput()
+func (config *Configuration) setChecksum(encapChecksum bool) error {
+	value := strconv.FormatBool(encapChecksum)
+	return config.updateOpenVSwitchExternalIDs(
+		"daemon-encap-checksum-update",
+		map[string]*string{"ovn-encap-csum": new(value)},
+	)
+}
+
+func (config *Configuration) updateOpenVSwitchExternalIDs(method string, updates map[string]*string) error {
+	if config == nil || config.VswitchTables == nil {
+		return errors.New("vswitch table provider is not configured")
+	}
+
+	row, err := config.openVSwitchRow()
 	if err != nil {
-		klog.Error(err)
-		return fmt.Errorf("failed to set ovn-encap-csum to %v: %s", encapChecksum, string(raw))
+		return err
+	}
+	return config.updateOpenVSwitchMap(method, row, row.ExternalIDs, &row.ExternalIDs, updates)
+}
+
+func (config *Configuration) updateOpenVSwitchMap(method string, row *vswitch.OpenvSwitch, current map[string]string, field any, updates map[string]*string) error {
+	deleted := make(map[string]string, len(updates))
+	inserted := make(map[string]string, len(updates))
+	for key, value := range updates {
+		old, exists := current[key]
+		if exists && (value == nil || old != *value) {
+			deleted[key] = old
+		}
+		if value != nil && (!exists || old != *value) {
+			inserted[key] = *value
+		}
+	}
+
+	mutations := make([]model.Mutation, 0, 2)
+	if len(deleted) != 0 {
+		mutations = append(mutations, model.Mutation{Field: field, Mutator: ovsdb.MutateOperationDelete, Value: deleted})
+	}
+	if len(inserted) != 0 {
+		mutations = append(mutations, model.Mutation{Field: field, Mutator: ovsdb.MutateOperationInsert, Value: inserted})
+	}
+	if len(mutations) == 0 {
+		return nil
+	}
+	return config.VswitchTables.Table(&vswitch.OpenvSwitch{}).Mutate(context.Background(), method, row, mutations...)
+}
+
+func (config *Configuration) getOvnMappings(name string) (map[string]string, error) {
+	if config == nil || config.VswitchTables == nil {
+		return nil, errors.New("vswitch table provider is not configured")
+	}
+
+	row, err := config.openVSwitchRow()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get %s: %w", name, err)
+	}
+	return decodeOvnMappings(row.ExternalIDs[name]), nil
+}
+
+func (config *Configuration) getOpenVSwitchExternalID(key string) (string, error) {
+	row, err := config.openVSwitchRow()
+	if err != nil {
+		return "", err
+	}
+	return row.ExternalIDs[key], nil
+}
+
+func (config *Configuration) getVswitchInterfaceExternalID(name, key string) (string, error) {
+	if config == nil || config.VswitchTables == nil {
+		return "", errors.New("vswitch table provider is not configured")
+	}
+	var rows []vswitch.Interface
+	if err := config.VswitchTables.Table(&vswitch.Interface{}).Filter(context.Background(), func(row *vswitch.Interface) bool {
+		return row.Name == name
+	}, &rows); err != nil {
+		return "", fmt.Errorf("find Interface %q: %w", name, err)
+	}
+	if len(rows) == 0 {
+		return "", nil
+	}
+	return rows[0].ExternalIDs[key], nil
+}
+
+func (config *Configuration) updateVswitchBridgeHardwareAddress(name, address string) error {
+	if config == nil || config.VswitchTables == nil {
+		return errors.New("vswitch table provider is not configured")
+	}
+	var rows []vswitch.Bridge
+	if err := config.VswitchTables.Table(&vswitch.Bridge{}).Filter(context.Background(), func(row *vswitch.Bridge) bool {
+		return row.Name == name
+	}, &rows); err != nil {
+		return fmt.Errorf("find Bridge %q: %w", name, err)
+	}
+	if len(rows) == 0 {
+		return fmt.Errorf("bridge %q not found", name)
+	}
+	old, exists := rows[0].OtherConfig["hwaddr"]
+	if exists && old == address {
+		return nil
+	}
+	mutations := []model.Mutation{}
+	if exists {
+		mutations = append(mutations, model.Mutation{Field: &rows[0].OtherConfig, Mutator: ovsdb.MutateOperationDelete, Value: map[string]string{"hwaddr": old}})
+	}
+	mutations = append(mutations, model.Mutation{Field: &rows[0].OtherConfig, Mutator: ovsdb.MutateOperationInsert, Value: map[string]string{"hwaddr": address}})
+	return config.VswitchTables.Table(&vswitch.Bridge{}).Mutate(context.Background(), "daemon-bridge-hwaddr-update", &rows[0], mutations...)
+}
+
+func (config *Configuration) setOvnMappings(name string, mappings map[string]string) error {
+	if config == nil || config.VswitchTables == nil {
+		return errors.New("vswitch table provider is not configured")
+	}
+
+	value := encodeOvnMappings(mappings)
+	var update *string
+	if value != "" {
+		update = new(value)
+	}
+	if err := config.updateOpenVSwitchExternalIDs("daemon-ovn-mapping-update", map[string]*string{name: update}); err != nil {
+		return fmt.Errorf("failed to set %s: %w", name, err)
 	}
 	return nil
+}
+
+func (config *Configuration) addOvnMapping(name, key, value string, overwrite bool) error {
+	mappings, err := config.getOvnMappings(name)
+	if err != nil {
+		return err
+	}
+	if mappings[key] == value || (mappings[key] != "" && !overwrite) {
+		return nil
+	}
+	mappings[key] = value
+	return config.setOvnMappings(name, mappings)
+}
+
+func (config *Configuration) removeOvnMapping(name, key string) error {
+	mappings, err := config.getOvnMappings(name)
+	if err != nil {
+		return err
+	}
+	if _, ok := mappings[key]; !ok {
+		return nil
+	}
+	delete(mappings, key)
+	return config.setOvnMappings(name, mappings)
+}
+
+func (config *Configuration) openVSwitchRow() (*vswitch.OpenvSwitch, error) {
+	if config == nil || config.VswitchTables == nil {
+		return nil, errors.New("vswitch table provider is not configured")
+	}
+	var rows []vswitch.OpenvSwitch
+	if err := config.VswitchTables.Table(&vswitch.OpenvSwitch{}).List(context.Background(), &rows); err != nil {
+		return nil, fmt.Errorf("list Open_vSwitch: %w", err)
+	}
+	if len(rows) != 1 {
+		return nil, fmt.Errorf("expected one Open_vSwitch row, found %d", len(rows))
+	}
+	return &rows[0], nil
 }

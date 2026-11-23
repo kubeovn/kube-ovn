@@ -33,8 +33,7 @@ spec:
         {{- end }}
     spec:
       tolerations:
-        - operator: Exists
-          effect: NoSchedule
+        {{- toYaml .Values.validatingWebhook.tolerations | nindent 8 }}
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:

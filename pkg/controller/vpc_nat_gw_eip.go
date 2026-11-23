@@ -181,7 +181,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 
 	// Trigger subnet status update after all operations complete
 	// At this point: IPAM allocated, IptablesEIP CR created with labels+status+finalizer
-	c.updateSubnetStatusQueue.Add(subnet.Name)
+	c.enqueueSubnetStatus(subnet.Name, "NAT")
 	return nil
 }
 
@@ -399,7 +399,7 @@ func (c *Controller) handleDelIptablesEip(eip *kubeovnv1.IptablesEIP) error {
 	// we need to ensure subnet status is updated as a safety net.
 	externalNetwork := util.GetExternalNetwork(eip.Spec.ExternalSubnet)
 	if externalNetwork != "" {
-		c.updateSubnetStatusQueue.Add(externalNetwork)
+		c.enqueueSubnetStatus(externalNetwork, "NAT")
 	}
 
 	return nil
@@ -854,24 +854,16 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 				klog.Error(errMsg)
 				return errMsg
 			}
+			patch := util.KVPatch{"ready": true, "qosPolicy": qos}
 			if eip.Status.IP == "" {
-				// eip is ip holder, not support change ip
-				eip.Status.IP = v4ip
-				// TODO:// ipv6
+				// EIP addresses are fixed after allocation.
+				patch["ip"] = v4ip
 			}
-			eip.Status.Ready = true
-			eip.Status.QoSPolicy = qos
-			bytes, err := eip.Status.Bytes()
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-			if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType,
-				bytes, metav1.PatchOptions{}, "status"); err != nil {
+			if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, patch); err != nil {
 				if k8serrors.IsNotFound(err) {
 					return nil
 				}
-				klog.Errorf("failed to patch eip %s, %v", eip.Name, err)
+				klog.Errorf("failed to patch eip %s, %v", key, err)
 				return err
 			}
 		}
@@ -882,7 +874,7 @@ func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, ext
 		}
 	}
 	// Trigger subnet status update after all operations complete
-	c.updateSubnetStatusQueue.AddAfter(externalNet, 300*time.Millisecond)
+	c.enqueueSubnetStatusAfter(externalNet, "NAT", 300*time.Millisecond)
 	return nil
 }
 
@@ -930,7 +922,7 @@ func (c *Controller) handleAddIptablesEipFinalizer(key string) error {
 	// This handles cases where finalizer was not added during creation
 	// AddFinalizer is idempotent, so this is safe even if finalizer already exists
 	externalNetwork := util.GetExternalNetwork(cachedIptablesEip.Spec.ExternalSubnet)
-	c.updateSubnetStatusQueue.Add(externalNetwork)
+	c.enqueueSubnetStatus(externalNetwork, "NAT")
 	return nil
 }
 
@@ -967,13 +959,12 @@ func (c *Controller) handleDelIptablesEipFinalizer(key string) error {
 	// This ensures subnet status reflects the IP release
 	// Add delay to ensure API server completes the finalizer removal
 	externalNetwork := util.GetExternalNetwork(cachedIptablesEip.Spec.ExternalSubnet)
-	c.updateSubnetStatusQueue.AddAfter(externalNetwork, 300*time.Millisecond)
+	c.enqueueSubnetStatusAfter(externalNetwork, "NAT", 300*time.Millisecond)
 	return nil
 }
 
 func (c *Controller) patchEipQoSStatus(key, qos string) error {
-	var changed bool
-	oriEip, err := c.iptablesEipsLister.Get(key)
+	eip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -981,28 +972,12 @@ func (c *Controller) patchEipQoSStatus(key, qos string) error {
 		klog.Error(err)
 		return err
 	}
-	eip := oriEip.DeepCopy()
-
-	// update status.qosPolicy
-	if eip.Status.QoSPolicy != qos {
-		eip.Status.QoSPolicy = qos
-		changed = true
+	if eip.Status.QoSPolicy == qos {
+		return nil
 	}
-
-	if changed {
-		bytes, err := eip.Status.Bytes()
-		if err != nil {
-			klog.Error(err)
-			return err
-		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType,
-			bytes, metav1.PatchOptions{}, "status"); err != nil {
-			if k8serrors.IsNotFound(err) {
-				return nil
-			}
-			klog.Errorf("failed to patch eip %s, %v", eip.Name, err)
-			return err
-		}
+	if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, util.KVPatch{"qosPolicy": qos}); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to patch eip %s, %v", key, err)
+		return err
 	}
 	return nil
 }
@@ -1039,7 +1014,7 @@ func (c *Controller) getIptablesEipNat(eip *kubeovnv1.IptablesEIP) (string, erro
 }
 
 func (c *Controller) patchEipStatus(key, v4ip, redo, qos string, ready bool) error {
-	oriEip, err := c.iptablesEipsLister.Get(key)
+	eip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
@@ -1047,55 +1022,34 @@ func (c *Controller) patchEipStatus(key, v4ip, redo, qos string, ready bool) err
 		klog.Error(err)
 		return err
 	}
-	eip := oriEip.DeepCopy()
-	var changed bool
-	if eip.Status.Ready != ready {
-		eip.Status.Ready = ready
-		changed = true
-	}
-
-	if redo != "" && eip.Status.Redo != redo {
-		eip.Status.Redo = redo
-		changed = true
-	}
-
+	patch := natStatusPatch(eip.Status.Ready, eip.Status.Redo, ready, redo, false)
 	if ready && v4ip != "" && eip.Status.IP != v4ip {
-		eip.Status.IP = v4ip
-		changed = true
+		patch["ip"] = v4ip
 	}
 
-	nat, err := c.getIptablesEipNat(oriEip)
-	if err != nil {
-		err = fmt.Errorf("failed to get eip nat: %w", err)
-		klog.Error(err)
-		return err
-	}
-	// nat record all kinds of nat rules using this eip
-	klog.V(3).Infof("nat of eip %s is %s", eip.Name, nat)
-	if eip.Status.Nat != nat {
-		eip.Status.Nat = nat
-		changed = true
-	}
-
-	if qos != "" && eip.Status.QoSPolicy != qos {
-		eip.Status.QoSPolicy = qos
-		changed = true
-	}
-
-	if changed {
-		bytes, err := eip.Status.Bytes()
+	// Replay only updates the EIP's readiness token. Its NAT rules may still be
+	// absent from the informer, so do not let that stale view clear status.nat.
+	if redo == "" {
+		nat, err := c.getIptablesEipNat(eip)
 		if err != nil {
+			err = fmt.Errorf("failed to get eip nat: %w", err)
 			klog.Error(err)
 			return err
 		}
-		if _, err = c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Patch(context.Background(), key, types.MergePatchType,
-			bytes, metav1.PatchOptions{}, "status"); err != nil {
-			if k8serrors.IsNotFound(err) {
-				return nil
-			}
-			klog.Errorf("failed to patch eip %s, %v", eip.Name, err)
-			return err
+		// nat record all kinds of nat rules using this eip
+		klog.V(3).Infof("nat of eip %s is %s", eip.Name, nat)
+		if eip.Status.Nat != nat {
+			patch["nat"] = nat
 		}
+	}
+
+	if qos != "" && eip.Status.QoSPolicy != qos {
+		patch["qosPolicy"] = qos
+	}
+
+	if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, patch); err != nil && !k8serrors.IsNotFound(err) {
+		klog.Errorf("failed to patch eip %s, %v", key, err)
+		return err
 	}
 	return nil
 }

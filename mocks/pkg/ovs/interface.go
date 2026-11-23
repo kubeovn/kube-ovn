@@ -24,7 +24,7 @@ import (
 	gomock "go.uber.org/mock/gomock"
 	v10 "k8s.io/api/networking/v1"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	v1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 )
 
 // MockVswitch is a mock of Vswitch interface.
@@ -2653,7 +2653,7 @@ func (mr *MockACLMockRecorder) UpdateAnpRuleACLOps(pgName, asName, protocol, acl
 }
 
 // UpdateCnpRuleACLOps mocks base method.
-func (m *MockACL) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyProtocol, isIngress bool, tier int) ([]ovsdb.Operation, error) {
+func (m *MockACL) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1beta1.ClusterNetworkPolicyProtocol, isIngress bool, tier int) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateCnpRuleACLOps", pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, tier)
 	ret0, _ := ret[0].([]ovsdb.Operation)
@@ -6643,7 +6643,7 @@ func (mr *MockNbClientMockRecorder) UpdateBFD(bfd any, fields ...any) *gomock.Ca
 }
 
 // UpdateCnpRuleACLOps mocks base method.
-func (m *MockNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1alpha2.ClusterNetworkPolicyProtocol, isIngress bool, tier int) ([]ovsdb.Operation, error) {
+func (m *MockNbClient) UpdateCnpRuleACLOps(pgName, asName, protocol, aclName string, priority int, aclAction ovnnb.ACLAction, logACLActions []ovnnb.ACLAction, rulePorts []v1beta1.ClusterNetworkPolicyProtocol, isIngress bool, tier int) ([]ovsdb.Operation, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "UpdateCnpRuleACLOps", pgName, asName, protocol, aclName, priority, aclAction, logACLActions, rulePorts, isIngress, tier)
 	ret0, _ := ret[0].([]ovsdb.Operation)

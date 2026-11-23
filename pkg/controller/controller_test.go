@@ -341,6 +341,10 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		}
 	}
 
+	kubeWatchesSynced := trackFakeInformerWatches(&kubeClient.Fake)
+	nadWatchesSynced := trackFakeInformerWatches(&nadClient.Fake)
+	kubeovnWatchesSynced := trackFakeInformerWatches(&kubeovnClient.Fake)
+
 	// Create informer factories
 	kubeInformerFactory := informers.NewSharedInformerFactoryWithOptions(
 		kubeClient, 0,
@@ -475,6 +479,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		subnetKeyMutex:                keymutex.NewHashed(0),
 		nsKeyMutex:                    keymutex.NewHashed(0),
 		addOrUpdateSubnetQueue:        newTypedRateLimitingQueue[string]("AddOrUpdateSubnet", nil),
+		addOrUpdateSgQueue:            newTypedRateLimitingQueue[string]("AddOrUpdateSg", nil),
 		syncVirtualPortsQueue:         newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
 		updateSubnetStatusQueue:       newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
 		updateVirtualParentsQueue:     newTypedRateLimitingQueue[string]("UpdateVirtualParents", nil),
@@ -484,6 +489,7 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 		serviceCIDRStore:              util.NewServiceCIDRStore("10.96.0.0/12"),
 		updateIptablesEipQueue:        newTypedRateLimitingQueue[string]("UpdateIptablesEip", nil),
 	}
+	t.Cleanup(ctrl.addOrUpdateSgQueue.ShutDown)
 
 	// the kubevirt informer is created without a client: tests populate its indexer directly
 	ctrl.kubevirtInformerFactory = informer.NewKubeVirtInformerFactoryWithOptions(nil, nil)
@@ -520,6 +526,11 @@ func newFakeControllerWithOptions(t *testing.T, opts *FakeControllerOptions) (*f
 	kubeInformerFactory.WaitForCacheSync(stopCh)
 	nadInformerFactory.WaitForCacheSync(stopCh)
 	kubeovnInformerFactory.WaitForCacheSync(stopCh)
+	// Initial cache sync can finish before the fake tracker registers WATCH.
+	// Wait for all three clients so subsequent mutations cannot lose events.
+	require.Eventually(t, func() bool {
+		return kubeWatchesSynced() && nadWatchesSynced() && kubeovnWatchesSynced()
+	}, fakeInformerTimeout, time.Millisecond, "fake informer watches did not start")
 
 	// gcChassis no-ops until initNodeChassis has run once; tests exercise
 	// gcChassis directly without going through controller startup, so

@@ -1,6 +1,9 @@
 package ipam
 
 type IPPool struct {
+	// Failed membership preparation retains ownership but must not allow new allocations.
+	allocationsBlocked bool
+
 	V4IPs       *IPRangeList
 	V4Free      *IPRangeList
 	V4Available *IPRangeList

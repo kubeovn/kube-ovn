@@ -12,9 +12,9 @@ import (
 	networkinglister "k8s.io/client-go/listers/networking/v1"
 	"k8s.io/client-go/tools/cache"
 	v1alpha1 "sigs.k8s.io/network-policy-api/apis/v1alpha1"
-	v1alpha2 "sigs.k8s.io/network-policy-api/apis/v1alpha2"
+	v1beta1 "sigs.k8s.io/network-policy-api/apis/v1beta1"
 	anplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha1"
-	cnplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1alpha2"
+	cnplister "sigs.k8s.io/network-policy-api/pkg/client/listers/apis/v1beta1"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/util"
@@ -295,9 +295,9 @@ func TestEnqueueUpdatePodWhenNamedPortAddressChangesRefreshesAdminPolicies(t *te
 		Ingress: []v1alpha1.BaselineAdminNetworkPolicyIngressRule{{Ports: &[]v1alpha1.AdminNetworkPolicyPort{{NamedPort: &portName}}}},
 	}}))
 	cnpIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-	require.NoError(t, cnpIndexer.Add(&v1alpha2.ClusterNetworkPolicy{Name: "cnp", Spec: v1alpha2.ClusterNetworkPolicySpec{
-		Subject: v1alpha2.ClusterNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
-		Ingress: []v1alpha2.ClusterNetworkPolicyIngressRule{{Protocols: []v1alpha2.ClusterNetworkPolicyProtocol{{DestinationNamedPort: portName}}}},
+	require.NoError(t, cnpIndexer.Add(&v1beta1.ClusterNetworkPolicy{Name: "cnp", Spec: v1beta1.ClusterNetworkPolicySpec{
+		Subject: v1beta1.ClusterNetworkPolicySubject{Namespaces: &metav1.LabelSelector{}},
+		Ingress: []v1beta1.ClusterNetworkPolicyIngressRule{{Protocols: []v1beta1.ClusterNetworkPolicyProtocol{{DestinationNamedPort: portName}}}},
 	}}))
 	controller.anpsLister = anplister.NewAdminNetworkPolicyLister(anpIndexer)
 	controller.banpsLister = anplister.NewBaselineAdminNetworkPolicyLister(banpIndexer)

@@ -1470,7 +1470,9 @@ func (c *Controller) getVMLsps() ([]string, error) {
 				break
 			}
 		}
-		if !defaultMultus {
+		// In non-primary CNI mode the VM's default network belongs to the primary CNI, so
+		// Kube-OVN never creates a port for the default provider.
+		if !defaultMultus && !c.config.EnableNonPrimaryCNI {
 			vmLsp := ovs.PodNameToPortName(vm.Name, vm.Namespace, util.OvnProvider)
 			vmLsps = append(vmLsps, vmLsp)
 		}

@@ -18,7 +18,6 @@ import (
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnv1lister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
-	"github.com/kubeovn/kube-ovn/pkg/ovs"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
@@ -237,7 +236,7 @@ func mergeGatewayAffinity(affinities ...*corev1.Affinity) *corev1.Affinity {
 //   - bfdMap: Map of nexthop IP to BFD UUID
 //   - staleBFDIDs: Set of stale BFD UUIDs to delete
 func reconcileGatewayBFD(
-	ovnClient ovs.NbClient,
+	ovnClient gatewayBFDClient,
 	bfdIP string,
 	lrpName string,
 	nextHops set.Set[string],
@@ -292,7 +291,7 @@ func reconcileGatewayBFD(
 }
 
 // cleanupStaleBFD deletes stale BFD sessions that are no longer needed.
-func cleanupStaleBFD(ovnClient ovs.NbClient, staleBFDIDs set.Set[string]) error {
+func cleanupStaleBFD(ovnClient gatewayBFDClient, staleBFDIDs set.Set[string]) error {
 	for _, bfdID := range staleBFDIDs.UnsortedList() {
 		if err := ovnClient.DeleteBFD(bfdID); err != nil {
 			klog.Errorf("failed to delete bfd %s: %v", bfdID, err)
@@ -318,7 +317,7 @@ func cleanupStaleBFD(ovnClient ovs.NbClient, staleBFDIDs set.Set[string]) error 
 //   - bfdIDs: Set of active BFD UUIDs
 //   - error: Any error encountered during reconciliation or cleanup
 func reconcileGatewayBFDWithCleanup(
-	ovnClient ovs.NbClient,
+	ovnClient gatewayBFDClient,
 	bfdIP string,
 	lrpName string,
 	nextHops set.Set[string],
@@ -473,7 +472,7 @@ func resolveInternalCIDRs(subnetLister kubeovnv1lister.SubnetLister, subnetNames
 //
 // Returns error if any OVN operation fails.
 func reconcileNatGatewayPolicies(
-	ovnClient ovs.NbClient,
+	ovnClient gatewayPolicyClient,
 	gwName string,
 	lrName string,
 	af int,
@@ -588,4 +587,16 @@ func reconcileNatGatewayPolicies(
 	}
 
 	return nil
+}
+
+// reconcileNatGatewayPolicies uses the same reconciliation algorithm for table
+// providers and legacy clients; only the OVN access operations differ.
+func (c *Controller) reconcileNatGatewayPolicies(
+	gwName, lrName string, af int, bfdEnabled bool, bfdIDs set.Set[string],
+	internalCIDRs []string, nextHops, externalIDs map[string]string,
+) error {
+	if c.OVNNbTables == nil {
+		return fmt.Errorf("OVN NB table provider is nil for NAT gateway %q", gwName)
+	}
+	return reconcileNatGatewayPolicies(gatewayTableClient{c}, gwName, lrName, af, bfdEnabled, bfdIDs, internalCIDRs, nextHops, externalIDs)
 }

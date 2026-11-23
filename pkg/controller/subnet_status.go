@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"strconv"
-	"strings"
 
 	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -47,7 +45,10 @@ func (c *Controller) updateNatOutgoingPolicyRulesStatus(subnet *kubeovnv1.Subnet
 	return nil
 }
 
-func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr string) error {
+func (c *Controller) patchSubnetStatusWithContext(ctx context.Context, subnet *kubeovnv1.Subnet, reason, errStr string) error {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	if errStr != "" {
 		subnet.Status.SetError(reason, errStr)
 		if reason == "ValidateLogicalSwitchFailed" {
@@ -72,7 +73,7 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 		klog.Error(err)
 		return err
 	}
-	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
+	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status"); err != nil {
 		klog.Errorf("failed to patch status for subnet %s, %v", subnet.Name, err)
 		return err
 	}
@@ -82,16 +83,16 @@ func (c *Controller) patchSubnetStatus(subnet *kubeovnv1.Subnet, reason, errStr 
 	return nil
 }
 
-// patchSubnetGatewayMAC persists the subnet's gateway mac to status on its own, independent
-// of the wider patchSubnetStatus flow, since it must be visible to the validating webhook
-// (which only reads the Subnet CR) as soon as prepareOvnSubnet records it in ipam.
-func (c *Controller) patchSubnetGatewayMAC(subnetName, gatewayMAC string) error {
+func (c *Controller) patchSubnetGatewayMACWithContext(ctx context.Context, subnetName, gatewayMAC string) error {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	patch, err := json.Marshal(map[string]any{"status": map[string]any{"gatewayMAC": gatewayMAC}})
 	if err != nil {
 		klog.Error(err)
 		return err
 	}
-	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnetName, types.MergePatchType, patch, metav1.PatchOptions{}, "status"); err != nil {
+	if _, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnetName, types.MergePatchType, patch, metav1.PatchOptions{}, "status"); err != nil {
 		klog.Errorf("failed to patch gateway mac status for subnet %s, %v", subnetName, err)
 		return err
 	}
@@ -102,6 +103,13 @@ func (c *Controller) patchSubnetGatewayMAC(subnetName, gatewayMAC string) error 
 // subnet.Status.GatewayMAC. A failed status patch is returned as an error so the subnet
 // retries, since the webhook relies on the persisted value, not ipam, to see it.
 func (c *Controller) recordSubnetGatewayMAC(subnet *kubeovnv1.Subnet, routerPortName string) error {
+	return c.recordSubnetGatewayMACWithContext(context.Background(), subnet, routerPortName)
+}
+
+func (c *Controller) recordSubnetGatewayMACWithContext(ctx context.Context, subnet *kubeovnv1.Subnet, routerPortName string) error {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return err
+	}
 	lrp, err := c.OVNNbClient.GetLogicalRouterPort(routerPortName, true)
 	if err != nil || lrp == nil || lrp.MAC == "" {
 		klog.V(3).Infof("router port %s not found or has no MAC, skipping gateway MAC record", routerPortName)
@@ -113,7 +121,7 @@ func (c *Controller) recordSubnetGatewayMAC(subnet *kubeovnv1.Subnet, routerPort
 	if subnet.Status.GatewayMAC == lrp.MAC {
 		return nil
 	}
-	if err := c.patchSubnetGatewayMAC(subnet.Name, lrp.MAC); err != nil {
+	if err := c.patchSubnetGatewayMACWithContext(ctx, subnet.Name, lrp.MAC); err != nil {
 		klog.Errorf("failed to patch gateway MAC %s for subnet %s: %v", lrp.MAC, subnet.Name, err)
 		return err
 	}
@@ -213,7 +221,7 @@ func (c *Controller) calculateUsingIPs(subnet *kubeovnv1.Subnet, podUsedIPs []*k
 	return internal.NewBigInt(int64(usingIPNums)), nil
 }
 
-func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
+func (c *Controller) projectSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
 	if err := util.CheckCidrs(subnet.Spec.CIDRBlock); err != nil {
 		return nil, err
 	}
@@ -239,43 +247,36 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		return nil, err
 	}
 
-	v4availableIPs, v6availableIPs := internal.BigInt{}, internal.BigInt{}
 	v4UsingIPStr, v6UsingIPStr, v4AvailableIPStr, v6AvailableIPStr := c.ipam.GetSubnetIPRangeString(subnet.Name, subnet.Spec.ExcludeIps)
+	return ProjectSubnetStatusIP(subnet, SubnetStatusIPProjectionInput{
+		UsingIPs:           usingIPs,
+		V4UsingIPRange:     v4UsingIPStr,
+		V6UsingIPRange:     v6UsingIPStr,
+		V4AvailableIPRange: v4AvailableIPStr,
+		V6AvailableIPRange: v6AvailableIPStr,
+	})
+}
 
-	switch subnet.Spec.Protocol {
-	case kubeovnv1.ProtocolDual:
-		v4ExcludeIPs, v6ExcludeIPs := util.SplitIpsByProtocol(subnet.Spec.ExcludeIps)
-		cidrBlocks := strings.Split(subnet.Spec.CIDRBlock, ",")
-		v4toSubIPs := util.ExpandExcludeIPs(v4ExcludeIPs, cidrBlocks[0])
-		v6toSubIPs := util.ExpandExcludeIPs(v6ExcludeIPs, cidrBlocks[1])
-		_, v4CIDR, _ := net.ParseCIDR(cidrBlocks[0])
-		_, v6CIDR, _ := net.ParseCIDR(cidrBlocks[1])
-		v4availableIPs = util.AddressCountBigInt(v4CIDR).Sub(util.CountIPNumsBigInt(v4toSubIPs)).Sub(usingIPs)
-		v6availableIPs = util.AddressCountBigInt(v6CIDR).Sub(util.CountIPNumsBigInt(v6toSubIPs)).Sub(usingIPs)
-	case kubeovnv1.ProtocolIPv4:
-		_, cidr, _ := net.ParseCIDR(subnet.Spec.CIDRBlock)
-		toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
-		v4availableIPs = util.AddressCountBigInt(cidr).Sub(util.CountIPNumsBigInt(toSubIPs)).Sub(usingIPs)
-	case kubeovnv1.ProtocolIPv6:
-		_, cidr, _ := net.ParseCIDR(subnet.Spec.CIDRBlock)
-		toSubIPs := util.ExpandExcludeIPs(subnet.Spec.ExcludeIps, subnet.Spec.CIDRBlock)
-		v6availableIPs = util.AddressCountBigInt(cidr).Sub(util.CountIPNumsBigInt(toSubIPs)).Sub(usingIPs)
-	}
+func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
+	return c.calcSubnetStatusIPWithContext(context.Background(), subnet)
+}
 
-	if v4availableIPs.Sign() < 0 {
-		v4availableIPs = internal.BigInt{}
+func (c *Controller) calcSubnetStatusIPWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return nil, err
 	}
-	if v6availableIPs.Sign() < 0 {
-		v6availableIPs = internal.BigInt{}
+	projected, err := c.projectSubnetStatusIP(subnet)
+	if err != nil {
+		return nil, err
 	}
-
-	v4UsingIPs, v6UsingIPs := usingIPs.Clone(), usingIPs.Clone()
-	switch subnet.Spec.Protocol {
-	case kubeovnv1.ProtocolIPv4:
-		v6UsingIPs = internal.BigInt{}
-	case kubeovnv1.ProtocolIPv6:
-		v4UsingIPs = internal.BigInt{}
-	}
+	v4availableIPs := projected.Status.V4AvailableIPs
+	v6availableIPs := projected.Status.V6AvailableIPs
+	v4UsingIPs := projected.Status.V4UsingIPs
+	v6UsingIPs := projected.Status.V6UsingIPs
+	v4UsingIPStr := projected.Status.V4UsingIPRange
+	v6UsingIPStr := projected.Status.V6UsingIPRange
+	v4AvailableIPStr := projected.Status.V4AvailableIPRange
+	v6AvailableIPStr := projected.Status.V6AvailableIPRange
 
 	if subnet.Status.V4AvailableIPs.Equal(v4availableIPs) &&
 		subnet.Status.V6AvailableIPs.Equal(v6availableIPs) &&
@@ -287,15 +288,6 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		subnet.Status.V6AvailableIPRange == v6AvailableIPStr {
 		return subnet, nil
 	}
-
-	subnet.Status.V4AvailableIPs = v4availableIPs
-	subnet.Status.V6AvailableIPs = v6availableIPs
-	subnet.Status.V4UsingIPs = v4UsingIPs
-	subnet.Status.V6UsingIPs = v6UsingIPs
-	subnet.Status.V4UsingIPRange = v4UsingIPStr
-	subnet.Status.V6UsingIPRange = v6UsingIPStr
-	subnet.Status.V4AvailableIPRange = v4AvailableIPStr
-	subnet.Status.V6AvailableIPRange = v6AvailableIPStr
 
 	// Use a targeted patch with only IP-related fields to avoid overwriting
 	// non-IP status fields (e.g., U2OInterconnectionVPC) set by other handlers.
@@ -324,8 +316,16 @@ func (c *Controller) calcSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Su
 		klog.Error(err)
 		return nil, err
 	}
-	newSubnet, err := c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(context.Background(), subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
-	return newSubnet, err
+	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
+		return nil, err
+	}
+	return c.config.KubeOvnClient.KubeovnV1().Subnets().Patch(ctx, subnet.Name, types.MergePatchType, bytes, metav1.PatchOptions{}, "status")
+}
+
+// CalculateSubnetStatusIP exposes the legacy read-only status calculator to
+// the opt-in controller-runtime projection adapter. It performs no API write.
+func (c *Controller) CalculateSubnetStatusIP(subnet *kubeovnv1.Subnet) (*kubeovnv1.Subnet, error) {
+	return c.projectSubnetStatusIP(subnet)
 }
 
 func (c *Controller) checkSubnetUsingIPs(subnet *kubeovnv1.Subnet) error {

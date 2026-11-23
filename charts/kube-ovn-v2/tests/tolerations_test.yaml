@@ -1,0 +1,197 @@
+suite: Deployment tolerations (v2)
+templates:
+  - controller/controller-deployment.yaml
+  - central/central-deployment.yaml
+  - monitor/monitor-deployment.yaml
+  - webhook/webhook-deployment.yaml
+  - ic/ic-controller-deploy.yaml
+tests:
+  - it: keeps the chart default lists
+    set:
+      validatingWebhook.enabled: true
+      features.enableOvnInterconnections: true
+    asserts:
+      - template: controller/controller-deployment.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value:
+            - effect: NoSchedule
+              operator: Exists
+            - key: CriticalAddonsOnly
+              operator: Exists
+      - template: monitor/monitor-deployment.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value:
+            - effect: NoSchedule
+              operator: Exists
+            - key: CriticalAddonsOnly
+              operator: Exists
+      - template: central/central-deployment.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value:
+            - effect: NoSchedule
+              operator: Exists
+            - effect: NoExecute
+              operator: Exists
+            - key: CriticalAddonsOnly
+              operator: Exists
+      - template: ic/ic-controller-deploy.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value:
+            - effect: NoSchedule
+              operator: Exists
+            - effect: NoExecute
+              operator: Exists
+            - key: CriticalAddonsOnly
+              operator: Exists
+      - template: webhook/webhook-deployment.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value:
+            - effect: NoSchedule
+              operator: Exists
+
+  - it: replaces every catch-all entry with the supplied keyed list
+    set:
+      validatingWebhook.enabled: true
+      features.enableOvnInterconnections: true
+      controller.tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+        - key: CriticalAddonsOnly
+          operator: Exists
+      central.tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+        - key: CriticalAddonsOnly
+          operator: Exists
+      monitor.tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+        - key: CriticalAddonsOnly
+          operator: Exists
+      validatingWebhook.tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+        - key: CriticalAddonsOnly
+          operator: Exists
+      ic.tolerations:
+        - key: node-role.kubernetes.io/control-plane
+          operator: Exists
+          effect: NoSchedule
+        - key: node-role.kubernetes.io/master
+          operator: Exists
+          effect: NoSchedule
+        - key: CriticalAddonsOnly
+          operator: Exists
+    asserts:
+      - template: controller/controller-deployment.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+            - key: node-role.kubernetes.io/master
+              operator: Exists
+              effect: NoSchedule
+            - key: CriticalAddonsOnly
+              operator: Exists
+      - template: central/central-deployment.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+            - key: node-role.kubernetes.io/master
+              operator: Exists
+              effect: NoSchedule
+            - key: CriticalAddonsOnly
+              operator: Exists
+      - template: monitor/monitor-deployment.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+            - key: node-role.kubernetes.io/master
+              operator: Exists
+              effect: NoSchedule
+            - key: CriticalAddonsOnly
+              operator: Exists
+      - template: webhook/webhook-deployment.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+            - key: node-role.kubernetes.io/master
+              operator: Exists
+              effect: NoSchedule
+            - key: CriticalAddonsOnly
+              operator: Exists
+      - template: ic/ic-controller-deploy.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+            - key: node-role.kubernetes.io/master
+              operator: Exists
+              effect: NoSchedule
+            - key: CriticalAddonsOnly
+              operator: Exists
+
+  - it: renders an empty list when the value is empty
+    set:
+      validatingWebhook.enabled: true
+      features.enableOvnInterconnections: true
+      controller.tolerations: []
+      central.tolerations: []
+      monitor.tolerations: []
+      validatingWebhook.tolerations: []
+      ic.tolerations: []
+    asserts:
+      - template: controller/controller-deployment.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value: []
+      - template: central/central-deployment.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value: []
+      - template: monitor/monitor-deployment.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value: []
+      - template: webhook/webhook-deployment.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value: []
+      - template: ic/ic-controller-deploy.yaml
+        equal:
+          path: spec.template.spec.tolerations
+          value: []

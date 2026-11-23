@@ -39,7 +39,11 @@ func (c *Controller) syncFlows() {
 
 	flowCacheByBridge := c.storeFlowCache()
 
-	bridges, err := ovs.Bridges()
+	if c.vswitchTables == nil {
+		klog.Error("failed to list bridges: vswitch table provider is nil")
+		return
+	}
+	bridges, err := ovs.Bridges(c.vswitchTables)
 	if err != nil {
 		klog.Errorf("failed to list bridges: %v", err)
 		return

@@ -125,7 +125,7 @@ func (c *Controller) reconcileForServiceCIDRChange() {
 	} else {
 		for _, s := range subnets {
 			if isOvnSubnet(s) && s.Name != c.config.NodeSwitch && (s.Spec.Vpc == c.config.ClusterRouter || s.Spec.U2OInterconnection) {
-				c.addOrUpdateSubnetQueue.Add(s.Name)
+				c.enqueueSubnetReconcile(s.Name)
 			}
 		}
 	}
