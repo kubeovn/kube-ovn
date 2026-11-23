@@ -259,7 +259,7 @@ func ParseFlags() (*Configuration, error) {
 		argEnablePprof           = pflag.Bool("enable-pprof", false, "Enable pprof")
 		argPprofPort             = pflag.Int32("pprof-port", 10660, "The port to get profiling data")
 		argSecureServing         = pflag.Bool("secure-serving", false, "Enable secure serving")
-		argNodePgProbeTime       = pflag.Int("nodepg-probe-time", 1, "The probe interval for node port-group, the unit is minute")
+		argNodePgProbeTime       = pflag.Int("nodepg-probe-time", 1, "The probe interval for node and distributed subnet port-groups, the unit is minute")
 
 		argNetworkType                 = pflag.String("network-type", util.NetworkTypeGeneve, "The ovn network type")
 		argDefaultProviderName         = pflag.String("default-provider-name", "provider", "The vlan or vxlan type default provider interface name")

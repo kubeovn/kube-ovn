@@ -1604,10 +1604,6 @@ func (c *Controller) getNamespacesBySelector(nsSelectors []metav1.LabelSelector)
 	return expectNss, nil
 }
 
-func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovnv1.Subnet) error {
-	return c.reconcileDistributedSubnetRouteInDefaultVpcWithContext(context.Background(), subnet)
-}
-
 func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpcWithContext(ctx context.Context, subnet *kubeovnv1.Subnet) error {
 	if err := c.checkSubnetRuntimeFence(ctx); err != nil {
 		return err
@@ -1658,78 +1654,7 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpcWithContext(ctx 
 		}
 	}
 
-	portGroups, err := c.OVNNbClient.ListPortGroups(map[string]string{"subnet": subnet.Name, "node": "", networkPolicyKey: ""})
-	if err != nil {
-		klog.Errorf("failed to list port groups for subnet %s: %v", subnet.Name, err)
-		return err
-	}
-
-	pods, err := c.podsLister.Pods(metav1.NamespaceAll).List(labels.Everything())
-	if err != nil {
-		klog.Errorf("failed to list pods %v", err)
-		return err
-	}
-	for _, pod := range pods {
-		if !isPodAlive(pod) || pod.Spec.NodeName == "" {
-			continue
-		}
-
-		podNets, err := c.getPodKubeovnNets(pod)
-		if err != nil {
-			klog.Errorf("failed to get pod nets %v", err)
-			continue
-		}
-
-		podPorts := make([]string, 0, 1)
-		for _, podNet := range podNets {
-			if !isOvnSubnet(podNet.Subnet) {
-				continue
-			}
-
-			if pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] == "" || pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)] != subnet.Name {
-				continue
-			}
-
-			podName := c.getNameByPod(pod)
-			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-			podPorts = append(podPorts, portName)
-		}
-
-		pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
-		portsToAdd := make([]string, 0, len(podPorts))
-		for _, port := range podPorts {
-			exist, err := c.OVNNbClient.LogicalSwitchPortExists(port)
-			if err != nil {
-				klog.Error(err)
-				return err
-			}
-
-			if !exist {
-				klog.Errorf("lsp does not exist for pod %v, please delete the pod and retry", port)
-				continue
-			}
-
-			portsToAdd = append(portsToAdd, port)
-		}
-
-		// remove lsp from other port groups
-		// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-		for _, pg := range portGroups {
-			if pg.Name == pgName {
-				continue
-			}
-			if err = c.OVNNbClient.PortGroupRemovePorts(pg.Name, podPorts...); err != nil {
-				klog.Errorf("remove ports from port group %s: %v", pg.Name, err)
-				return err
-			}
-		}
-		// add ports to the port group
-		if err = c.OVNNbClient.PortGroupAddPorts(pgName, portsToAdd...); err != nil {
-			klog.Errorf("add ports to port group %s: %v", pgName, err)
-			return err
-		}
-	}
-	return nil
+	return c.reconcileDistributedSubnetPortGroups(ctx, subnet.Name)
 }
 
 func (c *Controller) reconcileDefaultCentralizedSubnetRouteInDefaultVpc(subnet *kubeovnv1.Subnet) error {

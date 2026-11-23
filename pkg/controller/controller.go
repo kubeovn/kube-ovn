@@ -183,15 +183,16 @@ type Controller struct {
 	addOrUpdateVpcDNSQueue workqueue.TypedRateLimitingInterface[string]
 	delVpcDNSQueue         workqueue.TypedRateLimitingInterface[string]
 
-	subnetsLister           kubeovnlister.SubnetLister
-	subnetSynced            cache.InformerSynced
-	addOrUpdateSubnetQueue  workqueue.TypedRateLimitingInterface[string]
-	deleteSubnetQueue       workqueue.TypedRateLimitingInterface[*kubeovnv1.Subnet]
-	updateSubnetStatusQueue workqueue.TypedRateLimitingInterface[string]
-	subnetStatusEvents      *subnetStatusEventFanout
-	subnetRuntimeEvents     *subnetRuntimeEventFanout
-	syncVirtualPortsQueue   workqueue.TypedRateLimitingInterface[string]
-	subnetKeyMutex          keymutex.KeyMutex
+	subnetsLister               kubeovnlister.SubnetLister
+	subnetSynced                cache.InformerSynced
+	addOrUpdateSubnetQueue      workqueue.TypedRateLimitingInterface[string]
+	deleteSubnetQueue           workqueue.TypedRateLimitingInterface[*kubeovnv1.Subnet]
+	updateSubnetStatusQueue     workqueue.TypedRateLimitingInterface[string]
+	subnetStatusEvents          *subnetStatusEventFanout
+	subnetRuntimeEvents         *subnetRuntimeEventFanout
+	syncVirtualPortsQueue       workqueue.TypedRateLimitingInterface[string]
+	subnetKeyMutex              keymutex.KeyMutex
+	distributedSubnetPortsMutex keymutex.KeyMutex
 
 	ippoolLister            kubeovnlister.IPPoolLister
 	ippoolSynced            cache.InformerSynced
@@ -614,15 +615,16 @@ func run(ctx context.Context, config *Configuration, startRuntime RuntimeStarter
 		// bgpConfLister/bgpConfSynced/evpnConfLister/evpnConfSynced are populated lazily
 		// in startBgpEvpnConfInformer once the matching CRDs are detected.
 
-		subnetsLister:           subnetInformer.Lister(),
-		subnetSynced:            subnetInformer.Informer().HasSynced,
-		addOrUpdateSubnetQueue:  newTypedRateLimitingQueue[string]("AddSubnet", nil),
-		deleteSubnetQueue:       newTypedRateLimitingQueue[*kubeovnv1.Subnet]("DeleteSubnet", nil),
-		updateSubnetStatusQueue: newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
-		subnetStatusEvents:      newSubnetStatusEventFanoutForConfig(config),
-		subnetRuntimeEvents:     newSubnetRuntimeEventFanoutForConfig(config),
-		syncVirtualPortsQueue:   newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
-		subnetKeyMutex:          keymutex.NewHashed(numKeyLocks),
+		subnetsLister:               subnetInformer.Lister(),
+		subnetSynced:                subnetInformer.Informer().HasSynced,
+		addOrUpdateSubnetQueue:      newTypedRateLimitingQueue[string]("AddSubnet", nil),
+		deleteSubnetQueue:           newTypedRateLimitingQueue[*kubeovnv1.Subnet]("DeleteSubnet", nil),
+		updateSubnetStatusQueue:     newTypedRateLimitingQueue[string]("UpdateSubnetStatus", nil),
+		subnetStatusEvents:          newSubnetStatusEventFanoutForConfig(config),
+		subnetRuntimeEvents:         newSubnetRuntimeEventFanoutForConfig(config),
+		syncVirtualPortsQueue:       newTypedRateLimitingQueue[string]("SyncVirtualPort", nil),
+		subnetKeyMutex:              keymutex.NewHashed(numKeyLocks),
+		distributedSubnetPortsMutex: keymutex.NewHashed(numKeyLocks),
 
 		ippoolLister:            ippoolInformer.Lister(),
 		ippoolSynced:            ippoolInformer.Informer().HasSynced,
@@ -1801,7 +1803,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}
 	go wait.Until(c.exportSubnetMetrics, 30*time.Second, ctx.Done())
 	go wait.Until(c.checkSubnetGateway, 5*time.Second, ctx.Done())
-	go wait.Until(c.syncDistributedSubnetRoutes, 5*time.Second, ctx.Done())
+	go wait.UntilWithContext(ctx, c.syncDistributedSubnetRoutesWithContext, 5*time.Second)
 
 	go wait.Until(runWorker("add ovn eip", c.addOvnEipQueue, c.handleAddOvnEip), time.Second, ctx.Done())
 	go wait.Until(runWorker("update ovn eip", c.updateOvnEipQueue, c.handleUpdateOvnEip), time.Second, ctx.Done())
@@ -1821,6 +1823,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	go wait.Until(runWorker("delete ovn dnat", c.delOvnDnatRuleQueue, c.handleDelOvnDnatRule), time.Second, ctx.Done())
 
 	go wait.Until(c.CheckNodePortGroup, time.Duration(c.config.NodePgProbeTime)*time.Minute, ctx.Done())
+	go wait.UntilWithContext(ctx, c.syncDistributedSubnetPortGroups, time.Duration(c.config.NodePgProbeTime)*time.Minute)
 
 	go wait.Until(runWorker("add ip", c.addIPQueue, c.handleAddReservedIP), time.Second, ctx.Done())
 	go wait.Until(runWorker("update ip", c.updateIPQueue, c.handleUpdateIP), time.Second, ctx.Done())

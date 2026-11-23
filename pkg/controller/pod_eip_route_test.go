@@ -388,10 +388,10 @@ func newPodEIPRouteFixture(t *testing.T, gateway string, dualStack bool) (*fakeC
 	require.NoError(t, client.CreateBareLogicalSwitch(subnet.Name))
 	require.NoError(t, client.CreateBareLogicalSwitchPort(subnet.Name, "test-pod.default",
 		pod.Annotations[util.IPAddressAnnotation], pod.Annotations[util.MacAddressAnnotation]))
-	require.NoError(t, client.CreatePortGroup("node.node1", map[string]string{"node": node.Name}))
+	require.NoError(t, client.CreatePortGroup("node.node1", map[string]string{"node": node.Name, networkPolicyKey: "node/" + node.Name}))
 	if gateway == kubeovnv1.GWDistributedType {
 		require.NoError(t, client.CreatePortGroup(getOverlaySubnetsPortGroupName(subnet.Name, node.Name),
-			map[string]string{"subnet": subnet.Name, "node": node.Name}))
+			map[string]string{"subnet": subnet.Name, "node": node.Name, networkPolicyKey: subnet.Name + "/" + node.Name}))
 	}
 	return fc, client, pod, subnet
 }

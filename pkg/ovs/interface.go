@@ -185,6 +185,9 @@ type LoadBalancerHealthCheck interface {
 }
 
 type PortGroup interface {
+	MovePortToPortGroup(ctx context.Context, portName, targetGroup string, externalIDs map[string]string, absentExternalIDs ...string) error
+	GetSubnetPortGroupMembership(ctx context.Context, subnet string) ([]ovnnb.PortGroup, []ovnnb.LogicalSwitchPort, error)
+	ApplyPortGroupMembershipChanges(ctx context.Context, changes []PortGroupMembershipChange, lspUUIDs []string) error
 	CreatePortGroup(pgName string, externalIDs map[string]string) error
 	PortGroupAddPorts(pgName string, lspNames ...string) error
 	PortGroupRemovePorts(pgName string, lspNames ...string) error

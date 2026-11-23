@@ -7397,3 +7397,101 @@ func (mr *MockChassisMockRecorder) UpdateChassisTag(chassisName, nodeName any) *
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateChassisTag", reflect.TypeOf((*MockChassis)(nil).UpdateChassisTag), chassisName, nodeName)
 }
+
+// ApplyPortGroupMembershipChanges mocks base method.
+func (m *MockPortGroup) ApplyPortGroupMembershipChanges(ctx context.Context, changes []ovs.PortGroupMembershipChange, lspUUIDs []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ApplyPortGroupMembershipChanges", ctx, changes, lspUUIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ApplyPortGroupMembershipChanges indicates an expected call of ApplyPortGroupMembershipChanges.
+func (mr *MockPortGroupMockRecorder) ApplyPortGroupMembershipChanges(ctx, changes, lspUUIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyPortGroupMembershipChanges", reflect.TypeOf((*MockPortGroup)(nil).ApplyPortGroupMembershipChanges), ctx, changes, lspUUIDs)
+}
+
+// GetSubnetPortGroupMembership mocks base method.
+func (m *MockPortGroup) GetSubnetPortGroupMembership(ctx context.Context, subnet string) ([]ovnnb.PortGroup, []ovnnb.LogicalSwitchPort, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSubnetPortGroupMembership", ctx, subnet)
+	ret0, _ := ret[0].([]ovnnb.PortGroup)
+	ret1, _ := ret[1].([]ovnnb.LogicalSwitchPort)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetSubnetPortGroupMembership indicates an expected call of GetSubnetPortGroupMembership.
+func (mr *MockPortGroupMockRecorder) GetSubnetPortGroupMembership(ctx, subnet any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSubnetPortGroupMembership", reflect.TypeOf((*MockPortGroup)(nil).GetSubnetPortGroupMembership), ctx, subnet)
+}
+
+// MovePortToPortGroup mocks base method.
+func (m *MockPortGroup) MovePortToPortGroup(ctx context.Context, portName, targetGroup string, externalIDs map[string]string, absentExternalIDs ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, portName, targetGroup, externalIDs}
+	for _, arg := range absentExternalIDs {
+		varargs = append(varargs, arg)
+	}
+	ret := m.ctrl.Call(m, "MovePortToPortGroup", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MovePortToPortGroup indicates an expected call of MovePortToPortGroup.
+func (mr *MockPortGroupMockRecorder) MovePortToPortGroup(ctx, portName, targetGroup, externalIDs any, absentExternalIDs ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, portName, targetGroup, externalIDs}, absentExternalIDs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MovePortToPortGroup", reflect.TypeOf((*MockPortGroup)(nil).MovePortToPortGroup), varargs...)
+}
+
+// ApplyPortGroupMembershipChanges mocks base method.
+func (m *MockNbClient) ApplyPortGroupMembershipChanges(ctx context.Context, changes []ovs.PortGroupMembershipChange, lspUUIDs []string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ApplyPortGroupMembershipChanges", ctx, changes, lspUUIDs)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ApplyPortGroupMembershipChanges indicates an expected call of ApplyPortGroupMembershipChanges.
+func (mr *MockNbClientMockRecorder) ApplyPortGroupMembershipChanges(ctx, changes, lspUUIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ApplyPortGroupMembershipChanges", reflect.TypeOf((*MockNbClient)(nil).ApplyPortGroupMembershipChanges), ctx, changes, lspUUIDs)
+}
+
+// GetSubnetPortGroupMembership mocks base method.
+func (m *MockNbClient) GetSubnetPortGroupMembership(ctx context.Context, subnet string) ([]ovnnb.PortGroup, []ovnnb.LogicalSwitchPort, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetSubnetPortGroupMembership", ctx, subnet)
+	ret0, _ := ret[0].([]ovnnb.PortGroup)
+	ret1, _ := ret[1].([]ovnnb.LogicalSwitchPort)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// GetSubnetPortGroupMembership indicates an expected call of GetSubnetPortGroupMembership.
+func (mr *MockNbClientMockRecorder) GetSubnetPortGroupMembership(ctx, subnet any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetSubnetPortGroupMembership", reflect.TypeOf((*MockNbClient)(nil).GetSubnetPortGroupMembership), ctx, subnet)
+}
+
+// MovePortToPortGroup mocks base method.
+func (m *MockNbClient) MovePortToPortGroup(ctx context.Context, portName, targetGroup string, externalIDs map[string]string, absentExternalIDs ...string) error {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx, portName, targetGroup, externalIDs}
+	for _, arg := range absentExternalIDs {
+		varargs = append(varargs, arg)
+	}
+	ret := m.ctrl.Call(m, "MovePortToPortGroup", varargs...)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// MovePortToPortGroup indicates an expected call of MovePortToPortGroup.
+func (mr *MockNbClientMockRecorder) MovePortToPortGroup(ctx, portName, targetGroup, externalIDs any, absentExternalIDs ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx, portName, targetGroup, externalIDs}, absentExternalIDs...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "MovePortToPortGroup", reflect.TypeOf((*MockNbClient)(nil).MovePortToPortGroup), varargs...)
+}

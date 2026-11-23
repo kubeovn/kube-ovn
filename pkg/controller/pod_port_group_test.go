@@ -1,6 +1,8 @@
 package controller
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -15,73 +17,55 @@ import (
 
 func TestReconcileRouteSubnetsPortGroups(t *testing.T) {
 	for _, gateway := range []string{kubeovnv1.GWCentralizedType, kubeovnv1.GWDistributedType, "u2o"} {
-		t.Run(gateway, func(t *testing.T) {
-			for _, tc := range []struct {
-				name             string
-				currentGroups    bool
-				otherNodeGroup   bool
-				otherSubnetGroup bool
-			}{
-				{name: "no groups"},
-				{name: "current groups only", currentGroups: true},
-				{name: "other node group only", currentGroups: true, otherNodeGroup: true},
-				{name: "other subnet group only", currentGroups: true, otherSubnetGroup: true},
-				{name: "both other groups", currentGroups: true, otherNodeGroup: true, otherSubnetGroup: true},
-			} {
-				t.Run(tc.name, func(t *testing.T) {
-					fc, pod, subnet := newRoutePortGroupFixture(t, gateway)
-					const portName = "protected.sg-repro"
-					var nodeGroups, subnetGroups []ovnnb.PortGroup
-					if tc.currentGroups {
-						nodeGroups = append(nodeGroups, ovnnb.PortGroup{Name: "node.one"})
-						subnetGroups = append(subnetGroups, ovnnb.PortGroup{Name: "ovn.default.one", ExternalIDs: map[string]string{"subnet": subnet.Name}})
+		for _, interrupted := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/interrupted=%t", gateway, interrupted), func(t *testing.T) {
+				fc, pod, subnet := newRoutePortGroupFixture(t, gateway)
+				const portName = "protected.sg-repro"
+				var moveErr error
+				if interrupted {
+					moveErr = errors.New("NB connection interrupted")
+				}
+				nb := fc.mockOvnClient.EXPECT()
+				if gateway != "u2o" {
+					// Only actual members in the node scope may move. Subnet and
+					// security groups must not be cleared, including on a retry.
+					nodeErr := moveErr
+					if gateway == kubeovnv1.GWDistributedType {
+						nodeErr = nil
 					}
-					if tc.otherNodeGroup {
-						nodeGroups = append(nodeGroups, ovnnb.PortGroup{Name: "node.other"})
+					nb.MovePortToPortGroup(gomock.Any(), portName, "node.one",
+						map[string]string{"node": "", networkPolicyKey: ""}, "subnet").Return(nodeErr)
+				}
+				if gateway == kubeovnv1.GWCentralizedType && !interrupted {
+					pgName := serviceProxyFallbackPortGroupName(subnet.Name, "one")
+					port := ovnnb.LogicalSwitchPort{UUID: "pod-port", Name: portName}
+					nb.GetLogicalSwitchPort(portName, false).Return(&port, nil)
+					nb.ListPortGroups(buildPolicyRouteExternalIDs(subnet.Name, map[string]string{serviceProxyFallbackPortGroupKey: "true"})).Return(nil, nil)
+					nb.CreatePortGroup(pgName, map[string]string{serviceProxyFallbackPortGroupKey: "true", "subnet": subnet.Name, "node": "one"}).Return(nil)
+					nb.GetPortGroup(pgName, false).Return(&ovnnb.PortGroup{Name: pgName}, nil)
+					nb.GetPortGroup("node.one", true).Return(&ovnnb.PortGroup{Ports: []string{port.UUID}}, nil)
+					nb.ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name}, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{port}, nil)
+					nb.PortGroupSetPorts(pgName, []string{portName}).Return(nil)
+				}
+				if gateway != kubeovnv1.GWCentralizedType {
+					scope := map[string]string{"subnet": subnet.Name, "node": "", networkPolicyKey: ""}
+					if gateway == "u2o" {
+						scope = map[string]string{logicalRouterKey: subnet.Spec.Vpc, logicalSwitchKey: subnet.Name, u2oKey: "true"}
 					}
-					if tc.otherSubnetGroup {
-						subnetGroups = append(subnetGroups, ovnnb.PortGroup{Name: "ovn.default.other", ExternalIDs: map[string]string{"subnet": subnet.Name}})
-					}
-					// The node/np query also returns subnet groups. They must not be
-					// mistaken for stale node groups, even when the latter are empty.
-					nodeGroups = append(nodeGroups, subnetGroups...)
-					fc.mockOvnClient.EXPECT().ListPortGroups(map[string]string{"node": "", networkPolicyKey: ""}).Return(nodeGroups, nil)
-					fc.mockOvnClient.EXPECT().ListPortGroups(map[string]string{"subnet": subnet.Name, "node": "", networkPolicyKey: ""}).Return(subnetGroups, nil)
+					nb.MovePortToPortGroup(gomock.Any(), portName, "ovn.default.one", scope).Return(moveErr)
+				}
 
-					// An empty variadic list means remove from ALL groups, including
-					// security groups and deny-all. Never permit that call during routing.
-					if gateway != "u2o" {
-						if tc.otherNodeGroup {
-							fc.mockOvnClient.EXPECT().RemovePortFromPortGroups(portName, "node.other").Return(nil)
-						}
-						fc.mockOvnClient.EXPECT().PortGroupAddPorts("node.one", portName).Return(nil)
-					}
-					if gateway == kubeovnv1.GWCentralizedType {
-						pgName := serviceProxyFallbackPortGroupName(subnet.Name, "one")
-						port := ovnnb.LogicalSwitchPort{UUID: "pod-port", Name: portName}
-						fc.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, false).Return(&port, nil)
-						fc.mockOvnClient.EXPECT().ListPortGroups(buildPolicyRouteExternalIDs(subnet.Name, map[string]string{serviceProxyFallbackPortGroupKey: "true"})).Return(nil, nil)
-						fc.mockOvnClient.EXPECT().CreatePortGroup(pgName, map[string]string{serviceProxyFallbackPortGroupKey: "true", "subnet": subnet.Name, "node": "one"}).Return(nil)
-						fc.mockOvnClient.EXPECT().GetPortGroup(pgName, false).Return(&ovnnb.PortGroup{Name: pgName}, nil)
-						fc.mockOvnClient.EXPECT().GetPortGroup("node.one", true).Return(&ovnnb.PortGroup{Ports: []string{port.UUID}}, nil)
-						fc.mockOvnClient.EXPECT().ListLogicalSwitchPorts(true, map[string]string{logicalSwitchKey: subnet.Name}, gomock.Any()).Return([]ovnnb.LogicalSwitchPort{port}, nil)
-						fc.mockOvnClient.EXPECT().PortGroupSetPorts(pgName, []string{portName}).Return(nil)
-					}
-					if gateway != kubeovnv1.GWCentralizedType {
-						if tc.otherSubnetGroup {
-							fc.mockOvnClient.EXPECT().RemovePortFromPortGroups(portName, "ovn.default.other").Return(nil)
-						}
-						fc.mockOvnClient.EXPECT().PortGroupAddPorts("ovn.default.one", portName).Return(nil)
-					}
-
-					err := fc.fakeController.reconcileRouteSubnets(pod, []*kubeovnNet{{ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}})
-					require.NoError(t, err)
-					routed, err := fc.kubeClient.CoreV1().Pods(pod.Namespace).Get(t.Context(), pod.Name, metav1.GetOptions{})
-					require.NoError(t, err)
+				err := fc.fakeController.reconcileRouteSubnets(pod, []*kubeovnNet{{ProviderName: util.OvnProvider, Subnet: subnet, IsDefault: true}})
+				require.ErrorIs(t, err, moveErr)
+				routed, err := fc.kubeClient.CoreV1().Pods(pod.Namespace).Get(t.Context(), pod.Name, metav1.GetOptions{})
+				require.NoError(t, err)
+				if interrupted {
+					require.Empty(t, routed.Annotations[util.RoutedAnnotation])
+				} else {
 					require.Equal(t, "true", routed.Annotations[util.RoutedAnnotation])
-				})
-			}
-		})
+				}
+			})
+		}
 	}
 }
 
@@ -96,9 +80,13 @@ func TestReconcileRouteSubnetsPortGroupsProvider(t *testing.T) {
 			require.NoError(t, client.CreateBareLogicalSwitchPort(subnet.Name, portName, "10.244.1.10", "00:00:00:00:00:02"))
 			port, err := client.GetLogicalSwitchPort(portName, false)
 			require.NoError(t, err)
+			subnetIDs := map[string]string{"node": "one", networkPolicyKey: subnet.Name + "/one", "subnet": subnet.Name}
+			if gateway == "u2o" {
+				subnetIDs = map[string]string{logicalRouterKey: subnet.Spec.Vpc, logicalSwitchKey: subnet.Name, u2oKey: "true"}
+			}
 			for _, pg := range []ovnnb.PortGroup{
-				{Name: "node.one", ExternalIDs: map[string]string{"node": "one", networkPolicyKey: "node"}},
-				{Name: "ovn.default.one", ExternalIDs: map[string]string{"node": "one", networkPolicyKey: "subnet", "subnet": subnet.Name}},
+				{Name: "node.one", ExternalIDs: map[string]string{"node": "one", networkPolicyKey: "node/one"}},
+				{Name: "ovn.default.one", ExternalIDs: subnetIDs},
 				{Name: "security.group"},
 				{Name: "deny.all"},
 			} {

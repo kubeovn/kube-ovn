@@ -1063,26 +1063,33 @@ func policyRouteSrcMatches(podIP, nextHop string) []policyRouteMatch {
 	return matches
 }
 
+func (c *Controller) podExternalGateway(pod *v1.Pod) (string, error) {
+	if !c.config.EnableEipSnat || (pod.Annotations[util.EipAnnotation] == "" && pod.Annotations[util.SnatAnnotation] == "") {
+		return "", nil
+	}
+	cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
+	if err != nil {
+		return "", fmt.Errorf("get external gateway config: %w", err)
+	}
+	if gateway := cm.Data["external-gw-addr"]; gateway != "" {
+		return gateway, nil
+	}
+	externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
+	if err != nil {
+		return "", fmt.Errorf("get external subnet %s: %w", c.config.ExternalGatewaySwitch, err)
+	}
+	if externalSubnet.Spec.Gateway == "" {
+		return "", errors.New("no available gateway address")
+	}
+	return externalSubnet.Spec.Gateway, nil
+}
+
 // reconcilePodPolicyRoutes returns whether any Pod address needs the Subnet gateway.
 func (c *Controller) reconcilePodPolicyRoutes(pod *v1.Pod, subnet *kubeovnv1.Subnet, podIP string) (bool, error) {
 	eip, snat := pod.Annotations[util.EipAnnotation], pod.Annotations[util.SnatAnnotation]
-	var externalGateway string
-	if c.config.EnableEipSnat && (eip != "" || snat != "") {
-		cm, err := c.configMapsLister.ConfigMaps(c.config.ExternalGatewayConfigNS).Get(util.ExternalGatewayConfig)
-		if err != nil {
-			return false, fmt.Errorf("get external gateway config: %w", err)
-		}
-		externalGateway = cm.Data["external-gw-addr"]
-		if externalGateway == "" {
-			externalSubnet, err := c.subnetsLister.Get(c.config.ExternalGatewaySwitch)
-			if err != nil {
-				return false, fmt.Errorf("get external subnet %s: %w", c.config.ExternalGatewaySwitch, err)
-			}
-			externalGateway = externalSubnet.Spec.Gateway
-			if externalGateway == "" {
-				return false, errors.New("no available gateway address")
-			}
-		}
+	externalGateway, err := c.podExternalGateway(pod)
+	if err != nil {
+		return false, err
 	}
 
 	// Older dual-stack policies used an invalid comma-separated IPv4 match.
@@ -1162,19 +1169,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 		return err
 	}
 
-	portGroups, err := c.listPortGroups(map[string]string{"node": "", networkPolicyKey: ""})
-	if err != nil {
-		klog.Errorf("failed to list port groups: %v", err)
-		return err
-	}
-
-	var nodePortGroups []string
 	nodePortGroup := strings.ReplaceAll(node.Annotations[util.PortNameAnnotation], "-", ".")
-	for _, pg := range portGroups {
-		if pg.Name != nodePortGroup && pg.ExternalIDs["subnet"] == "" {
-			nodePortGroups = append(nodePortGroups, pg.Name)
-		}
-	}
 
 	var podIP string
 	var subnet *kubeovnv1.Subnet
@@ -1193,52 +1188,24 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 			return fmt.Errorf("NodeSwitch subnet %s is unavailable for pod", subnet.Name)
 		}
 
-		if portGroups, err = c.listPortGroups(map[string]string{"subnet": subnet.Name, "node": "", networkPolicyKey: ""}); err != nil {
-			klog.Errorf("failed to list port groups: %v", err)
-			return err
-		}
-
 		pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
 		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-		subnetPortGroups := make([]string, 0, len(portGroups))
-		for _, pg := range portGroups {
-			if pg.Name != pgName {
-				subnetPortGroups = append(subnetPortGroups, pg.Name)
-			}
-		}
+		subnetScope := map[string]string{"subnet": subnet.Name, "node": "", networkPolicyKey: ""}
 
 		if (!c.config.EnableOvnLB || (subnet.Spec.EnableLb == nil || !*subnet.Spec.EnableLb)) &&
 			subnet.Spec.Vpc == c.config.ClusterRouter &&
 			subnet.Spec.U2OInterconnection &&
 			subnet.Spec.Vlan != "" &&
 			!subnet.Spec.LogicalGateway {
-			// remove lsp from other port groups
-			// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-			if len(subnetPortGroups) != 0 {
-				if err := c.removePortFromPortGroups(portName, subnetPortGroups...); err != nil {
-					klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
-					return err
-				}
-			}
-			// add lsp to the port group
-			if err := c.updatePortGroupPorts(pgName, ovsdb.MutateOperationInsert, portName); err != nil {
-				klog.Errorf("failed to add port to u2o port group %s: %v", pgName, err)
+			if err := c.movePodPortToPortGroup(pod, subnet.Name, pgName, portName,
+				map[string]string{logicalRouterKey: subnet.Spec.Vpc, logicalSwitchKey: subnet.Name, u2oKey: "true"}); err != nil {
 				return err
 			}
 		}
 
 		if podIP != "" && (subnet.Spec.Vlan == "" || subnet.Spec.LogicalGateway) && subnet.Spec.Vpc == c.config.ClusterRouter {
-			// remove lsp from other port groups
-			// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-			if len(nodePortGroups) != 0 {
-				if err := c.removePortFromPortGroups(portName, nodePortGroups...); err != nil {
-					klog.Errorf("failed to remove port %s from port groups %v: %v", portName, nodePortGroups, err)
-					return err
-				}
-			}
-			// add lsp to the port group
-			if err = c.updatePortGroupPorts(nodePortGroup, ovsdb.MutateOperationInsert, portName); err != nil {
-				klog.Errorf("failed to add port %s to port group %s: %v", portName, nodePortGroup, err)
+			if err := c.movePodPortToPortGroup(pod, subnet.Name, nodePortGroup, portName,
+				map[string]string{"node": "", networkPolicyKey: ""}, "subnet"); err != nil {
 				return err
 			}
 			if err := c.syncServiceProxyFallbackPodPort(subnet, node.Name, portName); err != nil {
@@ -1252,7 +1219,9 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 				return err
 			}
 			if !needsSubnetRoute && subnet.Spec.GatewayType == kubeovnv1.GWDistributedType {
-				if err := c.updatePortGroupPorts(pgName, ovsdb.MutateOperationDelete, portName); err != nil {
+				if err := c.withDistributedPortGroupLock(subnet.Name, func() error {
+					return c.updatePortGroupPorts(pgName, ovsdb.MutateOperationDelete, portName)
+				}); err != nil {
 					klog.Error(err)
 					return err
 				}
@@ -1270,16 +1239,7 @@ func (c *Controller) reconcileRouteSubnets(pod *v1.Pod, needRoutePodNets []*kube
 							continue
 						}
 
-						// remove lsp from other port groups
-						// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-						if len(subnetPortGroups) != 0 {
-							if err := c.removePortFromPortGroups(portName, subnetPortGroups...); err != nil {
-								klog.Errorf("failed to remove port %s from port groups %v: %v", portName, subnetPortGroups, err)
-								return err
-							}
-						}
-						if err := c.updatePortGroupPorts(pgName, ovsdb.MutateOperationInsert, portName); err != nil {
-							klog.Errorf("failed to add port %s to port group %s: %v", portName, pgName, err)
+						if err := c.movePodPortToPortGroup(pod, subnet.Name, pgName, portName, subnetScope); err != nil {
 							return err
 						}
 
@@ -1555,7 +1515,7 @@ func (c *Controller) handleDeletePod(key string) (err error) {
 			default:
 				klog.Infof("remove lsp %s from all port groups", port.Name)
 				stage = "removeLogicalSwitchPortFromPortGroups"
-				if err = c.removePortFromPortGroups(port.Name); err != nil {
+				if err = c.removeRetainedPodPort(pod, port); err != nil {
 					klog.Errorf("failed to remove lsp %s from all port groups: %v", port.Name, err)
 					return err
 				}

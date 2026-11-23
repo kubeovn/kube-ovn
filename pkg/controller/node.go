@@ -748,7 +748,7 @@ func (c *Controller) handleUpdateNode(key string) (err error) {
 	return nil
 }
 
-func (c *Controller) syncDistributedSubnetRoutes() {
+func (c *Controller) syncDistributedSubnetRoutesWithContext(ctx context.Context) {
 	if !c.distributedSubnetNeedSync.Swap(false) {
 		return
 	}
@@ -762,17 +762,38 @@ func (c *Controller) syncDistributedSubnetRoutes() {
 	}
 
 	for _, subnet := range subnets {
-		if subnet.Spec.Vpc != c.config.ClusterRouter ||
-			subnet.Name == c.config.NodeSwitch ||
-			subnet.Spec.GatewayType != kubeovnv1.GWDistributedType ||
-			(subnet.Spec.Vlan != "" && !subnet.Spec.LogicalGateway) {
+		if ctx.Err() != nil {
+			return
+		}
+		if !c.isDistributedSubnet(subnet) {
 			continue
 		}
-		if err := c.reconcileDistributedSubnetRouteInDefaultVpc(subnet); err != nil {
+		if controllerRuntimeSubnetWriterEnabled(c.config) {
+			c.enqueueSubnetReconcile(subnet.Name)
+			continue
+		}
+		if err := c.syncDistributedSubnetRoute(ctx, subnet.Name); err != nil {
 			klog.Errorf("failed to reconcile distributed subnet %s route: %v", subnet.Name, err)
-			c.distributedSubnetNeedSync.Store(true)
+			c.addOrUpdateSubnetQueue.AddRateLimited(subnet.Name)
 		}
 	}
+}
+
+func (c *Controller) syncDistributedSubnetRoute(ctx context.Context, name string) error {
+	c.subnetKeyMutex.LockKey(name)
+	defer func() { _ = c.subnetKeyMutex.UnlockKey(name) }()
+
+	subnet, err := c.subnetsLister.Get(name)
+	if k8serrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if !c.isDistributedSubnet(subnet) {
+		return nil
+	}
+	return c.reconcileDistributedSubnetRouteInDefaultVpcWithContext(ctx, subnet.DeepCopy())
 }
 
 func (c *Controller) checkSubnetGateway() {
