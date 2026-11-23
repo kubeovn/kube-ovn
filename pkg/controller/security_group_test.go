@@ -359,6 +359,25 @@ func Test_validateSgRule(t *testing.T) {
 		require.ErrorContains(t, err, "sourcePortRange is out of range")
 	})
 
+	t.Run("unknown protocol", func(t *testing.T) {
+		t.Parallel()
+
+		for _, protocol := range []string{"gre", "TCP", "sctp"} {
+			t.Run(protocol, func(t *testing.T) {
+				sg := baseSG(kubeovnv1.SecurityGroupRule{
+					IPVersion:     "ipv4",
+					Priority:      1,
+					RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+					RemoteAddress: "10.0.0.1",
+					Protocol:      kubeovnv1.SgProtocol(protocol),
+					Policy:        kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
+				})
+				err := ctrl.validateSgRule(sg)
+				require.ErrorContains(t, err, "invalid security group protocol")
+			})
+		}
+	})
+
 	t.Run("invalid local port range min greater than max", func(t *testing.T) {
 		t.Parallel()
 

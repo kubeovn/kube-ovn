@@ -301,6 +301,13 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 			}
 		}
 
+		switch rule.Protocol {
+		case "", kubeovnv1.SgProtocolALL, kubeovnv1.SgProtocolICMP, kubeovnv1.SgProtocolTCP, kubeovnv1.SgProtocolUDP:
+			// An omitted protocol has historically behaved like "all".
+		default:
+			return fmt.Errorf("invalid security group protocol %q: must be one of all, icmp, tcp, or udp", rule.Protocol)
+		}
+
 		if rule.Protocol == kubeovnv1.SgProtocolTCP || rule.Protocol == kubeovnv1.SgProtocolUDP {
 			if rule.PortRangeMin < 1 || rule.PortRangeMin > 65535 || rule.PortRangeMax < 1 || rule.PortRangeMax > 65535 {
 				return errors.New("portRange is out of range")

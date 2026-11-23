@@ -1181,6 +1181,13 @@ func sgRuleACLMatch(sgName, direction string, rule kubeovnv1.SecurityGroupRule) 
 // SecurityGroupRuleACL converts a security group rule to ACL fields without
 // querying the database or assigning row identity and parent ownership.
 func SecurityGroupRuleACL(sgName, direction string, rule kubeovnv1.SecurityGroupRule, tier int) (*ovnnb.ACL, error) {
+	switch rule.Protocol {
+	case "", kubeovnv1.SgProtocolALL, kubeovnv1.SgProtocolICMP, kubeovnv1.SgProtocolTCP, kubeovnv1.SgProtocolUDP:
+		// An omitted protocol has historically behaved like "all".
+	default:
+		return nil, fmt.Errorf("invalid security group protocol %q: must be one of all, icmp, tcp, or udp", rule.Protocol)
+	}
+
 	_, match := sgRuleACLMatch(sgName, direction, rule)
 	action := ovnnb.ACLActionDrop
 	switch rule.Policy {
