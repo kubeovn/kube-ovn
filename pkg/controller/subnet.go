@@ -17,6 +17,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -1391,16 +1392,29 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 		}
 	}
 
-	portGroups, err := c.OVNNbClient.ListPortGroups(map[string]string{"subnet": subnet.Name, "node": "", networkPolicyKey: ""})
+	return c.syncDistributedSubnetPortGroupMembers(subnet.Name)
+}
+
+func (c *Controller) syncDistributedSubnetPortGroupMembers(subnet string) error {
+	portGroups, err := c.OVNNbClient.ListPortGroups(map[string]string{"subnet": subnet, "node": "", networkPolicyKey: ""})
 	if err != nil {
-		klog.Errorf("failed to list port groups for subnet %s: %v", subnet.Name, err)
-		return err
+		return fmt.Errorf("list port groups for subnet %s: %w", subnet, err)
+	}
+	groupsByPort := make(map[string]sets.Set[string])
+	for _, group := range portGroups {
+		for _, uuid := range group.Ports {
+			groups := groupsByPort[uuid]
+			if groups == nil {
+				groups = sets.New[string]()
+				groupsByPort[uuid] = groups
+			}
+			groups.Insert(group.Name)
+		}
 	}
 
 	pods, err := c.podsLister.Pods(metav1.NamespaceAll).List(labels.Everything())
 	if err != nil {
-		klog.Errorf("failed to list pods %v", err)
-		return err
+		return fmt.Errorf("list pods for subnet %s: %w", subnet, err)
 	}
 	for _, pod := range pods {
 		if !isPodAlive(pod) || pod.Spec.NodeName == "" {
@@ -1409,57 +1423,58 @@ func (c *Controller) reconcileDistributedSubnetRouteInDefaultVpc(subnet *kubeovn
 
 		podNets, err := c.getPodKubeovnNets(pod)
 		if err != nil {
-			klog.Errorf("failed to get pod nets %v", err)
+			klog.Errorf("failed to get pod nets for %s/%s: %v", pod.Namespace, pod.Name, err)
 			continue
 		}
 
-		podPorts := make([]string, 0, 1)
+		target := getOverlaySubnetsPortGroupName(subnet, pod.Spec.NodeName)
+		podName := c.getNameByPod(pod)
+		ports := make([]string, 0, len(podNets))
+		var portsByOldGroup map[string][]string
 		for _, podNet := range podNets {
-			if !isOvnSubnet(podNet.Subnet) {
+			provider := podNet.ProviderName
+			if !isOvnSubnet(podNet.Subnet) || pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, provider)] == "" ||
+				pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider)] != subnet {
 				continue
 			}
-
-			if pod.Annotations[fmt.Sprintf(util.IPAddressAnnotationTemplate, podNet.ProviderName)] == "" || pod.Annotations[fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, podNet.ProviderName)] != subnet.Name {
-				continue
-			}
-
-			podName := c.getNameByPod(pod)
-			portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-			podPorts = append(podPorts, portName)
-		}
-
-		pgName := getOverlaySubnetsPortGroupName(subnet.Name, pod.Spec.NodeName)
-		portsToAdd := make([]string, 0, len(podPorts))
-		for _, port := range podPorts {
-			exist, err := c.OVNNbClient.LogicalSwitchPortExists(port)
+			port := ovs.PodNameToPortName(podName, pod.Namespace, provider)
+			lsp, err := c.OVNNbClient.GetLogicalSwitchPort(port, true)
 			if err != nil {
-				klog.Error(err)
 				return err
 			}
-
-			if !exist {
-				klog.Errorf("lsp does not exist for pod %v, please delete the pod and retry", port)
+			if lsp == nil {
+				klog.Errorf("lsp %s does not exist for pod %s/%s", port, pod.Namespace, pod.Name)
 				continue
 			}
 
-			portsToAdd = append(portsToAdd, port)
-		}
-
-		// remove lsp from other port groups
-		// we need to do this because the pod, e.g. a sts/vm, can be rescheduled to another node
-		for _, pg := range portGroups {
-			if pg.Name == pgName {
-				continue
+			groups := groupsByPort[lsp.UUID]
+			for group := range groups {
+				if group == target {
+					continue
+				}
+				if portsByOldGroup == nil {
+					portsByOldGroup = make(map[string][]string)
+				}
+				portsByOldGroup[group] = append(portsByOldGroup[group], port)
 			}
-			if err = c.OVNNbClient.PortGroupRemovePorts(pg.Name, podPorts...); err != nil {
-				klog.Errorf("remove ports from port group %s: %v", pg.Name, err)
-				return err
+			ports = append(ports, port)
+			// The add below must succeed before the next Pod can use this
+			// index. VM launchers can share an LSP across Pods.
+			if len(groups) != 1 || !groups.Has(target) {
+				groupsByPort[lsp.UUID] = sets.New(target)
 			}
 		}
-		// add ports to the port group
-		if err = c.OVNNbClient.PortGroupAddPorts(pgName, portsToAdd...); err != nil {
-			klog.Errorf("add ports to port group %s: %v", pgName, err)
-			return err
+		for group, oldPorts := range portsByOldGroup {
+			if err := c.OVNNbClient.PortGroupRemovePorts(group, oldPorts...); err != nil {
+				return fmt.Errorf("remove ports %v from port group %s: %w", oldPorts, group, err)
+			}
+		}
+		// Reassert the target even if the monitor snapshot already has
+		// these members. Skipping this write could leave a port unassigned.
+		if len(ports) != 0 {
+			if err := c.OVNNbClient.PortGroupAddPorts(target, ports...); err != nil {
+				return fmt.Errorf("add ports %v to port group %s: %w", ports, target, err)
+			}
 		}
 	}
 	return nil
