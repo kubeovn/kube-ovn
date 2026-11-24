@@ -482,27 +482,12 @@ func (c *Controller) handleAddOrUpdateVpc(key string) (retErr error) {
 			klog.Error(err)
 			return err
 		}
-		// Add static routes created by addCustomVPCStaticRouteForSubnet
+		// Keep the same fallback routes as subnet reconciliation. Configured BFD
+		// routes take precedence for their source prefixes and route tables.
+		bfdPrefixes := bfdSourceRoutePrefixes(vpc.Spec.StaticRoutes)
 		for _, subnet := range subnets {
 			if subnet.Spec.Vpc == key {
-				v4Gw, v6Gw := util.SplitStringIP(subnet.Spec.Gateway)
-				v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
-				if v4Gw != "" && v4Cidr != "" {
-					staticTargetRoutes = append(staticTargetRoutes, &kubeovnv1.StaticRoute{
-						Policy:     kubeovnv1.PolicySrc,
-						CIDR:       v4Cidr,
-						NextHopIP:  v4Gw,
-						RouteTable: subnet.Spec.RouteTable,
-					})
-				}
-				if v6Gw != "" && v6Cidr != "" {
-					staticTargetRoutes = append(staticTargetRoutes, &kubeovnv1.StaticRoute{
-						Policy:     kubeovnv1.PolicySrc,
-						CIDR:       v6Cidr,
-						NextHopIP:  v6Gw,
-						RouteTable: subnet.Spec.RouteTable,
-					})
-				}
+				staticTargetRoutes = append(staticTargetRoutes, subnetSourceFallbackRoutes(subnet, bfdPrefixes)...)
 			}
 		}
 	}

@@ -478,3 +478,97 @@ func TestReconcileVpcBfdLRPClearsHAChassisGroupWhenSelectorMatchesNoNodes(t *tes
 	require.Equal(t, portName, name)
 	require.Empty(t, nodes)
 }
+
+func TestCustomVpcSubnetStaticRoutesWithBFD(t *testing.T) {
+	t.Parallel()
+
+	const (
+		vpcName         = "test-vpc"
+		subnetCIDR      = "198.19.247.0/24"
+		clientCIDR      = "198.19.247.13/32"
+		ipv6CIDR        = "fd00::/64"
+		ipv6Gateway     = "fd00::1"
+		ordinaryNexthop = "198.19.246.53"
+	)
+	srcPolicy := ovnnb.LogicalRouterStaticRoutePolicySrcIP
+	dstPolicy := ovnnb.LogicalRouterStaticRoutePolicyDstIP
+	vendor := map[string]string{"vendor": util.CniTypeName}
+
+	for _, tc := range []struct {
+		name         string
+		routeTable   string
+		reconcileVpc bool
+	}{
+		{name: "VPC reconciliation after removing the client routes", reconcileVpc: true},
+		{name: "subnet reconciliation"},
+		{name: "subnet reconciliation in a custom route table", routeTable: "tenant"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			subnet := &kubeovnv1.Subnet{
+				Name: "test-subnet",
+				Spec: kubeovnv1.SubnetSpec{
+					Vpc:        vpcName,
+					CIDRBlock:  subnetCIDR + "," + ipv6CIDR,
+					Gateway:    "198.19.247.1," + ipv6Gateway,
+					RouteTable: tc.routeTable,
+				},
+			}
+			vpc := &kubeovnv1.Vpc{Name: vpcName}
+			nb := newInMemoryOVNNbClient(t)
+			require.NoError(t, nb.CreateLogicalRouter(vpcName))
+			expected := make(map[string]string)
+			for _, hop := range []string{"198.19.246.51", "198.19.246.52"} {
+				bfd, err := nb.CreateBFD("test-vpc-external", hop, 100, 100, 3, nil)
+				require.NoError(t, err)
+				require.NoError(t, nb.AddLogicalRouterStaticRoute(vpcName, tc.routeTable, srcPolicy, subnetCIDR, &bfd.UUID, vendor, hop))
+				if tc.reconcileVpc {
+					require.NoError(t, nb.AddLogicalRouterStaticRoute(vpcName, tc.routeTable, srcPolicy, clientCIDR, &bfd.UUID, vendor, hop))
+				}
+				vpc.Spec.StaticRoutes = append(vpc.Spec.StaticRoutes, &kubeovnv1.StaticRoute{
+					Policy: kubeovnv1.PolicySrc, CIDR: subnetCIDR, NextHopIP: hop, BfdID: bfd.UUID, RouteTable: tc.routeTable,
+				})
+				expected[hop] = bfd.UUID
+			}
+			// An explicitly configured route with the same prefix but a different policy is independent.
+			require.NoError(t, nb.AddLogicalRouterStaticRoute(vpcName, tc.routeTable, dstPolicy, subnetCIDR, nil, vendor, ordinaryNexthop))
+			vpc.Spec.StaticRoutes = append(vpc.Spec.StaticRoutes, &kubeovnv1.StaticRoute{
+				Policy: kubeovnv1.PolicyDst, CIDR: subnetCIDR, NextHopIP: ordinaryNexthop, RouteTable: tc.routeTable,
+			})
+
+			fixture := newFakeController(t)
+			ctrl := fixture.fakeController
+			ctrl.OVNNbClient = nb
+			ctrl.vpcKeyMutex = keymutex.NewHashed(500)
+			vpc, err := ctrl.config.KubeOvnClient.KubeovnV1().Vpcs().Create(t.Context(), vpc, metav1.CreateOptions{})
+			require.NoError(t, err)
+			require.NoError(t, fixture.fakeInformers.vpcInformer.Informer().GetStore().Add(vpc))
+			require.NoError(t, fixture.fakeInformers.subnetInformer.Informer().GetStore().Add(subnet))
+
+			if tc.reconcileVpc {
+				require.NoError(t, ctrl.handleAddOrUpdateVpc(vpcName))
+				routes, err := nb.ListLogicalRouterStaticRoutes(vpcName, &tc.routeTable, &srcPolicy, clientCIDR, nil)
+				require.NoError(t, err)
+				require.Empty(t, routes)
+			} else {
+				require.NoError(t, ctrl.addCustomVPCStaticRouteForSubnet(subnet))
+			}
+
+			routes, err := nb.ListLogicalRouterStaticRoutes(vpcName, &tc.routeTable, &srcPolicy, subnetCIDR, nil)
+			require.NoError(t, err)
+			actual := make(map[string]string)
+			for _, route := range routes {
+				actual[route.Nexthop] = ""
+				if route.BFD != nil {
+					actual[route.Nexthop] = *route.BFD
+				}
+			}
+			require.Equal(t, expected, actual, "both configured BFD routes must survive without a subnet-gateway route")
+			ordinary, err := nb.GetLogicalRouterStaticRoute(vpcName, tc.routeTable, dstPolicy, subnetCIDR, ordinaryNexthop, false)
+			require.NoError(t, err)
+			require.Nil(t, ordinary.BFD)
+			otherFamily, err := nb.GetLogicalRouterStaticRoute(vpcName, tc.routeTable, srcPolicy, ipv6CIDR, ipv6Gateway, false)
+			require.NoError(t, err)
+			require.Nil(t, otherFamily.BFD)
+		})
+	}
+}
