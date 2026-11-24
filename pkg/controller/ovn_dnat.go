@@ -17,6 +17,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 	"github.com/kubeovn/kube-ovn/pkg/util"
 )
 
@@ -244,24 +245,12 @@ func (c *Controller) handleDelOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if cachedDnat.Status.Vpc != "" {
-		if cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
-			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-				cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
-				klog.Errorf("failed to delete v4 dnat %s, %v", key, err)
-				return err
-			}
-		}
-		if cachedDnat.Status.V6Eip != "" && cachedDnat.Status.ExternalPort != "" {
-			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-				cachedDnat.Status.V6Eip, cachedDnat.Status.ExternalPort); err != nil {
-				klog.Errorf("failed to delete v6 dnat %s, %v", key, err)
-				return err
-			}
-		}
-	} else {
+	if cachedDnat.Status.Vpc == "" {
 		err := fmt.Errorf("failed to delete dnat %s, no vpc", cachedDnat.Name)
 		klog.Error(err)
+		return err
+	}
+	if err := c.deleteDnatLoadBalancer(cachedDnat); err != nil {
 		return err
 	}
 	if err = c.handleDelOvnDnatFinalizer(cachedDnat); err != nil {
@@ -296,20 +285,8 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 			return nil
 		}
 
-		// ovn delete dnat
-		if cachedDnat.Status.V4Eip != "" && cachedDnat.Status.ExternalPort != "" {
-			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-				cachedDnat.Status.V4Eip, cachedDnat.Status.ExternalPort); err != nil {
-				klog.Errorf("failed to delete v4 dnat %s, %v", key, err)
-				return err
-			}
-		}
-		if cachedDnat.Status.V6Eip != "" && cachedDnat.Status.ExternalPort != "" {
-			if err = c.DelDnatRule(cachedDnat.Status.Vpc, cachedDnat.Name,
-				cachedDnat.Status.V6Eip, cachedDnat.Status.ExternalPort); err != nil {
-				klog.Errorf("failed to delete v6 dnat %s, %v", key, err)
-				return err
-			}
+		if err := c.deleteDnatLoadBalancer(cachedDnat); err != nil {
+			return err
 		}
 
 		// Remove finalizer
@@ -611,23 +588,38 @@ func (c *Controller) AddDnatRule(vpcName, dnatName, externalIP, internalIP, exte
 	return nil
 }
 
-func (c *Controller) DelDnatRule(vpcName, dnatName, externalIP, externalPort string) error {
-	var (
-		ignoreHealthCheck = true
-		externalEndpoint  string
-		err               error
-	)
-	externalEndpoint = net.JoinHostPort(externalIP, externalPort)
-	if err = c.deleteLoadBalancerVIP(dnatName, externalEndpoint, ignoreHealthCheck); err != nil {
-		klog.Errorf("delete loadBalancer vips %s: %v", externalEndpoint, err)
+func (c *Controller) deleteDnatLoadBalancer(dnat *kubeovnv1.OvnDnatRule) error {
+	lb, err := c.getLoadBalancer(dnat.Name, true)
+	if err != nil {
+		klog.Errorf("failed to get load balancer for ovn dnat %s: %v", dnat.Name, err)
 		return err
 	}
-
-	if err = c.updateLogicalRouterLoadBalancers(vpcName, ovsdb.MutateOperationDelete, dnatName); err != nil {
-		klog.Errorf("failed to remove lb %s from vpc %s: %v", dnatName, vpcName, err)
-		return err
+	if lb == nil || lb.ExternalIDs["vendor"] != util.CniTypeName {
+		return nil
 	}
 
+	// IPv4 and IPv6 DNAT share one load balancer. Remove only this rule's VIPs.
+	for _, ip := range []string{dnat.Status.V4Eip, dnat.Status.V6Eip} {
+		if ip == "" || dnat.Status.ExternalPort == "" {
+			continue
+		}
+		vip := net.JoinHostPort(ip, dnat.Status.ExternalPort)
+		if err := c.deleteLoadBalancerVIP(dnat.Name, vip, true); err != nil {
+			klog.Errorf("failed to delete vip %s for ovn dnat %s: %v", vip, dnat.Name, err)
+			return err
+		}
+	}
+
+	// An empty load balancer is a root row. Deleting it also removes its weak
+	// references from logical routers.
+	empty := func(row *ovnnb.LoadBalancer) bool {
+		return row.UUID == lb.UUID && len(row.Vips) == 0
+	}
+	if err := c.deleteFiltered(&ovnnb.LoadBalancer{}, "lb-del",
+		func() error { return c.OVNNbClient.DeleteLoadBalancers(empty) }, empty); err != nil {
+		klog.Errorf("failed to delete load balancer for ovn dnat %s: %v", dnat.Name, err)
+		return err
+	}
 	return nil
 }
 
