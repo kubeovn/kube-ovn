@@ -189,9 +189,11 @@ const (
 	VxlanNic  = "vxlan_sys_4789"
 	GeneveNic = "genev_sys_6081"
 
-	// Allow 16384 priorities with base set to 2100.
+	// Rule ACLs use SecurityGroupHighestPriority minus the rule priority, which
+	// covers 2100 to 18483. The base ACLs that keep ARP, ND, DHCP and VRRP working
+	// must be above that range so that no rule can drop them.
 	SecurityGroupHighestPriority = "18484"
-	SecurityGroupBasePriority    = "2005"
+	SecurityGroupBasePriority    = "18500"
 	SecurityGroupAllowPriority   = "2004"
 	SecurityGroupDropPriority    = "2003"
 
