@@ -435,7 +435,7 @@ func Test_ovnDnatHoldsPort(t *testing.T) {
 	newer := metav1.NewTime(older.Add(time.Minute))
 	rule := func(name string, created metav1.Time, programmed bool) *kubeovnv1.OvnDnatRule {
 		dnat := &kubeovnv1.OvnDnatRule{
-			ObjectMeta: metav1.ObjectMeta{Name: name, CreationTimestamp: created},
+			Name: name, CreationTimestamp: created,
 		}
 		if programmed {
 			dnat.Status.V4Eip = "10.0.0.1"
@@ -474,8 +474,8 @@ func Test_checkEipPortConflictBetweenNewOvnDnatRules(t *testing.T) {
 	created := metav1.NewTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
 	rule := func(name string) *kubeovnv1.OvnDnatRule {
 		return &kubeovnv1.OvnDnatRule{
-			ObjectMeta: metav1.ObjectMeta{Name: name, CreationTimestamp: created},
-			Spec:       kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1", ExternalPort: "80", Protocol: "tcp"},
+			Name: name, CreationTimestamp: created,
+			Spec: kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1", ExternalPort: "80", Protocol: "tcp"},
 		}
 	}
 	first, second := rule("dnat-b1"), rule("dnat-b2")
