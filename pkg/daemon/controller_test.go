@@ -1,12 +1,14 @@
 package daemon
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 	v1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 	listerv1 "k8s.io/client-go/listers/core/v1"
 	k8stesting "k8s.io/client-go/testing"
@@ -232,4 +234,76 @@ func TestCleanProviderNetworkLabelConsistency(t *testing.T) {
 		}
 	}
 	require.True(t, patchFound, "expected at least one PatchAction to be recorded")
+}
+
+func TestRecordProviderNetworkErrUsesHostNetworkPod(t *testing.T) {
+	t.Parallel()
+
+	pnName := "test-pn"
+	errKey := fmt.Sprintf(util.ProviderNetworkErrMessageTemplate, pnName)
+
+	tests := []struct {
+		name        string
+		annotations map[string]string
+		errMsg      string
+		expected    map[string]string
+		expectPatch bool
+	}{
+		{
+			name:        "record error",
+			errMsg:      "failed to add nic eth1 to external bridge br-test-pn",
+			expected:    map[string]string{errKey: "failed to add nic eth1 to external bridge br-test-pn"},
+			expectPatch: true,
+		},
+		{
+			name:        "clear error",
+			annotations: map[string]string{errKey: "old error"},
+			expected:    map[string]string{},
+			expectPatch: true,
+		},
+		{
+			name:        "unchanged error",
+			annotations: map[string]string{errKey: "same error"},
+			errMsg:      "same error",
+			expected:    map[string]string{errKey: "same error"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			pod := &v1.Pod{
+				Name:        "kube-ovn-cni-test",
+				Namespace:   "kube-system",
+				Annotations: tt.annotations,
+				Spec:        v1.PodSpec{NodeName: "test-node", HostNetwork: true},
+			}
+			fakeClient := fake.NewSimpleClientset(pod)
+			// Same content as the daemon's pod informer, which filters out hostNetwork pods.
+			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc})
+			c := &Controller{
+				config:     &Configuration{KubeClient: fakeClient, PodName: pod.Name, PodNamespace: pod.Namespace},
+				podsLister: listerv1.NewPodLister(indexer),
+			}
+
+			c.recordProviderNetworkErr(pnName, tt.errMsg)
+
+			var patched bool
+			for _, action := range fakeClient.Actions() {
+				if _, ok := action.(k8stesting.PatchAction); ok {
+					patched = true
+				}
+			}
+			require.Equal(t, tt.expectPatch, patched)
+
+			got, err := fakeClient.CoreV1().Pods(pod.Namespace).Get(context.Background(), pod.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			annotations := got.Annotations
+			if annotations == nil {
+				annotations = map[string]string{}
+			}
+			require.Equal(t, tt.expected, annotations)
+		})
+	}
 }
