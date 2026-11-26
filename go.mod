@@ -251,21 +251,21 @@ require (
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
-	k8s.io/cloud-provider v0.37.2 // indirect
-	k8s.io/cluster-bootstrap v0.37.2 // indirect
+	k8s.io/cloud-provider v0.37.3 // indirect
+	k8s.io/cluster-bootstrap v0.37.3 // indirect
 	k8s.io/code-generator v0.37.3 // indirect
 	k8s.io/controller-manager v0.37.3 // indirect
 	k8s.io/cri-api v0.37.3 // indirect
-	k8s.io/cri-client v0.37.2 // indirect
-	k8s.io/cri-streaming v0.37.2 // indirect
-	k8s.io/csi-translation-lib v0.37.2 // indirect
+	k8s.io/cri-client v0.37.3 // indirect
+	k8s.io/cri-streaming v0.37.3 // indirect
+	k8s.io/csi-translation-lib v0.37.3 // indirect
 	k8s.io/dynamic-resource-allocation v0.37.3 // indirect
 	k8s.io/gengo/v2 v2.0.0-20260408192533-25e2208e0dc3 // indirect
 	k8s.io/kms v0.37.3 // indirect
 	k8s.io/kube-openapi v0.31.0 // indirect
-	k8s.io/kube-scheduler v0.37.2 // indirect
+	k8s.io/kube-scheduler v0.37.3 // indirect
 	k8s.io/kubelet v0.37.3 // indirect
-	k8s.io/mount-utils v0.37.2 // indirect
+	k8s.io/mount-utils v0.37.3 // indirect
 	kernel.org/pub/linux/libs/security/libcap/psx v1.2.78 // indirect
 	kubevirt.io/containerized-data-importer-api v1.66.0 // indirect
 	kubevirt.io/controller-lifecycle-operator-sdk/api v0.2.4 // indirect
