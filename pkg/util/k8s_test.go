@@ -244,6 +244,57 @@ func TestGetNodeInternalIP(t *testing.T) {
 			exp4: "192.188.0.43",
 			exp6: "ffff:ffff:ffff:ffff:ffff::23",
 		},
+		{
+			name: "multipleIPv4",
+			node: corev1.Node{
+				Status: corev1.NodeStatus{
+					Addresses: []corev1.NodeAddress{{
+						Type:    "InternalIP",
+						Address: "192.168.0.2",
+					}, {
+						Type:    "InternalIP",
+						Address: "192.168.0.3",
+					}},
+				},
+			},
+			exp4: "192.168.0.2",
+			exp6: "",
+		},
+		{
+			name: "multipleIPv4AndIPv6",
+			node: corev1.Node{
+				Status: corev1.NodeStatus{
+					Addresses: []corev1.NodeAddress{{
+						Type:    "InternalIP",
+						Address: "192.168.0.2",
+					}, {
+						Type:    "InternalIP",
+						Address: "fd00::2",
+					}, {
+						Type:    "InternalIP",
+						Address: "192.168.0.3",
+					}, {
+						Type:    "InternalIP",
+						Address: "fd00::3",
+					}},
+				},
+			},
+			exp4: "192.168.0.2",
+			exp6: "fd00::2",
+		},
+		{
+			name: "noInternalIP",
+			node: corev1.Node{
+				Status: corev1.NodeStatus{
+					Addresses: []corev1.NodeAddress{{
+						Type:    "ExternalIP",
+						Address: "192.188.0.4",
+					}},
+				},
+			},
+			exp4: "",
+			exp6: "",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
