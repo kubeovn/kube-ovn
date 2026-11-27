@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
@@ -76,27 +77,55 @@ func (c *Controller) enqueueDelOvnDnatRule(obj any) {
 	c.delOvnDnatRuleQueue.Add(key)
 }
 
-func (c *Controller) isOvnDnatDuplicated(eipName, dnatName, externalPort string) error {
-	// check if eip:external port already used
-	dnats, err := c.ovnDnatRulesLister.List(labels.SelectorFromSet(labels.Set{
-		util.VpcDnatEPortLabel: externalPort,
-	}))
+func (c *Controller) isOvnDnatDuplicated(eipName, externalPort, protocol string, current *kubeovnv1.OvnDnatRule) error {
+	// Check all rules directly because the external-port label is only added after
+	// a rule is programmed and is absent from existing rules.
+	dnats, err := c.ovnDnatRulesLister.List(labels.Everything())
 	if err != nil {
-		if !k8serrors.IsNotFound(err) {
+		klog.Error(err)
+		return err
+	}
+	for _, d := range dnats {
+		if d.Spec.OvnEip != eipName || d.Spec.ExternalPort != externalPort ||
+			!strings.EqualFold(portProtocol(d.Spec.Protocol), portProtocol(protocol)) {
+			continue
+		}
+		if ovnDnatHoldsPort(d, current) {
+			err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s' is used by dnat %s", current.Name, eipName, externalPort, d.Name)
 			klog.Error(err)
 			return err
 		}
 	}
-	if len(dnats) != 0 {
-		for _, d := range dnats {
-			if d.Name != dnatName && d.Spec.OvnEip == eipName {
-				err = fmt.Errorf("failed to create dnat %s, duplicate, same eip %s, same external port '%s' is used by dnat %s", dnatName, eipName, externalPort, d.Name)
-				klog.Error(err)
-				return err
-			}
-		}
-	}
 	return nil
+}
+
+// portProtocol returns the protocol in lower case, defaulting to tcp.
+func portProtocol(protocol string) string {
+	if protocol == "" {
+		return "tcp"
+	}
+	return strings.ToLower(protocol)
+}
+
+// ovnDnatHoldsPort reports whether other takes precedence over current. A
+// programmed rule wins; otherwise the older pending rule (then name) wins.
+func ovnDnatHoldsPort(other, current *kubeovnv1.OvnDnatRule) bool {
+	if current != nil && other.Name == current.Name {
+		return false
+	}
+	if other.Status.V4Eip != "" || other.Status.V6Eip != "" {
+		return true
+	}
+	if current == nil || !other.DeletionTimestamp.IsZero() {
+		return false
+	}
+	if current.Status.V4Eip != "" || current.Status.V6Eip != "" {
+		return false
+	}
+	if !other.CreationTimestamp.Equal(&current.CreationTimestamp) {
+		return other.CreationTimestamp.Before(&current.CreationTimestamp)
+	}
+	return other.Name < current.Name
 }
 
 func (c *Controller) handleAddOvnDnatRule(key string) error {
@@ -197,7 +226,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
+	if err := c.isOvnDnatDuplicated(eipName, cachedDnat.Spec.ExternalPort, cachedDnat.Spec.Protocol, cachedDnat); err != nil {
 		klog.Errorf("failed to create dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
@@ -444,7 +473,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if err := c.isOvnDnatDuplicated(eipName, key, cachedDnat.Spec.ExternalPort); err != nil {
+	if err := c.isOvnDnatDuplicated(eipName, cachedDnat.Spec.ExternalPort, cachedDnat.Spec.Protocol, cachedDnat); err != nil {
 		klog.Errorf("failed to update dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
