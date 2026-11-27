@@ -1,7 +1,7 @@
-# network-policy-api v0.3.0
+# network-policy-api v0.3.1
 
 Kube-OVN uses the `v1beta1` `ClusterNetworkPolicy` API from network-policy-api
-v0.3.0. CNP ingress and egress rules express transport matching through
+v0.3.1. CNP ingress and egress rules express transport matching through
 `protocols`, for example:
 
 ```yaml
@@ -36,4 +36,4 @@ legacy `ports` fields to `protocols`.
 The experimental CNP CRD download is pinned by `CNP_CRD_VERSION` in the
 Makefile. Renovate tracks upstream releases and proposes updates for review.
 ANP and BANP continue to use their independent v1alpha1 CRDs pinned to
-`v0.1.7`; network-policy-api v0.3.0 only publishes the CNP conformance profile.
+`v0.1.7`; network-policy-api v0.3.1 only publishes the CNP conformance profile.
