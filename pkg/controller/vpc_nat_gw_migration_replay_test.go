@@ -227,24 +227,34 @@ func testFipReplaysAfterDestinationPodReplacement(t *testing.T, firstInstall boo
 	require.NoError(t, err)
 
 	replaced := false
+	replayDone := make(chan error, 1)
 	fixture.client.PrependReactor("patch", "iptables-fip-rules", func(ktesting.Action) (bool, runtime.Object, error) {
 		if !replaced {
-			require.EqualValues(t, 1, applies.Load())
 			require.NoError(t, fixture.pods.Update(replacement))
 			// The replacement's gateway replay runs before the new binding is visible.
-			require.NoError(t, c.handleUpdateVpcFloatingIP(destination))
+			go func() {
+				for applies.Load() == 0 {
+					time.Sleep(time.Millisecond)
+				}
+				replayDone <- c.handleUpdateVpcFloatingIP(destination)
+			}()
 			replaced = true
 		}
 		return false, nil, nil
 	})
 
 	require.NoError(t, reconcile(fixture.fip.Name))
+	require.NoError(t, <-replayDone)
 	pending, err := client.Get(t.Context(), fixture.fip.Name, metav1.GetOptions{})
 	require.NoError(t, err)
 	require.Equal(t, destination, pending.Status.NatGwDp)
 	require.Equal(t, destination, pending.Labels[util.VpcNatGatewayNameLabel])
 	require.False(t, pending.Status.Ready)
-	require.Equal(t, previous.CreationTimestamp.UTC().Format(natGwReplayTimeLayout), pending.Status.Redo)
+	wantRedo := replacement.CreationTimestamp.UTC().Format(natGwReplayTimeLayout)
+	if firstInstall {
+		wantRedo = previous.CreationTimestamp.UTC().Format(natGwReplayTimeLayout)
+	}
+	require.Equal(t, wantRedo, pending.Status.Redo)
 
 	require.NoError(t, fixture.fips.Update(pending))
 	require.NoError(t, c.handleUpdateIptablesFip(fixture.fip.Name))

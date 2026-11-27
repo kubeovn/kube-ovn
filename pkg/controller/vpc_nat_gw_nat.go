@@ -434,16 +434,16 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		if err = c.finalDeleteFipInPod(key, cachedFip); err != nil {
 			return err
 		}
+		if err = c.patchFipLabel(key, eip); err != nil {
+			klog.Errorf("failed to update label for fip %s before creating rule, %v", key, err)
+			return err
+		}
 		destinationPod, err := c.getNatGwPod(eip.Spec.NatGwDp)
 		if err != nil {
 			return err
 		}
 		if err = c.createFipInPod(destinationPod, newV4ip, newInternalIP); err != nil {
 			klog.Errorf("failed to create fip %s, %v", key, err)
-			return err
-		}
-		if err = c.patchFipLabel(key, eip); err != nil {
-			klog.Errorf("failed to update label for fip %s, %v", key, err)
 			return err
 		}
 		bindingRedo := natRuleBindingRedo(destinationPod, cachedFip.Status.NatGwDp != eip.Spec.NatGwDp)
