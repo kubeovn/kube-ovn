@@ -33,7 +33,7 @@ func (c *Controller) reconcileServiceNodePorts(ctx *endpointSliceReconcileContex
 		lb := ctx.lbReconciliation.desired[name]
 		for _, address := range ctx.profile.nodePortVIPs {
 			vip := util.JoinHostPort(address, port.NodePort)
-			backends := c.getEndpointBackend(ctx.endpointSlices, port, address, false)
+			backends := endpointBackends(serviceEndpointCandidates(ctx.endpointSlices, port, address, false))
 			if len(backends) != 0 {
 				slices.Sort(backends)
 				lb.VIPs[vip] = strings.Join(slices.Compact(backends), ",")
