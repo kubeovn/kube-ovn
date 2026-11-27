@@ -96,7 +96,7 @@ func registerDuplicateMemberHA(f *framework.Framework, nodes map[string]*kind.No
 
 		ginkgo.By("Stopping one central member and removing its database files and Raft headers")
 		setCentralReplicas(client, deploy.Name, replicas-1)
-		framework.WaitUntil(time.Second, time.Minute, func(ctx context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			current, err := getCentralPods(client, deploy)
 			return err == nil && len(current.Items) == int(replicas-1), err
 		}, "one ovn-central pod to stop")
@@ -129,7 +129,7 @@ func registerDuplicateMemberHA(f *framework.Framework, nodes map[string]*kind.No
 
 		ginkgo.By("Scaling down a different central member after duplicate cleanup")
 		setCentralReplicas(client, deploy.Name, replicas-1)
-		framework.WaitUntil(time.Second, time.Minute, func(ctx context.Context) (bool, error) {
+		framework.WaitUntil(time.Second, time.Minute, func(_ context.Context) (bool, error) {
 			remaining, err := getCentralPods(client, deploy)
 			return err == nil && len(remaining.Items) == int(replicas-1), err
 		}, "one central member to remain unavailable")
