@@ -37,6 +37,7 @@ const (
 	DefaultBGPGrpcPort                 = 50051
 	DefaultBGPHoldtime                 = 90 * time.Second
 	DefaultPprofPort                   = 10667
+	DefaultMetricsBindAddress          = "127.0.0.1"
 	DefaultGracefulRestartDeferralTime = 360 * time.Second
 	DefaultGracefulRestartTime         = 90 * time.Second
 	DefaultEbgpMultiHop                = 1
@@ -200,6 +201,7 @@ type Configuration struct {
 	ExtendedNexthop             *bool            `yaml:"extended-nexthop,omitempty"`
 	NatGwMode                   *bool            `yaml:"nat-gw-mode,omitempty"`
 	EnableMetrics               *bool            `yaml:"enable-metrics,omitempty"`
+	MetricsBindAddress          string           `yaml:"metrics-bind-address,omitempty"`
 
 	// BFD (Bidirectional Forwarding Detection) configuration
 	EnableBFD              *bool  `yaml:"enable-bfd,omitempty"`
@@ -242,6 +244,7 @@ func ParseFlags() (*Configuration, error) {
 		argAuthPassword               = pflag.String("auth-password", "", "bgp peer auth password")
 		argHoldTime                   = pflag.Duration("holdtime", DefaultBGPHoldtime, "ovn-speaker goes down abnormally, the local saving time of BGP route will be affected. Holdtime must be in the range 3s to 65536s.")
 		argPprofPort                  = pflag.Int32("pprof-port", DefaultPprofPort, "The port to get profiling data")
+		argMetricsBindAddress         = pflag.String("metrics-bind-address", defaultMetricsBindAddress(), "The IP address for the metrics server to listen")
 		argNodeName                   = pflag.String("node-name", os.Getenv(util.EnvNodeName), "Name of the node on which the speaker is running on.")
 		argKubeConfigFile             = pflag.String("kubeconfig", "", "Path to kubeconfig file with authorization and master location information. If not set use the inCluster token.")
 		argPassiveMode                = pflag.BoolP("passivemode", "", false, "Set BGP Speaker to passive model, do not actively initiate connections to peers")
@@ -335,6 +338,7 @@ func ParseFlags() (*Configuration, error) {
 		AuthPassword:                *argAuthPassword,
 		HoldTime:                    Duration{Duration: *argHoldTime},
 		PprofPort:                   *argPprofPort,
+		MetricsBindAddress:          *argMetricsBindAddress,
 		NodeName:                    strings.ToLower(*argNodeName),
 		KubeConfigFile:              *argKubeConfigFile,
 		GracefulRestart:             argGracefulRestart,
@@ -362,6 +366,9 @@ func ParseFlags() (*Configuration, error) {
 		if fileConfig != nil {
 			config.mergeFileConfig(fileConfig)
 		}
+	}
+	if err := validateMetricsBindAddress(config.MetricsBindAddress); err != nil {
+		return nil, err
 	}
 
 	if podIPv4 != "" {
@@ -579,9 +586,26 @@ func (config *Configuration) mergeFileConfig(cfg *Configuration) {
 	if cfg.hasFileField("pprof-port", cfg.PprofPort != 0) {
 		config.PprofPort = cfg.PprofPort
 	}
+	if cfg.hasFileField("metrics-bind-address", cfg.MetricsBindAddress != "") {
+		config.MetricsBindAddress = cfg.MetricsBindAddress
+	}
 	if cfg.hasFileField("log-perm", cfg.LogPerm != "") {
 		config.LogPerm = cfg.LogPerm
 	}
+}
+
+func defaultMetricsBindAddress() string {
+	if podIP := os.Getenv(util.EnvPodIP); podIP != "" {
+		return podIP
+	}
+	return DefaultMetricsBindAddress
+}
+
+func validateMetricsBindAddress(address string) error {
+	if net.ParseIP(address) == nil {
+		return fmt.Errorf("invalid metrics bind address %q", address)
+	}
+	return nil
 }
 
 // mergeFileIPByFamilyMap merges a map[string]IP field (keyed by protocol family) from the

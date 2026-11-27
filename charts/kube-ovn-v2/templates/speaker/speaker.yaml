@@ -78,6 +78,8 @@ spec:
             - --alsologtostderr=true
             - --log_file=/var/log/kube-ovn/kube-ovn-speaker.log
             - --log_file_max_size=200
+            # Bind the metrics and health endpoints to the Pod IP instead of every host interface.
+            - --metrics-bind-address=$(POD_IP)
           {{- with .Values.bgpSpeaker.args }}
             {{- toYaml . | trim | nindent 12 }}
           {{- end }}
