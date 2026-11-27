@@ -1,22 +1,21 @@
-From 52b727b3315463668669ff423ce8bfa129861162 Mon Sep 17 00:00:00 2001
+From 7e46b38073827f53e09ef59e39c474586e7ae04d Mon Sep 17 00:00:00 2001
 From: zhangzujian <zhangzujian.7@gmail.com>
-Date: Thu, 25 Dec 2025 00:25:36 +0000
+Date: Fri, 27 Nov 2026 07:50:10 +0800
 Subject: [PATCH] set dl_src for packets redirected by router port
 
 Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
-
 ---
- northd/northd.c | 71 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ northd/northd.c | 71 +++++++++++++++++++++++++++++++++++++++++++++++++
  1 file changed, 71 insertions(+)
 
 diff --git a/northd/northd.c b/northd/northd.c
-index a6f7828d2..6ac1a5ae5 100644
+index 30a1099..3f0fffe 100644
 --- a/northd/northd.c
 +++ b/northd/northd.c
-@@ -9202,6 +9202,76 @@ build_lswitch_dnat_mod_dl_dst_rules(struct ovn_port *op,
+@@ -9427,6 +9427,76 @@ build_lswitch_dnat_mod_dl_dst_rules(struct ovn_port *op,
      }
  }
-
+ 
 +static void
 +build_lswitch_mod_dl_src_rules(struct ovn_port *op,
 +                               struct lflow_table *lflows,
@@ -90,11 +89,11 @@ index a6f7828d2..6ac1a5ae5 100644
  static void
  build_stateful(struct ovn_datapath *od, struct lflow_table *lflows,
                 struct lflow_ref *lflow_ref)
-@@ -19772,6 +19840,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
+@@ -20122,6 +20192,7 @@ build_lswitch_and_lrouter_iterate_by_lsp(struct ovn_port *op,
      build_lswitch_arp_nd_responder_known_ips(op, lflows, ls_ports,
                                               meter_groups, actions, match);
      build_lswitch_dnat_mod_dl_dst_rules(op, lflows, actions, match);
 +    build_lswitch_mod_dl_src_rules(op, lflows, lr_ports, actions, match);
      build_lswitch_dhcp_options_and_response(op, lflows, meter_groups);
+     build_lswitch_dns_lookup_skip_router_port(op, lflows, match);
      build_lswitch_external_port(op, lflows);
-     build_lswitch_icmp_packet_toobig_admin_flows(op, lflows, match, actions);
