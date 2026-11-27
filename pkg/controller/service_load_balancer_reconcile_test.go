@@ -816,6 +816,31 @@ func TestRuleServiceHealthChecksRemainPerVIP(t *testing.T) {
 	require.NotNil(t, check)
 }
 
+func TestRuleServiceKeepsForwardingWhenHealthCheckVIPIsUnavailable(t *testing.T) {
+	ctrl, nbClient, svc, _ := routerLBRuleHealthCheckReconcileFixture(t, "10.96.0.20")
+	lbName := serviceScopedLBNameForTrafficClass(svc, corev1.ProtocolTCP, serviceLBExternalTraffic)
+
+	require.NoError(t, ctrl.config.KubeOvnClient.KubeovnV1().Vips().Delete(t.Context(), "subnet", metav1.DeleteOptions{}))
+	ctrl.virtualIpsLister = kubeovnlister.NewVipLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+
+	err := ctrl.reconcileServiceEndpointSlices(svc, []*discoveryv1.EndpointSlice{
+		{
+			AddressType: discoveryv1.AddressTypeIPv4,
+			Ports:       []discoveryv1.EndpointPort{{Name: new("web"), Protocol: new(corev1.ProtocolTCP), Port: new(int32(8080))}},
+			Endpoints: []discoveryv1.Endpoint{{
+				Addresses: []string{"10.0.0.2"},
+				TargetRef: &corev1.ObjectReference{Kind: "Pod", Namespace: "default", Name: "backend"},
+			}},
+		},
+	})
+	require.ErrorContains(t, err, "get health-check VIP for service")
+
+	lb, check, err := nbClient.GetLoadBalancerHealthCheck(lbName, "10.96.0.20:80", true)
+	require.NoError(t, err)
+	require.Nil(t, check)
+	require.Equal(t, map[string]string{"10.96.0.20:80": "10.0.0.2:8080"}, lb.Vips)
+}
+
 func TestDistributedServiceMappingIsKeptWithoutHealthCheck(t *testing.T) {
 	ctrl, nbClient, svc, endpoints := serviceLBReconcileFixture(t, corev1.ServiceTypeClusterIP, false)
 	svc.Spec.ClusterIPs = []string{"10.96.0.10"}
