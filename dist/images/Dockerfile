@@ -15,6 +15,7 @@ COPY kube-ovn-cmd /kube-ovn/kube-ovn-cmd
 COPY kube-ovn-bfdd-supervisor /kube-ovn/kube-ovn-bfdd-supervisor
 COPY kube-ovn-daemon /kube-ovn/kube-ovn-daemon
 COPY kube-ovn-tproxy /kube-ovn/kube-ovn-tproxy
+COPY --chmod=0111 kube-ovn-nm-helper /kube-ovn/kube-ovn-nm-helper
 COPY kube-ovn-ipsec /kube-ovn/kube-ovn-ipsec
 COPY kube-ovn-controller /kube-ovn/kube-ovn-controller
 COPY vpc-egress-gateway-observer /kube-ovn/vpc-egress-gateway-observer
@@ -47,6 +48,8 @@ RUN setcap CAP_NET_ADMIN,CAP_NET_BIND_SERVICE+eip "$(readlink -f "$(which ovs-vs
     test "$(getcap /kube-ovn/kube-ovn-cmd)" = "/kube-ovn/kube-ovn-cmd cap_net_bind_service=eip" && \
     test "$(getcap /kube-ovn/kube-ovn-controller)" = "/kube-ovn/kube-ovn-controller cap_net_bind_service,cap_net_raw=eip" && \
     test "$(getcap /kube-ovn/kube-ovn-daemon)" = "/kube-ovn/kube-ovn-daemon cap_net_bind_service,cap_net_admin,cap_net_raw=eip" && \
+    test "$(getcap /kube-ovn/kube-ovn-nm-helper)" = "" && \
+    test "$(stat -c %a /kube-ovn/kube-ovn-nm-helper)" = "111" && \
     test "$(getcap /kube-ovn/vpc-egress-gateway-observer)" = "/kube-ovn/vpc-egress-gateway-observer cap_net_admin=eip"
 
 RUN /kube-ovn/iptables-wrapper-installer.sh --no-sanity-check
