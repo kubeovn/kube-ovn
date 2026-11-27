@@ -5,7 +5,6 @@
 [![latest-release](https://img.shields.io/github/release/kubeovn/kube-ovn.svg)](https://github.com/kubeovn/kube-ovn/releases)
 [![Docker Tag](https://img.shields.io/docker/pulls/kubeovn/kube-ovn)](https://img.shields.io/docker/pulls/kubeovn/kube-ovn)
 ![Docker Image Size (latest by date)](https://img.shields.io/docker/image-size/kubeovn/kube-ovn?sort=date)
-[![Go Report Card](https://goreportcard.com/badge/github.com/kubeovn/kube-ovn)](https://goreportcard.com/report/github.com/kubeovn/kube-ovn)
 
 Kube-OVN, a [CNCF Sandbox Project](https://www.cncf.io/sandbox-projects/), integrates OVN-based Network Virtualization with Kubernetes. It provides enhanced support for KubeVirt and unique Multi-Tenancy capabilities.
 
