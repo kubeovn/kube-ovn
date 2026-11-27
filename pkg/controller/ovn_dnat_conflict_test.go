@@ -53,7 +53,8 @@ func TestIsOvnDnatDuplicatedCanonicalizesPorts(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			existing := &kubeovnv1.OvnDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "existing", CreationTimestamp: metav1.Now()},
+				Name:              "existing",
+				CreationTimestamp: metav1.Now(),
 				Spec: kubeovnv1.OvnDnatRuleSpec{
 					OvnEip:       "eip1",
 					ExternalPort: externalPort,
@@ -65,7 +66,7 @@ func TestIsOvnDnatDuplicatedCanonicalizesPorts(t *testing.T) {
 			require.NoError(t, indexer.Add(existing))
 			ctrl := &Controller{ovnDnatRulesLister: kubeovnlisters.NewOvnDnatRuleLister(indexer)}
 			current := &kubeovnv1.OvnDnatRule{
-				ObjectMeta: metav1.ObjectMeta{Name: "current"},
+				Name: "current",
 			}
 
 			require.Error(t, ctrl.isOvnDnatDuplicated("eip1", "80", "tcp", current))
