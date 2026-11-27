@@ -134,6 +134,8 @@ func (c *Controller) enqueueDeleteRouterLBRule(obj any) {
 // excludeRlr names the RouterLBRule being checked. dnat is the OvnDnatRule being
 // checked, or nil when checking a RouterLBRule.
 func (c *Controller) checkEipPortConflict(eipName, portStr, protocol, excludeRlr string, dnat *kubeovnv1.OvnDnatRule) error {
+	portStr = canonicalPort(portStr)
+
 	rlrs, err := c.routerLBRuleLister.List(labels.Everything())
 	if err != nil {
 		return err
@@ -154,7 +156,7 @@ func (c *Controller) checkEipPortConflict(eipName, portStr, protocol, excludeRlr
 		return err
 	}
 	for _, d := range dnats {
-		if d.Spec.OvnEip != eipName || d.Spec.ExternalPort != portStr ||
+		if d.Spec.OvnEip != eipName || canonicalPort(d.Spec.ExternalPort) != portStr ||
 			!strings.EqualFold(portProtocol(d.Spec.Protocol), portProtocol(protocol)) {
 			continue
 		}
@@ -164,6 +166,16 @@ func (c *Controller) checkEipPortConflict(eipName, portStr, protocol, excludeRlr
 		}
 	}
 	return nil
+}
+
+// canonicalPort returns the decimal representation of a numeric port. Invalid
+// values are returned unchanged so the caller can still report them normally.
+func canonicalPort(port string) string {
+	value, err := strconv.Atoi(port)
+	if err != nil {
+		return port
+	}
+	return strconv.Itoa(value)
 }
 
 // portProtocol returns the protocol in lower case, defaulting to tcp.
