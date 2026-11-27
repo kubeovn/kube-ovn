@@ -213,6 +213,7 @@ spec:
           {{- end }}
           - --kubelet-dir={{ .Values.kubelet.directory }}
           - --enable-tproxy={{ .Values.features.enableTproxy }}
+          - --enable-nm-helper={{ .Values.features.enableNmHelper }}
           - --enable-recompute={{ .Values.features.enableRecompute }}
           - --secure-serving={{- .Values.features.enableSecureServing }}
           {{- if or .Values.networking.tlsMinVersion .Values.networking.tlsMaxVersion .Values.networking.tlsCipherSuites }}
@@ -272,6 +273,10 @@ spec:
           {{- if .Values.features.enableTproxy }}
           - name: tproxy-socket
             mountPath: /run/kube-ovn-tproxy
+          {{- end }}
+          {{- if .Values.features.enableNmHelper }}
+          - name: nm-helper-socket
+            mountPath: /run/kube-ovn-nm-helper
           {{- end }}
           - name: usr-local-sbin
             mountPath: /usr/local/sbin
@@ -364,6 +369,38 @@ spec:
             cpu: 100m
             memory: 128Mi
       {{- end }}
+      {{- if .Values.features.enableNmHelper }}
+      - name: nm-helper
+        image: {{ $agentImage.prefix }}{{ $agentImage.repository }}:{{ $agentImage.tag }}
+        imagePullPolicy: {{ $agentImage.pullPolicy }}
+        command:
+          - /kube-ovn/kube-ovn-nm-helper
+        env:
+          - name: DBUS_SYSTEM_BUS_ADDRESS
+            value: "unix:path=/host/var/run/dbus/system_bus_socket"
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 65534
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        volumeMounts:
+          - name: nm-helper-socket
+            mountPath: /run/kube-ovn-nm-helper
+          - name: host-dbus
+            mountPath: /host/var/run/dbus
+            readOnly: true
+            mountPropagation: HostToContainer
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+      {{- end }}
       {{- if .Values.features.enableOvnIpsec }}
       - name: ipsec
         image: {{ $agentImage.prefix }}{{ $agentImage.repository }}:{{ $agentImage.tag }}
@@ -434,6 +471,10 @@ spec:
             type: DirectoryOrCreate
         {{- if .Values.features.enableTproxy }}
         - name: tproxy-socket
+          emptyDir: {}
+        {{- end }}
+        {{- if .Values.features.enableNmHelper }}
+        - name: nm-helper-socket
           emptyDir: {}
         {{- end }}
         - name: usr-local-sbin

@@ -191,6 +191,7 @@ spec:
           {{- end }}
           - --kubelet-dir={{ .Values.kubelet_conf.KUBELET_DIR }}
           - --enable-tproxy={{ .Values.func.ENABLE_TPROXY }}
+          - --enable-nm-helper={{ .Values.func.ENABLE_NM_HELPER }}
           - --enable-recompute={{ .Values.func.ENABLE_RECOMPUTE }}
           - --secure-serving={{- .Values.func.SECURE_SERVING }}
           {{- if or .Values.networking.TLS_MIN_VERSION .Values.networking.TLS_MAX_VERSION .Values.networking.TLS_CIPHER_SUITES }}
@@ -246,6 +247,10 @@ spec:
           {{- if .Values.func.ENABLE_TPROXY }}
           - name: tproxy-socket
             mountPath: /run/kube-ovn-tproxy
+          {{- end }}
+          {{- if .Values.func.ENABLE_NM_HELPER }}
+          - name: nm-helper-socket
+            mountPath: /run/kube-ovn-nm-helper
           {{- end }}
           - name: usr-local-sbin
             mountPath: /usr/local/sbin
@@ -342,6 +347,38 @@ spec:
             cpu: 100m
             memory: 128Mi
       {{- end }}
+      {{- if .Values.func.ENABLE_NM_HELPER }}
+      - name: nm-helper
+        image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
+        imagePullPolicy: {{ .Values.image.pullPolicy }}
+        command:
+          - /kube-ovn/kube-ovn-nm-helper
+        env:
+          - name: DBUS_SYSTEM_BUS_ADDRESS
+            value: "unix:path=/host/var/run/dbus/system_bus_socket"
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 65534
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        volumeMounts:
+          - name: nm-helper-socket
+            mountPath: /run/kube-ovn-nm-helper
+          - name: host-dbus
+            mountPath: /host/var/run/dbus
+            readOnly: true
+            mountPropagation: HostToContainer
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+      {{- end }}
       {{- if .Values.func.ENABLE_OVN_IPSEC }}
       - name: ipsec
         image: {{ .Values.global.registry.address }}/{{ .Values.global.images.kubeovn.repository }}:{{ .Values.global.images.kubeovn.tag }}
@@ -412,6 +449,10 @@ spec:
             type: DirectoryOrCreate
         {{- if .Values.func.ENABLE_TPROXY }}
         - name: tproxy-socket
+          emptyDir: {}
+        {{- end }}
+        {{- if .Values.func.ENABLE_NM_HELPER }}
+        - name: nm-helper-socket
           emptyDir: {}
         {{- end }}
         - name: usr-local-sbin

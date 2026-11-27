@@ -1638,6 +1638,7 @@ false
   "enableLoadbalancerService": false,
   "enableNatGateways": true,
   "enableNetworkPolicies": true,
+  "enableNmHelper": false,
   "enableOvnInterconnections": false,
   "enableOvnIpsec": false,
   "enableRecompute": false,
@@ -1747,6 +1748,15 @@ true
 </pre>
 </td>
 			<td>Enable Kube-OVN network policies</td>
+		</tr>
+		<tr>
+			<td>features.enableNmHelper</td>
+			<td>bool</td>
+			<td><pre lang="json">
+false
+</pre>
+</td>
+			<td>Enable the NetworkManager helper, which sets ProviderNetwork NICs unmanaged as root</td>
 		</tr>
 		<tr>
 			<td>features.enableOvnInterconnections</td>
