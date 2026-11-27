@@ -10,6 +10,7 @@ import (
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	"github.com/scylladb/go-set/strset"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 
 	ovsclient "github.com/kubeovn/kube-ovn/pkg/ovsdb/client"
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
@@ -263,6 +264,10 @@ func (c *OVNNbClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider,
 			externalIDs["ipv6_network"] = ipv6CIDR
 		}
 	}
+	var vlanTag *int
+	if vlanID > 0 && vlanID < 4096 {
+		vlanTag = new(vlanID)
+	}
 
 	if lsp != nil {
 		externalIDs[LogicalSwitchKey] = lsName
@@ -270,13 +275,15 @@ func (c *OVNNbClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider,
 		options := map[string]string{
 			"network_name": provider,
 		}
-		if maps.Equal(lsp.ExternalIDs, externalIDs) && maps.Equal(lsp.Options, options) {
+		if maps.Equal(lsp.ExternalIDs, externalIDs) && maps.Equal(lsp.Options, options) &&
+			ptr.Equal(lsp.Tag, vlanTag) && ptr.Equal(lsp.TagRequest, vlanTag) {
 			return nil
 		}
 
 		lsp.ExternalIDs = externalIDs
 		lsp.Options = options
-		if err = c.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs, &lsp.Options); err != nil {
+		lsp.Tag, lsp.TagRequest = vlanTag, vlanTag
+		if err = c.UpdateLogicalSwitchPort(lsp, &lsp.ExternalIDs, &lsp.Options, &lsp.Tag, &lsp.TagRequest); err != nil {
 			return logWrap(err, wrapErr("failed to update localnet logical switch port %s: %w", lspName))
 		}
 
@@ -293,10 +300,9 @@ func (c *OVNNbClient) CreateLocalnetLogicalSwitchPort(lsName, lspName, provider,
 			"network_name": provider,
 		},
 		ExternalIDs: externalIDs,
-	}
-
-	if vlanID > 0 && vlanID < 4096 {
-		lsp.Tag = &vlanID
+		// northd derives tag from tag_request; retain tag for older OVN versions.
+		Tag:        vlanTag,
+		TagRequest: vlanTag,
 	}
 
 	ops, err := c.CreateLogicalSwitchPortOp(lsp, lsName)
@@ -746,17 +752,16 @@ func (c *OVNNbClient) SetLogicalSwitchPortVlanTag(lspName string, vlanID int) er
 		return err
 	}
 
-	// no need update vlan id when vlan id is the same
-	if lsp.Tag != nil && *lsp.Tag == vlanID {
+	var vlanTag *int
+	if vlanID != 0 {
+		vlanTag = new(vlanID)
+	}
+	if ptr.Equal(lsp.Tag, vlanTag) && ptr.Equal(lsp.TagRequest, vlanTag) {
 		return nil
 	}
 
-	lsp.Tag = &vlanID
-	if vlanID == 0 {
-		lsp.Tag = nil
-	}
-
-	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Tag); err != nil {
+	lsp.Tag, lsp.TagRequest = vlanTag, vlanTag
+	if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Tag, &lsp.TagRequest); err != nil {
 		return logWrap(err, wrapErr("set logical switch port %s tag %d: %w", lspName, vlanID))
 	}
 
