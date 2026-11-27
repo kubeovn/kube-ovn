@@ -203,6 +203,11 @@ spec:
           - --enable-acl-sampling={{- .Values.aclSampling.enabled }}
           - --acl-sampling-set-id={{- .Values.aclSampling.setID }}
           - --acl-sampling-local-group-id={{- .Values.aclSampling.localGroupID }}
+          {{- if hasKey .Values.func "ENABLE_TUNNEL_NOTRACK" }}
+          - --enable-tunnel-notrack={{ .Values.func.ENABLE_TUNNEL_NOTRACK }}
+          {{- else }}
+          - --enable-tunnel-notrack=true
+          {{- end }}
         securityContext:
           runAsGroup: {{ include "kubeovn.runAsUser" . }}
           runAsUser: {{ include "kubeovn.runAsUser" . }}
