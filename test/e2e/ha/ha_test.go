@@ -400,7 +400,15 @@ func getDbSids(f *framework.Framework, deploy *appsv1.Deployment) map[string]set
 	return dbSids
 }
 
-func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile, dbFileHost, corruptCmd string, automaticRecoveryExpected bool, kindNodes map[string]*kind.Node, lastFailedCheck **failedCheckCluster) {
+type dbRecoveryMode int
+
+const (
+	dbRecoveryRebuild dbRecoveryMode = iota
+	dbRecoveryPreserve
+	dbRecoveryBlocked
+)
+
+func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile, dbFileHost, corruptCmd string, recoveryMode dbRecoveryMode, kindNodes map[string]*kind.Node, lastFailedCheck **failedCheckCluster) {
 	ginkgo.GinkgoHelper()
 
 	replicas := *deploy.Spec.Replicas
@@ -525,7 +533,7 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	ginkgo.By("Scaling up deployment ovn-central to " + strconv.Itoa(int(replicas)))
 	setCentralReplicas(deployClient, deploy.Name, replicas)
 
-	if automaticRecoveryExpected {
+	if recoveryMode != dbRecoveryBlocked {
 		ginkgo.By("Waiting for deployment ovn-central to be ready")
 		deployClient.RolloutStatus(deploy.Name)
 	} else {
@@ -552,7 +560,7 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 		framework.ExpectEqual(gotSize, corruptedSize, "corrupted database size must remain unchanged")
 	}
 
-	if !automaticRecoveryExpected {
+	if recoveryMode == dbRecoveryBlocked {
 		restoreOriginal()
 	}
 
@@ -575,10 +583,10 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	ginkgo.By("Getting birth time of db file " + dbFileHost + " after database recovery")
 	newBirth, _ := getFileInfo(node, dbFileHost)
 	framework.Logf("birth time of db file %s on node %s after database recovery: %s", dbFileHost, nodeName, newBirth)
-	if automaticRecoveryExpected {
+	if recoveryMode == dbRecoveryRebuild {
 		framework.ExpectNotEqual(newBirth, birth, "birth time of db file %q on node %s should change after automatic recovery", dbFileHost, nodeName)
 	} else {
-		framework.ExpectEqual(newBirth, birth, "restoring the original database should restore its birth time")
+		framework.ExpectEqual(newBirth, birth, "preserving or restoring the original database should keep its birth time")
 	}
 	if recoveryPending {
 		ginkgo.By("Removing temporary recovery backups after successful automatic recovery")
@@ -657,6 +665,7 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 	})
 
 	registerKubectlKoHA(f, kindNodes)
+	registerZeroTailHA(f, kindNodes)
 
 	framework.DisruptiveIt("ovn db should handle corruption according to the supported recovery policy", func() {
 		f.SkipVersionPriorTo(1, 11, "This feature was introduced in v1.11")
@@ -693,24 +702,26 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 		for _, db := range [...]string{"nb", "sb"} {
 			dbFile := dbFilePath(db)
 			dbFileHost := dbFileHostPath(db)
-			testcases := map[string]bool{
-				// Truncate the db file to a larger size or a smaller size
-				fmt.Sprintf(`truncate --no-create --size=+$((5+$RANDOM%%5)) "%s"`, dbFileHost): true,
-				fmt.Sprintf(`truncate --no-create --size=-$((5+$RANDOM%%5)) "%s"`, dbFileHost): true,
-				// The following two corruption methods only work for OVN >= 1.14
-				fmt.Sprintf(`: > "%s"`, dbFileHost):   !f.VersionPriorTo(1, 14),
-				fmt.Sprintf(`rm -f "%s"`, dbFileHost): !f.VersionPriorTo(1, 14),
+			testcases := []struct {
+				command      string
+				minimumMinor uint
+				recoveryMode dbRecoveryMode
+			}{
+				{fmt.Sprintf(`truncate --no-create --size=+$((5+$RANDOM%%5)) "%s"`, dbFileHost), 11, dbRecoveryPreserve},
+				{fmt.Sprintf(`truncate --no-create --size=-$((5+$RANDOM%%5)) "%s"`, dbFileHost), 11, dbRecoveryRebuild},
+				{fmt.Sprintf(`: > "%s"`, dbFileHost), 14, dbRecoveryBlocked},
+				{fmt.Sprintf(`rm -f "%s"`, dbFileHost), 14, dbRecoveryRebuild},
 			}
-			for cmd, runSpec := range testcases {
-				if runSpec {
-					// Recoverable log corruption is rebuilt as a clean member and
-					// synchronized from the live majority. A file with no readable
-					// identity cannot be rebuilt automatically and remains blocked.
-					// The safe recovery policy is available from v1.16. Keep the
-					// baseline recovery expectation for older supported versions.
-					automaticRecoveryExpected := f.VersionPriorTo(1, 16) || !strings.Contains(cmd, `: >`)
-					corruptAndRecover(f, deploy, dbFile, dbFileHost, cmd, automaticRecoveryExpected, kindNodes, &lastFailedCheck)
+			for _, testcase := range testcases {
+				if f.VersionPriorTo(1, testcase.minimumMinor) {
+					continue
 				}
+				recoveryMode := testcase.recoveryMode
+				if (recoveryMode == dbRecoveryPreserve && f.VersionPriorTo(1, 15)) ||
+					(recoveryMode == dbRecoveryBlocked && f.VersionPriorTo(1, 16)) {
+					recoveryMode = dbRecoveryRebuild
+				}
+				corruptAndRecover(f, deploy, dbFile, dbFileHost, testcase.command, recoveryMode, kindNodes, &lastFailedCheck)
 			}
 		}
 
@@ -768,7 +779,7 @@ grep -q '"cluster_id": "%[2]s"' %[1]q
 rm -f %[3]q
 `, hdrFileHost, zeroClusterID, dbFileHost)
 
-		corruptAndRecover(f, deploy, dbFile, dbFileHost, poisonCmd, true, kindNodes, &lastFailedCheck)
+		corruptAndRecover(f, deploy, dbFile, dbFileHost, poisonCmd, dbRecoveryRebuild, kindNodes, &lastFailedCheck)
 
 		ginkgo.By("Checking every ovn-central pod sees a converged three-member OVN DB cluster")
 		clusterDbSids := getDbSidsFromClusterStatus(f, deploy)
