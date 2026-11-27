@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -31,9 +32,9 @@ func (c *Controller) enqueueAddIptablesEip(obj any) {
 		return
 	}
 	// On controller restart, informer relist delivers existing objects through AddFunc.
-	// An allocated EIP with a pending QoS credential must resume the update path;
-	// handleAddIptablesEip intentionally returns early for allocated EIPs.
-	if eip.Status.Ready && eip.Status.IP != "" && eip.Spec.QoSPolicy != eip.Status.QoSPolicy {
+	// Resume replay or a pending QoS update for an allocated EIP.
+	if eipNeedsReplay(eip) ||
+		(eip.Status.Ready && eip.Status.IP != "" && eip.Spec.QoSPolicy != eip.Status.QoSPolicy) {
 		c.updateIptablesEipQueue.Add(key)
 		return
 	}
@@ -46,6 +47,7 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 	newEip := newObj.(*kubeovnv1.IptablesEIP)
 	if !newEip.DeletionTimestamp.IsZero() ||
 		oldEip.Status.Redo != newEip.Status.Redo ||
+		(oldEip.Status.IP == "" && eipNeedsReplay(newEip)) ||
 		oldEip.Spec.QoSPolicy != newEip.Spec.QoSPolicy {
 		key := cache.MetaObjectToName(newEip).String()
 		klog.Infof("enqueue update iptables eip %s", key)
@@ -54,6 +56,10 @@ func (c *Controller) enqueueUpdateIptablesEip(oldObj, newObj any) {
 
 	c.enqueueQoSPolicyRelease(oldEip.Spec.QoSPolicy, oldEip.Status.QoSPolicy,
 		newEip.Spec.QoSPolicy, newEip.Status.QoSPolicy)
+}
+
+func eipNeedsReplay(eip *kubeovnv1.IptablesEIP) bool {
+	return !eip.Status.Ready && eip.Status.Redo != "" && eip.Status.IP != ""
 }
 
 func (c *Controller) enqueueDelIptablesEip(obj any) {
@@ -107,7 +113,7 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 		return errors.New("iptables nat gw not enable")
 	}
 
-	if !cachedEip.DeletionTimestamp.IsZero() {
+	if !cachedEip.DeletionTimestamp.IsZero() || eipNeedsReplay(cachedEip) {
 		return c.handleUpdateIptablesEip(key)
 	}
 
@@ -172,9 +178,9 @@ func (c *Controller) handleAddIptablesEip(key string) error {
 			return err
 		}
 	}
-	// Resolve the gateway namespace for spec.namespace backfill inside createOrUpdateEipCR.
+	// Resolve the gateway namespace for spec.namespace backfill inside updateEipAllocation.
 	gwNamespace := c.natGwNamespaceByName(cachedEip.Spec.NatGwDp)
-	if err = c.createOrUpdateEipCR(key, v4ip, v6ip, mac, cachedEip.Spec.NatGwDp, cachedEip.Spec.QoSPolicy, subnet.Name, gwNamespace); err != nil {
+	if err = c.updateEipAllocation(cachedEip, v4ip, v6ip, mac, subnet.Name, gwNamespace); err != nil {
 		klog.Errorf("failed to update eip %s, %v", key, err)
 		return err
 	}
@@ -198,7 +204,7 @@ func (c *Controller) handleResetIptablesEip(key string) error {
 		klog.Errorf("failed to patch label for eip %s, %v", key, err)
 		return err
 	}
-	if err := c.patchEipStatus(key, "", "", "", true); err != nil {
+	if err := c.refreshEipNat(key); err != nil {
 		klog.Errorf("failed to reset nat for eip %s, %v", key, err)
 		return err
 	}
@@ -352,10 +358,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 	}
 
 	// redo
-	if !cachedEip.Status.Ready &&
-		cachedEip.Status.Redo != "" &&
-		cachedEip.Status.IP != "" &&
-		cachedEip.DeletionTimestamp.IsZero() {
+	if eipNeedsReplay(cachedEip) {
 		addrV4, err := util.GetIPAddrWithMask(cachedEip.Status.IP, v4Cidr)
 		if err != nil {
 			err = fmt.Errorf("failed to get eip %s with mask by cidr %s: %w", cachedEip.Status.IP, v4Cidr, err)
@@ -380,7 +383,7 @@ func (c *Controller) handleUpdateIptablesEip(key string) error {
 			}
 		}
 
-		if err = c.patchEipStatus(key, "", "", cachedEip.Spec.QoSPolicy, true); err != nil {
+		if err = c.completeEipReplay(key, cachedEip.Status.Redo, cachedEip.Spec.QoSPolicy); err != nil {
 			klog.Errorf("failed to patch status for eip %s, %v", key, err)
 			return err
 		}
@@ -773,109 +776,88 @@ func (c *Controller) qosPolicyUID(name string) (string, error) {
 	return string(qosPolicy.UID), nil
 }
 
-func (c *Controller) createOrUpdateEipCR(key, v4ip, v6ip, mac, natGwDp, qos, externalNet, gwNamespace string) error {
+func (c *Controller) updateEipAllocation(expected *kubeovnv1.IptablesEIP, v4ip, v6ip, mac, externalNet, gwNamespace string) error {
+	key, natGwDp, qos := expected.Name, expected.Spec.NatGwDp, expected.Spec.QoSPolicy
 	qosUID, err := c.qosPolicyUID(qos)
 	if err != nil {
 		return fmt.Errorf("failed to get qos policy %s: %w", qos, err)
 	}
-	needCreate := false
-	cachedEip, err := c.iptablesEipsLister.Get(key)
+	// The informer may lag behind status updates made by replay workers. Read the live
+	// object before the full update so stale status fields cannot be written back.
+	eip, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Get(context.Background(), key, metav1.GetOptions{})
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
-			needCreate = true
-		} else {
-			klog.Errorf("failed to get eip %s, %v", key, err)
-			return err
+			return nil
+		}
+		errMsg := fmt.Errorf("failed to get live eip crd %s, %w", key, err)
+		klog.Error(errMsg)
+		return errMsg
+	}
+
+	if eip.UID != expected.UID || eip.Spec != expected.Spec || !eip.DeletionTimestamp.IsZero() {
+		return fmt.Errorf("eip %s changed during allocation", key)
+	}
+
+	// Ensure labels are set correctly before any update
+	if eip.Labels == nil {
+		eip.Labels = make(map[string]string)
+	}
+	eip.Labels[util.SubnetNameLabel] = externalNet
+	eip.Labels[util.VpcNatGatewayNameLabel] = natGwDp
+	eip.Labels[util.EipV4IpLabel] = v4ip
+	// Publish the QoS claim with the spec before recording the allocation status.
+	eip.Labels[util.QoSLabel] = qos
+	eip.Labels[util.QoSPolicyUIDLabel] = qosUID
+
+	if v4ip != "" {
+		klog.V(3).Infof("update eip cr %s", key)
+		eip.Spec.V4ip = v4ip
+		eip.Spec.V6ip = v6ip
+		eip.Spec.NatGwDp = natGwDp
+		eip.Spec.MacAddress = mac
+		// Auto-populate spec.namespace from VpcNatGateway for NAMESPACE column visibility.
+		if eip.Spec.Namespace == "" && gwNamespace != "" {
+			eip.Spec.Namespace = gwNamespace
+		}
+		// Update with labels and spec in one call
+		updated, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(context.Background(), eip, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to update eip %s: %w", key, err)
+		}
+		if err := c.recordEipAllocation(updated, v4ip, qos); err != nil {
+			return fmt.Errorf("failed to record allocation for eip %s: %w", key, err)
 		}
 	}
-	if needCreate {
-		klog.V(3).Infof("create eip cr %s", key)
-		// Create CR with finalizer, labels, the qos claim and status all at once, so the eip
-		// cannot be referenced before the policy generation it uses is recorded.
-		_, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Create(context.Background(), &kubeovnv1.IptablesEIP{
-			Name:       key,
-			Finalizers: []string{util.KubeOVNControllerFinalizer},
-			Labels: map[string]string{
-				util.SubnetNameLabel:        externalNet,
-				util.EipV4IpLabel:           v4ip,
-				util.VpcNatGatewayNameLabel: natGwDp,
-				util.QoSLabel:               qos,
-				util.QoSPolicyUIDLabel:      qosUID,
-			},
-			Spec: kubeovnv1.IptablesEIPSpec{
-				V4ip:       v4ip,
-				V6ip:       v6ip,
-				MacAddress: mac,
-				NatGwDp:    natGwDp,
-				QoSPolicy:  qos,
-				Namespace:  gwNamespace,
-			},
-			Status: kubeovnv1.IptablesEIPStatus{
-				IP:        v4ip,
-				Ready:     true,
-				QoSPolicy: qos,
-				Nat:       "",
-				Redo:      "",
-			},
-		}, metav1.CreateOptions{})
-		if err != nil {
-			errMsg := fmt.Errorf("failed to create eip crd %s, %w", key, err)
-			klog.Error(errMsg)
-			return errMsg
-		}
-	} else {
-		eip := cachedEip.DeepCopy()
-
-		// Ensure labels are set correctly before any update
-		if eip.Labels == nil {
-			eip.Labels = make(map[string]string)
-		}
-		eip.Labels[util.SubnetNameLabel] = externalNet
-		eip.Labels[util.VpcNatGatewayNameLabel] = natGwDp
-		eip.Labels[util.EipV4IpLabel] = v4ip
-		// The qos claim is published together with the spec and status of the eip, so no rule can
-		// depend on this eip before the policy generation it uses is recorded.
-		eip.Labels[util.QoSLabel] = qos
-		eip.Labels[util.QoSPolicyUIDLabel] = qosUID
-
-		if v4ip != "" {
-			klog.V(3).Infof("update eip cr %s", key)
-			eip.Spec.V4ip = v4ip
-			eip.Spec.V6ip = v6ip
-			eip.Spec.NatGwDp = natGwDp
-			eip.Spec.MacAddress = mac
-			// Auto-populate spec.namespace from VpcNatGateway for NAMESPACE column visibility.
-			if eip.Spec.Namespace == "" && gwNamespace != "" {
-				eip.Spec.Namespace = gwNamespace
-			}
-			// Update with labels and spec in one call
-			if _, err := c.config.KubeOvnClient.KubeovnV1().IptablesEIPs().Update(context.Background(), eip, metav1.UpdateOptions{}); err != nil {
-				errMsg := fmt.Errorf("failed to update eip crd %s, %w", key, err)
-				klog.Error(errMsg)
-				return errMsg
-			}
-			patch := util.KVPatch{"ready": true, "qosPolicy": qos}
-			if eip.Status.IP == "" {
-				// EIP addresses are fixed after allocation.
-				patch["ip"] = v4ip
-			}
-			if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, patch); err != nil {
-				if k8serrors.IsNotFound(err) {
-					return nil
-				}
-				klog.Errorf("failed to patch eip %s, %v", key, err)
-				return err
-			}
-		}
-
-		if err = c.handleAddIptablesEipFinalizer(key); err != nil {
-			klog.Errorf("failed to handle add or update finalizer for eip, %v", err)
-			return err
-		}
+	if err := c.handleAddIptablesEipFinalizer(key); err != nil {
+		return fmt.Errorf("failed to add finalizer for eip %s: %w", key, err)
 	}
 	// Trigger subnet status update after all operations complete
 	c.updateSubnetStatusQueue.AddAfter(externalNet, 300*time.Millisecond)
 	return nil
+}
+
+func (c *Controller) recordEipAllocation(expected *kubeovnv1.IptablesEIP, v4ip, qos string) error {
+	var changedDuringAllocation bool
+	err := retryIptablesStatusUpdate(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), expected.Name, func(eip *kubeovnv1.IptablesEIP) bool {
+		changedDuringAllocation = eip.UID != expected.UID || eip.Spec != expected.Spec || !eip.DeletionTimestamp.IsZero()
+		if changedDuringAllocation {
+			return false
+		}
+		status := &eip.Status
+		// A replay may already own readiness even before the allocated address
+		// is first published. Preserve it while making the address available.
+		ready := status.Ready || status.Redo == ""
+		ip := cmp.Or(status.IP, v4ip)
+		if status.IP == ip && status.Ready == ready && status.QoSPolicy == qos {
+			return false
+		}
+		status.IP, status.Ready, status.QoSPolicy = ip, ready, qos
+		return true
+	})
+	if changedDuringAllocation {
+		return fmt.Errorf("eip %s changed before allocation status was recorded", expected.Name)
+	}
+	return err
 }
 
 func (c *Controller) syncIptablesEipFinalizer(cl client.Client) error {
@@ -1013,41 +995,51 @@ func (c *Controller) getIptablesEipNat(eip *kubeovnv1.IptablesEIP) (string, erro
 	return nat, nil
 }
 
-func (c *Controller) patchEipStatus(key, v4ip, redo, qos string, ready bool) error {
+func (c *Controller) refreshEipNat(key string) error {
 	eip, err := c.iptablesEipsLister.Get(key)
 	if err != nil {
 		if k8serrors.IsNotFound(err) {
 			return nil
 		}
-		klog.Error(err)
 		return err
 	}
-	patch := natStatusPatch(eip.Status.Ready, eip.Status.Redo, ready, redo)
-	if ready && v4ip != "" && eip.Status.IP != v4ip {
-		patch["ip"] = v4ip
-	}
-
 	nat, err := c.getIptablesEipNat(eip)
 	if err != nil {
-		err = fmt.Errorf("failed to get eip nat: %w", err)
-		klog.Error(err)
-		return err
+		return fmt.Errorf("failed to get eip nat: %w", err)
 	}
-	// nat record all kinds of nat rules using this eip
 	klog.V(3).Infof("nat of eip %s is %s", eip.Name, nat)
 	if eip.Status.Nat != nat {
-		patch["nat"] = nat
-	}
-
-	if qos != "" && eip.Status.QoSPolicy != qos {
-		patch["qosPolicy"] = qos
-	}
-
-	if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, patch); err != nil && !k8serrors.IsNotFound(err) {
-		klog.Errorf("failed to patch eip %s, %v", key, err)
-		return err
+		if err := util.PatchStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, util.KVPatch{"nat": nat}); err != nil && !k8serrors.IsNotFound(err) {
+			return fmt.Errorf("failed to patch eip %s: %w", key, err)
+		}
 	}
 	return nil
+}
+
+func (c *Controller) markGatewayEipNotReady(key, gateway, redo string) (bool, error) {
+	var owned bool
+	err := updateIptablesStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, func(eip *kubeovnv1.IptablesEIP) bool {
+		owned = eip.Spec.NatGwDp == gateway && eip.DeletionTimestamp.IsZero()
+		return owned && markNatStatusNotReady(&eip.Status.Ready, &eip.Status.Redo, redo)
+	})
+	return owned, err
+}
+
+// completeEipReplay publishes readiness and the applied QoS policy for the worker's replay token.
+func (c *Controller) completeEipReplay(key, expectedRedo, qos string) error {
+	return updateIptablesStatus(c.config.KubeOvnClient.KubeovnV1().IptablesEIPs(), key, func(eip *kubeovnv1.IptablesEIP) bool {
+		if eip.Status.Redo != expectedRedo {
+			return false
+		}
+		if eip.Status.Ready && (qos == "" || eip.Status.QoSPolicy == qos) {
+			return false
+		}
+		eip.Status.Ready = true
+		if qos != "" {
+			eip.Status.QoSPolicy = qos
+		}
+		return true
+	})
 }
 
 // patchEipLabel records the subnet, gateway, address and qos references of the eip, including the
