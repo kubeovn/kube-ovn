@@ -4,9 +4,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/tools/cache"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
+	kubeovnlisters "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
 )
 
 func TestPortProtocol(t *testing.T) {
@@ -21,6 +24,52 @@ func TestPortProtocol(t *testing.T) {
 			if got := portProtocol(tc.protocol); got != tc.want {
 				t.Fatalf("portProtocol(%q) = %q, want %q", tc.protocol, got, tc.want)
 			}
+		})
+	}
+}
+
+func TestCanonicalPort(t *testing.T) {
+	for name, tc := range map[string]struct {
+		port string
+		want string
+	}{
+		"canonical port":         {port: "80", want: "80"},
+		"leading zero":           {port: "080", want: "80"},
+		"plus sign":              {port: "+80", want: "80"},
+		"invalid port unchanged": {port: "invalid", want: "invalid"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := canonicalPort(tc.port); got != tc.want {
+				t.Fatalf("canonicalPort(%q) = %q, want %q", tc.port, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestIsOvnDnatDuplicatedCanonicalizesPorts(t *testing.T) {
+	for name, externalPort := range map[string]string{
+		"leading zero": "080",
+		"plus sign":    "+80",
+	} {
+		t.Run(name, func(t *testing.T) {
+			existing := &kubeovnv1.OvnDnatRule{
+				Name:              "existing",
+				CreationTimestamp: metav1.Now(),
+				Spec: kubeovnv1.OvnDnatRuleSpec{
+					OvnEip:       "eip1",
+					ExternalPort: externalPort,
+					Protocol:     "tcp",
+				},
+				Status: kubeovnv1.OvnDnatRuleStatus{V4Eip: "10.0.0.1"},
+			}
+			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+			require.NoError(t, indexer.Add(existing))
+			ctrl := &Controller{ovnDnatRulesLister: kubeovnlisters.NewOvnDnatRuleLister(indexer)}
+			current := &kubeovnv1.OvnDnatRule{
+				Name: "current",
+			}
+
+			require.Error(t, ctrl.isOvnDnatDuplicated("eip1", "80", "tcp", current))
 		})
 	}
 }
