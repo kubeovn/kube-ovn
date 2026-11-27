@@ -40,7 +40,7 @@ func removeCentralDatabaseFiles(node *kind.Node) {
 func waitForReadyCentralPods(f *framework.Framework, deploy *appsv1.Deployment, expected int) {
 	ginkgo.GinkgoHelper()
 	client := f.DeploymentClientNS(deploy.Namespace)
-	framework.WaitUntil(time.Second, 2*time.Minute, func(ctx context.Context) (bool, error) {
+	framework.WaitUntil(time.Second, 2*time.Minute, func(_ context.Context) (bool, error) {
 		pods, err := getCentralPods(client, deploy)
 		if err != nil {
 			return false, err
