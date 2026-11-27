@@ -604,7 +604,8 @@ func (c *Controller) initProviderNetwork(pn *kubeovnv1.ProviderNetwork, node *v1
 }
 
 func (c *Controller) recordProviderNetworkErr(providerNetwork, errMsg string) {
-	pod, err := c.podsLister.Pods(c.config.PodNamespace).Get(c.config.PodName)
+	// The pod informer skips hostNetwork pods, so the kube-ovn-cni pod is never in podsLister.
+	pod, err := c.config.KubeClient.CoreV1().Pods(c.config.PodNamespace).Get(context.Background(), c.config.PodName, metav1.GetOptions{})
 	if err != nil {
 		klog.Errorf("failed to get pod %s/%s, %v", c.config.PodNamespace, c.config.PodName, err)
 		return
