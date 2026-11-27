@@ -941,6 +941,8 @@ func TestParseFlags_RejectInvalidYAMLValues(t *testing.T) {
 		{"zero local AS", "cluster-as: 0\n", "--cluster-as must be specified"},
 		{"zero neighbor AS", "neighbor-as: 0\n", "--neighbor-as must be specified"},
 		{"empty node name", "node-name: \"\"\n", "--node-name must be specified"},
+		{"invalid metrics bind address", "metrics-bind-address: not-an-ip\n", "invalid metrics bind address"},
+		{"empty metrics bind address", "metrics-bind-address: \"\"\n", "invalid metrics bind address"},
 		{"IPv4 node IP under IPv6", "node-ips: {IPv6: 192.0.2.1}\n", "expected IPv6"},
 		{"mapped IPv4 node IP under IPv6", "node-ips: {IPv6: '::ffff:192.0.2.1'}\n", "expected IPv6"},
 		{"IPv6 node IP under IPv4", "node-ips: {IPv4: '2001:db8::1'}\n", "expected IPv4"},
@@ -1020,6 +1022,40 @@ func TestConfiguration_LoadFileConfig(t *testing.T) {
 				require.Equal(t, 90*time.Second, cfg.HoldTime.Duration)
 				require.Equal(t, IPList{{IP: net.ParseIP("192.0.2.1")}}, cfg.NeighborAddresses)
 			}
+		})
+	}
+}
+
+func TestDefaultMetricsBindAddress(t *testing.T) {
+	t.Run("uses the Pod IP when available", func(t *testing.T) {
+		t.Setenv(util.EnvPodIP, "192.0.2.10")
+		require.Equal(t, "192.0.2.10", defaultMetricsBindAddress())
+	})
+
+	t.Run("falls back when the Pod IP is unavailable", func(t *testing.T) {
+		t.Setenv(util.EnvPodIP, "")
+		require.Equal(t, DefaultMetricsBindAddress, defaultMetricsBindAddress())
+	})
+}
+
+func TestValidateMetricsBindAddress(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		address string
+		wantErr bool
+	}{
+		{name: "IPv4", address: "192.0.2.10"},
+		{name: "IPv6", address: "2001:db8::10"},
+		{name: "empty", wantErr: true},
+		{name: "hostname", address: "speaker.example.com", wantErr: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateMetricsBindAddress(tt.address)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
 		})
 	}
 }
@@ -1145,6 +1181,7 @@ func TestConfiguration_MergeFileConfig_ScalarPresence(t *testing.T) {
 		{"node-name", `""`, func(c *Configuration) any { return c.NodeName }, ""},
 		{"kubeconfig", `""`, func(c *Configuration) any { return c.KubeConfigFile }, ""},
 		{"pprof-port", "0", func(c *Configuration) any { return c.PprofPort }, int32(0)},
+		{"metrics-bind-address", `""`, func(c *Configuration) any { return c.MetricsBindAddress }, ""},
 		{"log-perm", `""`, func(c *Configuration) any { return c.LogPerm }, ""},
 	}
 	for _, field := range fields {
