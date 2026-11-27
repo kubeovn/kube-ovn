@@ -26,6 +26,7 @@ import (
 	"k8s.io/utils/set"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	"github.com/kubeovn/kube-ovn/pkg/client/clientset/versioned/scheme"
 )
 
@@ -110,15 +111,25 @@ func DialAPIServer(host string, interval time.Duration, retry int) error {
 	return fmt.Errorf("timed out dialing apiserver %q", host)
 }
 
+// GetNodeInternalIP returns the first InternalIP of each address family.
+// A node may report more than one InternalIP per family.
 func GetNodeInternalIP(node v1.Node) (ipv4, ipv6 string) {
-	var ips []string
 	for _, addr := range node.Status.Addresses {
-		if addr.Type == v1.NodeInternalIP {
-			ips = append(ips, addr.Address)
+		if addr.Type != v1.NodeInternalIP {
+			continue
+		}
+		switch CheckProtocol(addr.Address) {
+		case kubeovnv1.ProtocolIPv4:
+			if ipv4 == "" {
+				ipv4 = addr.Address
+			}
+		case kubeovnv1.ProtocolIPv6:
+			if ipv6 == "" {
+				ipv6 = addr.Address
+			}
 		}
 	}
-
-	return SplitStringIP(strings.Join(ips, ","))
+	return ipv4, ipv6
 }
 
 func PodIPs(pod v1.Pod) []string {
