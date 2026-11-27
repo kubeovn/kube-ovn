@@ -57,6 +57,7 @@ type nftFamilySnapshot struct {
 	Table                string
 	NodeInternalIP       string
 	ClusterIPPorts       []nftAddressPort
+	HostServiceVIPPorts  []nftAddressPort
 	ServiceVIPPorts      []nftAddressPort
 	Subnets              []string
 	NATSubnets           []string
@@ -112,6 +113,10 @@ func newNFTFamilySnapshots(protocol string) []nftFamilySnapshot {
 }
 
 func addNFTServices(snapshot *nftFamilySnapshot, services []*corev1.Service) {
+	protocol := kubeovnv1.ProtocolIPv4
+	if snapshot.Family == knftables.IPv6Family {
+		protocol = kubeovnv1.ProtocolIPv6
+	}
 	for _, service := range services {
 		clusterIPs := service.Spec.ClusterIPs
 		if len(clusterIPs) == 0 && service.Spec.ClusterIP != "" {
@@ -127,6 +132,7 @@ func addNFTServices(snapshot *nftFamilySnapshot, services []*corev1.Service) {
 			for _, port := range service.Spec.Ports {
 				item := nftAddressPort{Address: address, Protocol: nftServiceProtocol(port.Protocol), Port: port.Port}
 				snapshot.ClusterIPPorts = append(snapshot.ClusterIPPorts, item)
+				snapshot.HostServiceVIPPorts = append(snapshot.HostServiceVIPPorts, item)
 				snapshot.ServiceVIPPorts = append(snapshot.ServiceVIPPorts, item)
 			}
 		}
@@ -136,6 +142,14 @@ func addNFTServices(snapshot *nftFamilySnapshot, services []*corev1.Service) {
 		}
 		for _, ingress := range service.Status.LoadBalancer.Ingress {
 			addNFTServiceVIP(snapshot, ingress.IP, service.Spec.Ports)
+		}
+
+		for _, address := range serviceLoadBalancerVIPsForProtocol(service, protocol) {
+			for _, port := range service.Spec.Ports {
+				snapshot.HostServiceVIPPorts = append(snapshot.HostServiceVIPPorts, nftAddressPort{
+					Address: address, Protocol: nftServiceProtocol(port.Protocol), Port: port.Port,
+				})
+			}
 		}
 
 		if familyHasClusterIP && service.Spec.ExternalTrafficPolicy == corev1.ServiceExternalTrafficPolicyLocal {
@@ -377,6 +391,7 @@ func nftFamilyForAddress(address string) knftables.Family {
 
 func normalizeNFTFamilySnapshot(snapshot *nftFamilySnapshot) {
 	snapshot.ClusterIPPorts = sortedUniqueAddressPorts(snapshot.ClusterIPPorts)
+	snapshot.HostServiceVIPPorts = sortedUniqueAddressPorts(snapshot.HostServiceVIPPorts)
 	snapshot.ServiceVIPPorts = sortedUniqueAddressPorts(snapshot.ServiceVIPPorts)
 	snapshot.LocalNodePorts = sortedUniqueProtocolPorts(snapshot.LocalNodePorts)
 	snapshot.Subnets = compactNFTIntervals(snapshot.Subnets)
