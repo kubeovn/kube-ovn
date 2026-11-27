@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"fmt"
+	"net"
 	"slices"
 	"strings"
 
@@ -123,6 +124,11 @@ func (c *Controller) handleAddOrUpdateSwitchLBRule(key string) error {
 
 	if slr.Spec.Vip == "" {
 		klog.Warningf("SwitchLBRule %s has empty Vip, skipping", key)
+		return nil
+	}
+
+	if err = validateSwitchLBRuleVIP(slr.Spec.Vip); err != nil {
+		klog.Errorf("SwitchLBRule %s has invalid Vip, skipping: %v", key, err)
 		return nil
 	}
 
@@ -590,6 +596,25 @@ func generateEndpoints(slr *kubeovnv1.SwitchLBRule, oldEps *corev1.Endpoints) *c
 		}
 	}
 	return newEps
+}
+
+func validateSwitchLBRuleVIP(vip string) error {
+	parts := strings.Split(vip, ",")
+	if len(parts) > 2 {
+		return fmt.Errorf("vip %q must be one IP address or one IPv4 and one IPv6 address", vip)
+	}
+	ips := make([]string, 0, len(parts))
+	for _, part := range parts {
+		ip := strings.TrimSpace(part)
+		if net.ParseIP(ip) == nil {
+			return fmt.Errorf("vip %q contains invalid IP address %q", vip, ip)
+		}
+		ips = append(ips, ip)
+	}
+	if len(ips) == 2 && util.CheckProtocol(ips[0]) == util.CheckProtocol(ips[1]) {
+		return fmt.Errorf("vip %q must contain one IPv4 and one IPv6 address", vip)
+	}
+	return nil
 }
 
 // getIPFamilies returns the IP families (IPv6/IPv4) for a set of IPs within a VIP
