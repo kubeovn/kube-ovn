@@ -120,7 +120,9 @@ func registerDuplicateMemberHA(f *framework.Framework, nodes map[string]*kind.No
 		framework.ExpectHaveLen(current.Items, int(replicas))
 
 		ginkgo.By("Waiting for the old duplicate NB/SB SIDs to be removed")
-		clusterSIDs := getDbSidsFromClusterStatus(f, deploy)
+		// Cleanup preserves a 120-second silence window and requires three
+		// leader-checker observations before committing the membership change.
+		clusterSIDs := getDbSidsFromClusterStatusWithTimeout(f, deploy, 4*time.Minute)
 		for _, db := range []string{"nb", "sb"} {
 			if clusterSIDs[db].Has(oldSIDs[removedNode][db]) {
 				framework.Failf("stale %s SID %s on removed node %s was not kicked", db, oldSIDs[removedNode][db], removedNode)

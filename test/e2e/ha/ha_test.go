@@ -323,6 +323,10 @@ func parseClusterStatus(s string) *clusterStatus {
 }
 
 func getDbSidsFromClusterStatus(f *framework.Framework, deploy *appsv1.Deployment) map[string]set.Set[string] {
+	return getDbSidsFromClusterStatusWithTimeout(f, deploy, 30*time.Second)
+}
+
+func getDbSidsFromClusterStatusWithTimeout(f *framework.Framework, deploy *appsv1.Deployment, timeout time.Duration) map[string]set.Set[string] {
 	ginkgo.GinkgoHelper()
 
 	ginkgo.By("Getting pods of deployment " + deploy.Name)
@@ -337,12 +341,13 @@ func getDbSidsFromClusterStatus(f *framework.Framework, deploy *appsv1.Deploymen
 		ginkgo.By("Waiting for ovn" + db + " db cluster to show all servers on every ovn-central pod")
 		for pod := range slices.Values(pods.Items) {
 			var lastStdout, lastStderr string
-			framework.WaitUntil(time.Second, 30*time.Second, func(ctx context.Context) (bool, error) {
+			err := wait.PollUntilContextTimeout(context.Background(), time.Second, timeout, true, func(ctx context.Context) (bool, error) {
 				stdout, stderr, err := framework.ExecShellInPod(ctx, f, pod.Namespace, pod.Name, cmdClusterStatus(db))
+				lastStdout, lastStderr = stdout, stderr
 				if err != nil {
+					framework.Logf("ovn%s status on pod %s failed: %v; stdout=%q stderr=%q", db, pod.Name, err, stdout, stderr)
 					return false, nil
 				}
-				lastStdout, lastStderr = stdout, stderr
 				var count int
 				for line := range strings.SplitSeq(stdout, "\n") {
 					if slices.Contains(strings.Fields(line), "at") {
@@ -350,7 +355,8 @@ func getDbSidsFromClusterStatus(f *framework.Framework, deploy *appsv1.Deploymen
 					}
 				}
 				return count == expectedCount, nil
-			}, fmt.Sprintf("ovn%s db on pod %s to show %d servers", db, pod.Name, expectedCount))
+			})
+			framework.ExpectNoError(err, "ovn%s db on pod %s did not converge to %d servers: stdout=%q stderr=%q", db, pod.Name, expectedCount, lastStdout, lastStderr)
 
 			status := parseClusterStatus(lastStdout)
 			framework.ExpectHaveLen(status.Servers, expectedCount, "unexpected number of servers in ovn%s db status in pod %s: stdout = %q, stderr = %q", db, pod.Name, lastStdout, lastStderr)
