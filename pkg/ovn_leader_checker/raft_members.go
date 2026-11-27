@@ -24,6 +24,7 @@ var (
 	raftServerLine  = regexp.MustCompile(`^\s+([[:xdigit:]]+)\s+\(([[:xdigit:]]+)\s+at\s+(.+?)\)(.*)$`)
 	lastMessageLine = regexp.MustCompile(`last msg ([0-9]+) ms ago`)
 	matchIndexLine  = regexp.MustCompile(`match_index=([0-9]+)`)
+	raftPhaseLine   = regexp.MustCompile(`\((catchup|caught up|committing|remove)\)`)
 )
 
 type raftMember struct {
@@ -74,6 +75,9 @@ func parseRaftClusterStatus(output string) (raftClusterStatus, error) {
 		match := raftServerLine.FindStringSubmatch(line)
 		if match == nil {
 			continue
+		}
+		if raftPhaseLine.MatchString(match[4]) {
+			status.hasReconfiguration = true
 		}
 		member := raftMember{
 			sid:     match[1],
@@ -171,6 +175,11 @@ func (c *Configuration) observeDuplicateMember(database, address, sid string, du
 		delete(c.duplicateMemberObservations, key)
 		return 0, false
 	}
+	for observed := range c.duplicateMemberObservations {
+		if strings.HasPrefix(observed, database+":") && observed != key {
+			delete(c.duplicateMemberObservations, observed)
+		}
+	}
 	c.duplicateMemberObservations[key]++
 	count := c.duplicateMemberObservations[key]
 	return count, count >= maxDuplicateMemberObservations
@@ -179,21 +188,19 @@ func (c *Configuration) observeDuplicateMember(database, address, sid string, du
 func cleanStaleDuplicateMember(c *Configuration, database string) {
 	output, err := ovs.OvnDatabaseControl(database, "cluster/status", databaseName(database))
 	if err != nil {
+		c.resetDuplicateMemberObservations(database)
 		klog.Warningf("failed to inspect %s cluster members: %v", database, err)
 		return
 	}
 	status, err := parseRaftClusterStatus(output)
 	if err != nil {
+		c.resetDuplicateMemberObservations(database)
 		klog.Warningf("failed to parse %s cluster status: %v", database, err)
 		return
 	}
 	candidate, found := status.staleDuplicate(c.staleMemberTimeout)
 	if !found {
-		for key := range c.duplicateMemberObservations {
-			if strings.HasPrefix(key, database+":") {
-				delete(c.duplicateMemberObservations, key)
-			}
-		}
+		c.resetDuplicateMemberObservations(database)
 		return
 	}
 	count, confirmed := c.observeDuplicateMember(database, candidate.address, candidate.sid, true)
@@ -207,6 +214,14 @@ func cleanStaleDuplicateMember(c *Configuration, database string) {
 	}
 	klog.Infof("kicked stale duplicate %s member %s at %s", database, candidate.sid, candidate.address)
 	c.observeDuplicateMember(database, candidate.address, candidate.sid, false)
+}
+
+func (c *Configuration) resetDuplicateMemberObservations(database string) {
+	for key := range c.duplicateMemberObservations {
+		if strings.HasPrefix(key, database+":") {
+			delete(c.duplicateMemberObservations, key)
+		}
+	}
 }
 
 func databaseName(database string) string {

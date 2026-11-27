@@ -1,6 +1,7 @@
 package ovn_leader_checker
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -84,6 +85,10 @@ Servers:
 			status: duplicateMemberStatus + "Adding server eeee (eeee at ssl:[10.0.0.4]:6643) (catchup)\n",
 		},
 		{
+			name:   "committing member in server list",
+			status: strings.Replace(duplicateMemberStatus, "last msg 12 ms ago", "(committing) last msg 12 ms ago", 1),
+		},
+		{
 			name: "no quorum",
 			status: `
 Status: cluster member
@@ -120,5 +125,19 @@ func TestObserveDuplicateMemberRequiresConsecutiveObservations(t *testing.T) {
 	count, confirmed := cfg.observeDuplicateMember("nb", "tcp:10.0.0.2:6643", "bbbb", false)
 	if count != 0 || confirmed {
 		t.Fatalf("observation reset failed: count=%d confirmed=%t", count, confirmed)
+	}
+}
+
+func TestObserveDuplicateMemberResetsWhenCandidateChanges(t *testing.T) {
+	cfg := &Configuration{}
+	for _, candidate := range []string{"aaaa", "aaaa", "bbbb", "aaaa"} {
+		count, confirmed := cfg.observeDuplicateMember("nb", "tcp:10.0.0.2:6643", candidate, true)
+		if confirmed {
+			t.Fatalf("candidate %s was confirmed too early at count %d", candidate, count)
+		}
+	}
+	count, confirmed := cfg.observeDuplicateMember("nb", "tcp:10.0.0.2:6643", "aaaa", true)
+	if count != 2 || confirmed {
+		t.Fatalf("candidate change did not reset continuity: count=%d confirmed=%t", count, confirmed)
 	}
 }
