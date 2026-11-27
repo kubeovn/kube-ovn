@@ -341,10 +341,20 @@ func Test_checkEipPortConflict(t *testing.T) {
 		Spec:   kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1", ExternalPort: "443", Protocol: "tcp"},
 		Status: kubeovnv1.OvnDnatRuleStatus{V4Eip: "10.0.0.1"},
 	}
+	nonCanonicalDnat := &kubeovnv1.OvnDnatRule{
+		Name:   "non-canonical-dnat",
+		Spec:   kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1", ExternalPort: "080", Protocol: "tcp"},
+		Status: kubeovnv1.OvnDnatRuleStatus{V4Eip: "10.0.0.2"},
+	}
+	plusSignDnat := &kubeovnv1.OvnDnatRule{
+		Name:   "plus-sign-dnat",
+		Spec:   kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip2", ExternalPort: "+80", Protocol: "tcp"},
+		Status: kubeovnv1.OvnDnatRuleStatus{V4Eip: "10.0.0.3"},
+	}
 
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
 		RouterLBRules: []*kubeovnv1.RouterLBRule{existingRlr},
-		OvnDnatRules:  []*kubeovnv1.OvnDnatRule{existingDnat},
+		OvnDnatRules:  []*kubeovnv1.OvnDnatRule{existingDnat, nonCanonicalDnat, plusSignDnat},
 	})
 	require.NoError(t, err)
 	ctrl := fc.fakeController
@@ -360,7 +370,7 @@ func Test_checkEipPortConflict(t *testing.T) {
 	}{
 		{
 			name:    "no conflict",
-			eip:     "eip2",
+			eip:     "eip3",
 			port:    "80",
 			wantErr: false,
 		},
@@ -374,6 +384,7 @@ func Test_checkEipPortConflict(t *testing.T) {
 			name:       "self-exclusion skips own RLR",
 			eip:        "eip1",
 			port:       "80",
+			protocol:   "udp",
 			excludeRlr: "existing-rlr",
 			wantErr:    false,
 		},
@@ -381,6 +392,19 @@ func Test_checkEipPortConflict(t *testing.T) {
 			name:    "conflict with OvnDnatRule on same EIP+port",
 			eip:     "eip1",
 			port:    "443",
+			wantErr: true,
+		},
+		{
+			name:       "canonicalizes leading zero in OvnDnatRule port",
+			eip:        "eip1",
+			port:       "80",
+			excludeRlr: "existing-rlr",
+			wantErr:    true,
+		},
+		{
+			name:    "canonicalizes plus sign in OvnDnatRule port",
+			eip:     "eip2",
+			port:    "80",
 			wantErr: true,
 		},
 		{
