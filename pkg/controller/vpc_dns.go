@@ -135,7 +135,11 @@ func (c *Controller) handleAddOrUpdateVPCDNS(key string) (retErr error) {
 	// the periodic resync can be up to 5 seconds late, so apply the current vpc-dns-config first
 	vpcDNSConfigMutex.Lock()
 	defer vpcDNSConfigMutex.Unlock()
-	c.syncVpcDNSConfig()
+	if err := c.syncVpcDNSConfig(); err != nil {
+		err = fmt.Errorf("failed to apply %s: %w", util.VpcDNSConfig, err)
+		klog.Error(err)
+		return err
+	}
 	if !enableCoreDNS {
 		return errors.New("failed to add or update vpc-dns, not enabled")
 	}
@@ -467,34 +471,36 @@ func (c *Controller) checkOvnNad() error {
 func (c *Controller) resyncVpcDNSConfig() {
 	vpcDNSConfigMutex.Lock()
 	defer vpcDNSConfigMutex.Unlock()
-	c.syncVpcDNSConfig()
+	if err := c.syncVpcDNSConfig(); err != nil {
+		klog.Errorf("failed to sync vpc-dns config, retrying on the next resync: %v", err)
+	}
 }
 
 // syncVpcDNSConfig applies vpc-dns-config; the caller must hold vpcDNSConfigMutex.
 // cmVersion is updated only after a version is fully applied, so a failed step is retried on the next call.
-func (c *Controller) syncVpcDNSConfig() {
+func (c *Controller) syncVpcDNSConfig() error {
 	cm, err := c.configMapsLister.ConfigMaps(c.config.PodNamespace).Get(util.VpcDNSConfig)
 	if err != nil && !k8serrors.IsNotFound(err) {
 		klog.Errorf("failed to get configmap %q: %v", util.VpcDNSConfig, err)
-		return
+		return err
 	}
 
 	if k8serrors.IsNotFound(err) {
 		if vpcDNSConfigSynced && len(cmVersion) == 0 {
-			return
+			return nil
 		}
 		klog.V(3).Infof("the vpc-dns configuration is not set")
 		// on the first sync too: the ConfigMap may have been deleted while the controller was down
 		if err := c.disableVpcDNS(); err != nil {
 			klog.Errorf("failed to clear all vpc-dns, %v", err)
-			return
+			return err
 		}
 		cmVersion, appliedEnableCoreDNS, vpcDNSConfigSynced = "", false, true
-		return
+		return nil
 	}
 
 	if vpcDNSConfigSynced && cmVersion == cm.ResourceVersion {
-		return
+		return nil
 	}
 	klog.V(3).Infof("the vpc-dns ConfigMap update")
 
@@ -510,7 +516,7 @@ func (c *Controller) syncVpcDNSConfig() {
 		raw, err := strconv.ParseBool(v)
 		if err != nil {
 			klog.Errorf("failed to parse cm enable, %v", err)
-			return
+			return err
 		}
 		newEnableCoreDNS = raw
 	}
@@ -520,12 +526,12 @@ func (c *Controller) syncVpcDNSConfig() {
 		if appliedEnableCoreDNS || !vpcDNSConfigSynced {
 			if err := c.disableVpcDNS(); err != nil {
 				klog.Errorf("failed to clear all vpc-dns, %v", err)
-				return
+				return err
 			}
 		}
 		enableCoreDNS = false
 		cmVersion, appliedEnableCoreDNS, vpcDNSConfigSynced = cm.ResourceVersion, false, true
-		return
+		return nil
 	}
 
 	image := getValue("coredns-image")
@@ -535,7 +541,7 @@ func (c *Controller) syncVpcDNSConfig() {
 			klog.Errorf("failed to get the default coredns image, %v", err)
 			// no VpcDns is deployed with the previous image until the lookup succeeds on a later resync
 			corednsImage = ""
-			return
+			return err
 		}
 		image = defaultImage
 		klog.V(3).Infof("use the cluster default coredns image version, %s", image)
@@ -550,10 +556,11 @@ func (c *Controller) syncVpcDNSConfig() {
 	enableCoreDNS = true
 
 	if err := c.updateVpcDNS(); err != nil {
-		klog.Errorf("failed to update vpc-dns deployment")
-		return
+		klog.Errorf("failed to update vpc-dns deployment, %v", err)
+		return err
 	}
 	cmVersion, appliedEnableCoreDNS, vpcDNSConfigSynced = cm.ResourceVersion, true, true
+	return nil
 }
 
 // disableVpcDNS closes the vpc-dns gate before deleting all VpcDns, so that a failed cleanup that is retried later

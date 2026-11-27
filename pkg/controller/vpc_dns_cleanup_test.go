@@ -72,9 +72,9 @@ func deletedVpcDNSNames(t *testing.T, client *kubeovnfake.Clientset) []string {
 // keepVpcDNSCache restores the cached vpc-dns config changed by a test
 func keepVpcDNSCache(t *testing.T) {
 	t.Helper()
-	enabled, applied, synced, image, version := enableCoreDNS, appliedEnableCoreDNS, vpcDNSConfigSynced, corednsImage, cmVersion
+	enabled, applied, synced, image, vip, version := enableCoreDNS, appliedEnableCoreDNS, vpcDNSConfigSynced, corednsImage, corednsVip, cmVersion
 	t.Cleanup(func() {
-		enableCoreDNS, appliedEnableCoreDNS, vpcDNSConfigSynced, corednsImage, cmVersion = enabled, applied, synced, image, version
+		enableCoreDNS, appliedEnableCoreDNS, vpcDNSConfigSynced, corednsImage, corednsVip, cmVersion = enabled, applied, synced, image, vip, version
 	})
 }
 
@@ -295,4 +295,23 @@ func TestHandleAddOrUpdateVpcDNSAfterConfigMapDeleted(t *testing.T) {
 	require.Empty(t, corednsImage)
 	require.Empty(t, cmVersion)
 	require.Empty(t, remainingVpcDNSNames(t, client))
+}
+
+func TestHandleAddOrUpdateVpcDNSInvalidConfig(t *testing.T) {
+	keepVpcDNSCache(t)
+	// an applied, enabled configuration whose enable-vpc-dns is then changed to a value that does not parse
+	enableCoreDNS, appliedEnableCoreDNS, vpcDNSConfigSynced, corednsImage, corednsVip, cmVersion = true, true, true, "example.com/coredns:old", "10.96.0.3", "1"
+	controller, client := newVpcDNSCleanupController(t, "dns-a")
+	// without the error from the config sync, the handler went on with the old configuration up to this lister
+	controller.vpcsLister = kubeovnlister.NewVpcLister(cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{}))
+	setVpcDNSConfigMap(t, controller, "2", map[string]string{"enable-vpc-dns": "maybe"})
+
+	err := controller.handleAddOrUpdateVPCDNS("dns-a")
+
+	require.ErrorContains(t, err, "failed to apply "+util.VpcDNSConfig)
+	require.ErrorContains(t, err, "invalid syntax")
+	// nothing is deleted for an invalid configuration, and the new version is retried on the next sync
+	require.True(t, enableCoreDNS)
+	require.Equal(t, "1", cmVersion)
+	require.Equal(t, []string{"dns-a"}, remainingVpcDNSNames(t, client))
 }
