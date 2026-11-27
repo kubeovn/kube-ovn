@@ -450,10 +450,6 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 	}
 
 	if cachedFip.Status.NatGwDp != eip.Spec.NatGwDp || oldV4ip != newV4ip || cachedFip.Status.InternalIP != newInternalIP {
-		migrationRedo, err := c.natRuleMigrationRedo(cachedFip.Status.NatGwDp, eip.Spec.NatGwDp)
-		if err != nil {
-			return err
-		}
 		// Mark FIP as not ready before starting the update.
 		// This ensures that if the controller crashes or the update fails midway,
 		// the resource will be left in a non-ready state, indicating a potential inconsistency.
@@ -470,6 +466,10 @@ func (c *Controller) handleUpdateIptablesFip(key string) error {
 		}
 		if err = c.patchFipLabel(key, eip); err != nil {
 			klog.Errorf("failed to update label for fip %s before creating rule, %v", key, err)
+			return err
+		}
+		migrationRedo, err := c.natRuleMigrationRedo(cachedFip.Status.NatGwDp, eip.Spec.NatGwDp)
+		if err != nil {
 			return err
 		}
 		if err = c.createFipInPod(eip.Spec.NatGwDp, newV4ip, newInternalIP); err != nil {
