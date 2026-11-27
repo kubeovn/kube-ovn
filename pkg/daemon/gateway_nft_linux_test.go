@@ -12,7 +12,10 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/require"
+	corev1 "k8s.io/api/core/v1"
 	"sigs.k8s.io/knftables"
+
+	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 )
 
 func TestRenderNFTBaseSchema(t *testing.T) {
@@ -52,14 +55,15 @@ func newNFTGatewayBackendForTest(writer knftables.Interface) *nftGatewayBackend 
 
 func TestRenderNFTServiceNAT(t *testing.T) {
 	dump := renderTestSnapshot(t, nftFamilySnapshot{
-		Family:         knftables.IPv4Family,
-		Table:          nftGatewayTable,
-		NodeInternalIP: "192.168.1.10",
-		ClusterIPPorts: []nftAddressPort{{Address: "10.96.0.10", Protocol: "tcp", Port: 80}},
-		Subnets:        []string{"10.16.0.0/16"},
+		Family:              knftables.IPv4Family,
+		Table:               nftGatewayTable,
+		NodeInternalIP:      "192.168.1.10",
+		ClusterIPPorts:      []nftAddressPort{{Address: "10.96.0.10", Protocol: "tcp", Port: 80}},
+		HostServiceVIPPorts: []nftAddressPort{{Address: "10.96.0.10", Protocol: "tcp", Port: 80}},
+		Subnets:             []string{"10.16.0.0/16"},
 	})
 
-	require.Contains(t, dump, "ct status dnat fib saddr type local")
+	require.Contains(t, dump, "ct status dnat fib saddr type local ip daddr @subnets ct original ip daddr . ct original protocol . ct original proto-dst @host-service-vip-ports")
 	require.Contains(t, dump, "ct original ip daddr . ct original protocol . ct original proto-dst @cluster-ip-ports")
 	require.Contains(t, dump, "snat to 192.168.1.10 fully-random")
 	require.Contains(t, dump, `iifname "ovn0"`)
@@ -225,6 +229,79 @@ func TestNFTReconcileSetElementDiff(t *testing.T) {
 	require.Contains(t, dump, "add element ip kube-ovn subnets { 10.18.0.0/24 }")
 	require.NotContains(t, dump, "add table")
 	require.Equal(t, 2, fake.LastTransaction.NumOperations())
+}
+
+func TestNFTReconcileHostServiceVIPPorts(t *testing.T) {
+	for _, tc := range []struct {
+		family                                                                         knftables.Family
+		protocol, addressField, nodeIP, clusterIP, externalIP, vip, replacement, proxy string
+	}{
+		{knftables.IPv4Family, kubeovnv1.ProtocolIPv4, "ip", "192.0.2.1", "10.96.0.10", "203.0.113.10", "198.51.100.10", "198.51.100.11", "198.51.100.12"},
+		{knftables.IPv6Family, kubeovnv1.ProtocolIPv6, "ip6", "2001:db8::1", "fd00:10:96::10", "2001:db8:1::10", "2001:db8:2::10", "2001:db8:2::11", "2001:db8:2::12"},
+	} {
+		t.Run(tc.protocol, func(t *testing.T) {
+			ctx := context.Background()
+			service := &corev1.Service{
+				Spec: corev1.ServiceSpec{
+					Type:        corev1.ServiceTypeLoadBalancer,
+					ClusterIP:   tc.clusterIP,
+					ExternalIPs: []string{tc.externalIP},
+					Ports:       []corev1.ServicePort{{Port: 80, Protocol: corev1.ProtocolTCP}},
+				},
+				Status: corev1.ServiceStatus{LoadBalancer: corev1.LoadBalancerStatus{
+					Ingress: []corev1.LoadBalancerIngress{
+						{IP: tc.vip, IPMode: new(corev1.LoadBalancerIPModeVIP)},
+						{IP: tc.vip},
+						{IP: tc.proxy, IPMode: new(corev1.LoadBalancerIPModeProxy)},
+						{Hostname: "lb.example"},
+					},
+				}},
+			}
+			input := nftSnapshotInput{
+				Protocol: tc.protocol,
+				Services: []*corev1.Service{service},
+				NodeName: "node-a",
+				Nodes: []*corev1.Node{{
+					Name: "node-a",
+					Status: corev1.NodeStatus{Addresses: []corev1.NodeAddress{{
+						Type: corev1.NodeInternalIP, Address: tc.nodeIP,
+					}}},
+				}},
+			}
+			fake := knftables.NewFake(tc.family, nftGatewayTable)
+			backend := &nftGatewayBackend{
+				writer: fake,
+				buildSnapshot: func() (gatewayNFTSnapshot, error) {
+					return buildNFTGatewaySnapshot(input)
+				},
+			}
+			checkElements := func(set string, want ...[]string) {
+				t.Helper()
+				elements, err := fake.ListElements(ctx, "set", set)
+				require.NoError(t, err)
+				require.ElementsMatch(t, want, nftElementsToKeys(elements))
+			}
+
+			require.NoError(t, backend.Reconcile(ctx))
+			require.Contains(t, fake.Dump(), "ct original "+tc.addressField+" daddr . ct original protocol . ct original proto-dst @host-service-vip-ports snat to "+tc.nodeIP)
+			checkElements("host-service-vip-ports", []string{tc.clusterIP, "tcp", "80"}, []string{tc.vip, "tcp", "80"})
+			checkElements("cluster-ip-ports", []string{tc.clusterIP, "tcp", "80"})
+			checkElements("service-vip-ports", []string{tc.clusterIP, "tcp", "80"}, []string{tc.externalIP, "tcp", "80"}, []string{tc.vip, "tcp", "80"}, []string{tc.proxy, "tcp", "80"})
+
+			updated := service.DeepCopy()
+			updated.Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{
+				{IP: tc.vip, IPMode: new(corev1.LoadBalancerIPModeProxy)},
+				{IP: tc.replacement},
+			}
+			input.Services = []*corev1.Service{updated}
+			require.NoError(t, backend.Reconcile(ctx))
+			checkElements("host-service-vip-ports", []string{tc.clusterIP, "tcp", "80"}, []string{tc.replacement, "tcp", "80"})
+
+			input.Services = nil
+			require.NoError(t, backend.Reconcile(ctx))
+			checkElements("host-service-vip-ports")
+		})
+	}
 }
 
 func TestNFTReconcilePolicyChainDiff(t *testing.T) {
