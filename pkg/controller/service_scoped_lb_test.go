@@ -1288,7 +1288,7 @@ func TestGetDistributedIPPortMapping(t *testing.T) {
 	}
 	portName := ovs.PodNameToPortName("backend", "default", util.OvnProvider)
 	fake.mockOvnClient.EXPECT().GetLogicalSwitchPort(portName, true).Return(&ovnnb.LogicalSwitchPort{Name: portName}, nil)
-	mapping, err := ctrl.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{endpointSlice}, service, servicePort, "10.96.0.10")
+	mapping, err := ctrl.getDistributedIPPortMapping(serviceEndpointCandidates([]*discoveryv1.EndpointSlice{endpointSlice}, servicePort, "10.96.0.10", true), service)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1298,7 +1298,7 @@ func TestGetDistributedIPPortMapping(t *testing.T) {
 
 	endpoint.TargetRef = nil
 	endpointSlice.Endpoints = []discoveryv1.Endpoint{endpoint}
-	if _, err := ctrl.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{endpointSlice}, service, servicePort, "10.96.0.10"); err == nil {
+	if _, err := ctrl.getDistributedIPPortMapping(serviceEndpointCandidates([]*discoveryv1.EndpointSlice{endpointSlice}, servicePort, "10.96.0.10", true), service); err == nil {
 		t.Fatal("expected ready endpoint without target to fail")
 	}
 }
@@ -1345,7 +1345,7 @@ func TestGetDistributedIPPortMappingHostNetwork(t *testing.T) {
 					TargetRef: &corev1.ObjectReference{Kind: "Pod", Namespace: pod.Namespace, Name: pod.Name},
 				}},
 			}
-			mapping, err := fake.fakeController.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{endpointSlice}, service, corev1.ServicePort{Port: 80}, tt.serviceIP)
+			mapping, err := fake.fakeController.getDistributedIPPortMapping(serviceEndpointCandidates([]*discoveryv1.EndpointSlice{endpointSlice}, corev1.ServicePort{Port: 80}, tt.serviceIP, true), service)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("getDistributedIPPortMapping() error = %v, want %q", err, tt.wantErr)
@@ -1416,7 +1416,7 @@ func TestGetDistributedIPPortMappingHostNetworkCacheSkew(t *testing.T) {
 			if tt.endpointUID == "old" {
 				endpointSlice.Endpoints[0].Addresses = []string{"192.0.2.10"}
 			}
-			mapping, err := fake.fakeController.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{endpointSlice}, svc, corev1.ServicePort{Port: 80}, "10.96.0.10")
+			mapping, err := fake.fakeController.getDistributedIPPortMapping(serviceEndpointCandidates([]*discoveryv1.EndpointSlice{endpointSlice}, corev1.ServicePort{Port: 80}, "10.96.0.10", true), svc)
 			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 				t.Fatalf("cache skew must retry instead of installing mapping %v: error = %v, want %q", mapping, err, tt.wantErr)
 			}
@@ -1430,7 +1430,7 @@ func TestGetDistributedIPPortMappingHostNetworkCacheSkew(t *testing.T) {
 			endpointSlice.Endpoints[0].TargetRef.UID = pod.UID
 			endpointSlice.Endpoints[0].NodeName = new(pod.Spec.NodeName)
 			endpointSlice.Endpoints[0].Addresses = []string{"192.0.2.20"}
-			mapping, err = fake.fakeController.getDistributedIPPortMapping([]*discoveryv1.EndpointSlice{endpointSlice}, svc, corev1.ServicePort{Port: 80}, "10.96.0.10")
+			mapping, err = fake.fakeController.getDistributedIPPortMapping(serviceEndpointCandidates([]*discoveryv1.EndpointSlice{endpointSlice}, corev1.ServicePort{Port: 80}, "10.96.0.10", true), svc)
 			if err != nil {
 				t.Fatalf("retry after cache convergence: %v", err)
 			}
@@ -1460,15 +1460,15 @@ func TestServiceEndpointCandidatesTerminatingFallback(t *testing.T) {
 		},
 	}
 
-	if got := (&Controller{}).getEndpointBackend(endpointSlices, servicePort, "10.96.0.10", true); !slices.Equal(got, []string{"10.0.0.3:8080"}) {
+	if got := endpointBackends(serviceEndpointCandidates(endpointSlices, servicePort, "10.96.0.10", true)); !slices.Equal(got, []string{"10.0.0.3:8080"}) {
 		t.Fatalf("backends with a ready endpoint = %v, want ready endpoint only", got)
 	}
 
 	endpointSlices[0].Endpoints[1].Conditions.Ready = &notReady
-	if got := (&Controller{}).getEndpointBackend(endpointSlices, servicePort, "10.96.0.10", true); !slices.Equal(got, []string{"10.0.0.2:8080"}) {
+	if got := endpointBackends(serviceEndpointCandidates(endpointSlices, servicePort, "10.96.0.10", true)); !slices.Equal(got, []string{"10.0.0.2:8080"}) {
 		t.Fatalf("backends without a ready endpoint = %v, want serving and terminating fallback", got)
 	}
-	if got := (&Controller{}).getEndpointBackend(endpointSlices, servicePort, "10.96.0.10", false); len(got) != 0 {
+	if got := endpointBackends(serviceEndpointCandidates(endpointSlices, servicePort, "10.96.0.10", false)); len(got) != 0 {
 		t.Fatalf("non-Local backends = %v, want no terminating fallback", got)
 	}
 }
@@ -1551,17 +1551,17 @@ func TestAttachServiceScopedLoadBalancersToRouter(t *testing.T) {
 
 func TestDecorateDistributedIPPortMapping(t *testing.T) {
 	mapping := IPPortMapping{"10.0.0.2": "pod-backend"}
-	decorateDistributedIPPortMapping(mapping, "10.0.0.10")
+	decorateIPPortMappingWithHealthCheck(mapping, "10.0.0.10")
 	if mapping["10.0.0.2"] != "pod-backend:10.0.0.10" {
 		t.Fatalf("decorated mapping = %v", mapping)
 	}
-	decorateDistributedIPPortMapping(mapping, "")
+	decorateIPPortMappingWithHealthCheck(mapping, "")
 	if mapping["10.0.0.2"] != "pod-backend:10.0.0.10" {
 		t.Fatalf("empty source IP changed mapping = %v", mapping)
 	}
 
 	ipv6Mapping := IPPortMapping{"[fd00::2]": "pod-backend"}
-	decorateDistributedIPPortMapping(ipv6Mapping, "fd00::10")
+	decorateIPPortMappingWithHealthCheck(ipv6Mapping, "fd00::10")
 	if ipv6Mapping["[fd00::2]"] != "pod-backend:[fd00::10]" {
 		t.Fatalf("IPv6 decorated mapping = %v", ipv6Mapping)
 	}
