@@ -91,10 +91,10 @@ function ovn_db_pre_start() {
         ;;
     esac
 
-    local db_file="/etc/ovn/ovn${1}_db.db"
+    local db_file="/etc/ovn/ovn_${1}_db.db"
     [ ! -e "$db_file" ] && return
     ! ovsdb-tool db-is-clustered "$db_file" && return
-    ovsdb-tool check-cluster "$db_file" && return
+    python3 /kube-ovn/ovn-db-check.py "$db_file" && return
 
     local db_bak="$db_file.backup-$(date +%s)-$(random_str)"
     echo "backup $db_file to $db_bak"
@@ -103,7 +103,7 @@ function ovn_db_pre_start() {
     echo "detected database corruption for file $db_file, try to fix it."
     if ovsdb-tool fix-cluster "$db_file"; then
         echo "checking whether database file $db_file has been fixed."
-        ovsdb-tool check-cluster "$db_file" && return
+        python3 /kube-ovn/ovn-db-check.py "$db_file" && return
     fi
 
     echo "failed to fix database file $db_file, rebuild it."
