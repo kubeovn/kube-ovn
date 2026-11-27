@@ -2,10 +2,13 @@ package daemon
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
 
+	godbus "github.com/godbus/dbus/v5"
 	"github.com/kubeovn/dbus/v5"
 	"github.com/kubeovn/gonetworkmanager/v3"
 	"github.com/scylladb/go-set/strset"
@@ -13,6 +16,8 @@ import (
 	"golang.org/x/mod/semver"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
+
+	"github.com/kubeovn/kube-ovn/pkg/nmhelper"
 )
 
 const (
@@ -24,14 +29,15 @@ const (
 )
 
 type networkManagerSyncer struct {
-	manager   gonetworkmanager.NetworkManager
-	workqueue workqueue.TypedInterface[string]
-	devices   *strset.Set
-	bridgeMap map[string]string
-	lock      sync.Mutex
+	manager      gonetworkmanager.NetworkManager
+	workqueue    workqueue.TypedInterface[string]
+	devices      *strset.Set
+	bridgeMap    map[string]string
+	lock         sync.Mutex
+	setUnmanaged func(device gonetworkmanager.Device, name string) error
 }
 
-func newNetworkManagerSyncer() *networkManagerSyncer {
+func newNetworkManagerSyncer(enableHelper bool) *networkManagerSyncer {
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
 
@@ -68,6 +74,7 @@ func newNetworkManagerSyncer() *networkManagerSyncer {
 	syncer.workqueue = workqueue.NewTypedWithConfig(workqueue.TypedQueueConfig[string]{Name: "NetworkManagerSyncer"})
 	syncer.devices = strset.New()
 	syncer.bridgeMap = make(map[string]string)
+	syncer.setUnmanaged = setUnmanagedFunc(enableHelper, nmhelper.Socket)
 	return syncer
 }
 
@@ -309,7 +316,12 @@ func (n *networkManagerSyncer) SetManaged(name string, managed bool) error {
 
 	if deviceType != gonetworkmanager.NmDeviceTypeTeam {
 		klog.Infof(`setting device %s NetworkManager property "managed" to %v`, name, managed)
-		if err = device.SetPropertyManaged(managed); err != nil {
+		if managed {
+			err = device.SetPropertyManaged(true)
+		} else {
+			err = n.setUnmanaged(device, name)
+		}
+		if err != nil {
 			klog.Errorf("failed to set device property managed to %v: %v", managed, err)
 			return err
 		}
@@ -318,4 +330,29 @@ func (n *networkManagerSyncer) SetManaged(name string, managed bool) error {
 	}
 
 	return nil
+}
+
+// setUnmanagedFunc returns the write that sets a device unmanaged: a request
+// to the nm-helper container when it is enabled, a direct D-Bus call otherwise.
+func setUnmanagedFunc(enableHelper bool, helperSocket string) func(gonetworkmanager.Device, string) error {
+	if !enableHelper {
+		return setUnmanagedDirect
+	}
+	return func(_ gonetworkmanager.Device, name string) error {
+		if err := nmhelper.SetUnmanaged(helperSocket, name); err != nil {
+			return fmt.Errorf("failed to set %s unmanaged: %w", name, err)
+		}
+		return nil
+	}
+}
+
+// setUnmanagedDirect is denied on a default polkit setup: NetworkManager
+// authorizes this write without polkit only for UID 0, and cni-server runs as UID 65534.
+func setUnmanagedDirect(device gonetworkmanager.Device, name string) error {
+	err := device.SetPropertyManaged(false)
+	var dbusErr godbus.Error
+	if errors.As(err, &dbusErr) && dbusErr.Name == "org.freedesktop.NetworkManager.PermissionDenied" {
+		return fmt.Errorf("NetworkManager denied setting %s unmanaged: enable the NetworkManager helper (ENABLE_NM_HELPER in install.sh, func.ENABLE_NM_HELPER or features.enableNmHelper in the charts) or mark %s unmanaged on the host: %w", name, name, err)
+	}
+	return err
 }
