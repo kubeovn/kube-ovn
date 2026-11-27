@@ -177,6 +177,7 @@ func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
 type endpointSliceServiceProfile struct {
 	lbVips               []string
 	trafficClasses       map[string]serviceLBTrafficClass
+	healthCheckVips      map[string]bool
 	externalVIPNode      string
 	serviceL2StatusReady bool
 	ignoreHealthCheck    bool
@@ -215,6 +216,7 @@ type serviceEndpointVIPState struct {
 	trafficClass serviceLBTrafficClass
 	distributed  bool
 	template     bool
+	healthCheck  bool
 }
 
 func (c *Controller) handleUpdateEndpointSlice(key string) error {
@@ -325,6 +327,7 @@ func filterServiceEndpointSlices(svc *v1.Service, endpointSlices []*discoveryv1.
 func (c *Controller) endpointSliceServiceProfile(svc *v1.Service) (endpointSliceServiceProfile, error) {
 	profile := endpointSliceServiceProfile{
 		trafficClasses:       make(map[string]serviceLBTrafficClass),
+		healthCheckVips:      make(map[string]bool),
 		serviceL2StatusReady: true,
 		ignoreHealthCheck:    true,
 		distributedLocal:     serviceUsesDistributedLB(svc),
@@ -364,7 +367,12 @@ func (c *Controller) endpointSliceServiceProfile(svc *v1.Service) (endpointSlice
 func (p *endpointSliceServiceProfile) addVIP(vip string, trafficClass serviceLBTrafficClass, svc *v1.Service, enableHealthCheck bool) {
 	p.lbVips = append(p.lbVips, vip)
 	p.trafficClasses[vip] = trafficClass
-	if enableHealthCheck && util.CheckProtocol(vip) == kubeovnv1.ProtocolIPv4 && !serviceHealthChecksDisabled(svc) {
+	protocol := util.CheckProtocol(vip)
+	ipv6HealthCheck := protocol == kubeovnv1.ProtocolIPv6 &&
+		svc.Annotations[util.RouterLBRuleVipsAnnotation] != ""
+	p.healthCheckVips[vip] = enableHealthCheck && !serviceHealthChecksDisabled(svc) &&
+		(protocol == kubeovnv1.ProtocolIPv4 || ipv6HealthCheck)
+	if p.healthCheckVips[vip] {
 		p.ignoreHealthCheck = false
 	}
 }
@@ -542,6 +550,7 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 		oldLB:        reconcileCtx.loadBalancers.previous[port.Protocol],
 		vip:          util.JoinHostPort(lbVip, port.Port),
 		trafficClass: serviceLBTrafficClassForVIP(profile.trafficClasses, lbVip),
+		healthCheck:  profile.healthCheckVips[lbVip],
 	}
 	isExternalVIP := state.trafficClass == serviceLBExternalTraffic
 	state.distributed = profile.distributedLocal && !isExternalVIP
@@ -571,21 +580,21 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 	}
 
 	var err error
-	state.checkIP, state.externals, err = c.serviceVIPHealthCheck(reconcileCtx, lbVip)
+	state.checkIP, state.externals, err = c.serviceVIPHealthCheck(reconcileCtx, lbVip, state.healthCheck)
 	if err != nil {
 		return err
 	}
-	state.mapping, err = c.serviceVIPIPPortMapping(reconcileCtx, port, lbVip, state.distributed, state.checkIP)
+	state.mapping, err = c.serviceVIPIPPortMapping(reconcileCtx, port, lbVip, state.distributed, state.healthCheck, state.checkIP)
 	if err != nil {
 		return err
 	}
-	if !reconcileCtx.profile.ignoreHealthCheck && len(state.mapping) == 0 {
+	if state.healthCheck && len(state.mapping) == 0 {
 		// Host-network or manually managed endpoints do not have an OVN logical
 		// port to probe from the health-check VIP. Keeping a health check with an
 		// empty mapping would mark otherwise reachable backends (for example the
 		// Kubernetes API service) down.
 		klog.Infof("skip health check for service %s/%s vip %s: no OVN backend mapping", svc.Namespace, svc.Name, lbVip)
-		reconcileCtx.profile.ignoreHealthCheck = true
+		state.healthCheck = false
 		state.checkIP = ""
 		state.externals = nil
 	}
@@ -596,10 +605,10 @@ func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReco
 	return c.addServiceEndpointVIP(reconcileCtx, state)
 }
 
-func (c *Controller) serviceVIPHealthCheck(reconcileCtx *endpointSliceReconcileContext, lbVip string) (string, map[string]string, error) {
+func (c *Controller) serviceVIPHealthCheck(reconcileCtx *endpointSliceReconcileContext, lbVip string, healthCheck bool) (string, map[string]string, error) {
 	var checkIP string
 	var externals map[string]string
-	if !reconcileCtx.profile.ignoreHealthCheck {
+	if healthCheck {
 		var err error
 		checkIP, err = c.getHealthCheckVip(reconcileCtx.subnetName, lbVip)
 		if err != nil {
@@ -610,19 +619,19 @@ func (c *Controller) serviceVIPHealthCheck(reconcileCtx *endpointSliceReconcileC
 	return checkIP, externals, nil
 }
 
-func (c *Controller) serviceVIPIPPortMapping(reconcileCtx *endpointSliceReconcileContext, servicePort v1.ServicePort, serviceIP string, distributed bool, checkIP string) (IPPortMapping, error) {
+func (c *Controller) serviceVIPIPPortMapping(reconcileCtx *endpointSliceReconcileContext, servicePort v1.ServicePort, serviceIP string, distributed, healthCheck bool, checkIP string) (IPPortMapping, error) {
 	if distributed {
 		mapping, err := c.getDistributedIPPortMapping(reconcileCtx.endpointSlices, reconcileCtx.service, servicePort, serviceIP)
 		if err != nil {
 			return nil, fmt.Errorf("get distributed ip port mapping for service %s/%s: %w", reconcileCtx.service.Namespace, reconcileCtx.service.Name, err)
 		}
 		mapping = filterIPPortMappingByVIP(mapping, serviceIP)
-		if !reconcileCtx.profile.ignoreHealthCheck {
+		if healthCheck {
 			decorateDistributedIPPortMapping(mapping, checkIP)
 		}
 		return mapping, nil
 	}
-	if reconcileCtx.profile.ignoreHealthCheck {
+	if !healthCheck {
 		return nil, nil
 	}
 	mapping, err := c.getIPPortMapping(reconcileCtx.endpointSlices, reconcileCtx.service, checkIP)
@@ -637,7 +646,7 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 		c.planServiceEndpointVIP(reconcileCtx, state)
 		return nil
 	}
-	svc, profile := reconcileCtx.service, reconcileCtx.profile
+	svc := reconcileCtx.service
 	klog.Infof("add vip endpoint %s, backends %v to LB %s", state.vip, state.backends, state.lb)
 	candidates := c.serviceLBMigrationCandidates(svc, state.port.Protocol, reconcileCtx.vpc, state.trafficClass)
 	if serviceLB, ok := c.OVNNbClient.(interface {
@@ -645,7 +654,7 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 	}); ok {
 		if err := serviceLB.LoadBalancerMigrateVIPWithAttachmentsAndHealthCheck(
 			state.lb, state.vip, state.backends, state.vip, candidates, reconcileCtx.scopedLBAttachments,
-			state.mapping, profile.ignoreHealthCheck, state.externals,
+			state.mapping, !state.healthCheck, state.externals,
 		); err != nil {
 			return fmt.Errorf("reconcile vip %s: %w", state.vip, err)
 		}
@@ -664,8 +673,8 @@ func (c *Controller) addServiceEndpointVIP(reconcileCtx *endpointSliceReconcileC
 				return fmt.Errorf("update ip port mapping for vip %s on load balancer %s: %w", state.vip, state.lb, err)
 			}
 		}
-		if !profile.ignoreHealthCheck {
-			if err := c.OVNNbClient.LoadBalancerAddHealthCheck(state.lb, state.vip, profile.ignoreHealthCheck, state.mapping, state.externals); err != nil {
+		if state.healthCheck {
+			if err := c.OVNNbClient.LoadBalancerAddHealthCheck(state.lb, state.vip, !state.healthCheck, state.mapping, state.externals); err != nil {
 				return fmt.Errorf("add health check for vip %s on load balancer %s: %w", state.vip, state.lb, err)
 			}
 		}
@@ -1606,7 +1615,7 @@ func (c *Controller) addIPPortMappingEntry(pod *v1.Pod, addresses []string, chec
 		if util.CheckProtocol(address) == kubeovnv1.ProtocolIPv6 {
 			key = fmt.Sprintf("[%s]", address)
 		}
-		mapping[key] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, lspName, checkVip)
+		mapping[key] = fmt.Sprintf(util.HealthCheckNamedVipTemplate, lspName, formatHealthCheckSourceIP(checkVip))
 	}
 
 	return nil
@@ -1705,8 +1714,15 @@ func decorateDistributedIPPortMapping(mapping IPPortMapping, sourceIP string) {
 		return
 	}
 	for backendIP, logicalPort := range mapping {
-		mapping[backendIP] = fmt.Sprintf("%s:%s", logicalPort, sourceIP)
+		mapping[backendIP] = fmt.Sprintf("%s:%s", logicalPort, formatHealthCheckSourceIP(sourceIP))
 	}
+}
+
+func formatHealthCheckSourceIP(ip string) string {
+	if util.CheckProtocol(ip) == kubeovnv1.ProtocolIPv6 {
+		return fmt.Sprintf("[%s]", ip)
+	}
+	return ip
 }
 
 func ipPortMappingAddress(backendIP string) string {
