@@ -301,10 +301,8 @@ func newNatGatewayMigrationFixture(t *testing.T, source, destination, namespace 
 	c.config.PodNamespace = namespace
 	gatewayPod := func(gateway string) *corev1.Pod {
 		return &corev1.Pod{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: gateway, Namespace: namespace,
-				Labels: map[string]string{"app": util.GenNatGwName(gateway), util.VpcNatGatewayLabel: "true"},
-			},
+			Name: gateway, Namespace: namespace,
+			Labels: map[string]string{"app": util.GenNatGwName(gateway), util.VpcNatGatewayLabel: "true"},
 			Status: corev1.PodStatus{
 				Phase: corev1.PodRunning,
 				ContainerStatuses: []corev1.ContainerStatus{{
