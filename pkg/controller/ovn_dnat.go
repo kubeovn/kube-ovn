@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"strconv"
 	"strings"
 
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
@@ -86,7 +87,7 @@ func (c *Controller) isOvnDnatDuplicated(eipName, externalPort, protocol string,
 		return err
 	}
 	for _, d := range dnats {
-		if d.Spec.OvnEip != eipName || d.Spec.ExternalPort != externalPort ||
+		if d.Spec.OvnEip != eipName || canonicalPort(d.Spec.ExternalPort) != canonicalPort(externalPort) ||
 			!strings.EqualFold(portProtocol(d.Spec.Protocol), portProtocol(protocol)) {
 			continue
 		}
@@ -97,6 +98,16 @@ func (c *Controller) isOvnDnatDuplicated(eipName, externalPort, protocol string,
 		}
 	}
 	return nil
+}
+
+// canonicalPort returns the decimal representation of a numeric port. Invalid
+// values are returned unchanged so the caller can still report them normally.
+func canonicalPort(port string) string {
+	value, err := strconv.Atoi(port)
+	if err != nil {
+		return port
+	}
+	return strconv.Itoa(value)
 }
 
 // portProtocol returns the protocol in lower case, defaulting to tcp.
