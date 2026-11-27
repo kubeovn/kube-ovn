@@ -673,6 +673,7 @@ var _ = framework.SerialDescribe("[group:ha]", func() {
 
 	registerKubectlKoHA(f, kindNodes)
 	registerZeroTailHA(f, kindNodes)
+	registerDuplicateMemberHA(f, kindNodes)
 
 	framework.DisruptiveIt("ovn db should handle corruption according to the supported recovery policy", func() {
 		f.SkipVersionPriorTo(1, 11, "This feature was introduced in v1.11")

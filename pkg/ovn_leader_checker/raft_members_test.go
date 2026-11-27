@@ -86,7 +86,7 @@ Servers:
 		},
 		{
 			name:   "committing member in server list",
-			status: strings.Replace(duplicateMemberStatus, "last msg 12 ms ago", "(committing) last msg 12 ms ago", 1),
+			status: strings.Replace(duplicateMemberStatus, "last msg 12 ms ago", "(adding: committing) last msg 12 ms ago", 1),
 		},
 		{
 			name: "no quorum",

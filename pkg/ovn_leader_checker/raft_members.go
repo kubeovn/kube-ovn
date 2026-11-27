@@ -24,7 +24,7 @@ var (
 	raftServerLine  = regexp.MustCompile(`^\s+([[:xdigit:]]+)\s+\(([[:xdigit:]]+)\s+at\s+(.+?)\)(.*)$`)
 	lastMessageLine = regexp.MustCompile(`last msg ([0-9]+) ms ago`)
 	matchIndexLine  = regexp.MustCompile(`match_index=([0-9]+)`)
-	raftPhaseLine   = regexp.MustCompile(`\((catchup|caught up|committing|remove)\)`)
+	raftPhaseLine   = regexp.MustCompile(`\((?:adding:\s*)?(?:catchup|caught up|committing|remove|removing)\)`)
 )
 
 type raftMember struct {
