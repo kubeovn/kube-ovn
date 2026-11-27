@@ -348,7 +348,7 @@ func Test_checkEipPortConflict(t *testing.T) {
 	}
 	plusSignDnat := &kubeovnv1.OvnDnatRule{
 		Name:   "plus-sign-dnat",
-		Spec:   kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1", ExternalPort: "+81", Protocol: "tcp"},
+		Spec:   kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip2", ExternalPort: "+80", Protocol: "tcp"},
 		Status: kubeovnv1.OvnDnatRuleStatus{V4Eip: "10.0.0.3"},
 	}
 
@@ -370,7 +370,7 @@ func Test_checkEipPortConflict(t *testing.T) {
 	}{
 		{
 			name:    "no conflict",
-			eip:     "eip2",
+			eip:     "eip3",
 			port:    "80",
 			wantErr: false,
 		},
@@ -402,11 +402,10 @@ func Test_checkEipPortConflict(t *testing.T) {
 			wantErr:    true,
 		},
 		{
-			name:       "canonicalizes plus sign in OvnDnatRule port",
-			eip:        "eip1",
-			port:       "81",
-			excludeRlr: "existing-rlr",
-			wantErr:    true,
+			name:    "canonicalizes plus sign in OvnDnatRule port",
+			eip:     "eip2",
+			port:    "80",
+			wantErr: true,
 		},
 		{
 			name:        "DNAT exclusion skips own DNAT",
