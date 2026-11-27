@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 
+	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	"github.com/ovn-kubernetes/libovsdb/ovsdb"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1101,6 +1102,118 @@ func Test_handleAddOrUpdateSubnet_vlanValidationError(t *testing.T) {
 	err = ctrl.handleAddOrUpdateSubnet("test-underlay")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "failed to validate vlan")
+}
+
+func TestSyncDistributedSubnetPortGroupMembers(t *testing.T) {
+	const subnetName = "test-subnet"
+	const portUUID = "port-uuid"
+	source := getOverlaySubnetsPortGroupName(subnetName, "node-a")
+	target := getOverlaySubnetsPortGroupName(subnetName, "node-c")
+	port := ovs.PodNameToPortName("test-pod", "default", util.OvnProvider)
+	addErr := errors.New("OVN write failed")
+	for _, tc := range []struct {
+		name               string
+		inSource, inTarget bool
+		wantRemove         bool
+		addErr             error
+	}{
+		{name: "reassert cached target", inTarget: true},
+		{name: "move", inSource: true, wantRemove: true},
+		{name: "duplicate", inSource: true, inTarget: true, wantRemove: true},
+		{name: "missing membership"},
+		{name: "retry after add fails", inSource: true, wantRemove: true, addErr: addErr},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			subnet := &kubeovnv1.Subnet{Name: subnetName, Spec: kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc}}
+			pod := &corev1.Pod{
+				Name: "test-pod", Namespace: "default",
+				Annotations: map[string]string{
+					util.LogicalSwitchAnnotation: subnetName,
+					util.IPAddressAnnotation:     "10.0.0.2",
+				},
+				Spec: corev1.PodSpec{NodeName: "node-c"},
+			}
+			fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Subnets: []*kubeovnv1.Subnet{subnet}, Pods: []*corev1.Pod{pod},
+			})
+			require.NoError(t, err)
+
+			groups := []ovnnb.PortGroup{{Name: source, Ports: []string{"unrelated-port"}}, {Name: target}}
+			if tc.inSource {
+				groups[0].Ports = append(groups[0].Ports, portUUID)
+			}
+			if tc.inTarget {
+				groups[1].Ports = []string{portUUID}
+			}
+			nb := fc.mockOvnClient.EXPECT()
+			scope := map[string]string{"subnet": subnetName, "node": "", networkPolicyKey: ""}
+			steps := []any{
+				nb.ListPortGroups(scope).Return(groups, nil),
+				nb.GetLogicalSwitchPort(port, true).Return(&ovnnb.LogicalSwitchPort{UUID: portUUID}, nil),
+			}
+			if tc.wantRemove {
+				steps = append(steps, nb.PortGroupRemovePorts(source, port).Return(nil))
+			}
+			steps = append(steps, nb.PortGroupAddPorts(target, port).Return(tc.addErr))
+			if tc.addErr == nil {
+				gomock.InOrder(steps...)
+				require.NoError(t, fc.fakeController.reconcileDistributedSubnetRouteInDefaultVpc(subnet))
+				return
+			}
+			steps = append(steps,
+				nb.ListPortGroups(scope).Return([]ovnnb.PortGroup{{Name: source, Ports: []string{"unrelated-port"}}, {Name: target}}, nil),
+				nb.GetLogicalSwitchPort(port, true).Return(&ovnnb.LogicalSwitchPort{UUID: portUUID}, nil),
+				nb.PortGroupAddPorts(target, port).Return(nil),
+			)
+			gomock.InOrder(steps...)
+			require.ErrorIs(t, fc.fakeController.reconcileDistributedSubnetRouteInDefaultVpc(subnet), addErr)
+			require.NoError(t, fc.fakeController.reconcileDistributedSubnetRouteInDefaultVpc(subnet))
+		})
+	}
+}
+
+func TestSyncDistributedSubnetPortGroupMembersGroupsPodPorts(t *testing.T) {
+	const subnet = "test-subnet"
+	const provider = "net1.default.ovn"
+	pod := &corev1.Pod{
+		Name: "test-pod", Namespace: "default",
+		Annotations: map[string]string{
+			util.LogicalSwitchAnnotation:                                subnet,
+			util.IPAddressAnnotation:                                    "10.0.0.2",
+			nadv1.NetworkAttachmentAnnot:                                "net1",
+			fmt.Sprintf(util.LogicalSwitchAnnotationTemplate, provider): subnet,
+			fmt.Sprintf(util.IPAddressAnnotationTemplate, provider):     "10.0.0.3",
+		},
+		Spec: corev1.PodSpec{NodeName: "node-c"},
+	}
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Subnets: []*kubeovnv1.Subnet{{Name: subnet, Spec: kubeovnv1.SubnetSpec{Vpc: util.DefaultVpc}}},
+		Pods:    []*corev1.Pod{pod},
+		NetworkAttachments: []*nadv1.NetworkAttachmentDefinition{{
+			Name: "net1", Namespace: "default",
+			Spec: nadv1.NetworkAttachmentDefinitionSpec{Config: `{"cniVersion":"0.3.1","name":"net1","type":"kube-ovn"}`},
+		}},
+	})
+	require.NoError(t, err)
+
+	primary := ovs.PodNameToPortName(pod.Name, pod.Namespace, util.OvnProvider)
+	secondary := ovs.PodNameToPortName(pod.Name, pod.Namespace, provider)
+	source := getOverlaySubnetsPortGroupName(subnet, "node-a")
+	unrelated := getOverlaySubnetsPortGroupName(subnet, "node-b")
+	target := getOverlaySubnetsPortGroupName(subnet, "node-c")
+	nb := fc.mockOvnClient.EXPECT()
+	gomock.InOrder(
+		nb.ListPortGroups(map[string]string{"subnet": subnet, "node": "", networkPolicyKey: ""}).Return([]ovnnb.PortGroup{
+			{Name: source, Ports: []string{"primary-uuid", "secondary-uuid"}},
+			{Name: unrelated, Ports: []string{"other-uuid"}},
+			{Name: target},
+		}, nil),
+		nb.GetLogicalSwitchPort(secondary, true).Return(&ovnnb.LogicalSwitchPort{UUID: "secondary-uuid"}, nil),
+		nb.GetLogicalSwitchPort(primary, true).Return(&ovnnb.LogicalSwitchPort{UUID: "primary-uuid"}, nil),
+		nb.PortGroupRemovePorts(source, secondary, primary).Return(nil),
+		nb.PortGroupAddPorts(target, secondary, primary).Return(nil),
+	)
+	require.NoError(t, fc.fakeController.syncDistributedSubnetPortGroupMembers(subnet))
 }
 
 func Test_isOvnSubnet(t *testing.T) {
