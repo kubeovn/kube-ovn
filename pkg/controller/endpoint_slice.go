@@ -614,7 +614,18 @@ func (c *Controller) reconcileServiceVIPHealthCheck(ctx *endpointSliceReconcileC
 	}
 	checkIP, err := c.getHealthCheckVip(ctx.subnetName, state.lbVip)
 	if err != nil {
-		return err
+		if ctx.healthCheckRetryErr == nil {
+			ctx.healthCheckRetryErr = fmt.Errorf("get health-check VIP for service %s/%s VIP %s: %w", ctx.service.Namespace, ctx.service.Name, state.lbVip, err)
+		}
+		// A missing or unready probe VIP must not prevent the service VIP from
+		// forwarding traffic. Retry health-check discovery after publishing the
+		// forwarding state.
+		state.healthCheck = false
+		if !state.distributed {
+			state.mapping = nil
+		}
+		state.externals = nil
+		return nil
 	}
 	decorateIPPortMappingWithHealthCheck(state.mapping, checkIP)
 	state.externals = map[string]string{util.SwitchLBRuleSubnet: ctx.subnetName}
