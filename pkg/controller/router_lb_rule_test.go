@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -337,8 +338,8 @@ func Test_checkEipPortConflict(t *testing.T) {
 	}
 	existingDnat := &kubeovnv1.OvnDnatRule{
 		Name:   "existing-dnat",
-		Labels: map[string]string{util.VpcDnatEPortLabel: "443"},
-		Spec:   kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1"},
+		Spec:   kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1", ExternalPort: "443", Protocol: "tcp"},
+		Status: kubeovnv1.OvnDnatRuleStatus{V4Eip: "10.0.0.1"},
 	}
 
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
@@ -352,8 +353,9 @@ func Test_checkEipPortConflict(t *testing.T) {
 		name        string
 		eip         string
 		port        string
+		protocol    string
 		excludeRlr  string
-		excludeDnat string
+		excludeDnat *kubeovnv1.OvnDnatRule
 		wantErr     bool
 	}{
 		{
@@ -385,8 +387,22 @@ func Test_checkEipPortConflict(t *testing.T) {
 			name:        "DNAT exclusion skips own DNAT",
 			eip:         "eip1",
 			port:        "443",
-			excludeDnat: "existing-dnat",
+			excludeDnat: existingDnat,
 			wantErr:     false,
+		},
+		{
+			name:     "protocol comparison ignores case",
+			eip:      "eip1",
+			port:     "443",
+			protocol: "TCP",
+			wantErr:  true,
+		},
+		{
+			name:     "same port with another protocol does not conflict with OvnDnatRule",
+			eip:      "eip1",
+			port:     "443",
+			protocol: "udp",
+			wantErr:  false,
 		},
 		{
 			name:    "different port no conflict",
@@ -404,7 +420,7 @@ func Test_checkEipPortConflict(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ctrl.checkEipPortConflict(tt.eip, tt.port, tt.excludeRlr, tt.excludeDnat)
+			err := ctrl.checkEipPortConflict(tt.eip, tt.port, tt.protocol, tt.excludeRlr, tt.excludeDnat)
 			if tt.wantErr {
 				assert.Error(t, err)
 			} else {
@@ -412,6 +428,65 @@ func Test_checkEipPortConflict(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_ovnDnatHoldsPort(t *testing.T) {
+	older := metav1.NewTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	newer := metav1.NewTime(older.Add(time.Minute))
+	rule := func(name string, created metav1.Time, programmed bool) *kubeovnv1.OvnDnatRule {
+		dnat := &kubeovnv1.OvnDnatRule{
+			Name: name, CreationTimestamp: created,
+		}
+		if programmed {
+			dnat.Status.V4Eip = "10.0.0.1"
+		}
+		return dnat
+	}
+	terminating := rule("a", older, false)
+	terminating.DeletionTimestamp = &newer
+
+	tests := []struct {
+		name    string
+		other   *kubeovnv1.OvnDnatRule
+		current *kubeovnv1.OvnDnatRule
+		want    bool
+	}{
+		{name: "never conflicts with itself", other: rule("a", older, true), current: rule("a", older, true), want: false},
+		{name: "older pending rule wins", other: rule("b", older, false), current: rule("a", newer, false), want: true},
+		{name: "newer pending rule loses", other: rule("a", newer, false), current: rule("b", older, false), want: false},
+		{name: "lower name wins a timestamp tie", other: rule("a", older, false), current: rule("b", older, false), want: true},
+		{name: "higher name loses a timestamp tie", other: rule("b", older, false), current: rule("a", older, false), want: false},
+		{name: "newer programmed rule beats older pending rule", other: rule("b", newer, true), current: rule("a", older, false), want: true},
+		{name: "older pending rule does not displace a programmed rule", other: rule("a", older, false), current: rule("b", newer, true), want: false},
+		{name: "terminating pending rule holds nothing", other: terminating, current: rule("b", newer, false), want: false},
+		{name: "programmed rule blocks a RouterLBRule", other: rule("a", older, true), want: true},
+		{name: "pending rule does not block a RouterLBRule", other: rule("a", older, false), want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, ovnDnatHoldsPort(tt.other, tt.current))
+		})
+	}
+}
+
+func Test_checkEipPortConflictBetweenNewOvnDnatRules(t *testing.T) {
+	created := metav1.NewTime(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	rule := func(name string) *kubeovnv1.OvnDnatRule {
+		return &kubeovnv1.OvnDnatRule{
+			Name: name, CreationTimestamp: created,
+			Spec: kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1", ExternalPort: "80", Protocol: "tcp"},
+		}
+	}
+	first, second := rule("dnat-b1"), rule("dnat-b2")
+
+	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		OvnDnatRules: []*kubeovnv1.OvnDnatRule{first, second},
+	})
+	require.NoError(t, err)
+
+	assert.NoError(t, fc.fakeController.checkEipPortConflict("eip1", "80", "tcp", "", first))
+	assert.ErrorContains(t, fc.fakeController.checkEipPortConflict("eip1", "80", "tcp", "", second), "dnat-b1")
 }
 
 // ---------------------------------------------------------------------------
@@ -571,8 +646,8 @@ func Test_handleAddOrUpdateRouterLBRule(t *testing.T) {
 		// "rlr1" claims eip1:443; an OvnDnatRule already uses eip1:443.
 		dnat := &kubeovnv1.OvnDnatRule{
 			Name:   "existing-dnat",
-			Labels: map[string]string{util.VpcDnatEPortLabel: "443"},
-			Spec:   kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1"},
+			Spec:   kubeovnv1.OvnDnatRuleSpec{OvnEip: "eip1", ExternalPort: "443", Protocol: "tcp"},
+			Status: kubeovnv1.OvnDnatRuleStatus{V4Eip: "10.0.0.1"},
 		}
 		rlr := makeRlr("rlr1", "eip1", "vpc1", []kubeovnv1.RouterLBRulePort{{Port: 443}})
 		fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{

@@ -129,9 +129,11 @@ func (c *Controller) enqueueDeleteRouterLBRule(obj any) {
 }
 
 // checkEipPortConflict returns an error if eip:portStr is already used by another
-// RouterLBRule or OvnDnatRule (excluding the named resources).
+// RouterLBRule, or by an OvnDnatRule with the same protocol.
 // portStr is the string representation of the port number.
-func (c *Controller) checkEipPortConflict(eipName, portStr, excludeRlr, excludeDnat string) error {
+// excludeRlr names the RouterLBRule being checked. dnat is the OvnDnatRule being
+// checked, or nil when checking a RouterLBRule.
+func (c *Controller) checkEipPortConflict(eipName, portStr, protocol, excludeRlr string, dnat *kubeovnv1.OvnDnatRule) error {
 	rlrs, err := c.routerLBRuleLister.List(labels.Everything())
 	if err != nil {
 		return err
@@ -147,18 +149,54 @@ func (c *Controller) checkEipPortConflict(eipName, portStr, excludeRlr, excludeD
 		}
 	}
 
-	dnats, err := c.ovnDnatRulesLister.List(labels.SelectorFromSet(labels.Set{
-		util.VpcDnatEPortLabel: portStr,
-	}))
-	if err != nil && !k8serrors.IsNotFound(err) {
+	dnats, err := c.ovnDnatRulesLister.List(labels.Everything())
+	if err != nil {
 		return err
 	}
 	for _, d := range dnats {
-		if d.Name != excludeDnat && d.Spec.OvnEip == eipName {
-			return fmt.Errorf("eip %s port %s already used by OvnDnatRule %s", eipName, portStr, d.Name)
+		if d.Spec.OvnEip != eipName || d.Spec.ExternalPort != portStr ||
+			!strings.EqualFold(portProtocol(d.Spec.Protocol), portProtocol(protocol)) {
+			continue
+		}
+		if ovnDnatHoldsPort(d, dnat) {
+			return fmt.Errorf("eip %s port %s/%s already used by OvnDnatRule %s",
+				eipName, portStr, portProtocol(protocol), d.Name)
 		}
 	}
 	return nil
+}
+
+// portProtocol returns the protocol in lower case, defaulting to tcp.
+func portProtocol(protocol string) string {
+	if protocol == "" {
+		return "tcp"
+	}
+	return strings.ToLower(protocol)
+}
+
+// ovnDnatHoldsPort reports whether other takes precedence for its EIP port over
+// current, which is nil when the contender is not an OvnDnatRule.
+//
+// A rule that is already programmed in OVN holds the port. Between two rules that
+// are not programmed yet, the older one (then the lower name) holds it, so that
+// exactly one of them is rejected.
+func ovnDnatHoldsPort(other, current *kubeovnv1.OvnDnatRule) bool {
+	if current != nil && other.Name == current.Name {
+		return false
+	}
+	if other.Status.V4Eip != "" || other.Status.V6Eip != "" {
+		return true
+	}
+	if current == nil || !other.DeletionTimestamp.IsZero() {
+		return false
+	}
+	if current.Status.V4Eip != "" || current.Status.V6Eip != "" {
+		return false
+	}
+	if !other.CreationTimestamp.Equal(&current.CreationTimestamp) {
+		return other.CreationTimestamp.Before(&current.CreationTimestamp)
+	}
+	return other.Name < current.Name
 }
 
 func (c *Controller) handleAddOrUpdateRouterLBRule(key string) error {
@@ -237,7 +275,7 @@ func (c *Controller) handleAddOrUpdateRouterLBRule(key string) error {
 	}
 
 	for _, port := range rlr.Spec.Ports {
-		if err = c.checkEipPortConflict(rlr.Spec.OvnEip, strconv.Itoa(int(port.Port)), rlr.Name, ""); err != nil {
+		if err = c.checkEipPortConflict(rlr.Spec.OvnEip, strconv.Itoa(int(port.Port)), port.Protocol, rlr.Name, nil); err != nil {
 			klog.Errorf("RouterLBRule %s port conflict: %v", key, err)
 			return err
 		}

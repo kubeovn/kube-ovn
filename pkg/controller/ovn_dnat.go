@@ -178,7 +178,7 @@ func (c *Controller) handleAddOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if err := c.checkEipPortConflict(eipName, cachedDnat.Spec.ExternalPort, "", key); err != nil {
+	if err := c.checkEipPortConflict(eipName, cachedDnat.Spec.ExternalPort, cachedDnat.Spec.Protocol, "", cachedDnat); err != nil {
 		klog.Errorf("failed to create dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
@@ -429,7 +429,7 @@ func (c *Controller) handleUpdateOvnDnatRule(key string) error {
 		klog.Error(err)
 		return err
 	}
-	if err := c.checkEipPortConflict(eipName, cachedDnat.Spec.ExternalPort, "", key); err != nil {
+	if err := c.checkEipPortConflict(eipName, cachedDnat.Spec.ExternalPort, cachedDnat.Spec.Protocol, "", cachedDnat); err != nil {
 		klog.Errorf("failed to update dnat %s, %v", cachedDnat.Name, err)
 		return err
 	}
