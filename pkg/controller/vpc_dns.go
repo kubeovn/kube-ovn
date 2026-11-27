@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"slices"
 	"strconv"
 	"strings"
 	"text/template"
@@ -488,7 +489,7 @@ func (c *Controller) resyncVpcDNSConfig() {
 	if len(corednsImage) == 0 {
 		defaultImage, err := c.getDefaultCoreDNSImage()
 		if err != nil {
-			klog.Errorf("failed to get kube-system/coredns image, %s", err)
+			klog.Errorf("failed to get the default coredns image, %v", err)
 			return
 		}
 		corednsImage = defaultImage
@@ -526,20 +527,47 @@ func (c *Controller) resyncVpcDNSConfig() {
 }
 
 func (c *Controller) getDefaultCoreDNSImage() (string, error) {
-	dp, err := c.config.KubeClient.AppsV1().Deployments(metav1.NamespaceSystem).
-		Get(context.Background(), "coredns", metav1.GetOptions{})
-	if err != nil {
+	deployments := c.config.KubeClient.AppsV1().Deployments(metav1.NamespaceSystem)
+	dp, err := deployments.Get(context.Background(), "coredns", metav1.GetOptions{})
+	if err == nil {
+		if image := coreDNSContainerImage(dp); image != "" {
+			return image, nil
+		}
+		return "", errors.New("coredns container not found")
+	}
+	if !k8serrors.IsNotFound(err) {
 		klog.Error(err)
 		return "", err
 	}
 
-	for _, container := range dp.Spec.Template.Spec.Containers {
-		if container.Name == CorednsContainerName {
-			return container.Image, nil
+	// some distributions (e.g. RKE2) use another deployment name, so look for the k8s-app=kube-dns label
+	list, err := deployments.List(context.Background(), metav1.ListOptions{LabelSelector: CorednsLabelKey + "=kube-dns"})
+	if err != nil {
+		klog.Error(err)
+		return "", err
+	}
+	// list order is not guaranteed, sort by name to pick the same deployment every time
+	slices.SortFunc(list.Items, func(a, b v1.Deployment) int { return strings.Compare(a.Name, b.Name) })
+	for i := range list.Items {
+		if image := coreDNSContainerImage(&list.Items[i]); image != "" {
+			klog.V(3).Infof("use the coredns image of deployment %s/%s", metav1.NamespaceSystem, list.Items[i].Name)
+			return image, nil
 		}
 	}
 
-	return "", errors.New("coredns container not found")
+	err = fmt.Errorf("no deployment named coredns or labeled %s=kube-dns with a %s container in namespace %s",
+		CorednsLabelKey, CorednsContainerName, metav1.NamespaceSystem)
+	klog.Error(err)
+	return "", err
+}
+
+func coreDNSContainerImage(dp *v1.Deployment) string {
+	for _, container := range dp.Spec.Template.Spec.Containers {
+		if container.Name == CorednsContainerName {
+			return container.Image
+		}
+	}
+	return ""
 }
 
 func (c *Controller) initVpcDNSConfig() error {
