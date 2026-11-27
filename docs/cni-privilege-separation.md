@@ -14,7 +14,7 @@ The same sequence is used for DEL. DEL obtains a deletion plan before removing a
 
 The daemon rejects old daemon-side ADD and DEL execution unconditionally when `PrepareOnly` is false. The `install-cni` initContainer installs the new CNI binary before `cni-server` starts, so there is no compatibility switch that can re-enable daemon-side host networking.
 
-The CNI server runs with the chart's unprivileged service user (root is retained when IPsec requires it), keeps the capabilities needed by its continuous node work, and does not receive the legacy CNI `SYS_ADMIN` or `SYS_PTRACE` capabilities. This change moves Pod attachment privileges out of the `kube-ovn-daemon` CNI server; node gateway reconciliation, ProviderNetwork updates, netfilter, IPsec, and other continuous node work remain in the node daemon until their own execution mode is migrated.
+The CNI server runs with the chart's unprivileged service user (root is retained when IPsec requires it), keeps the capabilities needed by its continuous node work, and does not receive the legacy CNI `SYS_ADMIN` or `SYS_PTRACE` capabilities. This change moves Pod attachment privileges out of the `kube-ovn-daemon` CNI server; node gateway reconciliation, ProviderNetwork updates, netfilter, IPsec, and other continuous node work remain in the node daemon until their own execution mode is migrated. See [NetworkManager helper](nm-helper.md) for the optional root container that sets ProviderNetwork NICs unmanaged; NetworkManager authorizes that write without polkit only for root.
 
 ## Upgrade and rollback
 
