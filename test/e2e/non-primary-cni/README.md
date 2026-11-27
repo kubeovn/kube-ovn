@@ -88,17 +88,17 @@ make kube-ovn-non-primary-cni-e2e
 
 #### VPC Simple Tests
 ```bash
-make kube-ovn-non-primary-cni-vpc-simple-e2e
+NON_PRIMARY_CNI_E2E_FOCUS='VPC Simple' make kube-ovn-non-primary-cni-e2e
 ```
 
 #### VPC NAT Gateway Tests
 ```bash
-make kube-ovn-non-primary-cni-vpc-nat-gw-e2e
+NON_PRIMARY_CNI_E2E_FOCUS='VPC NAT Gateway' make kube-ovn-non-primary-cni-e2e
 ```
 
 #### Logical Network Simple Tests
 ```bash
-make kube-ovn-non-primary-cni-lnet-simple-e2e
+NON_PRIMARY_CNI_E2E_FOCUS='Logical Network Simple' make kube-ovn-non-primary-cni-e2e
 ```
 
 #### VPC Egress Gateway Tests
