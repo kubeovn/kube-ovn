@@ -141,3 +141,11 @@ Servers:
 		})
 	}
 }
+
+func TestDbHealthCheckCommand(t *testing.T) {
+	const dbFile = "/etc/ovn/ovnnb_db.db"
+	want := "python3 /kube-ovn/ovn-db-check.py /etc/ovn/ovnnb_db.db"
+	if got := dbHealthCheckCommand(dbFile); got != want {
+		t.Fatalf("dbHealthCheckCommand() = %q, want %q", got, want)
+	}
+}
