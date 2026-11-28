@@ -165,6 +165,10 @@ func cmdClusterStatus(db string) string {
 	return fmt.Sprintf("ovn-appctl -t /var/run/ovn/ovn%s_db.ctl cluster/status %s", db, dbNames[db])
 }
 
+func dbHealthCheckCommand(dbFile string) string {
+	return "python3 /kube-ovn/ovn-db-check.py " + dbFile
+}
+
 func getCentralDeployment(client *framework.DeploymentClient) *appsv1.Deployment {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -419,7 +423,10 @@ func corruptAndRecover(f *framework.Framework, deploy *appsv1.Deployment, dbFile
 	framework.ExpectNoError(err)
 	framework.ExpectHaveLen(pods.Items, int(replicas))
 
-	checkCmd := "ovsdb-tool check-cluster " + dbFile
+	// Use the same validator as the OVN health probe. A preserved zero-filled
+	// Raft tail is a supported recovery state even though raw check-cluster
+	// reports the truncated suffix as a semantic error.
+	checkCmd := dbHealthCheckCommand(dbFile)
 	for _, pod := range pods.Items {
 		ginkgo.By("Waiting for db file " + dbFile + " on node " + pod.Spec.NodeName + " to be healthy before corruption")
 		var lastStdout, lastStderr string
