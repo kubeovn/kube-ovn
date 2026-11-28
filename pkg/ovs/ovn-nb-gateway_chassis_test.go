@@ -9,6 +9,55 @@ import (
 	"github.com/kubeovn/kube-ovn/pkg/ovsdb/ovnnb"
 )
 
+func (suite *OvnClientTestSuite) testGatewayRouterPortNatAddresses() {
+	t := suite.T()
+	t.Parallel()
+	nbClient := suite.ovnNBClient
+
+	for _, operation := range []string{"patch-port", "add-chassis", "reconcile-chassis"} {
+		t.Run(operation, func(t *testing.T) {
+			lsName := "test-nat-addresses-" + operation
+			lrName := lsName + "-router"
+			lspName := lsName + "-lsp"
+			lrpName := lsName + "-lrp"
+			mac := "00:11:22:33:44:55"
+			network := "192.168.230.1/24"
+			chassis := "nat-addresses-chassis"
+			require.NoError(t, nbClient.CreateBareLogicalSwitch(lsName))
+			require.NoError(t, nbClient.CreateLogicalRouter(lrName))
+			require.NoError(t, nbClient.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, network, mac, chassis))
+
+			// Emulate an existing gateway port created before NAT GARP support.
+			lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+			require.NoError(t, err)
+			portUUID := lsp.UUID
+			delete(lsp.Options, "nat-addresses")
+			lsp.Options["arp_proxy"] = "192.168.230.10"
+			require.NoError(t, nbClient.UpdateLogicalSwitchPort(lsp, &lsp.Options))
+
+			for range 2 {
+				switch operation {
+				case "patch-port":
+					err = nbClient.CreateLogicalPatchPort(lsName, lrName, lspName, lrpName, network, mac, chassis)
+				case "add-chassis":
+					err = nbClient.CreateGatewayChassises(lrpName, chassis)
+				case "reconcile-chassis":
+					err = nbClient.ReconcileGatewayChassises(lrpName, []string{chassis})
+				}
+				require.NoError(t, err)
+				lsp, err = nbClient.GetLogicalSwitchPort(lspName, false)
+				require.NoError(t, err)
+				require.Equal(t, portUUID, lsp.UUID)
+				require.Equal(t, map[string]string{
+					"router-port":   lrpName,
+					"arp_proxy":     "192.168.230.10",
+					"nat-addresses": "router",
+				}, lsp.Options)
+			}
+		})
+	}
+}
+
 func (suite *OvnClientTestSuite) testCreateGatewayChassises() {
 	t := suite.T()
 	t.Parallel()
