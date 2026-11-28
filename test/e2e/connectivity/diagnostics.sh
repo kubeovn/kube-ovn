@@ -60,7 +60,7 @@ snapshot() {
     ' _ "$NODEPORT_PORT" "$NODEPORT_BACKEND_PORT" &
   done < "$artifact_dir/nodes.txt"
   # Pods may be absent or terminating during the injected restart.
-  timeout 5 kubectl --request-timeout=4s -n kube-system get pods -l app=ovs-ovn \
+  timeout 5 kubectl --request-timeout=4s -n kube-system get pods -l app=ovs \
     -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' > "$dest/ovs-pods.txt" 2> "$dest/ovs-discovery.log" || true
   while read -r pod; do
     collect "$dest/$pod-ovs.txt" kubectl --request-timeout=5s -n kube-system exec "$pod" -c openvswitch -- bash -c '

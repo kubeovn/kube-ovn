@@ -182,7 +182,7 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 func runNodePortDiagnostics(action string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "bash", "test/e2e/connectivity/diagnostics.sh", action)
+	cmd := exec.CommandContext(ctx, "bash", "diagnostics.sh", action)
 	cmd.Env = append(os.Environ(),
 		"NODEPORT_NAMESPACE="+suiteCtx.Namespace, "NODEPORT_SERVICE="+suiteCtx.Service,
 		"NODEPORT_PORT="+strconv.Itoa(int(suiteCtx.NodePort)),
