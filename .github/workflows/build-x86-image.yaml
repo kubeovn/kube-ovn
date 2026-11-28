@@ -99,6 +99,15 @@ jobs:
             make base-amd64
             make base-tar-amd64
 
+      - name: Test Raft rejoin with a historical singleton snapshot
+        if: steps.check.outputs.build-base == 1
+        run: |
+          docker run --rm --network=none --read-only --tmpfs /tmp \
+            --mount "type=bind,source=$PWD/dist/images/tests/ovsdb-raft-rejoin.py,target=/ovsdb-raft-rejoin.py,readonly" \
+            --entrypoint python3 \
+            "kubeovn/kube-ovn-base:$(cat VERSION)-amd64" \
+            -B /ovsdb-raft-rejoin.py
+
       - name: Test OVN router ARP and ND
         if: steps.check.outputs.build-base == 1
         run: |
@@ -134,6 +143,7 @@ jobs:
           cat > "$tmp_dir/on_changes.txt" <<EOF
           dist/images/Dockerfile.base-dpdk
           dist/images/patches/
+          dist/images/tests/ovsdb-raft-rejoin.py
           EOF
           if git diff --name-only HEAD^ HEAD | grep -Ff "$tmp_dir/on_changes.txt"; then
             echo build-dpdk-base=1 >> "$GITHUB_OUTPUT"
@@ -160,6 +170,15 @@ jobs:
         run: |
           make base-amd64-dpdk
           make base-tar-amd64-dpdk
+
+      - name: Test DPDK Raft rejoin with a historical singleton snapshot
+        if: steps.check.outputs.build-dpdk-base == 1
+        run: |
+          docker run --rm --network=none --read-only --tmpfs /tmp \
+            --mount "type=bind,source=$PWD/dist/images/tests/ovsdb-raft-rejoin.py,target=/ovsdb-raft-rejoin.py,readonly" \
+            --entrypoint python3 \
+            "kubeovn/kube-ovn-base:$(cat VERSION)-amd64-dpdk" \
+            -B /ovsdb-raft-rejoin.py
 
       - name: Upload dpdk base images to artifact
         if: steps.check.outputs.build-dpdk-base == 1
