@@ -400,3 +400,77 @@ func Test_validateSgRule(t *testing.T) {
 		}
 	})
 }
+
+func TestSyncSecurityGroupSkipsLegacyInvalidProtocol(t *testing.T) {
+	for _, direction := range []string{"ingress", "egress"} {
+		t.Run(direction, func(t *testing.T) {
+			client := newInMemoryOVNNbClient(t)
+			fc := newFakeController(t)
+			ctrl := fc.fakeController
+			ctrl.OVNNbClient = client
+			ctrl.OVNNbTables = client
+			ctrl.sgKeyMutex = keymutex.NewHashed(0)
+			ctrl.syncSgPortsQueue = newTypedRateLimitingQueue[string](t.Name(), nil)
+			t.Cleanup(ctrl.syncSgPortsQueue.ShutDown)
+			rule := kubeovnv1.SecurityGroupRule{
+				IPVersion: "ipv4", Priority: 1, RemoteType: kubeovnv1.SgRemoteTypeAddress,
+				RemoteAddress: "192.0.2.1", Protocol: "gre", Policy: kubeovnv1.SgPolicyAllow,
+			}
+			invalid := &kubeovnv1.SecurityGroup{
+				Name: "legacy-invalid",
+				Spec: kubeovnv1.SecurityGroupSpec{Tier: util.SecurityGroupAPITierMinimum},
+			}
+			if direction == "ingress" {
+				invalid.Spec.IngressRules = []kubeovnv1.SecurityGroupRule{rule}
+			} else {
+				invalid.Spec.EgressRules = []kubeovnv1.SecurityGroupRule{rule}
+			}
+			pgName := ovs.GetSgPortGroupName(invalid.Name)
+			require.NoError(t, client.CreatePortGroup(pgName, nil))
+			valid := &kubeovnv1.SecurityGroup{
+				Name: "valid",
+				Spec: kubeovnv1.SecurityGroupSpec{
+					Tier: util.SecurityGroupAPITierMinimum,
+					IngressRules: []kubeovnv1.SecurityGroupRule{{
+						IPVersion: "ipv4", Priority: 1, RemoteType: kubeovnv1.SgRemoteTypeAddress,
+						RemoteAddress: "192.0.2.2", Protocol: kubeovnv1.SgProtocolTCP,
+						PortRangeMin: 80, PortRangeMax: 80, Policy: kubeovnv1.SgPolicyAllow,
+					}},
+				},
+			}
+			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+			require.NoError(t, indexer.Add(invalid))
+			require.NoError(t, indexer.Add(valid))
+			ctrl.sgsLister = kubeovnlister.NewSecurityGroupLister(indexer)
+			ctrl.config.KubeOvnClient = kubeovnfake.NewSimpleClientset()
+			for _, sg := range []*kubeovnv1.SecurityGroup{invalid, valid} {
+				_, err := ctrl.config.KubeOvnClient.KubeovnV1().SecurityGroups().Create(t.Context(), sg, metav1.CreateOptions{})
+				require.NoError(t, err)
+			}
+
+			require.NoError(t, ctrl.syncSecurityGroup())
+			updated, err := ctrl.config.KubeOvnClient.KubeovnV1().SecurityGroups().Get(t.Context(), valid.Name, metav1.GetOptions{})
+			require.NoError(t, err)
+			require.True(t, updated.Status.IngressLastSyncSuccess)
+			pg, err := client.GetPortGroup(ovs.GetSgPortGroupName(valid.Name), false)
+			require.NoError(t, err)
+			require.NotEmpty(t, pg.ACLs)
+			pg, err = client.GetPortGroup(pgName, false)
+			require.NoError(t, err)
+			require.Empty(t, pg.ACLs)
+		})
+	}
+}
+
+func TestSyncSecurityGroupReturnsDatabaseError(t *testing.T) {
+	fc := newFakeController(t)
+	ctrl := fc.fakeController
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	sg := &kubeovnv1.SecurityGroup{Name: "valid", Spec: kubeovnv1.SecurityGroupSpec{Tier: util.SecurityGroupAPITierMinimum}}
+	require.NoError(t, indexer.Add(sg))
+	ctrl.sgsLister = kubeovnlister.NewSecurityGroupLister(indexer)
+	dbErr := errors.New("database unavailable")
+	fc.mockOvnClient.EXPECT().GetPortGroup(ovs.GetSgPortGroupName(sg.Name), true).Return(nil, dbErr)
+
+	require.ErrorIs(t, ctrl.syncSecurityGroup(), dbErr)
+}

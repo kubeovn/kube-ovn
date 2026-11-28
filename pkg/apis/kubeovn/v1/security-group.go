@@ -83,7 +83,7 @@ type SecurityGroupRule struct {
 	// IP version (IPv4 or IPv6)
 	IPVersion string `json:"ipVersion"`
 	// Protocol (tcp, udp, icmp, or all)
-	// +kubebuilder:validation:Enum=all;icmp;tcp;udp
+	// +kubebuilder:validation:Enum="";all;icmp;tcp;udp
 	Protocol SgProtocol `json:"protocol,omitempty"`
 	// Rule priority (1-16384)
 	Priority int `json:"priority,omitempty"`
