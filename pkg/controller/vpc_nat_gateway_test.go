@@ -368,6 +368,60 @@ func TestGetSubnetProvider(t *testing.T) {
 	})
 }
 
+func TestEnableNatGwExternalLayer2Forward(t *testing.T) {
+	tests := []struct {
+		name        string
+		subnet      *kubeovnv1.Subnet
+		annotations map[string]string
+		expected    map[string]string
+	}{
+		{
+			name: "underlay custom provider",
+			subnet: &kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{
+				Provider: "external.default.ovn",
+				Vlan:     "external-vlan",
+			}},
+			annotations: map[string]string{"example.com/keep": "true"},
+			expected: map[string]string{
+				"example.com/keep": "true",
+				"external.default.ovn.kubernetes.io/layer2_forward": "true",
+			},
+		},
+		{
+			name:        "underlay default provider",
+			subnet:      &kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{Vlan: "external-vlan"}},
+			annotations: map[string]string{},
+			expected:    map[string]string{"ovn.kubernetes.io/layer2_forward": "true"},
+		},
+		{
+			name:        "overlay external subnet",
+			subnet:      &kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{Provider: "external.default.ovn"}},
+			annotations: map[string]string{"example.com/keep": "true"},
+			expected:    map[string]string{"example.com/keep": "true"},
+		},
+		{
+			name: "system annotation overrides user value",
+			subnet: &kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{
+				Provider: "external.default.ovn",
+				Vlan:     "external-vlan",
+			}},
+			annotations: map[string]string{
+				"external.default.ovn.kubernetes.io/layer2_forward": "false",
+			},
+			expected: map[string]string{
+				"external.default.ovn.kubernetes.io/layer2_forward": "true",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			enableNatGwExternalLayer2Forward(tt.annotations, tt.subnet)
+			assert.Equal(t, tt.expected, tt.annotations)
+		})
+	}
+}
+
 func TestGetExternalSubnetNad(t *testing.T) {
 	tests := []struct {
 		name              string
@@ -545,6 +599,7 @@ func TestGenNatGwStatefulSetImagePullSecrets(t *testing.T) {
 						CIDRBlock: "192.168.0.0/24",
 						Gateway:   "192.168.0.1",
 						Provider:  "external.default.ovn",
+						Vlan:      "external-vlan",
 					},
 				},
 			}
@@ -573,6 +628,7 @@ func TestGenNatGwStatefulSetImagePullSecrets(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.expectedResult, sts.Spec.Template.Spec.ImagePullSecrets)
+			assert.Equal(t, "true", sts.Spec.Template.Annotations["external.default.ovn.kubernetes.io/layer2_forward"])
 		})
 	}
 }
@@ -624,6 +680,7 @@ func TestGenNatGwDeploymentImagePullSecrets(t *testing.T) {
 						CIDRBlock: "192.168.0.0/24",
 						Gateway:   "192.168.0.1",
 						Provider:  "external.default.ovn",
+						Vlan:      "external-vlan",
 					},
 				},
 			}
@@ -652,6 +709,7 @@ func TestGenNatGwDeploymentImagePullSecrets(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.expectedResult, deploy.Spec.Template.Spec.ImagePullSecrets)
+			assert.Equal(t, "true", deploy.Spec.Template.Annotations["external.default.ovn.kubernetes.io/layer2_forward"])
 		})
 	}
 }
