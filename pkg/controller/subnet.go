@@ -1403,6 +1403,12 @@ func (c *Controller) reconcileSubnetWithContext(ctx context.Context, subnet *kub
 		klog.Errorf("reconcile vlan for subnet %s failed, %v", subnet.Name, err)
 		return err
 	}
+	if subnet.Spec.ExternalLBInterface != "" && !c.config.EnableOvnLB {
+		return errors.New("externalLBInterface requires --enable-lb")
+	}
+	if err := c.OVNNbClient.ReconcileExternalLBLocalPort(subnet.Name, string(subnet.UID), subnet.Spec.ExternalLBInterface != ""); err != nil {
+		return fmt.Errorf("reconcile external LB localport for subnet %s: %w", subnet.Name, err)
+	}
 
 	if err := c.reconcileVips(subnet); err != nil {
 		klog.Errorf("reconcile vips for subnet %s failed, %v", subnet.Name, err)
