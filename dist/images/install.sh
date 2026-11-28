@@ -2897,6 +2897,7 @@ spec:
                     protocol:
                       description: Protocol (tcp, udp, icmp, or all)
                       enum:
+                      - ""
                       - all
                       - icmp
                       - tcp
@@ -2944,6 +2945,7 @@ spec:
                     protocol:
                       description: Protocol (tcp, udp, icmp, or all)
                       enum:
+                      - ""
                       - all
                       - icmp
                       - tcp

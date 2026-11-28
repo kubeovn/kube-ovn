@@ -88,6 +88,11 @@ func (c *Controller) syncSecurityGroup() error {
 		return err
 	}
 	for _, sg := range sgs {
+		// Invalid legacy objects must not prevent the controller from starting.
+		if err := c.validateSgRule(sg.DeepCopy()); err != nil {
+			klog.Errorf("skip syncing invalid security group %s: %v", sg.Name, err)
+			continue
+		}
 		lost, err := c.securityGroupLostACL(sg)
 		if err != nil {
 			err = fmt.Errorf("failed to check if security group %s lost acl: %w", sg.Name, err)

@@ -3364,3 +3364,29 @@ func TestSecurityGroupRuleACLRejectsUnknownProtocol(t *testing.T) {
 		})
 	}
 }
+
+func TestSecurityGroupRuleACLEmptyProtocolMatchesAll(t *testing.T) {
+	t.Parallel()
+
+	for _, ipVersion := range []string{"ipv4", "ipv6"} {
+		for _, direction := range []string{ovnnb.ACLDirectionToLport, ovnnb.ACLDirectionFromLport} {
+			t.Run(ipVersion+"/"+direction, func(t *testing.T) {
+				t.Parallel()
+
+				rule := kubeovnv1.SecurityGroupRule{
+					IPVersion: ipVersion, RemoteType: kubeovnv1.SgRemoteTypeAddress,
+					RemoteAddress: "192.0.2.1", Policy: kubeovnv1.SgPolicyAllow, Priority: 1,
+				}
+				if ipVersion == "ipv6" {
+					rule.RemoteAddress = "2001:db8::1"
+				}
+				empty, err := SecurityGroupRuleACL("test-sg", direction, rule, 2)
+				require.NoError(t, err)
+				rule.Protocol = kubeovnv1.SgProtocolALL
+				all, err := SecurityGroupRuleACL("test-sg", direction, rule, 2)
+				require.NoError(t, err)
+				require.Equal(t, all, empty)
+			})
+		}
+	}
+}
