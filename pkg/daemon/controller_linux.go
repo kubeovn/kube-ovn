@@ -685,16 +685,22 @@ func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []strin
 			src, gw = srcIPv6, gwV6
 		}
 
+		isJoinSubnet := slices.Contains(joinCIDR, c)
+		if !isJoinSubnet && gw == nil {
+			klog.V(3).Infof("Skipping route for subnet %s because its gateway is missing", c)
+			continue
+		}
+
 		found := false
 		for _, ar := range allRoutes {
 			if ar.Dst != nil && ar.Dst.String() == c {
-				if slices.Contains(joinCIDR, c) {
+				if isJoinSubnet {
 					// Only compare Dst for join subnets
 					found = true
 					klog.V(3).Infof("[routeDiff] joinCIDR route already exists in allRoutes: %v", ar)
 					break
-				} else if (ar.Src == nil && src == nil) || (ar.Src != nil && src != nil && ar.Src.Equal(src)) {
-					// For non-join subnets, both Dst and Src must be the same
+				} else if ar.Src.Equal(src) && ar.Gw.Equal(gw) {
+					// Non-join routes must also match the expected source and gateway.
 					found = true
 					klog.V(3).Infof("[routeDiff] route already exists in allRoutes: %v", ar)
 					break
@@ -708,7 +714,7 @@ func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []strin
 			if r.Dst == nil || r.Dst.String() != c {
 				continue
 			}
-			if (src == nil && r.Src == nil) || (src != nil && r.Src != nil && src.Equal(r.Src)) {
+			if r.Src.Equal(src) && (isJoinSubnet || r.Gw.Equal(gw)) {
 				found = true
 				break
 			}
@@ -717,7 +723,7 @@ func routeDiff(nodeNicRoutes, allRoutes []netlink.Route, cidrs, joinCIDR []strin
 			var priority int
 			scope := netlink.SCOPE_UNIVERSE
 			proto := netlink.RouteProtocol(syscall.RTPROT_STATIC)
-			if slices.Contains(joinCIDR, c) {
+			if isJoinSubnet {
 				if util.CheckProtocol(c) == kubeovnv1.ProtocolIPv4 {
 					src = net.ParseIP(joinIPv4)
 				} else {

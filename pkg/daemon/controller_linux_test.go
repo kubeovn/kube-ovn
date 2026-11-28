@@ -56,6 +56,80 @@ func requireNoPodEvent(t *testing.T, recorder *record.FakeRecorder) {
 	}
 }
 
+func TestRouteDiffGateway(t *testing.T) {
+	t.Parallel()
+
+	const (
+		podCIDR  = "fd00:10:244::/56"
+		joinCIDR = "fd00:100:64::/64"
+		gateway  = "fd00:100:64::1"
+	)
+	_, podNetwork, err := net.ParseCIDR(podCIDR)
+	require.NoError(t, err)
+	source := net.ParseIP("2001:db8::10")
+
+	for _, tc := range []struct {
+		name      string
+		cidr      string
+		gateway   string
+		current   []netlink.Route
+		wantRoute bool
+		wantLink  bool
+	}{
+		{
+			name:    "does not add a pod route while the IPv6 gateway is missing",
+			cidr:    podCIDR,
+			gateway: "100.64.0.1",
+		},
+		{
+			name:      "repairs an existing pod route without a gateway",
+			cidr:      podCIDR,
+			gateway:   gateway,
+			current:   []netlink.Route{{Dst: podNetwork, Src: source}},
+			wantRoute: true,
+		},
+		{
+			name:      "repairs an existing pod route with an outdated gateway",
+			cidr:      podCIDR,
+			gateway:   gateway,
+			current:   []netlink.Route{{Dst: podNetwork, Src: source, Gw: net.ParseIP("fd00:100:64::3")}},
+			wantRoute: true,
+		},
+		{
+			name:    "retains an existing pod route with the expected gateway",
+			cidr:    podCIDR,
+			gateway: gateway,
+			current: []netlink.Route{{Dst: podNetwork, Src: source, Gw: net.ParseIP(gateway)}},
+		},
+		{
+			name:      "adds a join link route without an IPv6 gateway",
+			cidr:      joinCIDR,
+			gateway:   "100.64.0.1",
+			wantRoute: true,
+			wantLink:  true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			toAdd, toDel := routeDiff(tc.current, tc.current, []string{tc.cidr}, []string{joinCIDR}, "", "", tc.gateway, nil, source)
+			require.Empty(t, toDel)
+			if !tc.wantRoute {
+				require.Empty(t, toAdd)
+				return
+			}
+			require.Len(t, toAdd, 1)
+			require.Equal(t, tc.cidr, toAdd[0].Dst.String())
+			if tc.wantLink {
+				require.Nil(t, toAdd[0].Gw)
+				require.Equal(t, netlink.SCOPE_LINK, toAdd[0].Scope)
+				return
+			}
+			require.Equal(t, net.ParseIP(gateway), toAdd[0].Gw)
+			require.Equal(t, source, toAdd[0].Src)
+		})
+	}
+}
+
 func TestHandleUpdatePodValidationFailureEmitsOnlyValidationEvent(t *testing.T) {
 	pod := &v1.Pod{
 		Name:      "pod",
