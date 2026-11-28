@@ -31,24 +31,27 @@ class RejoinTest(unittest.TestCase):
         self.database = self.root / "db"
         self.control = self.root / "ctl"
         self.address = "unix:" + str(self.root / "raft")
-        self.peer_address = "unix:" + str(self.root / "peer")
+        self.peerAddress = "unix:" + str(self.root / "peer")
         self.cid = str(uuid.uuid4())
-        self.peer_sid = str(uuid.uuid4())
+        self.peerSid = str(uuid.uuid4())
         self.log = self.root / "log"
 
     def command(self, *args):
         return subprocess.check_output(args, text=True, stderr=subprocess.STDOUT, timeout=5)
 
-    def start(self, single_member=False):
+    def start(self, singleMember=False):
         schema = self.root / "schema"
         schema.write_text(json.dumps(SCHEMA))
-        if single_member:
+        if singleMember:
             self.command("ovsdb-tool", "create-cluster", str(self.database), str(schema), self.address)
         else:
             self.command("ovsdb-tool", "--cid=" + self.cid, "join-cluster",
-                         str(self.database), SCHEMA["name"], self.address, self.peer_address)
+                         str(self.database), SCHEMA["name"], self.address, self.peerAddress)
         self.sid = self.command("ovsdb-tool", "db-sid", str(self.database)).strip()
-        output = self.log.open("w")
+        self.startServer()
+
+    def startServer(self):
+        output = self.log.open("a")
         self.addCleanup(output.close)
         self.process = subprocess.Popen(
             [os.environ.get("OVSDB_SERVER", "ovsdb-server"), "--no-chdir",
@@ -56,14 +59,14 @@ class RejoinTest(unittest.TestCase):
              str(self.database)], stdout=output, stderr=output,
         )
         self.addCleanup(self.stop)
-        self.wait_for(lambda: self.control.exists() and (self.root / "raft").exists())
+        self.waitFor(lambda: self.control.exists() and (self.root / "raft").exists())
 
     def stop(self):
         if self.process.poll() is None:
             self.process.terminate()
             self.process.wait(timeout=5)
 
-    def wait_for(self, condition, timeout=5):
+    def waitFor(self, condition, timeout=5):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             self.assertIsNone(self.process.poll(), self.log.read_text())
@@ -80,10 +83,10 @@ class RejoinTest(unittest.TestCase):
         self.addCleanup(self.connection.close)
         self.connection.settimeout(5)
         self.connection.connect(str(self.root / "raft"))
-        self.send("hello_request", address=self.peer_address)
+        self.send("hello_request", address=self.peerAddress)
 
     def send(self, method, **params):
-        params.update({"cluster": self.cid, "from": self.peer_sid, "to": self.sid})
+        params.update({"cluster": self.cid, "from": self.peerSid, "to": self.sid})
         message = {"method": method, "params": [params], "id": None}
         self.connection.sendall(json.dumps(message).encode() + b"\n")
 
@@ -91,24 +94,36 @@ class RejoinTest(unittest.TestCase):
         self.send("install_snapshot_request", term=9, last_index=1, last_term=1,
                   last_eid=str(uuid.uuid4()), last_servers=servers,
                   election_timer=100, data=[SCHEMA, {}])
-        self.wait_for(lambda: "Log: [2, 2]" in self.status())
+        self.waitFor(lambda: "Log: [2, 2]" in self.status())
 
     def append(self, entries, commit):
         self.send("append_request", term=9, prev_log_index=1, prev_log_term=1,
                   leader_commit=commit, log=entries)
 
-    def check_singleton_rejoin(self, reply_first):
+    def checkSingletonRejoin(self, replyFirst, restart=False, historicalConfig=False):
         self.start()
         self.connect()
-        if reply_first:
+        if replyFirst:
             self.send("add_server_reply", success=True)
         self.snapshot({self.sid: self.address})
-        if not reply_first:
+        if not replyFirst:
             self.send("add_server_reply", success=True)
         # Reset the timer to the snapshot's 100 ms value. The random election
         # range is 1000 ms; withhold further replication beyond both.
+        if historicalConfig:
+            self.append([
+                {"term": 1, "servers": {self.sid: self.address, self.peerSid: self.peerAddress}},
+                {"term": 1, "servers": {self.sid: self.address}},
+            ], 3)
+            self.waitFor(lambda: "Log: [2, 4]" in self.status())
+        if restart:
+            self.stop()
+            self.connection.close()
+            self.startServer()
+            self.connect()
         self.append([], 1)
-        self.wait_for(lambda: "is leader for term 9" in self.log.read_text())
+        self.waitFor(lambda: "is leader for term 9" in self.log.read_text()
+                     or "Role: leader" in self.status())
         deadline = time.monotonic() + 1.5
         while time.monotonic() < deadline:
             self.assertNotIn("Role: leader", self.status(), self.log.read_text())
@@ -118,31 +133,75 @@ class RejoinTest(unittest.TestCase):
 
         # The committed configuration must finish joining without another
         # add-server reply once replication resumes.
-        self.append([{"term": 9, "servers": {
-            self.sid: self.address, self.peer_sid: self.peer_address,
-        }}], 2)
-        self.wait_for(lambda: "Status: cluster member" in self.status())
+        if historicalConfig:
+            self.send("append_request", term=9, prev_log_index=3, prev_log_term=1,
+                      leader_commit=4, log=[{"term": 9, "servers": {
+                          self.sid: self.address, self.peerSid: self.peerAddress,
+                      }}])
+        else:
+            self.append([{"term": 9, "servers": {
+                self.sid: self.address, self.peerSid: self.peerAddress,
+            }}], 2)
+        self.waitFor(lambda: "Status: cluster member" in self.status())
         self.assertIn("Role: follower", self.status())
         self.stop()
         self.command("ovsdb-tool", "check-cluster", str(self.database))
 
-    def test_reply_before_historical_singleton_snapshot(self):
-        self.check_singleton_rejoin(reply_first=True)
+    def test_replyBeforeHistoricalSingletonSnapshot(self):
+        self.checkSingletonRejoin(replyFirst=True)
 
-    def test_reply_after_historical_singleton_snapshot(self):
-        self.check_singleton_rejoin(reply_first=False)
+    def test_replyAfterHistoricalSingletonSnapshot(self):
+        self.checkSingletonRejoin(replyFirst=False)
 
-    def test_reply_with_multi_member_snapshot(self):
+    def test_restartBeforeConfigurationCatchup(self):
+        self.checkSingletonRejoin(replyFirst=True, restart=True)
+
+    def test_historicalSingletonConfigurationEntry(self):
+        self.checkSingletonRejoin(replyFirst=True, historicalConfig=True)
+
+    def test_partialHistoricalConfigurationCatchup(self):
         self.start()
         self.connect()
-        self.snapshot({self.sid: self.address, self.peer_sid: self.peer_address})
+        self.snapshot({self.sid: self.address})
         self.send("add_server_reply", success=True)
-        self.wait_for(lambda: "Status: cluster member" in self.status())
-        self.assertIn("Role: follower", self.status())
+        oldPeer = str(uuid.uuid4())
+        self.send("append_request", term=9, prev_log_index=1, prev_log_term=1,
+                  leader_commit=4, log=[{"term": 1, "servers": {
+                      self.sid: self.address, oldPeer: "unix:" + str(self.root / "oldPeer"),
+                  }}])
+        self.waitFor(lambda: "Log: [2, 3]" in self.status())
+        self.assertIn("Status: joining cluster", self.status())
+        self.send("append_request", term=9, prev_log_index=2, prev_log_term=1,
+                  leader_commit=4, log=[{"term": 1, "servers": {self.sid: self.address}}])
+        self.waitFor(lambda: "Log: [2, 4]" in self.status())
+        deadline = time.monotonic() + 1.5
+        while time.monotonic() < deadline:
+            self.assertNotIn("Role: leader", self.status(), self.log.read_text())
+            time.sleep(0.05)
+        self.assertIn("Status: joining cluster", self.status())
+        self.send("append_request", term=9, prev_log_index=3, prev_log_term=1,
+                  leader_commit=4, log=[{"term": 9, "servers": {
+                      self.sid: self.address, self.peerSid: self.peerAddress,
+                  }}])
+        self.waitFor(lambda: "Status: cluster member" in self.status())
+        self.stop()
+        self.command("ovsdb-tool", "check-cluster", str(self.database))
 
-    def test_new_single_member_cluster_can_elect(self):
-        self.start(single_member=True)
-        self.wait_for(lambda: "Role: leader" in self.status(), timeout=8)
+    def test_replyWithMultiMemberSnapshot(self):
+        self.start()
+        self.connect()
+        self.snapshot({self.sid: self.address, self.peerSid: self.peerAddress})
+        self.append([], 1)
+        self.send("add_server_reply", success=True)
+        self.waitFor(lambda: "Status: cluster member" in self.status())
+        self.assertIn("Role: follower", self.status())
+        self.stop()
+        self.startServer()
+        self.assertIn("Status: cluster member", self.status())
+
+    def test_newSingleMemberClusterCanElect(self):
+        self.start(singleMember=True)
+        self.waitFor(lambda: "Role: leader" in self.status(), timeout=8)
 
 
 if __name__ == "__main__":
