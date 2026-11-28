@@ -17,8 +17,9 @@ func TestProcessControllerRestartsOnlyAfterPreviousGenerationStops(t *testing.T)
 	scriptPath := filepath.Join(dir, "child")
 	script := `#!/usr/bin/env bash
 set -euo pipefail
-printf 'start %s\n' "$$" >> "${CHILD_LOG}"
 trap 'printf "stop %s\n" "$$" >> "${CHILD_LOG}"; exit 0' TERM
+# Publish readiness only after the TERM handler is installed.
+printf 'start %s\n' "$$" >> "${CHILD_LOG}"
 while true; do read -r -t 1 _ || true; done
 `
 	require.NoError(t, os.WriteFile(scriptPath, []byte(script), 0o755))
