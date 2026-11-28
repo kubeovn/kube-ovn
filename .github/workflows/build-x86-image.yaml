@@ -4721,12 +4721,37 @@ jobs:
         id: install
         run: make kind-install-${{ matrix.mode }}
 
+      - name: Install packet capture tools
+        continue-on-error: true
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y tcpdump
+
       - name: Run E2E
         id: e2e
         working-directory: ${{ env.E2E_DIR }}
         env:
           E2E_BRANCH: ${{ github.base_ref || github.ref_name }}
+          E2E_NODEPORT_DIAGNOSTICS_DIR: ${{ github.workspace }}/nodeport-diagnostics
         run: make kube-ovn-connectivity-e2e
+
+      - name: Stop NodePort packet captures
+        if: always() && steps.e2e.outcome != 'skipped'
+        env:
+          E2E_NODEPORT_DIAGNOSTICS_DIR: ${{ github.workspace }}/nodeport-diagnostics
+        run: |
+          diagnostics_script="$E2E_DIR/test/e2e/connectivity/diagnostics.sh"
+          if [ -f "$diagnostics_script" ]; then
+            bash "$diagnostics_script" stop
+          fi
+
+      - name: Upload NodePort diagnostics
+        if: always() && steps.e2e.outcome != 'skipped'
+        uses: actions/upload-artifact@v7
+        with:
+          name: nodeport-diagnostics-${{ matrix.mode }}
+          path: nodeport-diagnostics
+          if-no-files-found: warn
 
       - name: kubectl ko logs
         if: failure() && (steps.install.conclusion == 'failure' || steps.e2e.conclusion == 'failure')
