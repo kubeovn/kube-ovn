@@ -35,7 +35,10 @@ Artifacts:
   placement, events, routes, neighbors, socket state, iptables/nftables counters,
   Linux and OVS conntrack, OVS interfaces/flows, and NB load balancers.
 - `*-tcpdump.log`, `stop.log`, and individual snapshot files: errors and command
-  timestamps. Missing tools, absent Pods, and command timeouts are retained.
+  timestamps and exit codes for each snapshot command, including commands inside
+  node/OVS groups. A failed command is recorded and later commands still run.
+  Pod discovery keeps this metadata on stderr so its stdout remains a Pod list.
+  Missing tools, absent Pods, and command timeouts are retained.
 
 Start with the failed request's socket tuple and time in the Ginkgo log. Locate
 its SYN/request and replies in the runner capture, then follow the translated

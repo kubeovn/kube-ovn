@@ -7,17 +7,28 @@ set -euo pipefail
 artifact_dir="$E2E_NODEPORT_DIAGNOSTICS_DIR"
 mkdir -p "$artifact_dir"
 
-collect() {
-  local file="$1"
-  shift
+# Keep metadata on stderr so discovery stdout remains a plain Pod-name list.
+# A failed diagnostic is recorded and later commands still run.
+run_logged() {
+  local command_status=0
   {
     date -u +'%Y-%m-%dT%H:%M:%S.%NZ'
     printf 'command:'
     printf ' %q' "$@"
     printf '\n'
-    timeout 15 "$@" || printf 'command failed: exit=%s\n' "$?"
+  } >&2
+  "$@" || command_status=$?
+  {
+    printf 'command exit=%s\n' "$command_status"
     date -u +'%Y-%m-%dT%H:%M:%S.%NZ'
-  } > "$file" 2>&1
+  } >&2
+  return 0
+}
+
+collect() {
+  local file="$1"
+  shift
+  run_logged timeout 15 "$@" > "$file" 2>&1
 }
 
 capture() {
@@ -48,26 +59,40 @@ snapshot() {
     get service,endpointslice,pod -o yaml &
   collect "$dest/events.txt" kubectl --request-timeout=5s get events -A --sort-by=.metadata.creationTimestamp &
   collect "$dest/components.txt" kubectl --request-timeout=5s -n kube-system get pods -o wide &
-  collect "$dest/runner.txt" bash -c 'ip -details address; ip route; ip -6 route; ss -ntoi' &
+  collect "$dest/runner.txt" bash -c "$(declare -f run_logged)"'
+    run_logged ip -details address
+    run_logged ip route
+    run_logged ip -6 route
+    run_logged ss -ntoi
+  ' &
   while read -r node; do
     # Positional arguments are expanded by bash inside the node.
     # shellcheck disable=SC2016
-    collect "$dest/$node-network.txt" docker exec "$node" bash -c '
-      ip -details address; ip route show table all; ip -6 route show table all
-      ip rule; ip -6 rule; ip neigh; ip -6 neigh; ss -ntoi
-      iptables-save -c; ip6tables-save -c; nft list ruleset
-      conntrack -L -p tcp --dport "$1"; conntrack -L -p tcp --dport "$2"
+    collect "$dest/$node-network.txt" docker exec "$node" bash -c "$(declare -f run_logged)"'
+      run_logged ip -details address
+      run_logged ip route show table all
+      run_logged ip -6 route show table all
+      run_logged ip rule
+      run_logged ip -6 rule
+      run_logged ip neigh
+      run_logged ip -6 neigh
+      run_logged ss -ntoi
+      run_logged iptables-save -c
+      run_logged ip6tables-save -c
+      run_logged nft list ruleset
+      run_logged conntrack -L -p tcp --dport "$1"
+      run_logged conntrack -L -p tcp --dport "$2"
     ' _ "$NODEPORT_PORT" "$NODEPORT_BACKEND_PORT" &
   done < "$artifact_dir/nodes.txt"
   # Pods may be absent or terminating during the injected restart.
-  timeout 5 kubectl --request-timeout=4s -n kube-system get pods -l app=ovs \
-    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' > "$dest/ovs-pods.txt" 2> "$dest/ovs-discovery.log" || true
+  run_logged timeout 5 kubectl --request-timeout=4s -n kube-system get pods -l app=ovs \
+    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' > "$dest/ovs-pods.txt" 2> "$dest/ovs-discovery.log"
   while read -r pod; do
-    collect "$dest/$pod-ovs.txt" kubectl --request-timeout=5s -n kube-system exec "$pod" -c openvswitch -- bash -c '
-      timeout 3 ovs-vsctl show
-      timeout 3 ovs-vsctl --columns=name,ofport,link_state,error,external_ids list Interface
-      timeout 3 ovs-ofctl -O OpenFlow13 dump-flows br-int
-      timeout 3 ovs-appctl dpctl/dump-conntrack
+    collect "$dest/$pod-ovs.txt" kubectl --request-timeout=5s -n kube-system exec "$pod" -c openvswitch -- bash -c "$(declare -f run_logged)"'
+      run_logged timeout 3 ovs-vsctl show
+      run_logged timeout 3 ovs-vsctl --columns=name,ofport,link_state,error,external_ids list Interface
+      run_logged timeout 3 ovs-ofctl -O OpenFlow13 dump-flows br-int
+      run_logged timeout 3 ovs-appctl dpctl/dump-conntrack
     ' &
   done < "$dest/ovs-pods.txt"
   collect "$dest/nb-load-balancers.txt" kubectl --request-timeout=5s -n kube-system exec deployment/ovn-central -- \
