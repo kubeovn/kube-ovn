@@ -84,3 +84,24 @@ underlying runtime I/O failure. It limits automatic recovery to a fresh member
 that can synchronize from a reachable, consistent majority using the preserved
 Raft identity. See [issue
 #7870](https://github.com/kubeovn/kube-ovn/issues/7870).
+
+## Rejoining after losing the database directory
+
+In a static `NODE_IPS` cluster, a member whose database directory is erased
+cannot recover its old Raft server ID. It may rejoin with a new ID while the
+old ID remains in the cluster configuration. The leader checker removes that
+old ID only when `cluster/status` shows two stable members with the same Raft
+endpoint, the old member has been silent for at least
+`OVN_LEADER_STALE_MEMBER_TIMEOUT` (120 seconds by default), and the current
+leader still has a quorum. The observation must remain true for three checks.
+The replacement must have a positive replicated log index at least as high as
+the old member's last replicated index. The old index can remain nonzero after
+the original member stops; it is not evidence of a current connection.
+
+A member that is merely powered off or undergoing maintenance has no
+replacement member at the same endpoint, so it is not automatically kicked,
+regardless of how long it remains offline. `cluster/kick` is never issued for
+a normal single stale member. If a replacement is still catching up, a
+reconfiguration is in progress, or quorum is unavailable, automatic cleanup
+stops and the existing `kubectl ko db nb|sb kick SERVER_ID` procedure remains
+the manual recovery path.
