@@ -331,6 +331,21 @@ func natGwWorkloadLabelsChanged(current, desired map[string]string) bool {
 	return false
 }
 
+func natGwLayer2ForwardAnnotationChanged(current, desired map[string]string) bool {
+	const suffix = ".kubernetes.io/layer2_forward"
+	for key, value := range current {
+		if strings.HasSuffix(key, suffix) && desired[key] != value {
+			return true
+		}
+	}
+	for key, value := range desired {
+		if strings.HasSuffix(key, suffix) && current[key] != value {
+			return true
+		}
+	}
+	return false
+}
+
 // handleAddOrUpdateVpcNatGw is called when a VPC NAT gateway is added or updated.
 // If a VPC NAT gateway is deleted, the deletionTimestamp will be updated and this function will also be called.
 func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
@@ -516,7 +531,8 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 		// Handle StatefulSet update if needed. Persisting the dynamically allocated LAN IP adds
 		// the IP annotation to the generated template after status has already been synchronized.
 		ipAnnotation := natGwLanIPAnnotationKey(subnet)
-		templateChanged := oldSts.Spec.Template.Annotations[ipAnnotation] != newSts.Spec.Template.Annotations[ipAnnotation]
+		templateChanged := oldSts.Spec.Template.Annotations[ipAnnotation] != newSts.Spec.Template.Annotations[ipAnnotation] ||
+			natGwLayer2ForwardAnnotationChanged(oldSts.Spec.Template.Annotations, newSts.Spec.Template.Annotations)
 		labelsChanged := natGwWorkloadLabelsChanged(oldSts.Labels, newSts.Labels)
 		// WARNING: This will update STS template directly, which triggers NAT GW Pod recreation.
 		// TODO: support hot update of runtime Pod annotations directly via patch

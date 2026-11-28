@@ -2264,10 +2264,12 @@ func TestHandleAddOrUpdatePodWithoutWorkDoesNotRecordSuccess(t *testing.T) {
 	pod, subnet := podEventFixture()
 	pod.Annotations[util.AllocatedAnnotation] = "true"
 	pod.Annotations[util.RoutedAnnotation] = "true"
+	pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, util.OvnProvider)] = "true"
 	fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}, Subnets: []*kubeovnv1.Subnet{subnet}})
 	require.NoError(t, err)
 	fc.mockOvnClient.EXPECT().ListNormalLogicalSwitchPorts(true, gomock.Any()).Return(nil, nil)
 	fc.mockOvnClient.EXPECT().ReconcilePortDHCPOptions(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(&ovs.DHCPOptionsUUIDs{}, false, nil)
+	fc.mockOvnClient.EXPECT().EnablePortLayer2forward(gomock.Any()).Return(nil)
 
 	err = fc.fakeController.handleAddOrUpdatePod("default/test-pod")
 
