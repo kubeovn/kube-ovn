@@ -428,7 +428,7 @@ func (*nftGatewayBackend) renderNFTNATRules(tx *knftables.Transaction, snapshot 
 			"ct status dnat",
 			"fib saddr type local",
 			ipToken+" daddr @subnets",
-			originalDestination+" . ct original protocol . ct original proto-dst @cluster-ip-ports",
+			originalDestination+" . ct original protocol . ct original proto-dst @host-service-vip-ports",
 			"snat to", snapshot.NodeInternalIP, "fully-random",
 		), "host-service-snat")
 	}
@@ -685,6 +685,7 @@ func nftSetDefinitions(snapshot nftFamilySnapshot) map[string]knftables.Set {
 	interval := []knftables.SetFlag{knftables.IntervalFlag}
 	definitions := map[string]knftables.Set{
 		"cluster-ip-ports":       {Family: family, Table: table, Name: "cluster-ip-ports", Type: addressType + " . inet_proto . inet_service"},
+		"host-service-vip-ports": {Family: family, Table: table, Name: "host-service-vip-ports", Type: addressType + " . inet_proto . inet_service"},
 		"service-vip-ports":      {Family: family, Table: table, Name: "service-vip-ports", Type: addressType + " . inet_proto . inet_service"},
 		"subnets":                {Family: family, Table: table, Name: "subnets", Type: addressType, Flags: interval},
 		"nat-subnets":            {Family: family, Table: table, Name: "nat-subnets", Type: addressType, Flags: interval},
@@ -721,6 +722,7 @@ func renderNFTSetElements(tx *knftables.Transaction, snapshot nftFamilySnapshot)
 func nftSetElements(snapshot nftFamilySnapshot) map[string][][]string {
 	elements := map[string][][]string{
 		"cluster-ip-ports":       {},
+		"host-service-vip-ports": {},
 		"service-vip-ports":      {},
 		"subnets":                {},
 		"nat-subnets":            {},
@@ -731,6 +733,9 @@ func nftSetElements(snapshot nftFamilySnapshot) map[string][][]string {
 	}
 	for _, item := range snapshot.ClusterIPPorts {
 		elements["cluster-ip-ports"] = append(elements["cluster-ip-ports"], []string{item.Address, item.Protocol, strconv.FormatInt(int64(item.Port), 10)})
+	}
+	for _, item := range snapshot.HostServiceVIPPorts {
+		elements["host-service-vip-ports"] = append(elements["host-service-vip-ports"], []string{item.Address, item.Protocol, strconv.FormatInt(int64(item.Port), 10)})
 	}
 	for _, item := range snapshot.ServiceVIPPorts {
 		elements["service-vip-ports"] = append(elements["service-vip-ports"], []string{item.Address, item.Protocol, strconv.FormatInt(int64(item.Port), 10)})
@@ -825,6 +830,7 @@ func cloneGatewayNFTSnapshot(snapshot gatewayNFTSnapshot) gatewayNFTSnapshot {
 	for i, family := range snapshot.Families {
 		clone.Families[i] = family
 		clone.Families[i].ClusterIPPorts = slices.Clone(family.ClusterIPPorts)
+		clone.Families[i].HostServiceVIPPorts = slices.Clone(family.HostServiceVIPPorts)
 		clone.Families[i].ServiceVIPPorts = slices.Clone(family.ServiceVIPPorts)
 		clone.Families[i].Subnets = slices.Clone(family.Subnets)
 		clone.Families[i].NATSubnets = slices.Clone(family.NATSubnets)
