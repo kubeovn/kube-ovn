@@ -1,0 +1,163 @@
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] ovsdb: keep incomplete joins safe across snapshot recovery
+
+An add-server reply and historical configuration entries can arrive before
+current committed membership. Keep joining until the leader's commit index
+has been received, and forbid singleton elections while joining. Preserve
+pending joins in existing note records when saving snapshots so a restart
+cannot turn a recovered member into a standalone leader.
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+diff --git a/ovsdb/raft.c b/ovsdb/raft.c
+index e50f1f7..c0f8098 100644
+--- a/ovsdb/raft.c
++++ b/ovsdb/raft.c
+@@ -282,6 +282,7 @@ struct raft {
+
+     /* Used for joining a cluster. */
+     bool joining;                 /* Attempting to join the cluster? */
++    uint64_t join_commit_index;    /* Leader's commit index to catch up to. */
+     struct sset remote_addresses; /* Addresses to try to find other servers. */
+ #define RAFT_JOIN_TIMEOUT_MS 1000
+     long long int join_timeout;   /* Time to re-send add server request. */
+@@ -884,6 +885,18 @@ raft_apply_record(struct raft *raft, unsigned long long int rec_idx,
+                                "\"ovsdb-tool join-cluster\" to add a new "
+                                "server)", rec_idx);
+         }
++        if (!strncmp(r->note, "joining: ", strlen("joining: "))) {
++            const char *address = r->note + strlen("joining: ");
++            struct ovsdb_error *error = raft_address_validate(address);
++            if (error) {
++                return error;
++            }
++            raft->joining = true;
++            sset_add(&raft->remote_addresses, address);
++        } else if (!strcmp(r->note, "joined")) {
++            raft->joining = false;
++            sset_clear(&raft->remote_addresses);
++        }
+         return NULL;
+
+     case RAFT_REC_COMMIT_INDEX:
+@@ -1086,18 +1099,19 @@ raft_open(struct ovsdb_log *log, struct raft **raftp)
+         }
+
+         /* Find our own server. */
+-        if (!raft_find_server(raft, &raft->sid)) {
++        if (!raft->joining && !raft_find_server(raft, &raft->sid)) {
+             error = ovsdb_error(NULL, "server does not belong to cluster");
+             goto error;
+         }
+
+         /* If there's only one server, start an election right away so that the
+          * cluster bootstraps quickly. */
+-        if (hmap_count(&raft->servers) == 1) {
++        if (!raft->joining && hmap_count(&raft->servers) == 1) {
+             /* No pre-vote needed since we are the only one. */
+             raft_start_election(raft, false, false);
+         }
+-    } else {
++    }
++    if (raft->joining) {
+         raft->join_timeout = time_msec() + RAFT_JOIN_TIMEOUT_MS;
+     }
+
+@@ -1894,6 +1908,9 @@ static void
+ raft_start_election(struct raft *raft, bool is_prevote,
+                     bool leadership_transfer)
+ {
++    if (raft->joining && hmap_count(&raft->servers) <= 1) {
++        return;
++    }
+     /* Leadership transfer doesn't use pre-vote. */
+     ovs_assert(!is_prevote || !leadership_transfer);
+
+@@ -2918,6 +2935,25 @@ raft_send_heartbeats(struct raft *raft)
+ static void
+ raft_join_complete(struct raft *raft)
+ {
++    /* A reply or historical configuration can precede the current committed
++     * membership.  A quorum election is also sufficient proof of membership. */
++    if (!raft_find_server(raft, &raft->sid)
++        || hmap_count(&raft->servers) <= 1
++        || (raft->role != RAFT_LEADER
++            && (!raft->join_commit_index
++                || raft->commit_index < raft->join_commit_index))) {
++        return;
++    }
++
++    struct raft_record r = {
++        .type = RAFT_REC_NOTE,
++        .note = "joined",
++    };
++    if (!raft_handle_write_error(
++            raft, ovsdb_log_write_and_free(raft->log,
++                                           raft_record_to_json(&r)))) {
++        return;
++    }
+     raft->joining = false;
+     raft_update_probe_intervals(raft);
+ }
+@@ -3254,6 +3290,10 @@ raft_send_append_reply(struct raft *raft, const struct raft_append_request *rq,
+         raft_update_commit_index(
+             raft, MIN(rq->leader_commit, rq->prev_log_index + rq->n_entries));
+     }
++    if (result == RAFT_APPEND_OK && raft->joining
++        && raft_find_server(raft, &raft->sid)) {
++        raft_join_complete(raft);
++    }
+
+     /* Send reply. */
+     union raft_rpc reply = {
+@@ -3467,6 +3507,10 @@ raft_handle_append_request(struct raft *raft,
+                                "log index overflow");
+         return;
+     }
++    if (raft->joining) {
++        raft->join_commit_index = MAX(raft->join_commit_index,
++                                      rq->leader_commit);
++    }
+
+     /* First check for the common case, where the AppendEntries request is
+      * entirely for indexes covered by 'log_start' ... 'log_end - 1', something
+@@ -4192,11 +4236,8 @@ raft_handle_add_server_reply(struct raft *raft,
+     if (rpy->success) {
+         raft_join_complete(raft);
+
+-        /* It is tempting, at this point, to check that this server is part of
+-         * the current configuration.  However, this is not necessarily the
+-         * case, because the log entry that added this server to the cluster
+-         * might have been committed by a majority of the cluster that does not
+-         * include this one.  This actually happens in testing. */
++        /* The successful reply can precede the configuration that adds us.
++         * Completion will be retried when the committed entries arrive. */
+     } else {
+         const char *address;
+         SSET_FOR_EACH (address, &rpy->remote_addresses) {
+@@ -4348,6 +4389,24 @@ raft_write_snapshot(struct raft *raft, struct ovsdb_log *log,
+     }
+     ovsdb_log_mark_base(log);
+
++    /* Keep incomplete joins durable when replacing the initial join header
++     * with a snapshot.  Notes are understood by existing log tooling. */
++    if (raft->joining) {
++        const char *address;
++        SSET_FOR_EACH (address, &raft->remote_addresses) {
++            char *note = xasprintf("joining: %s", address);
++            struct raft_record r = {
++                .type = RAFT_REC_NOTE,
++                .note = note,
++            };
++            error = ovsdb_log_write_and_free(log, raft_record_to_json(&r));
++            free(note);
++            if (error) {
++                return error;
++            }
++        }
++    }
++
+     /* Write log records. */
+     for (uint64_t index = new_log_start; index < raft->log_end; index++) {
+         const struct raft_entry *e = &raft->entries[index - raft->log_start];
