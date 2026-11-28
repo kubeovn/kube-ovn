@@ -266,7 +266,7 @@ func (c *OVNNbClient) LoadBalancerAddVip(lbName, vip string, backends ...string)
 
 func (c *OVNNbClient) loadBalancerSetVIPOps(lbName, vip, value string) ([]ovsdb.Operation, error) {
 	return c.LoadBalancerOp(lbName, func(lb *ovnnb.LoadBalancer) []model.Mutation {
-		if lb.Vips[vip] == value {
+		if oldValue, exists := lb.Vips[vip]; exists && oldValue == value {
 			return nil
 		}
 		mutations := make([]model.Mutation, 0, 2)
