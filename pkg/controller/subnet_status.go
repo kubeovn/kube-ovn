@@ -64,7 +64,12 @@ func (c *Controller) patchSubnetStatusWithContext(ctx context.Context, subnet *k
 			reason == "ResetLogicalSwitchAclSuccess" ||
 			reason == "ReconcileCentralizedGatewaySuccess" ||
 			reason == "SetNonOvnSubnetSuccess" {
-			subnet.Status.Ready(reason, "")
+			if issue, ok := c.subnetDatapathIssues.get(subnet.Name); ok {
+				// ovn-northd has not bound the subnet, keep reporting it
+				subnet.Status.NotReady(issue.reason, issue.message)
+			} else {
+				subnet.Status.Ready(reason, "")
+			}
 		}
 	}
 

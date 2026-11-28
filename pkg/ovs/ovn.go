@@ -247,6 +247,7 @@ func NewOvnSbClient(ovnSbAddr string, ovnSbTimeout, ovsDbConTimeout, ovsDbInacti
 	monitors := []table.MonitorOption{
 		table.WithTable(&ovnsb.Chassis{}),
 		table.WithTable(&ovnsb.PortBinding{}),
+		table.WithTable(&ovnsb.DatapathBinding{}),
 	}
 	sbClient, err := connectOvsdb(ovnsb.DatabaseName, ovnSbAddr, dbModel, monitors, ovsDbConTimeout, ovsDbInactivityTimeout, maxRetry, "OVN SB")
 	if err != nil {

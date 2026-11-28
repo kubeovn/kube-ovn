@@ -192,6 +192,7 @@ type Controller struct {
 	subnetRuntimeEvents     *subnetRuntimeEventFanout
 	syncVirtualPortsQueue   workqueue.TypedRateLimitingInterface[string]
 	subnetKeyMutex          keymutex.KeyMutex
+	subnetDatapathIssues    subnetDatapathIssues
 
 	ippoolLister            kubeovnlister.IPPoolLister
 	ippoolSynced            cache.InformerSynced
@@ -1802,6 +1803,7 @@ func (c *Controller) startWorkers(ctx context.Context) {
 	}
 	go wait.Until(c.exportSubnetMetrics, 30*time.Second, ctx.Done())
 	go wait.Until(c.checkSubnetGateway, 5*time.Second, ctx.Done())
+	go wait.Until(c.checkSubnetDatapathBindings, subnetDatapathCheckInterval, ctx.Done())
 	go wait.Until(c.syncDistributedSubnetRoutes, 5*time.Second, ctx.Done())
 
 	go wait.Until(runWorker("add ovn eip", c.addOvnEipQueue, c.handleAddOvnEip), time.Second, ctx.Done())
