@@ -47,6 +47,7 @@ ADD patches/d4d76ddb2e12cdd9e73bb5e008ebb9fd1b4d6ca6.patch $SRC_DIR
 ADD patches/53b9837f7fe89cd63af735b039b8c26107d6579d.patch $SRC_DIR
 ADD patches/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch $SRC_DIR
 ADD patches/d088c5d8c263552c5a31d87813991aee30ab74de.patch $SRC_DIR
+ADD patches/ovsdb-raft-delay-join-completion.patch $SRC_DIR
 ADD patches/1b31f07dc60c016153fa35d936cdda0e02e58492.patch $SRC_DIR
 ADD patches/54b767822916606dbb78335a3197983f435b5b8a.patch $SRC_DIR
 ADD patches/e490f5ac0b644101913c2a3db8e03d85e859deff.patch $SRC_DIR
@@ -96,6 +97,8 @@ RUN cd /usr/src/ && \
     git apply $SRC_DIR/ffd2328d4a55271569e2b89e54a2c18f4e186af8.patch && \
     # ovs-router: skip getting source address for kube-ipvs0
     git apply $SRC_DIR/d088c5d8c263552c5a31d87813991aee30ab74de.patch && \
+    # keep incomplete Raft joins safe across snapshot recovery
+    git apply --unidiff-zero $SRC_DIR/ovsdb-raft-delay-join-completion.patch && \
     # increase the default probe interval for large cluster
     git apply $SRC_DIR/1b31f07dc60c016153fa35d936cdda0e02e58492.patch && \
     # update ovs-sandbox for docker run
