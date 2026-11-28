@@ -386,6 +386,7 @@ func TestGenNatGwStatefulSetImagePullSecrets(t *testing.T) {
 						CIDRBlock: "192.168.0.0/24",
 						Gateway:   "192.168.0.1",
 						Provider:  "external.default.ovn",
+						Vlan:      "external-vlan",
 					},
 				},
 			}
@@ -414,8 +415,47 @@ func TestGenNatGwStatefulSetImagePullSecrets(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.expectedResult, sts.Spec.Template.Spec.ImagePullSecrets)
+			assert.Equal(t, "true", sts.Spec.Template.Annotations["external.default.ovn.kubernetes.io/layer2_forward"])
 		})
 	}
+}
+
+func TestNatGwLayer2ForwardAnnotations(t *testing.T) {
+	tests := []struct {
+		name        string
+		subnet      *kubeovnv1.Subnet
+		annotations map[string]string
+		expected    map[string]string
+	}{
+		{
+			name: "underlay custom provider",
+			subnet: &kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{
+				Provider: "external.default.ovn",
+				Vlan:     "external-vlan",
+			}},
+			annotations: map[string]string{},
+			expected:    map[string]string{"external.default.ovn.kubernetes.io/layer2_forward": "true"},
+		},
+		{
+			name:        "overlay subnet is unchanged",
+			subnet:      &kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{Provider: "external.default.ovn"}},
+			annotations: map[string]string{"example.com/keep": "true"},
+			expected:    map[string]string{"example.com/keep": "true"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			enableNatGwExternalLayer2Forward(tt.annotations, tt.subnet)
+			assert.Equal(t, tt.expected, tt.annotations)
+		})
+	}
+
+	assert.True(t, natGwLayer2ForwardAnnotationChanged(nil,
+		map[string]string{"external.default.ovn.kubernetes.io/layer2_forward": "true"}))
+	assert.True(t, natGwLayer2ForwardAnnotationChanged(
+		map[string]string{"external.default.ovn.kubernetes.io/layer2_forward": "true"}, nil,
+	))
 }
 
 func TestHandleAddOrUpdateVpcNatGwImagePullSecretsOnCreate(t *testing.T) {

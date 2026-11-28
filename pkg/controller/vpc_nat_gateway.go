@@ -178,6 +178,21 @@ func isVpcNatGwChanged(gw *kubeovnv1.VpcNatGateway) bool {
 	return false
 }
 
+func natGwLayer2ForwardAnnotationChanged(current, desired map[string]string) bool {
+	const suffix = ".kubernetes.io/layer2_forward"
+	for key, value := range current {
+		if strings.HasSuffix(key, suffix) && desired[key] != value {
+			return true
+		}
+	}
+	for key, value := range desired {
+		if strings.HasSuffix(key, suffix) && current[key] != value {
+			return true
+		}
+	}
+	return false
+}
+
 func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	gw, err := c.vpcNatGatewayLister.Get(key)
 	if err != nil {
@@ -262,7 +277,8 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) error {
 	// Handle StatefulSet update if needed
 	// WARNING: This will update STS template directly, which triggers NAT GW Pod recreation.
 	// TODO: support hot update of runtime Pod annotations directly via patch
-	if gwChanged || needRestartRecovery {
+	templateChanged := natGwLayer2ForwardAnnotationChanged(oldSts.Spec.Template.Annotations, newSts.Spec.Template.Annotations)
+	if gwChanged || needRestartRecovery || templateChanged {
 		if _, err := c.config.KubeClient.AppsV1().StatefulSets(c.config.PodNamespace).
 			Update(context.Background(), newSts, metav1.UpdateOptions{}); err != nil {
 			err := fmt.Errorf("failed to update statefulset '%s', err: %w", newSts.Name, err)
@@ -900,6 +916,22 @@ func (c *Controller) GetSubnetProvider(subnetName string) (string, error) {
 	return subnet.Spec.Provider, nil
 }
 
+// enableNatGwExternalLayer2Forward lets an underlay NAT gateway receive
+// broadcast ARP/ND requests for EIPs on its external interface. OVN forwards
+// these requests through MC_UNKNOWN when broadcast flooding is disabled, so
+// the external logical switch port must opt in to that multicast group.
+func enableNatGwExternalLayer2Forward(annotations map[string]string, subnet *kubeovnv1.Subnet) {
+	if subnet.Spec.Vlan == "" {
+		return
+	}
+
+	provider := subnet.Spec.Provider
+	if provider == "" {
+		provider = util.OvnProvider
+	}
+	annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, provider)] = "true"
+}
+
 func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1.StatefulSet, natGwPodContainerRestartCount int32) (*v1.StatefulSet, error) {
 	externalNadNamespace, externalNadName, err := c.getExternalSubnetNad(gw)
 	if err != nil {
@@ -1018,6 +1050,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway, oldSts *v1
 		klog.Error(err)
 		return nil, err
 	}
+	enableNatGwExternalLayer2Forward(templateAnnotations, net1Subnet)
 
 	routes = routes[0:0]
 	net1V4Gateway, net1V6Gateway := util.SplitStringIP(net1Subnet.Spec.Gateway)
