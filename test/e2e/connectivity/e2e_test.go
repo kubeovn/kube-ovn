@@ -17,10 +17,12 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/component-base/logs"
 	"k8s.io/klog/v2"
+	"k8s.io/kubectl/pkg/util/podutils"
 	commontest "k8s.io/kubernetes/test/e2e/common"
 	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/kubernetes/test/e2e/framework/config"
@@ -243,6 +245,11 @@ var _ = framework.Describe("[group:connectivity]", func() {
 	})
 })
 
+func isReplacementPodReady(pod *corev1.Pod, deletedUID types.UID) bool {
+	return pod.UID != deletedUID && pod.DeletionTimestamp == nil &&
+		pod.Status.Phase == corev1.PodRunning && podutils.IsPodReady(pod)
+}
+
 var _ = framework.OrderedDescribe("[group:disaster]", func() {
 	var cs clientset.Interface
 	var err error
@@ -286,7 +293,8 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 		}
 		framework.ExpectNotNil(pod, "no ovs-ovn pod running on node "+suiteCtx.Node)
 
-		ginkgo.By("Deleting pod " + pod.Name)
+		deletedUID := pod.UID
+		ginkgo.By(fmt.Sprintf("Deleting pod %s (UID %s)", pod.Name, deletedUID))
 		err = cs.CoreV1().Pods(pod.Namespace).Delete(context.TODO(), pod.Name, metav1.DeleteOptions{})
 		framework.ExpectNoError(err, "failed to delete pod "+pod.Name)
 
@@ -303,9 +311,7 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 			}
 			for i := range pods.Items {
 				if pods.Items[i].Spec.NodeName == suiteCtx.Node &&
-					pods.Items[i].Status.Phase == corev1.PodRunning &&
-					len(pods.Items[i].Status.ContainerStatuses) != 0 &&
-					pods.Items[i].Status.ContainerStatuses[0].Ready {
+					isReplacementPodReady(&pods.Items[i], deletedUID) {
 					pod = &pods.Items[i]
 					return true, nil
 				}
@@ -313,7 +319,7 @@ var _ = framework.OrderedDescribe("[group:disaster]", func() {
 			return false, nil
 		}, "waiting for ovs-ovn pod on node "+suiteCtx.Node+" to be running and ready")
 		pod.ManagedFields = nil
-		framework.Logf("newly created ovs-ovn pod %s:\n%s", pod.Name, format.Object(pod, 2))
+		framework.Logf("newly created ovs-ovn pod %s (UID %s):\n%s", pod.Name, pod.UID, format.Object(pod, 2))
 	})
 
 	framework.DisruptiveIt("Recreating ovn-central pod", func() {

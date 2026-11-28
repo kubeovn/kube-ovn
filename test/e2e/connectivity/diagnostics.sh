@@ -132,6 +132,14 @@ case "${1:-}" in
         sudo -n kill -TERM "$pid" 2>> "$artifact_dir/stop.log" || true
       fi
     done
+    # Keep post-disruption process/reconnect logs on successful runs as well.
+    if [[ -f "$artifact_dir/nodes.txt" ]]; then
+      while read -r node; do
+        collect "$artifact_dir/$node-runtime-logs.txt" docker exec "$node" tail -n 2000 \
+          /var/log/ovn/ovn-controller.log /var/log/openvswitch/ovs-vswitchd.log &
+      done < "$artifact_dir/nodes.txt"
+      wait
+    fi
     ;;
   *)
     printf 'Usage: %s start|snapshot|stop\n' "$0" >&2

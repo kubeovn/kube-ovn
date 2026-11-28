@@ -105,3 +105,22 @@ exec "$NODEPORT_TEST_REAL_TIMEOUT" "$@"
 	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return directory
 }
+
+func TestNodePortDiagnosticsRetainsRuntimeLogs(t *testing.T) {
+	directory := t.TempDir()
+	t.Setenv("E2E_NODEPORT_DIAGNOSTICS_DIR", directory)
+	if err := os.WriteFile(filepath.Join(directory, "nodes.txt"), []byte("kind-fixture\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	bin := t.TempDir()
+	docker := "#!/usr/bin/env bash\nprintf 'OVS runtime log fixture\\n'\n"
+	if err := os.WriteFile(filepath.Join(bin, "docker"), []byte(docker), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	runNodePortDiagnostics("stop")
+	output, err := os.ReadFile(filepath.Join(directory, "kind-fixture-runtime-logs.txt"))
+	if err != nil || !strings.Contains(string(output), "OVS runtime log fixture") {
+		t.Fatalf("post-test OVS/OVN logs missing: %v\n%s", err, output)
+	}
+}

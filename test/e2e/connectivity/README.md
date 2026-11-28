@@ -34,6 +34,8 @@ Artifacts:
 - `baseline/` and `first-failure/`: Service, EndpointSlice, backend Pod, component
   placement, events, routes, neighbors, socket state, iptables/nftables counters,
   Linux and OVS conntrack, OVS interfaces/flows, and NB load balancers.
+- `<node>-runtime-logs.txt`: the last 2,000 lines of each node's ovn-controller
+  and ovs-vswitchd log after disruption, retained on successful runs as well.
 - `*-tcpdump.log`, `stop.log`, and individual snapshot files: errors and command
   timestamps and exit codes for each snapshot command, including commands inside
   node/OVS groups. A failed command is recorded and later commands still run.
@@ -53,3 +55,5 @@ commands have deadlines; the helper has a 45-second deadline. Packet capture
 has a 30-minute safety limit, and a CI cleanup step also stops it if the test
 process exits early. Diagnostics are best effort and do not change assertions.
 The baseline is collected before either parallel process begins its tests.
+The OVS restart case waits for a different Pod UID with no deletion timestamp
+and a true Pod Ready condition before allowing the next disruption to start.
