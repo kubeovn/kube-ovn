@@ -156,6 +156,9 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 	sg := cachedSg.DeepCopy()
 
 	if err = c.validateSgRule(sg); err != nil {
+		sg.Status.IngressLastSyncSuccess = false
+		sg.Status.EgressLastSyncSuccess = false
+		c.patchSgStatus(sg)
 		klog.Error(err)
 		return err
 	}
@@ -276,6 +279,9 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 
 		switch rule.RemoteType {
 		case kubeovnv1.SgRemoteTypeAddress:
+			if strings.Contains(rule.RemoteAddress, ",") {
+				return errors.New("remoteAddress must contain a single IP address or CIDR")
+			}
 			if strings.Contains(rule.RemoteAddress, "/") {
 				if err := util.CheckCidrs(rule.RemoteAddress); err != nil {
 					return fmt.Errorf("invalid CIDR '%s'", rule.RemoteAddress)
@@ -295,6 +301,9 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 		}
 
 		if rule.LocalAddress != "" {
+			if strings.Contains(rule.LocalAddress, ",") {
+				return errors.New("localAddress must contain a single IP address or CIDR")
+			}
 			if strings.Contains(rule.LocalAddress, "/") {
 				if err := util.CheckCidrs(rule.LocalAddress); err != nil {
 					return fmt.Errorf("invalid CIDR '%s'", rule.LocalAddress)

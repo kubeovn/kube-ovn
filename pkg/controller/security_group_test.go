@@ -241,6 +241,44 @@ func TestHandleAddOrUpdateSgForceRecordsRuleHashes(t *testing.T) {
 	require.True(t, updated.Status.EgressLastSyncSuccess)
 }
 
+func TestHandleAddOrUpdateSgClearsSyncStatusWhenValidationFails(t *testing.T) {
+	fc := newFakeController(t)
+	ctrl := fc.fakeController
+	ctrl.sgKeyMutex = keymutex.NewHashed(0)
+
+	sg := &kubeovnv1.SecurityGroup{
+		Name: "test-sg",
+		Spec: kubeovnv1.SecurityGroupSpec{
+			Tier: util.SecurityGroupAPITierMinimum,
+			IngressRules: []kubeovnv1.SecurityGroupRule{{
+				IPVersion:     "ipv4",
+				Priority:      1,
+				RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+				RemoteAddress: "10.0.0.1/32,10.0.0.2/32",
+				Protocol:      kubeovnv1.SgProtocolICMP,
+				Policy:        kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
+			}},
+		},
+		Status: kubeovnv1.SecurityGroupStatus{
+			IngressLastSyncSuccess: true,
+			EgressLastSyncSuccess:  true,
+		},
+	}
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(sg))
+	ctrl.sgsLister = kubeovnlister.NewSecurityGroupLister(indexer)
+	_, err := ctrl.config.KubeOvnClient.KubeovnV1().SecurityGroups().Create(t.Context(), sg, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	err = ctrl.handleAddOrUpdateSg(sg.Name, false)
+	require.ErrorContains(t, err, "remoteAddress must contain a single IP address or CIDR")
+
+	updated, err := ctrl.config.KubeOvnClient.KubeovnV1().SecurityGroups().Get(t.Context(), sg.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.False(t, updated.Status.IngressLastSyncSuccess)
+	require.False(t, updated.Status.EgressLastSyncSuccess)
+}
+
 func Test_validateSgRule(t *testing.T) {
 	t.Parallel()
 
@@ -317,6 +355,37 @@ func Test_validateSgRule(t *testing.T) {
 		})
 		err := ctrl.validateSgRule(sg)
 		require.ErrorContains(t, err, "invalid ip address")
+	})
+
+	t.Run("invalid comma separated remote address", func(t *testing.T) {
+		t.Parallel()
+
+		sg := baseSG(kubeovnv1.SecurityGroupRule{
+			IPVersion:     "ipv4",
+			Priority:      1,
+			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress: "10.0.0.1/32,10.0.0.2/32",
+			Protocol:      "all",
+			Policy:        kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
+		})
+		err := ctrl.validateSgRule(sg)
+		require.ErrorContains(t, err, "remoteAddress must contain a single IP address or CIDR")
+	})
+
+	t.Run("invalid comma separated local address", func(t *testing.T) {
+		t.Parallel()
+
+		sg := baseSG(kubeovnv1.SecurityGroupRule{
+			IPVersion:     "ipv4",
+			Priority:      1,
+			RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+			RemoteAddress: "10.0.0.1/32",
+			LocalAddress:  "192.168.1.1/32,192.168.1.2/32",
+			Protocol:      "all",
+			Policy:        kubeovnv1.SgPolicy(ovnnb.ACLActionAllow),
+		})
+		err := ctrl.validateSgRule(sg)
+		require.ErrorContains(t, err, "localAddress must contain a single IP address or CIDR")
 	})
 
 	t.Run("valid local port range with TCP and local address", func(t *testing.T) {
