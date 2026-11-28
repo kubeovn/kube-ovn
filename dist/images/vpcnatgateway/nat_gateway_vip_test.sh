@@ -23,7 +23,7 @@ check_inited() { inited_calls=$((inited_calls+1)); }
 
 lo_addrs="$tmp_dir/lo.addrs"
 # Addresses that live on lo without this feature's label: the loopback address itself and whatever
-# else the gateway or the operator put there. The sync must never touch them.
+# else the gateway or the operator put there. The Service commands must never touch them.
 lo_foreign="$tmp_dir/lo.foreign"
 ip_log="$tmp_dir/ip.log"
 ipt_log="$tmp_dir/iptables.log"
@@ -34,6 +34,7 @@ printf '127.0.0.1/8\n10.99.0.1/32\n' > "$lo_foreign"
 : > "$ipt_log"
 : > "$hairpin_state"
 
+ip_query_error=false
 ip() {
     printf 'ip %s\n' "$*" >> "$ip_log"
     case "$*" in
@@ -41,6 +42,7 @@ ip() {
             [[ "$vpc_has_addr" == true ]] && printf 'inet %s/24 scope global %s\n' "$vpc_addr" "$VPC_INTERFACE"
             ;;
         "-4 addr show dev lo label $VIP_ADDR_LABEL")
+            [[ "$ip_query_error" == false ]] || return 1
             while read -r addr; do printf 'inet %s scope host %s\n' "$addr" "$VIP_ADDR_LABEL"; done < "$lo_addrs"
             ;;
         "-4 addr show dev lo")
@@ -99,34 +101,42 @@ iptables_save() {
 }
 iptables_save_cmd=iptables_save
 
-# The ClusterIPs are held on lo as single /32s, under a label that scopes the set this feature
-# owns, so the sync can release the ones the controller no longer asks for.
-vip_addr_sync 10.96.1.5
+# Each Service adds its own /32 and releases only its own address, under the existing label.
+vip_addr_update add 10.96.1.5
 grep -qxF '10.96.1.5/32' "$lo_addrs"
 grep -qF 'ip addr add 10.96.1.5/32 dev lo label lo:ko-vip' "$ip_log"
-# re-running must converge, not stack addresses or re-add what is already held
 add_calls="$(grep -c 'addr add' "$ip_log")"
-vip_addr_sync 10.96.1.5
+vip_addr_update add 10.96.1.5 10.96.1.5
 [[ "$(wc -l < "$lo_addrs")" == 1 ]]
 [[ "$(grep -c 'addr add' "$ip_log")" == "$add_calls" ]]
-# a VIP that is not in the desired set is released, whoever left it behind: this is what makes the
-# lo state converge without tracking which rule last referenced an address
-vip_addr_sync 10.96.2.7
+# A peer's reconcile must not remove the first Service's address.
+vip_addr_update add 10.96.2.7
 grep -qxF '10.96.2.7/32' "$lo_addrs"
+grep -qxF '10.96.1.5/32' "$lo_addrs"
+vip_addr_update del 10.96.1.5 10.96.1.5
 ! grep -qxF '10.96.1.5/32' "$lo_addrs"
-# an empty desired set releases everything this feature owns
-vip_addr_sync
-[[ ! -s "$lo_addrs" ]]
-# ... and nothing else: the label is what scopes the set, so the loopback address and any other
-# unlabeled address on lo survive (the ip stub fails the test if one of them is deleted)
-[[ "$(wc -l < "$lo_foreign")" == 2 ]]
-# ... and then does not call ip addr del again
+grep -qxF '10.96.2.7/32' "$lo_addrs"
 del_calls="$(grep -c 'addr del' "$ip_log")"
-vip_addr_sync
+vip_addr_update del 10.96.1.5
 [[ "$(grep -c 'addr del' "$ip_log")" == "$del_calls" ]]
-# the VIP set is only programmed on an initialized gateway
-[[ "$inited_calls" == 5 ]]
-! ( vip_addr_sync 'not-an-ip' ) 2>/dev/null
+# Explicitly requesting an unlabeled address must leave it alone.
+vip_addr_update del 10.99.0.1
+[[ "$(wc -l < "$lo_foreign")" == 2 ]]
+[[ "$(grep -c 'addr del' "$ip_log")" == "$del_calls" ]]
+vip_addr_update del 10.96.2.7
+[[ ! -s "$lo_addrs" ]]
+[[ "$inited_calls" == 7 ]]
+# Validate every argument before applying the batch, including numeric octet range.
+mutation_calls="$(grep -cE '^ip addr (add|del)' "$ip_log")"
+for invalid in not-an-ip 999.96.1.5 '10.96.1.5;false' fd00::1; do
+    ! ( vip_addr_update add 10.96.1.7 "$invalid" ) 2>/dev/null
+    [[ "$(grep -cE '^ip addr (add|del)' "$ip_log")" == "$mutation_calls" ]]
+done
+# A failed address query must not be treated as an empty address set.
+ip_query_error=true
+! ( vip_addr_update add 10.96.1.7 ) 2>/dev/null
+[[ "$(grep -cE '^ip addr (add|del)' "$ip_log")" == "$mutation_calls" ]]
+ip_query_error=false
 
 # Hairpin SNAT: both the internal (ClusterIP) and public (EIP) VIP of one service get a
 # per-identity rule that SNATs VPC-originated traffic to this gateway's own VPC address,
