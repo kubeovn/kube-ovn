@@ -1181,6 +1181,10 @@ func sgRuleACLMatch(sgName, direction string, rule kubeovnv1.SecurityGroupRule) 
 // SecurityGroupRuleACL converts a security group rule to ACL fields without
 // querying the database or assigning row identity and parent ownership.
 func SecurityGroupRuleACL(sgName, direction string, rule kubeovnv1.SecurityGroupRule, tier int) (*ovnnb.ACL, error) {
+	if err := kubeovnv1.ValidateSgProtocol(rule.Protocol); err != nil {
+		return nil, err
+	}
+
 	_, match := sgRuleACLMatch(sgName, direction, rule)
 	action := ovnnb.ACLActionDrop
 	switch rule.Policy {

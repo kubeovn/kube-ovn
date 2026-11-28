@@ -26,6 +26,17 @@ const (
 	SgProtocolUDP  SgProtocol = "udp"
 )
 
+// ValidateSgProtocol checks whether a security group protocol is supported.
+// An empty protocol retains the historical meaning of all protocols.
+func ValidateSgProtocol(protocol SgProtocol) error {
+	switch protocol {
+	case "", SgProtocolALL, SgProtocolICMP, SgProtocolTCP, SgProtocolUDP:
+		return nil
+	default:
+		return fmt.Errorf("invalid security group protocol %q: must be one of all, icmp, tcp, or udp", protocol)
+	}
+}
+
 type SgPolicy string
 
 var (
@@ -72,6 +83,7 @@ type SecurityGroupRule struct {
 	// IP version (IPv4 or IPv6)
 	IPVersion string `json:"ipVersion"`
 	// Protocol (tcp, udp, icmp, or all)
+	// +kubebuilder:validation:Enum="";all;icmp;tcp;udp
 	Protocol SgProtocol `json:"protocol,omitempty"`
 	// Rule priority (1-16384)
 	Priority int `json:"priority,omitempty"`
