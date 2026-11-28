@@ -156,6 +156,23 @@ func TestHandleAddOrUpdateVMIMigrationEarlyReturns(t *testing.T) {
 		require.ErrorContains(t, f.ctrl.handleAddOrUpdateVMIMigration(testMigration), "boom")
 	})
 
+	t.Run("deleted migration is dropped without retry", func(t *testing.T) {
+		f := newKubevirtFixture(t, nil)
+		notFound := k8serrors.NewNotFound(schema.GroupResource{Group: "kubevirt.io", Resource: "virtualmachineinstancemigrations"}, "migration-cur")
+		f.mockVMIMigrations.EXPECT().Get(gomock.Any(), "migration-cur", gomock.Any()).Return(nil, notFound)
+		require.NoError(t, f.ctrl.handleAddOrUpdateVMIMigration(testMigration))
+	})
+
+	t.Run("pending migration of a deleted vmi is dropped without retry", func(t *testing.T) {
+		f := newKubevirtFixture(t, nil)
+		m := newTestVMIMigration("migration-cur", "uid-cur", testBaseTime, kubevirtv1.MigrationPending)
+		notFound := k8serrors.NewNotFound(schema.GroupResource{Group: "kubevirt.io", Resource: "virtualmachineinstances"}, testVMName)
+		f.mockVMIMigrations.EXPECT().Get(gomock.Any(), m.Name, gomock.Any()).Return(m, nil)
+		f.mockVMIs.EXPECT().Get(gomock.Any(), testVMName, gomock.Any()).Return(nil, notFound)
+		// no OVN call is expected; gomock fails the test on any other call
+		require.NoError(t, f.ctrl.handleAddOrUpdateVMIMigration(testMigration))
+	})
+
 	t.Run("migration without state does not touch ovn", func(t *testing.T) {
 		f := newKubevirtFixture(t, nil)
 		m := newTestVMIMigration("migration-cur", "uid-cur", testBaseTime, kubevirtv1.MigrationRunning)
@@ -194,6 +211,41 @@ func TestHandleAddOrUpdateVMIMigrationEarlyReturns(t *testing.T) {
 		f := newKubevirtFixture(t, nil)
 		m := newTestVMIMigration("migration-cur", "uid-cur", testBaseTime, kubevirtv1.MigrationRunning)
 		f.expectMigrationAndVMI(m, newTestVMI(testSrcNode, "uid-cur"))
+		f.expectPorts("vm1.default")
+		require.NoError(t, f.ctrl.handleAddOrUpdateVMIMigration(testMigration))
+	})
+}
+
+func TestHandleAddOrUpdateVMIMigrationSourcePod(t *testing.T) {
+	const sourcePod = "virt-launcher-vm1-src"
+	vmiWithSourcePod := func() *kubevirtv1.VirtualMachineInstance {
+		vmi := newTestVMI(testTgtNode, "uid-cur")
+		vmi.Status.MigrationState.SourcePod = sourcePod
+		return vmi
+	}
+
+	for _, phase := range []kubevirtv1.VirtualMachineInstanceMigrationPhase{kubevirtv1.MigrationSucceeded, kubevirtv1.MigrationFailed} {
+		t.Run("missing source pod skips "+string(phase)+" migration", func(t *testing.T) {
+			f := newKubevirtFixture(t, nil)
+			m := newTestVMIMigration("migration-cur", "uid-cur", testBaseTime, phase)
+			f.expectMigrationAndVMI(m, vmiWithSourcePod())
+			// no OVN call is expected; gomock fails the test on any other call
+			require.NoError(t, f.ctrl.handleAddOrUpdateVMIMigration(testMigration))
+		})
+	}
+
+	t.Run("missing source pod retries active migration", func(t *testing.T) {
+		f := newKubevirtFixture(t, nil)
+		m := newTestVMIMigration("migration-cur", "uid-cur", testBaseTime, kubevirtv1.MigrationRunning)
+		f.expectMigrationAndVMI(m, vmiWithSourcePod())
+		require.ErrorContains(t, f.ctrl.handleAddOrUpdateVMIMigration(testMigration), "source pod default/"+sourcePod)
+	})
+
+	t.Run("existing source pod proceeds", func(t *testing.T) {
+		pod := &corev1.Pod{Name: sourcePod, Namespace: metav1.NamespaceDefault}
+		f := newKubevirtFixture(t, &FakeControllerOptions{Pods: []*corev1.Pod{pod}})
+		m := newTestVMIMigration("migration-cur", "uid-cur", testBaseTime, kubevirtv1.MigrationRunning)
+		f.expectMigrationAndVMI(m, vmiWithSourcePod())
 		f.expectPorts("vm1.default")
 		require.NoError(t, f.ctrl.handleAddOrUpdateVMIMigration(testMigration))
 	})
