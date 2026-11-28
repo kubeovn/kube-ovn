@@ -16,10 +16,13 @@ import (
 // CreateGatewayChassises create multiple gateway chassis once
 func (c *OVNNbClient) CreateGatewayChassises(lrpName string, chassises ...string) error {
 	op, err := c.CreateGatewayChassisesOp(lrpName, chassises)
-	return c.transactGenerated("gateway-chassises-add", op, err,
+	if err := c.transactGenerated("gateway-chassises-add", op, err,
 		wrapErr("generate operations for creating gateway chassis %w"),
 		wrapErr("create gateway chassis %v for logical router port %s: %w", chassises, lrpName),
-	)
+	); err != nil {
+		return err
+	}
+	return c.reconcileGatewayRouterPortNatAddresses(lrpName)
 }
 
 // UpdateGatewayChassis update gateway chassis
@@ -231,6 +234,50 @@ func (c *OVNNbClient) ReconcileGatewayChassises(lrpName string, chassises []stri
 		gwChassis.Priority = priority
 		if err := c.UpdateGatewayChassis(gwChassis, &gwChassis.Priority); err != nil {
 			return logErr(err)
+		}
+	}
+	return nil
+}
+
+// reconcileGatewayRouterPortNatAddresses enables GARP announcements for the
+// router LSP connected to a logical router port with gateway chassis.
+func (c *OVNNbClient) reconcileGatewayRouterPortNatAddresses(lrpName string) error {
+	lrp, err := c.GetLogicalRouterPort(lrpName, true)
+	if err != nil {
+		return logWrap(err, wrapErr("get gateway router port %s: %w", lrpName))
+	}
+	if lrp == nil {
+		return nil
+	}
+	enabled := len(lrp.GatewayChassis) != 0
+
+	lsps, err := c.ListLogicalSwitchPorts(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+		return lsp.Type == "router" && lsp.Options["router-port"] == lrpName
+	})
+	if err != nil {
+		return logWrap(err, wrapErr("list switch ports for gateway router port %s: %w", lrpName))
+	}
+	for i := range lsps {
+		lsp := &lsps[i]
+		current := lsp.Options["nat-addresses"]
+		if (enabled && current == "router") || (!enabled && current == "") {
+			continue
+		}
+		mutator := ovsdb.MutateOperationDelete
+		value := map[string]string{"nat-addresses": "router"}
+		if enabled {
+			mutator = ovsdb.MutateOperationInsert
+		}
+		ops, err := c.Database.Table(&ovnnb.LogicalSwitchPort{}).MutateOps(lsp, model.Mutation{
+			Field:   &lsp.Options,
+			Value:   value,
+			Mutator: mutator,
+		})
+		if err := c.transactGenerated("lsp-update", ops, err,
+			wrapErr("generate nat-addresses update for gateway switch port %s: %w", lsp.Name),
+			wrapErr("set nat-addresses for gateway switch port %s: %w", lsp.Name),
+		); err != nil {
+			return err
 		}
 	}
 	return nil

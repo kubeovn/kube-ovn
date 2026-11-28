@@ -327,8 +327,57 @@ func TestControllerProviderPeerAndPatchPorts(t *testing.T) {
 		"switch-1", "router-1", "lsp-1", "lrp-1", "10.0.0.1/24", "00:00:00:00:00:01", "chassis-1",
 	))
 	require.Equal(t, 3, patchBackend.createCalls)
-	require.Equal(t, 3, patchBackend.mutateCalls)
+	require.Equal(t, 4, patchBackend.mutateCalls)
 	require.Equal(t, 1, patchBackend.transactCalls)
+}
+
+func TestControllerProviderPatchPortSetsNatAddresses(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "switch-1"},
+		&ovnnb.LogicalRouter{UUID: "lr-1", Name: "router-1"},
+		&ovnnb.LogicalSwitchPort{
+			UUID: "lsp-1", Name: "lsp-1", Type: "router",
+			Options:     map[string]string{"router-port": "lrp-1"},
+			ExternalIDs: map[string]string{ovs.LogicalSwitchKey: "switch-1", "vendor": util.CniTypeName},
+		},
+		&ovnnb.LogicalRouterPort{
+			UUID: "lrp-1", Name: "lrp-1", Networks: []string{"10.0.0.1/24"},
+			GatewayChassis: []string{"gateway-1"},
+			ExternalIDs:    map[string]string{"lr": "router-1", "vendor": util.CniTypeName},
+		},
+	)
+	controller := &Controller{OVNNbTables: table.NewDatabase(backend, time.Second, table.RetryPolicy{})}
+
+	require.NoError(t, controller.createLogicalPatchPort(
+		"switch-1", "router-1", "lsp-1", "lrp-1", "10.0.0.1/24", "00:00:00:00:00:01",
+	))
+	require.Equal(t, []string{
+		"mutate:LogicalSwitch", "mutate:LogicalRouter", "mutate:LogicalSwitchPort",
+	}, backend.transactionLabels[0])
+}
+
+func TestControllerProviderPatchPortRemovesStaleNatAddresses(t *testing.T) {
+	backend := newTableBackend(
+		&ovnnb.LogicalSwitch{UUID: "ls-1", Name: "switch-1"},
+		&ovnnb.LogicalRouter{UUID: "lr-1", Name: "router-1"},
+		&ovnnb.LogicalSwitchPort{
+			UUID: "lsp-1", Name: "lsp-1", Type: "router",
+			Options:     map[string]string{"router-port": "lrp-1", "nat-addresses": "router"},
+			ExternalIDs: map[string]string{ovs.LogicalSwitchKey: "switch-1", "vendor": util.CniTypeName},
+		},
+		&ovnnb.LogicalRouterPort{
+			UUID: "lrp-1", Name: "lrp-1", Networks: []string{"10.0.0.1/24"},
+			ExternalIDs: map[string]string{"lr": "router-1", "vendor": util.CniTypeName},
+		},
+	)
+	controller := &Controller{OVNNbTables: table.NewDatabase(backend, time.Second, table.RetryPolicy{})}
+
+	require.NoError(t, controller.createLogicalPatchPort(
+		"switch-1", "router-1", "lsp-1", "lrp-1", "10.0.0.1/24", "00:00:00:00:00:01",
+	))
+	require.Equal(t, []string{
+		"mutate:LogicalSwitch", "mutate:LogicalRouter", "mutate:LogicalSwitchPort",
+	}, backend.transactionLabels[0])
 }
 
 func TestControllerProviderLogicalSwitchRepairsMissingPatchPorts(t *testing.T) {
