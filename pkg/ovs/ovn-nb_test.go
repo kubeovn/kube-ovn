@@ -96,6 +96,12 @@ func (suite *OvnClientTestSuite) testCreateLogicalPatchPort() {
 			require.NoError(t, err)
 			require.Contains(t, lrp.GatewayChassis, gwChassis.UUID)
 		}
+
+		err = nbClient.ReconcileGatewayChassises(lrpName, nil)
+		require.NoError(t, err)
+		lsp, err = nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.NotContains(t, lsp.Options, "nat-addresses")
 	})
 
 	t.Run("create router port with no chassises", func(t *testing.T) {

@@ -299,9 +299,10 @@ func (c *OVNNbClient) reconcileGatewayRouterPortNatAddresses(lrpName string) err
 		klog.Error(wrappedErr)
 		return wrappedErr
 	}
-	if lrp == nil || len(lrp.GatewayChassis) == 0 {
+	if lrp == nil {
 		return nil
 	}
+	enabled := len(lrp.GatewayChassis) != 0
 
 	lsps, err := c.ListLogicalSwitchPorts(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
 		return lsp.Type == "router" && lsp.Options["router-port"] == lrpName
@@ -313,14 +314,27 @@ func (c *OVNNbClient) reconcileGatewayRouterPortNatAddresses(lrpName string) err
 	}
 	for i := range lsps {
 		lsp := &lsps[i]
-		if lsp.Options["nat-addresses"] == "router" {
+		current := lsp.Options["nat-addresses"]
+		if (enabled && current == "router") || (!enabled && current == "") {
 			continue
 		}
-		lsp.Options["nat-addresses"] = "router"
-		if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
+		mutator := ovsdb.MutateOperationDelete
+		value := map[string]string{"nat-addresses": "router"}
+		if enabled {
+			mutator = ovsdb.MutateOperationInsert
+		}
+		ops, err := c.Where(lsp).Mutate(lsp, model.Mutation{
+			Field: &lsp.Options, Value: value, Mutator: mutator,
+		})
+		if err != nil {
+			wrappedErr := fmt.Errorf("generate nat-addresses update for gateway switch port %s: %w", lsp.Name, err)
+			klog.Error(wrappedErr)
+			return wrappedErr
+		}
+		if err = c.Transact("lsp-update", ops); err != nil {
 			wrappedErr := fmt.Errorf("set nat-addresses for gateway switch port %s: %w", lsp.Name, err)
-		klog.Error(wrappedErr)
-		return wrappedErr
+			klog.Error(wrappedErr)
+			return wrappedErr
 		}
 	}
 	return nil
