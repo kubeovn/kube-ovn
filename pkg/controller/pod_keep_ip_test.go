@@ -212,3 +212,71 @@ func testGetPodDefaultSubnetRetainedIPSelection(t *testing.T, workload string) {
 		})
 	}
 }
+
+// A running pod whose allocation annotations were lost - the controller died between the
+// IPAM commit and the annotation patch - is allocated again. It must keep the MAC recorded
+// in its ip CR, because its container NIC is already configured with that MAC. A pod that
+// was recreated while the controller was down must get a fresh MAC instead.
+func TestReallocationReusesRecordedMacAddress(t *testing.T) {
+	t.Parallel()
+
+	const recordedMac, recordedIP = "02:00:00:00:00:07", "29.29.0.2"
+	subnet := &kubeovnv1.Subnet{
+		Name: "sandbox1-net1",
+		Spec: kubeovnv1.SubnetSpec{
+			CIDRBlock: "29.29.0.0/29", Protocol: kubeovnv1.ProtocolIPv4,
+			Provider: util.OvnProvider, ExcludeIps: []string{"29.29.0.1"},
+		},
+		Status: kubeovnv1.SubnetStatus{V4AvailableIPs: internal.NewBigInt(4)},
+	}
+	portName := ovs.PodNameToPortName("pod-a", "sandbox1", util.OvnProvider)
+	ip := &kubeovnv1.IP{
+		Name: portName,
+		Spec: kubeovnv1.IPSpec{
+			PodName: "pod-a", Namespace: "sandbox1", Subnet: subnet.Name,
+			IPAddress: recordedIP, V4IPAddress: recordedIP, MacAddress: recordedMac,
+		},
+	}
+
+	for _, tt := range []struct {
+		name        string
+		ips         []*kubeovnv1.IP
+		podIP       string
+		expectedMac string
+	}{
+		{name: "running pod re-allocated after a restart", ips: []*kubeovnv1.IP{ip}, podIP: recordedIP, expectedMac: recordedMac},
+		{name: "pod recreated while the controller was down", ips: []*kubeovnv1.IP{ip}},
+		{name: "first allocation of the pod"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			pod := &corev1.Pod{
+				Name: "pod-a", Namespace: "sandbox1",
+				Annotations: map[string]string{util.LogicalSwitchAnnotation: subnet.Name},
+			}
+			if tt.podIP != "" {
+				pod.Status = corev1.PodStatus{PodIP: tt.podIP, PodIPs: []corev1.PodIP{{IP: tt.podIP}}}
+			}
+			fc, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+				Subnets: []*kubeovnv1.Subnet{subnet}, IPs: tt.ips, Pods: []*corev1.Pod{pod},
+				Namespaces: []*corev1.Namespace{{
+					Name: pod.Namespace, Annotations: map[string]string{util.LogicalSwitchAnnotation: subnet.Name},
+				}},
+			})
+			require.NoError(t, err)
+			ctrl := fc.fakeController
+			ctrl.ipam = newIPAMForTest([]*kubeovnv1.Subnet{subnet})
+
+			nets, err := ctrl.getPodKubeovnNets(pod)
+			require.NoError(t, err)
+			require.Len(t, nets, 1)
+			_, _, mac, _, err := ctrl.acquireAddress(pod, nets[0])
+			require.NoError(t, err)
+			require.NotEmpty(t, mac)
+			if tt.expectedMac != "" {
+				require.Equal(t, tt.expectedMac, mac)
+			} else {
+				require.NotEqual(t, recordedMac, mac, "a pod without a configured NIC must get a fresh MAC")
+			}
+		})
+	}
+}
