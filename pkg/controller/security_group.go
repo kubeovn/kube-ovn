@@ -155,7 +155,19 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 	}
 	sg := cachedSg.DeepCopy()
 
+	newIngressMd5 := hex.EncodeToString(structhash.Md5(sg.Spec.IngressRules, 1))
+	newEgressMd5 := hex.EncodeToString(structhash.Md5(sg.Spec.EgressRules, 1))
 	if err = c.validateSgRule(sg); err != nil {
+		tierErr := util.ValidateSecurityGroupTier(sg.Spec.Tier)
+		ingressErr := c.validateSgRules(sg, sg.Spec.IngressRules)
+		egressErr := c.validateSgRules(sg, sg.Spec.EgressRules)
+		if tierErr != nil || ingressErr != nil || newIngressMd5 != sg.Status.IngressMd5 {
+			sg.Status.IngressLastSyncSuccess = false
+		}
+		if tierErr != nil || egressErr != nil || newEgressMd5 != sg.Status.EgressMd5 {
+			sg.Status.EgressLastSyncSuccess = false
+		}
+		c.patchSgStatus(sg)
 		klog.Error(err)
 		return err
 	}
@@ -186,8 +198,6 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 	}
 
 	var ingressNeedUpdate, egressNeedUpdate bool
-	newIngressMd5 := hex.EncodeToString(structhash.Md5(sg.Spec.IngressRules, 1))
-	newEgressMd5 := hex.EncodeToString(structhash.Md5(sg.Spec.EgressRules, 1))
 	if force {
 		klog.Infof("force update sg %s", sg.Name)
 		ingressNeedUpdate = true
@@ -255,13 +265,17 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 }
 
 func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
-	// check sg rules
-	allRules := append(sg.Spec.IngressRules, sg.Spec.EgressRules...)
 	if err := util.ValidateSecurityGroupTier(sg.Spec.Tier); err != nil {
 		return err
 	}
+	if err := c.validateSgRules(sg, sg.Spec.IngressRules); err != nil {
+		return err
+	}
+	return c.validateSgRules(sg, sg.Spec.EgressRules)
+}
 
-	for _, rule := range allRules {
+func (c *Controller) validateSgRules(sg *kubeovnv1.SecurityGroup, rules []kubeovnv1.SecurityGroupRule) error {
+	for _, rule := range rules {
 		if rule.IPVersion != "ipv4" && rule.IPVersion != "ipv6" {
 			return errors.New("IPVersion should be 'ipv4' or 'ipv6'")
 		}
@@ -276,6 +290,9 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 
 		switch rule.RemoteType {
 		case kubeovnv1.SgRemoteTypeAddress:
+			if strings.Contains(rule.RemoteAddress, ",") {
+				return errors.New("remoteAddress must contain a single IP address or CIDR")
+			}
 			if strings.Contains(rule.RemoteAddress, "/") {
 				if err := util.CheckCidrs(rule.RemoteAddress); err != nil {
 					return fmt.Errorf("invalid CIDR '%s'", rule.RemoteAddress)
@@ -295,6 +312,9 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 		}
 
 		if rule.LocalAddress != "" {
+			if strings.Contains(rule.LocalAddress, ",") {
+				return errors.New("localAddress must contain a single IP address or CIDR")
+			}
 			if strings.Contains(rule.LocalAddress, "/") {
 				if err := util.CheckCidrs(rule.LocalAddress); err != nil {
 					return fmt.Errorf("invalid CIDR '%s'", rule.LocalAddress)
