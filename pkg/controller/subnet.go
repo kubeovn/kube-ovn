@@ -3212,38 +3212,59 @@ func (c *Controller) deletePolicyRouteForU2OInterconn(subnet *kubeovnv1.Subnet) 
 	return nil
 }
 
+type sourceRoutePrefix struct {
+	table string
+	cidr  string
+}
+
+func bfdSourceRoutePrefixes(routes []*kubeovnv1.StaticRoute) map[sourceRoutePrefix]struct{} {
+	prefixes := make(map[sourceRoutePrefix]struct{})
+	for _, route := range routes {
+		if route != nil && route.Policy == kubeovnv1.PolicySrc && route.BfdID != "" {
+			prefixes[sourceRoutePrefix{table: route.RouteTable, cidr: route.CIDR}] = struct{}{}
+		}
+	}
+	return prefixes
+}
+
+func subnetSourceFallbackRoutes(subnet *kubeovnv1.Subnet, bfdPrefixes map[sourceRoutePrefix]struct{}) []*kubeovnv1.StaticRoute {
+	v4Gw, v6Gw := util.SplitStringIP(subnet.Spec.Gateway)
+	v4CIDR, v6CIDR := util.SplitStringIP(subnet.Spec.CIDRBlock)
+	table := subnet.Spec.RouteTable
+
+	var routes []*kubeovnv1.StaticRoute
+	for _, family := range [2]struct{ cidr, gateway string }{{v4CIDR, v4Gw}, {v6CIDR, v6Gw}} {
+		_, hasBFD := bfdPrefixes[sourceRoutePrefix{table: table, cidr: family.cidr}]
+		if family.cidr == "" || family.gateway == "" || hasBFD {
+			continue
+		}
+		routes = append(routes, &kubeovnv1.StaticRoute{
+			Policy:     kubeovnv1.PolicySrc,
+			CIDR:       family.cidr,
+			NextHopIP:  family.gateway,
+			RouteTable: table,
+		})
+	}
+	return routes
+}
+
 func (c *Controller) addCustomVPCStaticRouteForSubnet(subnet *kubeovnv1.Subnet) error {
-	if subnet.Spec.Vpc == "" {
+	vpcName := subnet.Spec.Vpc
+	if vpcName == "" {
 		return nil
 	}
 
-	v4Gw, v6Gw := util.SplitStringIP(subnet.Spec.Gateway)
-	v4Cidr, v6Cidr := util.SplitStringIP(subnet.Spec.CIDRBlock)
+	// Serialize the fallback write with VPC route reconciliation so a subnet
+	// worker cannot overwrite BFD routes installed from a newer VPC spec.
+	c.vpcKeyMutex.LockKey(vpcName)
+	defer func() { _ = c.vpcKeyMutex.UnlockKey(vpcName) }()
 
-	if v4Gw != "" && v4Cidr != "" {
-		if err := c.addStaticRouteToVpc(
-			subnet.Spec.Vpc,
-			&kubeovnv1.StaticRoute{
-				Policy:    kubeovnv1.PolicySrc,
-				CIDR:      v4Cidr,
-				NextHopIP: v4Gw,
-			},
-		); err != nil {
-			klog.Errorf("failed to add static route, %v", err)
-			return err
-		}
+	vpc, err := c.vpcsLister.Get(vpcName)
+	if err != nil {
+		return fmt.Errorf("get vpc %s for subnet %s: %w", vpcName, subnet.Name, err)
 	}
-
-	if v6Gw != "" && v6Cidr != "" {
-		if err := c.addStaticRouteToVpc(
-			subnet.Spec.Vpc,
-			&kubeovnv1.StaticRoute{
-				Policy:    kubeovnv1.PolicySrc,
-				CIDR:      v6Cidr,
-				NextHopIP: v6Gw,
-			},
-		); err != nil {
-			klog.Errorf("failed to add static route, %v", err)
+	for _, route := range subnetSourceFallbackRoutes(subnet, bfdSourceRoutePrefixes(vpc.Spec.StaticRoutes)) {
+		if err := c.addStaticRouteToVpc(vpcName, route); err != nil {
 			return err
 		}
 	}
