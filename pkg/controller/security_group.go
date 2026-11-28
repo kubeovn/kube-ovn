@@ -155,14 +155,16 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 	}
 	sg := cachedSg.DeepCopy()
 
+	newIngressMd5 := hex.EncodeToString(structhash.Md5(sg.Spec.IngressRules, 1))
+	newEgressMd5 := hex.EncodeToString(structhash.Md5(sg.Spec.EgressRules, 1))
 	if err = c.validateSgRule(sg); err != nil {
 		tierErr := util.ValidateSecurityGroupTier(sg.Spec.Tier)
 		ingressErr := c.validateSgRules(sg, sg.Spec.IngressRules)
 		egressErr := c.validateSgRules(sg, sg.Spec.EgressRules)
-		if tierErr != nil || ingressErr != nil {
+		if tierErr != nil || ingressErr != nil || newIngressMd5 != sg.Status.IngressMd5 {
 			sg.Status.IngressLastSyncSuccess = false
 		}
-		if tierErr != nil || egressErr != nil {
+		if tierErr != nil || egressErr != nil || newEgressMd5 != sg.Status.EgressMd5 {
 			sg.Status.EgressLastSyncSuccess = false
 		}
 		c.patchSgStatus(sg)
@@ -196,8 +198,6 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 	}
 
 	var ingressNeedUpdate, egressNeedUpdate bool
-	newIngressMd5 := hex.EncodeToString(structhash.Md5(sg.Spec.IngressRules, 1))
-	newEgressMd5 := hex.EncodeToString(structhash.Md5(sg.Spec.EgressRules, 1))
 	if force {
 		klog.Infof("force update sg %s", sg.Name)
 		ingressNeedUpdate = true

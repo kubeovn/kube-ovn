@@ -252,25 +252,63 @@ func TestHandleAddOrUpdateSgClearsOnlyInvalidSyncStatus(t *testing.T) {
 	}
 	invalidRule := validRule
 	invalidRule.RemoteAddress = "10.0.0.1/32,10.0.0.2/32"
+	changedRule := validRule
+	changedRule.RemoteAddress = "10.0.0.2/32"
 
 	for _, tc := range []struct {
-		name                        string
-		ingressRules, egressRules   []kubeovnv1.SecurityGroupRule
-		ingressSynced, egressSynced bool
+		name                                string
+		tier                                int
+		ingressRules, egressRules           []kubeovnv1.SecurityGroupRule
+		lastSyncedIngress, lastSyncedEgress []kubeovnv1.SecurityGroupRule
+		ingressSynced, egressSynced         bool
+		expectedError                       string
 	}{
 		{
-			name:          "invalid ingress preserves synced egress",
-			ingressRules:  []kubeovnv1.SecurityGroupRule{invalidRule},
-			egressRules:   []kubeovnv1.SecurityGroupRule{validRule},
-			ingressSynced: false,
-			egressSynced:  true,
+			name:              "invalid ingress preserves synced egress",
+			ingressRules:      []kubeovnv1.SecurityGroupRule{invalidRule},
+			egressRules:       []kubeovnv1.SecurityGroupRule{validRule},
+			lastSyncedIngress: []kubeovnv1.SecurityGroupRule{validRule},
+			lastSyncedEgress:  []kubeovnv1.SecurityGroupRule{validRule},
+			ingressSynced:     false,
+			egressSynced:      true,
 		},
 		{
-			name:          "invalid egress preserves synced ingress",
-			ingressRules:  []kubeovnv1.SecurityGroupRule{validRule},
-			egressRules:   []kubeovnv1.SecurityGroupRule{invalidRule},
-			ingressSynced: true,
-			egressSynced:  false,
+			name:              "invalid ingress clears changed egress",
+			ingressRules:      []kubeovnv1.SecurityGroupRule{invalidRule},
+			egressRules:       []kubeovnv1.SecurityGroupRule{changedRule},
+			lastSyncedIngress: []kubeovnv1.SecurityGroupRule{validRule},
+			lastSyncedEgress:  []kubeovnv1.SecurityGroupRule{validRule},
+			ingressSynced:     false,
+			egressSynced:      false,
+		},
+		{
+			name:              "invalid egress preserves synced ingress",
+			ingressRules:      []kubeovnv1.SecurityGroupRule{validRule},
+			egressRules:       []kubeovnv1.SecurityGroupRule{invalidRule},
+			lastSyncedIngress: []kubeovnv1.SecurityGroupRule{validRule},
+			lastSyncedEgress:  []kubeovnv1.SecurityGroupRule{validRule},
+			ingressSynced:     true,
+			egressSynced:      false,
+		},
+		{
+			name:              "invalid egress clears changed ingress",
+			ingressRules:      []kubeovnv1.SecurityGroupRule{changedRule},
+			egressRules:       []kubeovnv1.SecurityGroupRule{invalidRule},
+			lastSyncedIngress: []kubeovnv1.SecurityGroupRule{validRule},
+			lastSyncedEgress:  []kubeovnv1.SecurityGroupRule{validRule},
+			ingressSynced:     false,
+			egressSynced:      false,
+		},
+		{
+			name:              "invalid tier clears both statuses",
+			tier:              util.SecurityGroupAPITierMaximum + 1,
+			ingressRules:      []kubeovnv1.SecurityGroupRule{validRule},
+			egressRules:       []kubeovnv1.SecurityGroupRule{validRule},
+			lastSyncedIngress: []kubeovnv1.SecurityGroupRule{validRule},
+			lastSyncedEgress:  []kubeovnv1.SecurityGroupRule{validRule},
+			ingressSynced:     false,
+			egressSynced:      false,
+			expectedError:     "SecurityGroupTier",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -281,11 +319,13 @@ func TestHandleAddOrUpdateSgClearsOnlyInvalidSyncStatus(t *testing.T) {
 			sg := &kubeovnv1.SecurityGroup{
 				Name: "test-sg",
 				Spec: kubeovnv1.SecurityGroupSpec{
-					Tier:         util.SecurityGroupAPITierMinimum,
+					Tier:         tc.tier,
 					IngressRules: tc.ingressRules,
 					EgressRules:  tc.egressRules,
 				},
 				Status: kubeovnv1.SecurityGroupStatus{
+					IngressMd5:             hex.EncodeToString(structhash.Md5(tc.lastSyncedIngress, 1)),
+					EgressMd5:              hex.EncodeToString(structhash.Md5(tc.lastSyncedEgress, 1)),
 					IngressLastSyncSuccess: true,
 					EgressLastSyncSuccess:  true,
 				},
@@ -297,7 +337,11 @@ func TestHandleAddOrUpdateSgClearsOnlyInvalidSyncStatus(t *testing.T) {
 			require.NoError(t, err)
 
 			err = ctrl.handleAddOrUpdateSg(sg.Name, false)
-			require.ErrorContains(t, err, "remoteAddress must contain a single IP address or CIDR")
+			if tc.expectedError == "" {
+				require.ErrorContains(t, err, "remoteAddress must contain a single IP address or CIDR")
+			} else {
+				require.ErrorContains(t, err, tc.expectedError)
+			}
 
 			updated, err := ctrl.config.KubeOvnClient.KubeovnV1().SecurityGroups().Get(t.Context(), sg.Name, metav1.GetOptions{})
 			require.NoError(t, err)
