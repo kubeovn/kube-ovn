@@ -241,7 +241,24 @@ func TestHandleAddOrUpdateSgForceRecordsRuleHashes(t *testing.T) {
 	require.True(t, updated.Status.EgressLastSyncSuccess)
 }
 
+type sgSyncStatusTestCase struct {
+	name                                string
+	tier                                int
+	ingressRules, egressRules           []kubeovnv1.SecurityGroupRule
+	lastSyncedIngress, lastSyncedEgress []kubeovnv1.SecurityGroupRule
+	ingressSynced, egressSynced         bool
+	expectedError                       string
+}
+
 func TestHandleAddOrUpdateSgClearsOnlyInvalidSyncStatus(t *testing.T) {
+	for _, tc := range sgSyncStatusTestCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			assertSgSyncStatus(t, tc)
+		})
+	}
+}
+
+func sgSyncStatusTestCases() []sgSyncStatusTestCase {
 	validRule := kubeovnv1.SecurityGroupRule{
 		IPVersion:     "ipv4",
 		Priority:      1,
@@ -252,103 +269,77 @@ func TestHandleAddOrUpdateSgClearsOnlyInvalidSyncStatus(t *testing.T) {
 	}
 	invalidRule := validRule
 	invalidRule.RemoteAddress = "10.0.0.1/32,10.0.0.2/32"
+	invalidLocalRule := validRule
+	invalidLocalRule.LocalAddress = "192.0.2.1/32,192.0.2.2/32"
 	changedRule := validRule
 	changedRule.RemoteAddress = "10.0.0.2/32"
+	synced := []kubeovnv1.SecurityGroupRule{validRule}
+	invalid := []kubeovnv1.SecurityGroupRule{invalidRule}
+	invalidLocal := []kubeovnv1.SecurityGroupRule{invalidLocalRule}
+	changed := []kubeovnv1.SecurityGroupRule{changedRule}
 
-	for _, tc := range []struct {
-		name                                string
-		tier                                int
-		ingressRules, egressRules           []kubeovnv1.SecurityGroupRule
-		lastSyncedIngress, lastSyncedEgress []kubeovnv1.SecurityGroupRule
-		ingressSynced, egressSynced         bool
-		expectedError                       string
-	}{
+	return []sgSyncStatusTestCase{
 		{
-			name:              "invalid ingress preserves synced egress",
-			ingressRules:      []kubeovnv1.SecurityGroupRule{invalidRule},
-			egressRules:       []kubeovnv1.SecurityGroupRule{validRule},
-			lastSyncedIngress: []kubeovnv1.SecurityGroupRule{validRule},
-			lastSyncedEgress:  []kubeovnv1.SecurityGroupRule{validRule},
-			ingressSynced:     false,
-			egressSynced:      true,
+			name: "invalid ingress preserves synced egress", ingressRules: invalid, egressRules: synced,
+			lastSyncedIngress: synced, lastSyncedEgress: synced, egressSynced: true,
 		},
 		{
-			name:              "invalid ingress clears changed egress",
-			ingressRules:      []kubeovnv1.SecurityGroupRule{invalidRule},
-			egressRules:       []kubeovnv1.SecurityGroupRule{changedRule},
-			lastSyncedIngress: []kubeovnv1.SecurityGroupRule{validRule},
-			lastSyncedEgress:  []kubeovnv1.SecurityGroupRule{validRule},
-			ingressSynced:     false,
-			egressSynced:      false,
+			name: "invalid ingress clears changed egress", ingressRules: invalid, egressRules: changed,
+			lastSyncedIngress: synced, lastSyncedEgress: synced,
 		},
 		{
-			name:              "invalid egress preserves synced ingress",
-			ingressRules:      []kubeovnv1.SecurityGroupRule{validRule},
-			egressRules:       []kubeovnv1.SecurityGroupRule{invalidRule},
-			lastSyncedIngress: []kubeovnv1.SecurityGroupRule{validRule},
-			lastSyncedEgress:  []kubeovnv1.SecurityGroupRule{validRule},
-			ingressSynced:     true,
-			egressSynced:      false,
+			name: "invalid local address clears ingress status", ingressRules: invalidLocal, egressRules: synced,
+			lastSyncedIngress: synced, lastSyncedEgress: synced, expectedError: "localAddress must contain a single IP address or CIDR",
+			egressSynced: true,
 		},
 		{
-			name:              "invalid egress clears changed ingress",
-			ingressRules:      []kubeovnv1.SecurityGroupRule{changedRule},
-			egressRules:       []kubeovnv1.SecurityGroupRule{invalidRule},
-			lastSyncedIngress: []kubeovnv1.SecurityGroupRule{validRule},
-			lastSyncedEgress:  []kubeovnv1.SecurityGroupRule{validRule},
-			ingressSynced:     false,
-			egressSynced:      false,
+			name: "invalid egress preserves synced ingress", ingressRules: synced, egressRules: invalid,
+			lastSyncedIngress: synced, lastSyncedEgress: synced, ingressSynced: true,
 		},
 		{
-			name:              "invalid tier clears both statuses",
-			tier:              util.SecurityGroupAPITierMaximum + 1,
-			ingressRules:      []kubeovnv1.SecurityGroupRule{validRule},
-			egressRules:       []kubeovnv1.SecurityGroupRule{validRule},
-			lastSyncedIngress: []kubeovnv1.SecurityGroupRule{validRule},
-			lastSyncedEgress:  []kubeovnv1.SecurityGroupRule{validRule},
-			ingressSynced:     false,
-			egressSynced:      false,
-			expectedError:     "SecurityGroupTier",
+			name: "invalid egress clears changed ingress", ingressRules: changed, egressRules: invalid,
+			lastSyncedIngress: synced, lastSyncedEgress: synced,
 		},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			fc := newFakeController(t)
-			ctrl := fc.fakeController
-			ctrl.sgKeyMutex = keymutex.NewHashed(0)
-
-			sg := &kubeovnv1.SecurityGroup{
-				Name: "test-sg",
-				Spec: kubeovnv1.SecurityGroupSpec{
-					Tier:         tc.tier,
-					IngressRules: tc.ingressRules,
-					EgressRules:  tc.egressRules,
-				},
-				Status: kubeovnv1.SecurityGroupStatus{
-					IngressMd5:             hex.EncodeToString(structhash.Md5(tc.lastSyncedIngress, 1)),
-					EgressMd5:              hex.EncodeToString(structhash.Md5(tc.lastSyncedEgress, 1)),
-					IngressLastSyncSuccess: true,
-					EgressLastSyncSuccess:  true,
-				},
-			}
-			indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
-			require.NoError(t, indexer.Add(sg))
-			ctrl.sgsLister = kubeovnlister.NewSecurityGroupLister(indexer)
-			_, err := ctrl.config.KubeOvnClient.KubeovnV1().SecurityGroups().Create(t.Context(), sg, metav1.CreateOptions{})
-			require.NoError(t, err)
-
-			err = ctrl.handleAddOrUpdateSg(sg.Name, false)
-			if tc.expectedError == "" {
-				require.ErrorContains(t, err, "remoteAddress must contain a single IP address or CIDR")
-			} else {
-				require.ErrorContains(t, err, tc.expectedError)
-			}
-
-			updated, err := ctrl.config.KubeOvnClient.KubeovnV1().SecurityGroups().Get(t.Context(), sg.Name, metav1.GetOptions{})
-			require.NoError(t, err)
-			require.Equal(t, tc.ingressSynced, updated.Status.IngressLastSyncSuccess)
-			require.Equal(t, tc.egressSynced, updated.Status.EgressLastSyncSuccess)
-		})
+		{
+			name: "invalid tier clears both statuses", tier: util.SecurityGroupAPITierMaximum + 1,
+			ingressRules: synced, egressRules: synced, lastSyncedIngress: synced, lastSyncedEgress: synced,
+			expectedError: "SecurityGroupTier",
+		},
 	}
+}
+
+func assertSgSyncStatus(t *testing.T, tc sgSyncStatusTestCase) {
+	t.Helper()
+	fc := newFakeController(t)
+	ctrl := fc.fakeController
+	ctrl.sgKeyMutex = keymutex.NewHashed(0)
+	sg := &kubeovnv1.SecurityGroup{
+		Name: "test-sg",
+		Spec: kubeovnv1.SecurityGroupSpec{
+			Tier: tc.tier, IngressRules: tc.ingressRules, EgressRules: tc.egressRules,
+		},
+		Status: kubeovnv1.SecurityGroupStatus{
+			IngressMd5:             hex.EncodeToString(structhash.Md5(tc.lastSyncedIngress, 1)),
+			EgressMd5:              hex.EncodeToString(structhash.Md5(tc.lastSyncedEgress, 1)),
+			IngressLastSyncSuccess: true, EgressLastSyncSuccess: true,
+		},
+	}
+	indexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, indexer.Add(sg))
+	ctrl.sgsLister = kubeovnlister.NewSecurityGroupLister(indexer)
+	_, err := ctrl.config.KubeOvnClient.KubeovnV1().SecurityGroups().Create(t.Context(), sg, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	err = ctrl.handleAddOrUpdateSg(sg.Name, false)
+	if tc.expectedError == "" {
+		require.ErrorContains(t, err, "remoteAddress must contain a single IP address or CIDR")
+	} else {
+		require.ErrorContains(t, err, tc.expectedError)
+	}
+	updated, err := ctrl.config.KubeOvnClient.KubeovnV1().SecurityGroups().Get(t.Context(), sg.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	require.Equal(t, tc.ingressSynced, updated.Status.IngressLastSyncSuccess)
+	require.Equal(t, tc.egressSynced, updated.Status.EgressLastSyncSuccess)
 }
 
 func Test_validateSgRule(t *testing.T) {
