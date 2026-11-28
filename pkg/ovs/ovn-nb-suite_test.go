@@ -489,6 +489,10 @@ func (suite *OvnClientTestSuite) Test_MonitorBFDs() {
 }
 
 /* gateway_chassis unit test */
+func (suite *OvnClientTestSuite) Test_GatewayRouterPortNatAddresses() {
+	suite.testGatewayRouterPortNatAddresses()
+}
+
 func (suite *OvnClientTestSuite) Test_CreateGatewayChassises() {
 	suite.testCreateGatewayChassises()
 }
