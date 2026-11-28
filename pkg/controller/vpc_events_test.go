@@ -7,7 +7,9 @@ import (
 	"github.com/puzpuzpuz/xsync/v4"
 	"github.com/stretchr/testify/require"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	corelisters "k8s.io/client-go/listers/core/v1"
 	ktesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -167,16 +169,20 @@ func TestHandleAddOrUpdateVpcDNSRecordsFailureAndInactiveStatus(t *testing.T) {
 		return true, updatedDNS, nil
 	})
 	recorder := record.NewFakeRecorder(1)
+	// vpc-dns-config version 1 is already applied, so the handler's config sync does nothing
+	cmIndexer := cache.NewIndexer(cache.MetaNamespaceKeyFunc, cache.Indexers{})
+	require.NoError(t, cmIndexer.Add(&corev1.ConfigMap{Name: util.VpcDNSConfig, Namespace: metav1.NamespaceSystem, ResourceVersion: "1"}))
 	controller := &Controller{
-		config:       &Configuration{KubeOvnClient: client},
-		recorder:     recorder,
-		vpcDNSLister: kubeovnlister.NewVpcDnsLister(indexer),
+		config:           &Configuration{KubeOvnClient: client, PodNamespace: metav1.NamespaceSystem},
+		recorder:         recorder,
+		configMapsLister: corelisters.NewConfigMapLister(cmIndexer),
+		vpcDNSLister:     kubeovnlister.NewVpcDnsLister(indexer),
 	}
 
-	oldEnabled, oldImage := enableCoreDNS, corednsImage
-	enableCoreDNS, corednsImage = true, ""
+	oldEnabled, oldImage, oldVersion, oldApplied, oldSynced := enableCoreDNS, corednsImage, cmVersion, appliedEnableCoreDNS, vpcDNSConfigSynced
+	enableCoreDNS, corednsImage, cmVersion, appliedEnableCoreDNS, vpcDNSConfigSynced = true, "", "1", true, true
 	t.Cleanup(func() {
-		enableCoreDNS, corednsImage = oldEnabled, oldImage
+		enableCoreDNS, corednsImage, cmVersion, appliedEnableCoreDNS, vpcDNSConfigSynced = oldEnabled, oldImage, oldVersion, oldApplied, oldSynced
 	})
 
 	err := controller.handleAddOrUpdateVPCDNS(dns.Name)
