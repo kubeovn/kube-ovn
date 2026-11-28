@@ -52,6 +52,7 @@ func findServiceKey(endpointSlice *discoveryv1.EndpointSlice) string {
 
 func serviceNeedsPriorityEndpointReconcile(svc *v1.Service) bool {
 	return serviceUsesTrafficDistribution(svc) || serviceUsesDistributedLB(svc) ||
+		serviceHasNodePorts(svc) ||
 		svc.Spec.SessionAffinity == v1.ServiceAffinityClientIP ||
 		(svc.Spec.Type == v1.ServiceTypeLoadBalancer &&
 			svc.Spec.ExternalTrafficPolicy == v1.ServiceExternalTrafficPolicyTypeLocal)
@@ -178,6 +179,7 @@ func (c *Controller) enqueueDeleteEndpointSlice(obj any) {
 type endpointSliceServiceProfile struct {
 	lbVips               []string
 	trafficClasses       map[string]serviceLBTrafficClass
+	nodePortVIPs         []string
 	externalVIPNode      string
 	serviceL2StatusReady bool
 	healthCheckVIPs      map[string]bool
@@ -293,6 +295,11 @@ func (c *Controller) reconcileServiceEndpointSlices(svc *v1.Service, endpointSli
 			return err
 		}
 	}
+	if serviceHasNodePorts(svc) {
+		if err := c.reconcileServiceNodePorts(reconcileCtx); err != nil {
+			return err
+		}
+	}
 	if err := c.clearServiceExternalTrafficLocalMarkers(reconcileCtx); err != nil {
 		return err
 	}
@@ -361,7 +368,40 @@ func (c *Controller) endpointSliceServiceProfile(svc *v1.Service) (endpointSlice
 			}
 		}
 	}
+	if serviceHasNodePorts(svc) {
+		nodes, err := c.nodesLister.List(labels.Everything())
+		if err != nil {
+			return profile, fmt.Errorf("list nodes for NodePort service %s/%s: %w", svc.Namespace, svc.Name, err)
+		}
+		addresses := make(map[string]struct{})
+		for _, node := range nodes {
+			for _, address := range nodePortNodeAddresses(node) {
+				addresses[address] = struct{}{}
+			}
+		}
+		profile.nodePortVIPs = slices.Sorted(maps.Keys(addresses))
+	}
 	return profile, nil
+}
+
+func nodePortNodeAddresses(node *v1.Node) []string {
+	seen := make(map[string]struct{})
+	addresses := make([]string, 0, len(node.Status.Addresses))
+	for _, nodeAddress := range node.Status.Addresses {
+		if nodeAddress.Type != v1.NodeInternalIP && nodeAddress.Type != v1.NodeExternalIP {
+			continue
+		}
+		address := strings.TrimSpace(nodeAddress.Address)
+		if address == "" {
+			continue
+		}
+		if _, ok := seen[address]; ok {
+			continue
+		}
+		seen[address] = struct{}{}
+		addresses = append(addresses, address)
+	}
+	return slices.Sorted(slices.Values(addresses))
 }
 
 func (p *endpointSliceServiceProfile) addVIP(vip string, trafficClass serviceLBTrafficClass, svc *v1.Service, enableHealthCheck bool) {
@@ -540,6 +580,7 @@ func (c *Controller) reconcileServiceEndpointVIPs(reconcileCtx *endpointSliceRec
 
 func (c *Controller) reconcileServiceEndpointVIP(reconcileCtx *endpointSliceReconcileContext, lbVip string, port v1.ServicePort) error {
 	svc, profile := reconcileCtx.service, reconcileCtx.profile
+
 	state := &serviceEndpointVIPState{
 		port:         port,
 		lbVip:        lbVip,

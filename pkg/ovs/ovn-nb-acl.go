@@ -1494,6 +1494,13 @@ func (c *OVNNbClient) DeleteAclsOps(parentName, parentType, direction string, ex
 	if err != nil {
 		return nil, logWrap(err, wrapErr("list type %s %s acls: %w", parentType, parentName))
 	}
+	// Subnet ACL resets must not remove a Service's ingress boundary while
+	// its NodePort LB is still attached. That guard has its own owner/lifecycle.
+	if externalIDs[LoadBalancerIngressGuardExternalID] != "true" {
+		acls = slices.DeleteFunc(acls, func(acl ovnnb.ACL) bool {
+			return acl.ExternalIDs[LoadBalancerIngressGuardExternalID] == "true"
+		})
+	}
 
 	aclUUIDs := make([]string, 0, len(acls))
 	for _, acl := range acls {
@@ -1719,7 +1726,8 @@ func (c *OVNNbClient) MigrateACLTier() error {
 	var aclList []ovnnb.ACL
 	if err := c.Database.WhereCache(func(acl *ovnnb.ACL) bool {
 		// Skip ACLs that don't belong to kube-ovn, e.g. those managed by OpenStack Neutron
-		return acl.Tier == 0 && acl.ExternalIDs["vendor"] == util.CniTypeName
+		return acl.Tier == 0 && acl.ExternalIDs["vendor"] == util.CniTypeName &&
+			acl.ExternalIDs[LoadBalancerIngressGuardExternalID] != "true"
 	}).List(ctx, &aclList); err != nil {
 		err = fmt.Errorf("failed to list kube-ovn acls with tier 0: %w", err)
 		klog.Error(err)
