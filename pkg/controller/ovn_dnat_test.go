@@ -84,6 +84,7 @@ func TestHandleUpdateOvnDnatRule_DeleteRemovesLBAndFinalizer(t *testing.T) {
 	dnat.Status = kubeovnv1.OvnDnatRuleStatus{
 		Vpc:          "test-vpc",
 		V4Eip:        "10.0.0.10",
+		V6Eip:        "fd00::10",
 		ExternalPort: "2222",
 	}
 
@@ -95,13 +96,31 @@ func TestHandleUpdateOvnDnatRule_DeleteRemovesLBAndFinalizer(t *testing.T) {
 	ctrl.updateOvnEipQueue = newTypedRateLimitingQueue[string]("UpdateOvnEip", nil)
 	t.Cleanup(ctrl.updateOvnEipQueue.ShutDown)
 
-	fc.mockOvnClient.EXPECT().
-		LoadBalancerDeleteVip(dnat.Name, dnat.Status.V4Eip+":"+dnat.Status.ExternalPort, true).
-		Return(nil)
-	fc.mockOvnClient.EXPECT().
-		LogicalRouterUpdateLoadBalancers(dnat.Status.Vpc, ovsdb.MutateOperationDelete, dnat.Name).
-		Return(nil)
+	nbClient := newInMemoryOVNNbClient(t)
+	ctrl.OVNNbClient = nbClient
+	ctrl.OVNNbTables = nbClient
+	require.NoError(t, nbClient.CreateLogicalRouter(dnat.Status.Vpc))
+	require.NoError(t, ctrl.AddDnatRule(dnat.Status.Vpc, dnat.Name, dnat.Status.V4Eip, "10.0.1.5", dnat.Status.ExternalPort, "22", "tcp"))
+	require.NoError(t, ctrl.AddDnatRule(dnat.Status.Vpc, dnat.Name, dnat.Status.V6Eip, "fd00:1::5", dnat.Status.ExternalPort, "22", "tcp"))
+	lb, err := nbClient.GetLoadBalancer(dnat.Name, false)
+	require.NoError(t, err)
+	require.Len(t, lb.Vips, 2)
 
+	const otherLB = "other-dnat"
+	require.NoError(t, ctrl.AddDnatRule(dnat.Status.Vpc, otherLB, "10.0.0.11", "10.0.1.6", "80", "8080", "tcp"))
+	other, err := nbClient.GetLoadBalancer(otherLB, false)
+	require.NoError(t, err)
+
+	require.NoError(t, ctrl.handleUpdateOvnDnatRule(dnat.Name))
+
+	lb, err = nbClient.GetLoadBalancer(dnat.Name, true)
+	require.NoError(t, err)
+	require.Nil(t, lb, "deleting the rule must remove its load balancer row")
+	router, err := nbClient.GetLogicalRouter(dnat.Status.Vpc, false)
+	require.NoError(t, err)
+	require.Equal(t, []string{other.UUID}, router.LoadBalancer)
+
+	// A reconciliation retry can still see the terminating object in the informer cache.
 	require.NoError(t, ctrl.handleUpdateOvnDnatRule(dnat.Name))
 
 	got, err := ctrl.config.KubeOvnClient.KubeovnV1().OvnDnatRules().Get(t.Context(), dnat.Name, metav1.GetOptions{})
