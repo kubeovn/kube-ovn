@@ -1069,6 +1069,10 @@ func (c *OVNNbClient) newACLWithoutCheck(parent, direction, priority, match, act
 
 // createSgRuleACL create security group rule acl
 func (c *OVNNbClient) newSgRuleACL(sgName, direction string, rule kubeovnv1.SecurityGroupRule, tier int) (*ovnnb.ACL, error) {
+	if err := kubeovnv1.ValidateSgProtocol(rule.Protocol); err != nil {
+		return nil, err
+	}
+
 	ipSuffix := "ip4"
 	if rule.IPVersion == "ipv6" {
 		ipSuffix = "ip6"
@@ -1576,6 +1580,10 @@ func (c *OVNNbClient) DeleteAclsOps(parentName, parentType, direction string, ex
 
 // sgRuleNoACL check if security group rule has acl in a tier
 func (c *OVNNbClient) sgRuleNoACL(sgName, direction string, rule kubeovnv1.SecurityGroupRule, tier int) (bool, error) {
+	if err := kubeovnv1.ValidateSgProtocol(rule.Protocol); err != nil {
+		return false, err
+	}
+
 	ipSuffix := "ip4"
 	if rule.IPVersion == "ipv6" {
 		ipSuffix = "ip6"

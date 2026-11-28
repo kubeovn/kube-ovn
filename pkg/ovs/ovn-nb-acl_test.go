@@ -3168,3 +3168,58 @@ func (suite *OvnClientTestSuite) testMigrateACLTier() {
 	require.Equal(t, 0, getTier(externalMatch))
 	require.Equal(t, 0, getTier(noExtIDsMatch))
 }
+
+func TestSecurityGroupRuleACLRejectsUnknownProtocol(t *testing.T) {
+	t.Parallel()
+
+	for _, protocol := range []kubeovnv1.SgProtocol{"gre", "TCP", "sctp"} {
+		t.Run(string(protocol), func(t *testing.T) {
+			t.Parallel()
+
+			acl, err := new(OVNNbClient).newSgRuleACL("sg-proto-repro", ovnnb.ACLDirectionToLport, kubeovnv1.SecurityGroupRule{
+				Protocol: protocol,
+			}, 2)
+			require.ErrorContains(t, err, "invalid security group protocol")
+			require.Nil(t, acl)
+
+			noACL, err := new(OVNNbClient).sgRuleNoACL("sg-proto-repro", ovnnb.ACLDirectionToLport, kubeovnv1.SecurityGroupRule{
+				Protocol: protocol,
+			}, 2)
+			require.ErrorContains(t, err, "invalid security group protocol")
+			require.False(t, noACL)
+		})
+	}
+}
+
+func TestSecurityGroupRuleACLEmptyProtocolMatchesAll(t *testing.T) {
+	t.Parallel()
+
+	nbModel, err := ovnnb.FullDatabaseModel()
+	require.NoError(t, err)
+	_, socket := newOVSDBServer(t, "sg-protocol", nbModel, ovnnb.Schema())
+	client, err := newOvnNbClient(t, "unix:"+socket, 10)
+	require.NoError(t, err)
+
+	for _, ipVersion := range []string{"ipv4", "ipv6"} {
+		for _, direction := range []string{ovnnb.ACLDirectionToLport, ovnnb.ACLDirectionFromLport} {
+			t.Run(ipVersion+"/"+direction, func(t *testing.T) {
+				t.Parallel()
+
+				rule := kubeovnv1.SecurityGroupRule{
+					IPVersion: ipVersion, RemoteType: kubeovnv1.SgRemoteTypeAddress,
+					RemoteAddress: "192.0.2.1", Policy: kubeovnv1.SgPolicyAllow, Priority: 1,
+				}
+				if ipVersion == "ipv6" {
+					rule.RemoteAddress = "2001:db8::1"
+				}
+				empty, err := client.newSgRuleACL("test-sg", direction, rule, 2)
+				require.NoError(t, err)
+				rule.Protocol = kubeovnv1.SgProtocolALL
+				all, err := client.newSgRuleACL("test-sg", direction, rule, 2)
+				require.NoError(t, err)
+				all.UUID, empty.UUID = "", ""
+				require.Equal(t, all, empty)
+			})
+		}
+	}
+}
