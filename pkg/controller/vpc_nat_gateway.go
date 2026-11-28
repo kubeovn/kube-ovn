@@ -1370,6 +1370,22 @@ func (c *Controller) GetSubnetProvider(subnetName string) (string, error) {
 	return subnet.Spec.Provider, nil
 }
 
+// enableNatGwExternalLayer2Forward lets an underlay NAT gateway receive
+// broadcast ARP/ND requests for EIPs on its external interface. OVN forwards
+// these requests through MC_UNKNOWN when broadcast flooding is disabled, so
+// the external logical switch port must opt in to that multicast group.
+func enableNatGwExternalLayer2Forward(annotations map[string]string, subnet *kubeovnv1.Subnet) {
+	if subnet.Spec.Vlan == "" {
+		return
+	}
+
+	provider := subnet.Spec.Provider
+	if provider == "" {
+		provider = util.OvnProvider
+	}
+	annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, provider)] = "true"
+}
+
 // generateNatGwRoutes generates route annotations for NAT gateway pods using util.NewPodRoutes().
 // This ensures routes are added to reach the VPC BFD port for BFD session establishment,
 // along with routes to service CIDRs, VPC subnets, and custom user routes.
@@ -1497,6 +1513,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway) (*v1.State
 		klog.Error(err)
 		return nil, err
 	}
+	enableNatGwExternalLayer2Forward(templateAnnotations, net1Subnet)
 
 	net1V4Gateway, net1V6Gateway := util.SplitStringIP(net1Subnet.Spec.Gateway)
 
@@ -1668,6 +1685,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 		klog.Error(err)
 		return nil, err
 	}
+	enableNatGwExternalLayer2Forward(templateAnnotations, net1Subnet)
 
 	net1V4Gateway, net1V6Gateway := util.SplitStringIP(net1Subnet.Spec.Gateway)
 
