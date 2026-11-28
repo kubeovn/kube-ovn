@@ -697,7 +697,7 @@ func TestReconcileServiceScopedLoadBalancerAttachmentsNodePort(t *testing.T) {
 		},
 	}
 	fake.mockOvnClient.EXPECT().LogicalSwitchUpdateLoadBalancers("subnet-a", ovsdb.MutateOperationInsert, "svc-lb").Return(nil)
-	fake.mockOvnClient.EXPECT().LogicalRouterUpdateLoadBalancers(util.DefaultVpc, ovsdb.MutateOperationInsert, "svc-lb").Return(nil)
+	fake.mockOvnClient.EXPECT().LogicalRouterUpdateLoadBalancers(util.DefaultVpc, ovsdb.MutateOperationDelete, "svc-lb").Return(nil)
 
 	if err := fake.fakeController.reconcileResourceScopedLoadBalancerAttachments(svc, util.DefaultVpc, "", "svc-lb"); err != nil {
 		t.Fatal(err)
@@ -1647,6 +1647,10 @@ func TestServiceScopedExternalLBFamilies(t *testing.T) {
 	wantName := serviceScopedLBNameForTrafficClassAndFamily(ipv4svc, corev1.ProtocolTCP, serviceLBExternalTraffic, "ipv4")
 	if name := serviceScopedExternalLBName(ipv4svc, corev1.ProtocolTCP, "172.19.0.100"); name != wantName {
 		t.Fatalf("cluster etp external LB name = %q, want %q", name, wantName)
+	}
+	nodePort := &corev1.Service{Spec: corev1.ServiceSpec{Type: corev1.ServiceTypeNodePort, Ports: []corev1.ServicePort{{NodePort: 30080}}}}
+	if got = serviceScopedExternalLBFamilies(nodePort); !slices.Equal(got, []string{""}) {
+		t.Fatalf("NodePort external families = %v, want one static LB", got)
 	}
 }
 
