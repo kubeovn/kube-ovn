@@ -261,9 +261,16 @@ func (c *OVNNbClient) reconcileGatewayRouterPortNatAddresses(lrpName string) err
 		if lsp.Options["nat-addresses"] == "router" {
 			continue
 		}
-		lsp.Options["nat-addresses"] = "router"
-		if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
-			return logWrap(err, wrapErr("set nat-addresses for gateway switch port %s: %w", lsp.Name))
+		ops, err := c.Database.Table(&ovnnb.LogicalSwitchPort{}).MutateOps(lsp, model.Mutation{
+			Field:   &lsp.Options,
+			Value:   map[string]string{"nat-addresses": "router"},
+			Mutator: ovsdb.MutateOperationInsert,
+		})
+		if err := c.transactGenerated("lsp-update", ops, err,
+			wrapErr("generate nat-addresses update for gateway switch port %s: %w", lsp.Name),
+			wrapErr("set nat-addresses for gateway switch port %s: %w", lsp.Name),
+		); err != nil {
+			return err
 		}
 	}
 	return nil
