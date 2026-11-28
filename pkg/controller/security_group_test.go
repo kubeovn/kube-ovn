@@ -378,4 +378,25 @@ func Test_validateSgRule(t *testing.T) {
 		err := ctrl.validateSgRule(sg)
 		require.ErrorContains(t, err, "range Minimum value greater than maximum value")
 	})
+
+	t.Run("unknown protocol", func(t *testing.T) {
+		t.Parallel()
+
+		for _, protocol := range []kubeovnv1.SgProtocol{"gre", "TCP", "sctp"} {
+			t.Run(string(protocol), func(t *testing.T) {
+				t.Parallel()
+
+				sg := baseSG(kubeovnv1.SecurityGroupRule{
+					IPVersion:     "ipv4",
+					Priority:      1,
+					RemoteType:    kubeovnv1.SgRemoteTypeAddress,
+					RemoteAddress: "10.0.0.1",
+					Protocol:      protocol,
+					Policy:        kubeovnv1.SgPolicyAllow,
+				})
+				err := ctrl.validateSgRule(sg)
+				require.ErrorContains(t, err, "invalid security group protocol")
+			})
+		}
+	})
 }

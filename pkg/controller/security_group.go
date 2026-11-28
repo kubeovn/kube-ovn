@@ -301,6 +301,10 @@ func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
 			}
 		}
 
+		if err := kubeovnv1.ValidateSgProtocol(rule.Protocol); err != nil {
+			return err
+		}
+
 		if rule.Protocol == kubeovnv1.SgProtocolTCP || rule.Protocol == kubeovnv1.SgProtocolUDP {
 			if rule.PortRangeMin < 1 || rule.PortRangeMin > 65535 || rule.PortRangeMax < 1 || rule.PortRangeMax > 65535 {
 				return errors.New("portRange is out of range")
