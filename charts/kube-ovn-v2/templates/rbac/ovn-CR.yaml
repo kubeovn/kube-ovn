@@ -133,18 +133,6 @@ rules:
       - patch
       - delete
   - apiGroups:
-      - monitoring.coreos.com
-    resources:
-      - servicemonitors
-    verbs:
-      - create
-      - get
-      - list
-      - watch
-      - update
-      - patch
-      - delete
-  - apiGroups:
       - apps
     resources:
       - daemonsets

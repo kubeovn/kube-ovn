@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,6 +20,7 @@ import (
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/utils/set"
+	"sigs.k8s.io/yaml"
 
 	kubeovnv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
 	kubeovnv1lister "github.com/kubeovn/kube-ovn/pkg/client/listers/kubeovn/v1"
@@ -118,15 +120,48 @@ func TestOpenBFDDControlHardeningPatch(t *testing.T) {
 	}
 }
 
-func TestBFDDPodMonitorUsesSupervisorMetricsPort(t *testing.T) {
+func TestVpcEgressGatewayPodMonitorsMatchWorkload(t *testing.T) {
 	_, filename, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("failed to get current filename")
-	}
-	monitorPath := filepath.Join(filepath.Dir(filename), "..", "..", "dist", "monitoring", "bfdd-monitor.yaml")
-	content, err := os.ReadFile(monitorPath)
-	if assert.NoError(t, err) {
-		assert.Contains(t, string(content), "port: "+vegBFDDMetricsPort)
+	require.True(t, ok)
+	monitorDir := filepath.Join(filepath.Dir(filename), "..", "..", "dist", "monitoring")
+
+	gw := observabilityTestGateway()
+	podSpec := &corev1.PodSpec{}
+	addVpcEgressGatewayObserver(podSpec, "kubeovn/kube-ovn:test", gw.Spec.Observability, vpcEgressObserverState{
+		enabled: true, configName: vpcEgressObserverResourceName(gw),
+	})
+	require.Len(t, podSpec.InitContainers, 1)
+	bfdd := genVpcEgressGatewayBFDDContainer("kubeovn/kube-ovn:test", "", 1000, 1000, 3, true)
+
+	for _, tt := range []struct {
+		file      string
+		container corev1.Container
+	}{
+		{file: "bfdd-monitor.yaml", container: bfdd},
+		{file: "vpc-egress-gateway-monitor.yaml", container: podSpec.InitContainers[0]},
+	} {
+		t.Run(tt.file, func(t *testing.T) {
+			content, err := os.ReadFile(filepath.Join(monitorDir, tt.file))
+			require.NoError(t, err)
+			var monitor struct {
+				Spec struct {
+					Selector  metav1.LabelSelector `json:"selector"`
+					Endpoints []struct {
+						Port string `json:"port"`
+						Path string `json:"path"`
+					} `json:"podMetricsEndpoints"`
+				} `json:"spec"`
+			}
+			require.NoError(t, yaml.Unmarshal(content, &monitor))
+			selector, err := metav1.LabelSelectorAsSelector(&monitor.Spec.Selector)
+			require.NoError(t, err)
+			require.False(t, selector.Empty())
+			require.True(t, selector.Matches(labels.Set(vegWorkloadLabels(gw.Name))))
+			require.Len(t, tt.container.Ports, 1)
+			require.Len(t, monitor.Spec.Endpoints, 1)
+			require.Equal(t, tt.container.Ports[0].Name, monitor.Spec.Endpoints[0].Port)
+			require.Equal(t, "/metrics", monitor.Spec.Endpoints[0].Path)
+		})
 	}
 }
 

@@ -4703,8 +4703,8 @@ spec:
                         type: object
                     type: object
                   serviceMonitor:
-                    description: VpcEgressGatewayServiceMonitor configures metadata
-                      for the per-gateway ServiceMonitor.
+                    description: 'Deprecated: This field is ignored. Configure a PodMonitor
+                      or ServiceMonitor separately.'
                     properties:
                       annotations:
                         additionalProperties:
@@ -7861,18 +7861,6 @@ rules:
       - configmaps
     verbs:
       - create
-      - update
-      - patch
-      - delete
-  - apiGroups:
-      - monitoring.coreos.com
-    resources:
-      - servicemonitors
-    verbs:
-      - create
-      - get
-      - list
-      - watch
       - update
       - patch
       - delete
