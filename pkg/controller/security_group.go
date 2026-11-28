@@ -156,8 +156,15 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 	sg := cachedSg.DeepCopy()
 
 	if err = c.validateSgRule(sg); err != nil {
-		sg.Status.IngressLastSyncSuccess = false
-		sg.Status.EgressLastSyncSuccess = false
+		tierErr := util.ValidateSecurityGroupTier(sg.Spec.Tier)
+		ingressErr := c.validateSgRules(sg, sg.Spec.IngressRules)
+		egressErr := c.validateSgRules(sg, sg.Spec.EgressRules)
+		if tierErr != nil || ingressErr != nil {
+			sg.Status.IngressLastSyncSuccess = false
+		}
+		if tierErr != nil || egressErr != nil {
+			sg.Status.EgressLastSyncSuccess = false
+		}
 		c.patchSgStatus(sg)
 		klog.Error(err)
 		return err
@@ -258,13 +265,17 @@ func (c *Controller) handleAddOrUpdateSg(key string, force bool) error {
 }
 
 func (c *Controller) validateSgRule(sg *kubeovnv1.SecurityGroup) error {
-	// check sg rules
-	allRules := append(sg.Spec.IngressRules, sg.Spec.EgressRules...)
 	if err := util.ValidateSecurityGroupTier(sg.Spec.Tier); err != nil {
 		return err
 	}
+	if err := c.validateSgRules(sg, sg.Spec.IngressRules); err != nil {
+		return err
+	}
+	return c.validateSgRules(sg, sg.Spec.EgressRules)
+}
 
-	for _, rule := range allRules {
+func (c *Controller) validateSgRules(sg *kubeovnv1.SecurityGroup, rules []kubeovnv1.SecurityGroupRule) error {
+	for _, rule := range rules {
 		if rule.IPVersion != "ipv4" && rule.IPVersion != "ipv6" {
 			return errors.New("IPVersion should be 'ipv4' or 'ipv6'")
 		}
