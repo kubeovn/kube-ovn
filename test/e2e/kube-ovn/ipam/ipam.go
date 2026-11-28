@@ -10,6 +10,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	clientset "k8s.io/client-go/kubernetes"
+	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 
 	apiv1 "github.com/kubeovn/kube-ovn/pkg/apis/kubeovn/v1"
@@ -117,7 +118,8 @@ var _ = framework.Describe("[group:ipam]", func() {
 	framework.ConformanceIt("should be able to allocate IP from IPPools in different subnets", t.allocateMultipleSubnets)
 	framework.ConformanceIt("should pick IPs from the subnet when spec.ipCount is set", t.resizeCountPool)
 	framework.ConformanceIt("should transition between spec.ips and spec.ipCount cleanly", t.switchCountPoolMode)
-	framework.ConformanceIt("should keep ipCount addresses stable across controller restarts", t.restartCountPool)
+	// Restarting the shared controller can interrupt other specs' cleanup events.
+	framework.ConformanceIt("should keep ipCount addresses stable across controller restarts", k8sframework.WithSerial(), t.restartCountPool)
 	framework.ConformanceIt("should sync the address set of an ipCount ippool", t.syncCountPoolAddressSet)
 	framework.ConformanceIt("should isolate ipCount pool addresses from other pools and the default pool", t.isolateCountPools)
 	framework.ConformanceIt("should bind an ipCount ippool to the namespace", t.bindCountPoolNamespace)
