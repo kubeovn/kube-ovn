@@ -1904,13 +1904,11 @@ func (c *Controller) createLogicalPatchPort(lsName, lrName, lspName, lrpName, ip
 		return err
 	}
 	operations = append(operations, gatewayOps...)
-	if len(lrp.GatewayChassis) != 0 || len(chassises) != 0 {
-		natAddressOps, natAddressErr := c.gatewayRouterPortNatAddressOps(lsp)
-		if natAddressErr != nil {
-			return natAddressErr
-		}
-		operations = append(operations, natAddressOps...)
+	natAddressOps, natAddressErr := c.gatewayRouterPortNatAddressOps(lsp, len(lrp.GatewayChassis) != 0 || len(chassises) != 0)
+	if natAddressErr != nil {
+		return natAddressErr
 	}
+	operations = append(operations, natAddressOps...)
 	if len(operations) == 0 {
 		return nil
 	}
@@ -1919,14 +1917,23 @@ func (c *Controller) createLogicalPatchPort(lsName, lrName, lspName, lrpName, ip
 	)
 }
 
-func (c *Controller) gatewayRouterPortNatAddressOps(lsp *ovnnb.LogicalSwitchPort) ([]ovsdb.Operation, error) {
-	if lsp == nil || lsp.Options["nat-addresses"] == "router" {
+func (c *Controller) gatewayRouterPortNatAddressOps(lsp *ovnnb.LogicalSwitchPort, enabled bool) ([]ovsdb.Operation, error) {
+	if lsp == nil {
 		return nil, nil
+	}
+	current := lsp.Options["nat-addresses"]
+	if (enabled && current == "router") || (!enabled && current == "") {
+		return nil, nil
+	}
+	mutator := ovsdb.MutateOperationDelete
+	value := map[string]string{"nat-addresses": "router"}
+	if enabled {
+		mutator = ovsdb.MutateOperationInsert
 	}
 	return c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).MutateOps(lsp, model.Mutation{
 		Field:   &lsp.Options,
-		Value:   map[string]string{"nat-addresses": "router"},
-		Mutator: ovsdb.MutateOperationInsert,
+		Value:   value,
+		Mutator: mutator,
 	})
 }
 
