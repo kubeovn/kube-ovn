@@ -16,10 +16,13 @@ import (
 // CreateGatewayChassises create multiple gateway chassis once
 func (c *OVNNbClient) CreateGatewayChassises(lrpName string, chassises ...string) error {
 	op, err := c.CreateGatewayChassisesOp(lrpName, chassises)
-	return c.transactGenerated("gateway-chassises-add", op, err,
+	if err := c.transactGenerated("gateway-chassises-add", op, err,
 		wrapErr("generate operations for creating gateway chassis %w"),
 		wrapErr("create gateway chassis %v for logical router port %s: %w", chassises, lrpName),
-	)
+	); err != nil {
+		return err
+	}
+	return c.reconcileGatewayRouterPortNatAddresses(lrpName)
 }
 
 // UpdateGatewayChassis update gateway chassis
@@ -231,6 +234,36 @@ func (c *OVNNbClient) ReconcileGatewayChassises(lrpName string, chassises []stri
 		gwChassis.Priority = priority
 		if err := c.UpdateGatewayChassis(gwChassis, &gwChassis.Priority); err != nil {
 			return logErr(err)
+		}
+	}
+	return nil
+}
+
+// reconcileGatewayRouterPortNatAddresses enables GARP announcements for the
+// router LSP connected to a logical router port with gateway chassis.
+func (c *OVNNbClient) reconcileGatewayRouterPortNatAddresses(lrpName string) error {
+	lrp, err := c.GetLogicalRouterPort(lrpName, true)
+	if err != nil {
+		return logWrap(err, wrapErr("get gateway router port %s: %w", lrpName))
+	}
+	if lrp == nil || len(lrp.GatewayChassis) == 0 {
+		return nil
+	}
+
+	lsps, err := c.ListLogicalSwitchPorts(false, nil, func(lsp *ovnnb.LogicalSwitchPort) bool {
+		return lsp.Type == "router" && lsp.Options["router-port"] == lrpName
+	})
+	if err != nil {
+		return logWrap(err, wrapErr("list switch ports for gateway router port %s: %w", lrpName))
+	}
+	for i := range lsps {
+		lsp := &lsps[i]
+		if lsp.Options["nat-addresses"] == "router" {
+			continue
+		}
+		lsp.Options["nat-addresses"] = "router"
+		if err := c.UpdateLogicalSwitchPort(lsp, &lsp.Options); err != nil {
+			return logWrap(err, wrapErr("set nat-addresses for gateway switch port %s: %w", lsp.Name))
 		}
 	}
 	return nil
