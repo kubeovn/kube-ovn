@@ -142,7 +142,7 @@ func (s raftClusterStatus) staleDuplicate(timeout time.Duration) (raftMember, bo
 		}
 		var stale, active raftMember
 		for _, member := range members {
-			isStale := !member.self && (!member.hasLastMsg || member.lastMessage >= timeout) && member.hasMatchIndex && member.matchIndex == 0
+			isStale := !member.self && (!member.hasLastMsg || member.lastMessage >= timeout) && member.hasMatchIndex
 			if isStale {
 				if stale.sid != "" {
 					stale = raftMember{}
@@ -151,7 +151,7 @@ func (s raftClusterStatus) staleDuplicate(timeout time.Duration) (raftMember, bo
 				stale = member
 				continue
 			}
-			if member.self || (member.hasLastMsg && member.lastMessage < timeout) {
+			if member.hasMatchIndex && (member.self || (member.hasLastMsg && member.lastMessage < timeout)) {
 				if active.sid != "" {
 					active = raftMember{}
 					break
@@ -159,7 +159,9 @@ func (s raftClusterStatus) staleDuplicate(timeout time.Duration) (raftMember, bo
 				active = member
 			}
 		}
-		if stale.sid != "" && active.sid != "" {
+		// A departed follower retains its last replicated index in this term.
+		// Require its replacement to have caught up before removing that SID.
+		if stale.sid != "" && active.sid != "" && active.matchIndex > 0 && active.matchIndex >= stale.matchIndex {
 			return stale, true
 		}
 	}

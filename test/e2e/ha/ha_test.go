@@ -342,7 +342,7 @@ func getDbSidsFromClusterStatusWithTimeout(f *framework.Framework, deploy *appsv
 		for pod := range slices.Values(pods.Items) {
 			var lastStdout, lastStderr string
 			err := wait.PollUntilContextTimeout(context.Background(), time.Second, timeout, true, func(ctx context.Context) (bool, error) {
-				stdout, stderr, err := framework.ExecShellInPod(ctx, f, pod.Namespace, pod.Name, cmdClusterStatus(db))
+				stdout, stderr, err := framework.ExecShellInContainerContext(ctx, f, pod.Namespace, pod.Name, "ovn-central", cmdClusterStatus(db))
 				lastStdout, lastStderr = stdout, stderr
 				if err != nil {
 					framework.Logf("ovn%s status on pod %s failed: %v; stdout=%q stderr=%q", db, pod.Name, err, stdout, stderr)

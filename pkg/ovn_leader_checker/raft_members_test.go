@@ -63,6 +63,32 @@ Servers:
 	}
 }
 
+func TestRaftClusterStatusReplacesPreviouslyReplicatedMember(t *testing.T) {
+	// CI run 46035025318 retained the old follower's match_index after its
+	// database directory was lost. That index does not reset until an election.
+	output := strings.ReplaceAll(duplicateMemberStatus, "match_index=0", "match_index=40")
+	status, err := parseRaftClusterStatus(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidate, found := status.staleDuplicate(120 * time.Second)
+	if !found || candidate.sid != "bbbb" {
+		t.Fatalf("previously replicated stale member was not selected: found=%t candidate=%#v", found, candidate)
+	}
+
+	for _, index := range []uint64{0, 39, 40} {
+		for i := range status.members {
+			if status.members[i].sid == "dddd" {
+				status.members[i].matchIndex = index
+			}
+		}
+		_, found := status.staleDuplicate(120 * time.Second)
+		if found != (index >= 40) {
+			t.Fatalf("replacement index %d: selected=%t, want %t", index, found, index >= 40)
+		}
+	}
+}
+
 func TestRaftClusterStatusRejectsUnsafeDuplicate(t *testing.T) {
 	tests := []struct {
 		name   string

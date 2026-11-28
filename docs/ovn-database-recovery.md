@@ -94,6 +94,9 @@ old ID only when `cluster/status` shows two stable members with the same Raft
 endpoint, the old member has been silent for at least
 `OVN_LEADER_STALE_MEMBER_TIMEOUT` (120 seconds by default), and the current
 leader still has a quorum. The observation must remain true for three checks.
+The replacement must have a positive replicated log index at least as high as
+the old member's last replicated index. The old index can remain nonzero after
+the original member stops; it is not evidence of a current connection.
 
 A member that is merely powered off or undergoing maintenance has no
 replacement member at the same endpoint, so it is not automatically kicked,
