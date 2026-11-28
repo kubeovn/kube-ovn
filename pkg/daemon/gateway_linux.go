@@ -16,6 +16,7 @@ import (
 	"github.com/kubeovn/go-iptables/iptables"
 	"github.com/scylladb/go-set/strset"
 	"github.com/vishvananda/netlink"
+	v1 "k8s.io/api/core/v1"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -628,6 +629,122 @@ func centralizedNatOutgoingNonSynDropRule(cidr, matchset string) util.IPTableRul
 	}
 }
 
+func serviceIptablesProtocol(protocol v1.Protocol) (string, bool) {
+	switch protocol {
+	case "", v1.ProtocolTCP:
+		return "tcp", true
+	case v1.ProtocolUDP:
+		return "udp", true
+	default:
+		return "", false
+	}
+}
+
+func serviceClusterIPsForProtocol(service *v1.Service, protocol string) []string {
+	clusterIPs := service.Spec.ClusterIPs
+	if len(clusterIPs) == 0 && service.Spec.ClusterIP != "" {
+		clusterIPs = []string{service.Spec.ClusterIP}
+	}
+
+	ips := make([]string, 0, len(clusterIPs))
+	for _, ip := range clusterIPs {
+		if ip == "" || ip == v1.ClusterIPNone || util.CheckProtocol(ip) != protocol {
+			continue
+		}
+		ips = append(ips, ip)
+	}
+	return ips
+}
+
+func sortedServices(services []*v1.Service) []*v1.Service {
+	sorted := slices.Clone(services)
+	slices.SortFunc(sorted, func(a, b *v1.Service) int {
+		if a.Namespace != b.Namespace {
+			return strings.Compare(a.Namespace, b.Namespace)
+		}
+		return strings.Compare(a.Name, b.Name)
+	})
+	return sorted
+}
+
+func serviceHostSNATIPsForProtocol(service *v1.Service, protocol string) []string {
+	ips := serviceClusterIPsForProtocol(service, protocol)
+	ips = append(ips, serviceLoadBalancerVIPsForProtocol(service, protocol)...)
+	slices.Sort(ips)
+	return slices.Compact(ips)
+}
+
+func serviceLoadBalancerVIPsForProtocol(service *v1.Service, protocol string) []string {
+	var ips []string
+	for _, ingress := range service.Status.LoadBalancer.Ingress {
+		if ingress.IPMode != nil && *ingress.IPMode != v1.LoadBalancerIPModeVIP {
+			continue
+		}
+		ip := net.ParseIP(ingress.IP)
+		if ip == nil || util.CheckProtocol(ip.String()) != protocol {
+			continue
+		}
+		ips = append(ips, ip.String())
+	}
+	slices.Sort(ips)
+	return slices.Compact(ips)
+}
+
+func generateHostServiceSNATRules(services []*v1.Service, protocol, matchset, nodeIP string) []util.IPTableRule {
+	if nodeIP == "" {
+		return nil
+	}
+
+	rules := make([]util.IPTableRule, 0)
+	for _, service := range sortedServices(services) {
+		for _, serviceIP := range serviceHostSNATIPsForProtocol(service, protocol) {
+			for _, port := range service.Spec.Ports {
+				proto, ok := serviceIptablesProtocol(port.Protocol)
+				if !ok {
+					continue
+				}
+				rules = append(rules, util.IPTableRule{
+					Table: NAT,
+					Chain: OvnPostrouting,
+					Rule: strings.Fields(fmt.Sprintf(
+						`-p %[1]s -m addrtype --src-type LOCAL -m set --match-set %[2]s dst -m conntrack --ctstate DNAT --ctorigdst %[3]s --ctorigdstport %[4]d -j SNAT --to-source %[5]s`,
+						proto, matchset, serviceIP, port.Port, nodeIP,
+					)),
+				})
+			}
+		}
+	}
+	return rules
+}
+
+// generateHostServiceIPVSSNATRules handles host connections translated by IPVS,
+// which do not necessarily have conntrack's virtual DNAT state set.
+func generateHostServiceIPVSSNATRules(services []*v1.Service, protocol, matchset, nodeIP string) []util.IPTableRule {
+	if nodeIP == "" {
+		return nil
+	}
+	var rules []util.IPTableRule
+	for _, service := range sortedServices(services) {
+		for _, vip := range serviceLoadBalancerVIPsForProtocol(service, protocol) {
+			for _, port := range service.Spec.Ports {
+				proto, ok := serviceIptablesProtocol(port.Protocol)
+				if !ok {
+					continue
+				}
+				rules = append(rules, util.IPTableRule{
+					Table: NAT,
+					Chain: OvnPostrouting,
+					Rule: strings.Fields(fmt.Sprintf(
+						`-p %s -m addrtype --src-type LOCAL -m set --match-set %s dst -m ipvs --vaddr %s --vport %d --vdir ORIGINAL -j SNAT --to-source %s`,
+						proto, matchset, vip, port.Port, nodeIP,
+					)),
+				})
+			}
+		}
+	}
+	return rules
+}
+
 func (c *Controller) setIptables() error {
 	klog.V(3).Infoln("start to set up iptables")
 	node, err := c.nodesLister.Get(c.config.NodeName)
@@ -640,6 +757,12 @@ func (c *Controller) setIptables() error {
 	nodeIPs := map[string]string{
 		kubeovnv1.ProtocolIPv4: nodeIPv4,
 		kubeovnv1.ProtocolIPv6: nodeIPv6,
+	}
+
+	allServices, err := c.servicesLister.List(labels.Everything())
+	if err != nil {
+		klog.Errorf("failed to list services: %v", err)
+		return err
 	}
 
 	centralGwNatIPs, err := c.getEgressNatIPByNode(c.config.NodeName)
@@ -797,6 +920,23 @@ func (c *Controller) setIptables() error {
 				Rule:  strings.Fields(fmt.Sprintf(`-m set --match-set %s src -m set --match-set %s dst -m mark --mark 0x4000/0x4000 -j SNAT --to-source %s`, svcMatchset, matchset, nodeIP)),
 			}
 			iptablesRules = rules
+			hostServiceSNATRules := generateHostServiceSNATRules(allServices, protocol, matchset, nodeIP)
+			ipvsSet := fmt.Sprintf("KUBE-%sIPVS-IPS", kubeProxyIpsetProtocol)
+			ipvsSetExists, err := c.ipsetExists(ipvsSet)
+			if err != nil {
+				klog.Errorf("failed to check existence of ipset %s: %v", ipvsSet, err)
+				return err
+			}
+			if ipvsSetExists {
+				hostServiceSNATRules = append(generateHostServiceIPVSSNATRules(allServices, protocol, matchset, nodeIP), hostServiceSNATRules...)
+			}
+			if len(hostServiceSNATRules) != 0 {
+				rules := make([]util.IPTableRule, 0, len(iptablesRules)+len(hostServiceSNATRules))
+				rules = append(rules, iptablesRules[:2]...)
+				rules = append(rules, hostServiceSNATRules...)
+				rules = append(rules, iptablesRules[2:]...)
+				iptablesRules = rules
+			}
 
 			for _, p := range [...]string{"tcp", "udp"} {
 				ipset := fmt.Sprintf("KUBE-%sNODE-PORT-LOCAL-%s", kubeProxyIpsetProtocol, strings.ToUpper(p))
