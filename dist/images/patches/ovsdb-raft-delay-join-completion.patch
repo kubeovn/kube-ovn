@@ -1,0 +1,30 @@
+From: zhangzujian <zhangzujian.7@gmail.com>
+Date: Sat, 28 Nov 2026 00:00:00 +0000
+Subject: [PATCH] ovsdb: do not complete a join with a singleton view
+
+Keep a rejoining server from electing itself before it has observed a
+configuration containing the remote members.
+
+Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
+---
+diff --git a/ovsdb/raft.c b/ovsdb/raft.c
+index e50f1f7..546678e 100644
+--- a/ovsdb/raft.c
++++ b/ovsdb/raft.c
+@@ -4190,7 +4190,13 @@ raft_handle_add_server_reply(struct raft *raft,
+     }
+
+     if (rpy->success) {
+-        raft_join_complete(raft);
++        /* The add reply can race the configuration log entry.  Do not leave
++         * joining state while the local view still contains only ourselves;
++         * otherwise a transient singleton view can elect this server and
++         * commit entries that the real cluster later overwrites. */
++        if (hmap_count(&raft->servers) > 1) {
++            raft_join_complete(raft);
++        }
+
+         /* It is tempting, at this point, to check that this server is part of
+          * the current configuration.  However, this is not necessarily the
+--
+2.43.0
