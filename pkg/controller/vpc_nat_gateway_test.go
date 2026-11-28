@@ -261,6 +261,61 @@ func TestHandleAddOrUpdateVpcNatGwUpdatesStatefulSetLanIP(t *testing.T) {
 	require.Equal(t, "gitops", updated.Annotations["example.com/managed-by"], "third-party metadata must survive the update")
 }
 
+func TestHandleAddOrUpdateVpcNatGwUpdatesStatefulSetLayer2Forward(t *testing.T) {
+	const (
+		gwName       = "layer2-gw"
+		subnetName   = "nat-subnet"
+		externalName = "external-subnet"
+	)
+	namespace := metav1.NamespaceSystem
+	gw := &kubeovnv1.VpcNatGateway{
+		Name: gwName, UID: "gw-uid",
+		Spec: kubeovnv1.VpcNatGatewaySpec{
+			Vpc:             util.DefaultVpc,
+			Subnet:          subnetName,
+			ExternalSubnets: []string{externalName},
+			Replicas:        1,
+		},
+		Status: kubeovnv1.VpcNatGatewayStatus{
+			ExternalSubnets: []string{externalName},
+			Replicas:        1,
+		},
+	}
+	gwLabels := util.GenNatGwLabels(gwName)
+	sts := &appsv1.StatefulSet{
+		Name: util.GenNatGwName(gwName), Namespace: namespace,
+		Labels: gwLabels,
+		Spec: appsv1.StatefulSetSpec{
+			Selector: &metav1.LabelSelector{MatchLabels: gwLabels},
+			Template: corev1.PodTemplateSpec{
+				Labels:      gwLabels,
+				Annotations: map[string]string{util.VpcNatGatewayAnnotation: gwName},
+			},
+		},
+	}
+
+	fakeController, err := newFakeControllerWithOptions(t, &FakeControllerOptions{
+		Vpcs:           []*kubeovnv1.Vpc{{Name: util.DefaultVpc}},
+		VpcNatGateways: []*kubeovnv1.VpcNatGateway{gw},
+		Subnets: []*kubeovnv1.Subnet{
+			{Name: subnetName, Spec: kubeovnv1.SubnetSpec{Provider: util.OvnProvider, Protocol: kubeovnv1.ProtocolIPv4, Gateway: "10.20.0.1"}},
+			{Name: externalName, Spec: kubeovnv1.SubnetSpec{Provider: "external.default.ovn", Protocol: kubeovnv1.ProtocolIPv4, Gateway: "192.168.0.1", Vlan: "external-vlan"}},
+		},
+		StatefulSets: []*appsv1.StatefulSet{sts},
+	})
+	require.NoError(t, err)
+	controller := fakeController.fakeController
+	vpcNatEnabled = "true"
+	t.Cleanup(func() { vpcNatEnabled = "unknown" })
+	controller.serviceCIDRStore = util.NewServiceCIDRStore("10.96.0.0/12")
+
+	require.NoError(t, controller.handleAddOrUpdateVpcNatGw(gwName))
+
+	updated, err := controller.config.KubeClient.AppsV1().StatefulSets(namespace).Get(context.Background(), sts.Name, metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "true", updated.Spec.Template.Annotations["external.default.ovn.kubernetes.io/layer2_forward"])
+}
+
 func TestGetSubnetProvider(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -366,6 +421,60 @@ func TestGetSubnetProvider(t *testing.T) {
 		_, err = controller.GetSubnetProvider("missing-subnet")
 		assert.Error(t, err, "Should error for missing subnet")
 	})
+}
+
+func TestEnableNatGwExternalLayer2Forward(t *testing.T) {
+	tests := []struct {
+		name        string
+		subnet      *kubeovnv1.Subnet
+		annotations map[string]string
+		expected    map[string]string
+	}{
+		{
+			name: "underlay custom provider",
+			subnet: &kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{
+				Provider: "external.default.ovn",
+				Vlan:     "external-vlan",
+			}},
+			annotations: map[string]string{"example.com/keep": "true"},
+			expected: map[string]string{
+				"example.com/keep": "true",
+				"external.default.ovn.kubernetes.io/layer2_forward": "true",
+			},
+		},
+		{
+			name:        "underlay default provider",
+			subnet:      &kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{Vlan: "external-vlan"}},
+			annotations: map[string]string{},
+			expected:    map[string]string{"ovn.kubernetes.io/layer2_forward": "true"},
+		},
+		{
+			name:        "overlay external subnet",
+			subnet:      &kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{Provider: "external.default.ovn"}},
+			annotations: map[string]string{"example.com/keep": "true"},
+			expected:    map[string]string{"example.com/keep": "true"},
+		},
+		{
+			name: "system annotation overrides user value",
+			subnet: &kubeovnv1.Subnet{Spec: kubeovnv1.SubnetSpec{
+				Provider: "external.default.ovn",
+				Vlan:     "external-vlan",
+			}},
+			annotations: map[string]string{
+				"external.default.ovn.kubernetes.io/layer2_forward": "false",
+			},
+			expected: map[string]string{
+				"external.default.ovn.kubernetes.io/layer2_forward": "true",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			enableNatGwExternalLayer2Forward(tt.annotations, tt.subnet)
+			assert.Equal(t, tt.expected, tt.annotations)
+		})
+	}
 }
 
 func TestGetExternalSubnetNad(t *testing.T) {
@@ -545,6 +654,7 @@ func TestGenNatGwStatefulSetImagePullSecrets(t *testing.T) {
 						CIDRBlock: "192.168.0.0/24",
 						Gateway:   "192.168.0.1",
 						Provider:  "external.default.ovn",
+						Vlan:      "external-vlan",
 					},
 				},
 			}
@@ -573,6 +683,7 @@ func TestGenNatGwStatefulSetImagePullSecrets(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.expectedResult, sts.Spec.Template.Spec.ImagePullSecrets)
+			assert.Equal(t, "true", sts.Spec.Template.Annotations["external.default.ovn.kubernetes.io/layer2_forward"])
 		})
 	}
 }
@@ -624,6 +735,7 @@ func TestGenNatGwDeploymentImagePullSecrets(t *testing.T) {
 						CIDRBlock: "192.168.0.0/24",
 						Gateway:   "192.168.0.1",
 						Provider:  "external.default.ovn",
+						Vlan:      "external-vlan",
 					},
 				},
 			}
@@ -652,6 +764,7 @@ func TestGenNatGwDeploymentImagePullSecrets(t *testing.T) {
 			require.NoError(t, err)
 
 			assert.Equal(t, tt.expectedResult, deploy.Spec.Template.Spec.ImagePullSecrets)
+			assert.Equal(t, "true", deploy.Spec.Template.Annotations["external.default.ovn.kubernetes.io/layer2_forward"])
 		})
 	}
 }

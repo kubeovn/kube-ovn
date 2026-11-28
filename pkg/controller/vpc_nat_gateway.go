@@ -331,6 +331,21 @@ func natGwWorkloadLabelsChanged(current, desired map[string]string) bool {
 	return false
 }
 
+func natGwLayer2ForwardAnnotationChanged(current, desired map[string]string) bool {
+	const suffix = ".kubernetes.io/layer2_forward"
+	for key, value := range current {
+		if strings.HasSuffix(key, suffix) && desired[key] != value {
+			return true
+		}
+	}
+	for key, value := range desired {
+		if strings.HasSuffix(key, suffix) && current[key] != value {
+			return true
+		}
+	}
+	return false
+}
+
 // handleAddOrUpdateVpcNatGw is called when a VPC NAT gateway is added or updated.
 // If a VPC NAT gateway is deleted, the deletionTimestamp will be updated and this function will also be called.
 func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
@@ -516,7 +531,8 @@ func (c *Controller) handleAddOrUpdateVpcNatGw(key string) (retErr error) {
 		// Handle StatefulSet update if needed. Persisting the dynamically allocated LAN IP adds
 		// the IP annotation to the generated template after status has already been synchronized.
 		ipAnnotation := natGwLanIPAnnotationKey(subnet)
-		templateChanged := oldSts.Spec.Template.Annotations[ipAnnotation] != newSts.Spec.Template.Annotations[ipAnnotation]
+		templateChanged := oldSts.Spec.Template.Annotations[ipAnnotation] != newSts.Spec.Template.Annotations[ipAnnotation] ||
+			natGwLayer2ForwardAnnotationChanged(oldSts.Spec.Template.Annotations, newSts.Spec.Template.Annotations)
 		labelsChanged := natGwWorkloadLabelsChanged(oldSts.Labels, newSts.Labels)
 		// WARNING: This will update STS template directly, which triggers NAT GW Pod recreation.
 		// TODO: support hot update of runtime Pod annotations directly via patch
@@ -1370,6 +1386,22 @@ func (c *Controller) GetSubnetProvider(subnetName string) (string, error) {
 	return subnet.Spec.Provider, nil
 }
 
+// enableNatGwExternalLayer2Forward lets an underlay NAT gateway receive
+// broadcast ARP/ND requests for EIPs on its external interface. OVN forwards
+// these requests through MC_UNKNOWN when broadcast flooding is disabled, so
+// the external logical switch port must opt in to that multicast group.
+func enableNatGwExternalLayer2Forward(annotations map[string]string, subnet *kubeovnv1.Subnet) {
+	if subnet.Spec.Vlan == "" {
+		return
+	}
+
+	provider := subnet.Spec.Provider
+	if provider == "" {
+		provider = util.OvnProvider
+	}
+	annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, provider)] = "true"
+}
+
 // generateNatGwRoutes generates route annotations for NAT gateway pods using util.NewPodRoutes().
 // This ensures routes are added to reach the VPC BFD port for BFD session establishment,
 // along with routes to service CIDRs, VPC subnets, and custom user routes.
@@ -1497,6 +1529,7 @@ func (c *Controller) genNatGwStatefulSet(gw *kubeovnv1.VpcNatGateway) (*v1.State
 		klog.Error(err)
 		return nil, err
 	}
+	enableNatGwExternalLayer2Forward(templateAnnotations, net1Subnet)
 
 	net1V4Gateway, net1V6Gateway := util.SplitStringIP(net1Subnet.Spec.Gateway)
 
@@ -1668,6 +1701,7 @@ func (c *Controller) genNatGwDeployment(gw *kubeovnv1.VpcNatGateway) (*v1.Deploy
 		klog.Error(err)
 		return nil, err
 	}
+	enableNatGwExternalLayer2Forward(templateAnnotations, net1Subnet)
 
 	net1V4Gateway, net1V6Gateway := util.SplitStringIP(net1Subnet.Spec.Gateway)
 
