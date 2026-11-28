@@ -11,7 +11,7 @@ cannot turn a recovered member into a standalone leader.
 Signed-off-by: zhangzujian <zhangzujian.7@gmail.com>
 ---
 diff --git a/ovsdb/raft.c b/ovsdb/raft.c
-index e50f1f7..a21cad8 100644
+index e50f1f7..c0f8098 100644
 --- a/ovsdb/raft.c
 +++ b/ovsdb/raft.c
 @@ -282,6 +282,7 @@ struct raft {
@@ -74,13 +74,14 @@ index e50f1f7..a21cad8 100644
      /* Leadership transfer doesn't use pre-vote. */
      ovs_assert(!is_prevote || !leadership_transfer);
 
-@@ -2918,6 +2935,24 @@ raft_send_heartbeats(struct raft *raft)
+@@ -2918,6 +2935,25 @@ raft_send_heartbeats(struct raft *raft)
  static void
  raft_join_complete(struct raft *raft)
  {
 +    /* A reply or historical configuration can precede the current committed
 +     * membership.  A quorum election is also sufficient proof of membership. */
-+    if (hmap_count(&raft->servers) <= 1
++    if (!raft_find_server(raft, &raft->sid)
++        || hmap_count(&raft->servers) <= 1
 +        || (raft->role != RAFT_LEADER
 +            && (!raft->join_commit_index
 +                || raft->commit_index < raft->join_commit_index))) {
@@ -99,7 +100,7 @@ index e50f1f7..a21cad8 100644
      raft->joining = false;
      raft_update_probe_intervals(raft);
  }
-@@ -3254,6 +3289,10 @@ raft_send_append_reply(struct raft *raft, const struct raft_append_request *rq,
+@@ -3254,6 +3290,10 @@ raft_send_append_reply(struct raft *raft, const struct raft_append_request *rq,
          raft_update_commit_index(
              raft, MIN(rq->leader_commit, rq->prev_log_index + rq->n_entries));
      }
@@ -110,7 +111,7 @@ index e50f1f7..a21cad8 100644
 
      /* Send reply. */
      union raft_rpc reply = {
-@@ -3467,6 +3506,10 @@ raft_handle_append_request(struct raft *raft,
+@@ -3467,6 +3507,10 @@ raft_handle_append_request(struct raft *raft,
                                 "log index overflow");
          return;
      }
@@ -121,7 +122,21 @@ index e50f1f7..a21cad8 100644
 
      /* First check for the common case, where the AppendEntries request is
       * entirely for indexes covered by 'log_start' ... 'log_end - 1', something
-@@ -4348,6 +4391,24 @@ raft_write_snapshot(struct raft *raft, struct ovsdb_log *log,
+@@ -4192,11 +4236,8 @@ raft_handle_add_server_reply(struct raft *raft,
+     if (rpy->success) {
+         raft_join_complete(raft);
+
+-        /* It is tempting, at this point, to check that this server is part of
+-         * the current configuration.  However, this is not necessarily the
+-         * case, because the log entry that added this server to the cluster
+-         * might have been committed by a majority of the cluster that does not
+-         * include this one.  This actually happens in testing. */
++        /* The successful reply can precede the configuration that adds us.
++         * Completion will be retried when the committed entries arrive. */
+     } else {
+         const char *address;
+         SSET_FOR_EACH (address, &rpy->remote_addresses) {
+@@ -4348,6 +4389,24 @@ raft_write_snapshot(struct raft *raft, struct ovsdb_log *log,
      }
      ovsdb_log_mark_base(log);
 

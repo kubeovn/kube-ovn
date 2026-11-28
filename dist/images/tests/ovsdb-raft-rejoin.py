@@ -100,6 +100,27 @@ class RejoinTest(unittest.TestCase):
         self.send("append_request", term=9, prev_log_index=1, prev_log_term=1,
                   leader_commit=commit, log=entries)
 
+    def heartbeatBarrier(self):
+        self.send("append_request", term=9, prev_log_index=1, prev_log_term=1,
+                  leader_commit=1, log=[], comment="heartbeat")
+        decoder = json.JSONDecoder()
+        buffer = ""
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            buffer = buffer.lstrip()
+            try:
+                message, end = decoder.raw_decode(buffer)
+            except json.JSONDecodeError:
+                chunk = self.connection.recv(65536)
+                self.assertTrue(chunk, self.log.read_text())
+                buffer += chunk.decode()
+                continue
+            buffer = buffer[end:]
+            if (message.get("method") == "append_reply"
+                    and message["params"][0].get("comment") == "heartbeat"):
+                return
+        self.fail("heartbeat was not acknowledged:\n" + self.log.read_text())
+
     def checkSingletonRejoin(self, replyFirst, restart=False, historicalConfig=False):
         self.start()
         self.connect()
@@ -195,6 +216,29 @@ class RejoinTest(unittest.TestCase):
         self.send("add_server_reply", success=True)
         self.waitFor(lambda: "Status: cluster member" in self.status())
         self.assertIn("Role: follower", self.status())
+        self.stop()
+        self.startServer()
+        self.assertIn("Status: cluster member", self.status())
+
+    def test_replyBeforeOwnMembership(self):
+        self.start()
+        self.connect()
+        other = str(uuid.uuid4())
+        servers = {self.peerSid: self.peerAddress,
+                   other: "unix:" + str(self.root / "other")}
+        self.snapshot(servers)
+        self.append([], 1)
+        self.send("add_server_reply", success=True)
+        self.heartbeatBarrier()
+        self.assertIn("Status: joining cluster", self.status())
+        self.stop()
+        self.connection.close()
+        self.startServer()
+        self.connect()
+        self.assertIn("Status: joining cluster", self.status())
+        servers[self.sid] = self.address
+        self.append([{"term": 9, "servers": servers}], 2)
+        self.waitFor(lambda: "Status: cluster member" in self.status())
         self.stop()
         self.startServer()
         self.assertIn("Status: cluster member", self.status())
