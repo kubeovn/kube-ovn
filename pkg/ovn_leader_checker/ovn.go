@@ -43,6 +43,8 @@ const (
 	DefaultProbeInterval           = 5
 	MaxFailCount                   = 3
 	maxDuplicateLeaderObservations = 3
+	maxDuplicateMemberObservations = 3
+	defaultStaleMemberTimeout      = 120 * time.Second
 	northdDialTimeout              = 3 * time.Second
 )
 
@@ -61,6 +63,8 @@ type Configuration struct {
 	remoteAddresses             []string
 	singleReplica               bool
 	duplicateLeaderObservations map[string]int
+	duplicateMemberObservations map[string]int
+	staleMemberTimeout          time.Duration
 }
 
 func (c *Configuration) observeDuplicateLeader(database string, duplicate bool) (int, bool) {
@@ -140,7 +144,8 @@ func ParseFlags() (*Configuration, error) {
 			// mode.
 			return s == "" || s == *localAddress
 		}),
-		singleReplica: singleReplica,
+		singleReplica:      singleReplica,
+		staleMemberTimeout: staleMemberTimeoutFromEnv(),
 	}
 
 	return config, nil
@@ -622,6 +627,12 @@ func doOvnLeaderCheck(cfg *Configuration, podName, podNamespace string) {
 		sbLeader, sbLeaderErr := isDBLeader(cfg.localAddress, ovnsb.DatabaseName)
 		checkDuplicateDBLeader(cfg, nbLeader, nbLeaderErr, "ovn-nb", ovnnb.DatabaseName, isDBLeader)
 		checkDuplicateDBLeader(cfg, sbLeader, sbLeaderErr, "ovn-sb", ovnsb.DatabaseName, isDBLeader)
+		if nbLeader && nbLeaderErr == nil {
+			cleanStaleDuplicateMember(cfg, "nb")
+		}
+		if sbLeader && sbLeaderErr == nil {
+			cleanStaleDuplicateMember(cfg, "sb")
+		}
 
 		northdActive := checkNorthdActive()
 		patch := util.KVPatch{
