@@ -1890,7 +1890,7 @@ func (c *Controller) createLogicalPatchPort(lsName, lrName, lspName, lrpName, ip
 	if mac == "" {
 		mac = util.GenerateMac()
 	}
-	_, lspOps, err := c.reconcileLogicalSwitchPatchPortOps(lsName, lspName, lrpName)
+	lsp, lspOps, err := c.reconcileLogicalSwitchPatchPortOps(lsName, lspName, lrpName)
 	if err != nil {
 		return err
 	}
@@ -1904,12 +1904,30 @@ func (c *Controller) createLogicalPatchPort(lsName, lrName, lspName, lrpName, ip
 		return err
 	}
 	operations = append(operations, gatewayOps...)
+	if len(lrp.GatewayChassis) != 0 || len(chassises) != 0 {
+		natAddressOps, natAddressErr := c.gatewayRouterPortNatAddressOps(lsp)
+		if natAddressErr != nil {
+			return natAddressErr
+		}
+		operations = append(operations, natAddressOps...)
+	}
 	if len(operations) == 0 {
 		return nil
 	}
 	return c.OVNNbTables.Table(&ovnnb.LogicalRouterPort{}).Transact(
 		context.Background(), "lrp-lsp-add", operations...,
 	)
+}
+
+func (c *Controller) gatewayRouterPortNatAddressOps(lsp *ovnnb.LogicalSwitchPort) ([]ovsdb.Operation, error) {
+	if lsp == nil || lsp.Options["nat-addresses"] == "router" {
+		return nil, nil
+	}
+	return c.OVNNbTables.Table(&ovnnb.LogicalSwitchPort{}).MutateOps(lsp, model.Mutation{
+		Field:   &lsp.Options,
+		Value:   map[string]string{"nat-addresses": "router"},
+		Mutator: ovsdb.MutateOperationInsert,
+	})
 }
 
 func (c *Controller) removeLogicalPatchPort(lspName, lrpName string) error {
