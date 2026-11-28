@@ -691,11 +691,9 @@ func (c *Controller) handlePod(key string, forceRoute bool) (err error) {
 		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodNetworkUpdateFailed", "stage=reconcilePodDHCPOptions error=%v", err)
 		return err
 	}
-	if len(needAllocatePodNets) == 0 {
-		if err = c.reconcilePodLayer2Forward(pod, podNets); err != nil {
-			c.recorder.Eventf(pod, v1.EventTypeWarning, "PodNetworkUpdateFailed", "stage=reconcilePodLayer2Forward error=%v", err)
-			return err
-		}
+	if err = c.reconcilePodLayer2Forward(pod, podNets, needAllocatePodNets); err != nil {
+		c.recorder.Eventf(pod, v1.EventTypeWarning, "PodNetworkUpdateFailed", "stage=reconcilePodLayer2Forward error=%v", err)
+		return err
 	}
 
 	// check if route subnet is need.
@@ -817,9 +815,16 @@ func (c *Controller) reconcilePodDHCPOptions(pod *v1.Pod, podNets []*kubeovnNet)
 	return nil
 }
 
-func (c *Controller) reconcilePodLayer2Forward(pod *v1.Pod, podNets []*kubeovnNet) error {
+func (c *Controller) reconcilePodLayer2Forward(pod *v1.Pod, podNets, skipPodNets []*kubeovnNet) error {
 	podName := c.getNameByPod(pod)
+	skipProviders := make(map[string]struct{}, len(skipPodNets))
+	for _, podNet := range skipPodNets {
+		skipProviders[podNet.ProviderName] = struct{}{}
+	}
 	for _, podNet := range podNets {
+		if _, ok := skipProviders[podNet.ProviderName]; ok {
+			continue
+		}
 		if podNet.Type == providerTypeIPAM ||
 			pod.Annotations[fmt.Sprintf(util.AllocatedAnnotationTemplate, podNet.ProviderName)] != "true" ||
 			pod.Annotations[fmt.Sprintf(util.Layer2ForwardAnnotationTemplate, podNet.ProviderName)] != "true" {
@@ -827,7 +832,7 @@ func (c *Controller) reconcilePodLayer2Forward(pod *v1.Pod, podNets []*kubeovnNe
 		}
 
 		portName := ovs.PodNameToPortName(podName, pod.Namespace, podNet.ProviderName)
-		if err := c.OVNNbClient.EnablePortLayer2forward(portName); err != nil {
+		if err := c.enableLogicalSwitchPortLayer2Forward(portName); err != nil {
 			return fmt.Errorf("enable layer2 forwarding for logical switch port %s: %w", portName, err)
 		}
 	}
