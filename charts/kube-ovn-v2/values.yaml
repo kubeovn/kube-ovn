@@ -246,6 +246,9 @@ features:
   # -- Enable TProxy
   # @section -- Opt-in/out Features
   enableTproxy: false
+  # -- Enable the NetworkManager helper, which sets ProviderNetwork NICs unmanaged as root
+  # @section -- Opt-in/out Features
+  enableNmHelper: false
   # -- Enable periodic ovn-controller recompute
   # @section -- Opt-in/out Features
   enableRecompute: false

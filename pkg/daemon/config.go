@@ -84,6 +84,7 @@ type Configuration struct {
 	TCPConnCheckPort              int32
 	UDPConnCheckPort              int32
 	EnableTProxy                  bool
+	EnableNMHelper                bool
 	EnableRecompute               bool
 	SetGeneveTxOff                bool
 	SetVxlanTxOff                 bool
@@ -145,6 +146,7 @@ func ParseFlags() *Configuration {
 		argUDPConnectivityCheckPort      = pflag.Int32("udp-conn-check-port", 8101, "UDP connectivity Check Port")
 		argEnableRecompute               = pflag.Bool("enable-recompute", false, "Enable periodic ovn-controller recompute")
 		argEnableTProxy                  = pflag.Bool("enable-tproxy", false, "enable tproxy for vpc pod probes")
+		argEnableNMHelper                = pflag.Bool("enable-nm-helper", false, "enable NetworkManager helper for ProviderNetwork NICs")
 		argSetGeneveTxOff                = pflag.Bool("set-geneve-tx-off", false, "Whether to set genev_sys_6081 tx off")
 		argSetVxlanTxOff                 = pflag.Bool("set-vxlan-tx-off", false, "Whether to set vxlan_sys_4789 tx off")
 		argLogPerm                       = pflag.String("log-perm", "640", "The permission for the log file")
@@ -227,6 +229,7 @@ func ParseFlags() *Configuration {
 		TCPConnCheckPort:          *argTCPConnectivityCheckPort,
 		UDPConnCheckPort:          *argUDPConnectivityCheckPort,
 		EnableTProxy:              *argEnableTProxy,
+		EnableNMHelper:            *argEnableNMHelper,
 		EnableRecompute:           *argEnableRecompute,
 		SetGeneveTxOff:            *argSetGeneveTxOff,
 		SetVxlanTxOff:             *argSetVxlanTxOff,

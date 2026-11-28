@@ -74,6 +74,7 @@ IFACE=${IFACE:-}
 DPDK_TUNNEL_IFACE=${DPDK_TUNNEL_IFACE:-br-phy}
 ENABLE_BIND_LOCAL_IP=${ENABLE_BIND_LOCAL_IP:-true}
 ENABLE_TPROXY=${ENABLE_TPROXY:-false}
+ENABLE_NM_HELPER=${ENABLE_NM_HELPER:-false}
 ENABLE_RECOMPUTE=${ENABLE_RECOMPUTE:-false}
 ENABLE_COMPACT=${ENABLE_COMPACT:-false}
 SECURE_SERVING=${SECURE_SERVING:-false}
@@ -9200,6 +9201,55 @@ EOF
   )
 fi
 
+NM_HELPER_CONTAINER=""
+NM_HELPER_SOCKET_MOUNT=""
+NM_HELPER_SOCKET_VOLUME=""
+if [[ "$ENABLE_NM_HELPER" == "true" ]]; then
+  NM_HELPER_CONTAINER=$(cat <<EOF
+      - name: nm-helper
+        image: "$REGISTRY/kube-ovn:$VERSION"
+        imagePullPolicy: $IMAGE_PULL_POLICY
+        command:
+          - /kube-ovn/kube-ovn-nm-helper
+        env:
+          - name: DBUS_SYSTEM_BUS_ADDRESS
+            value: "unix:path=/host/var/run/dbus/system_bus_socket"
+        securityContext:
+          runAsUser: 0
+          runAsGroup: 65534
+          privileged: false
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        volumeMounts:
+          - name: nm-helper-socket
+            mountPath: /run/kube-ovn-nm-helper
+          - name: host-dbus
+            mountPath: /host/var/run/dbus
+            readOnly: true
+            mountPropagation: HostToContainer
+        resources:
+          requests:
+            cpu: 10m
+            memory: 32Mi
+          limits:
+            cpu: 100m
+            memory: 128Mi
+EOF
+  )
+  NM_HELPER_SOCKET_MOUNT=$(cat <<EOF
+          - name: nm-helper-socket
+            mountPath: /run/kube-ovn-nm-helper
+EOF
+  )
+  NM_HELPER_SOCKET_VOLUME=$(cat <<EOF
+        - name: nm-helper-socket
+          emptyDir: {}
+EOF
+  )
+fi
+
 cat <<EOF > kube-ovn.yaml
 $IPSEC_ISSUER_POLICY
 ---
@@ -9569,6 +9619,7 @@ ${IPSEC_CLEANUP_INIT}
           - --gateway-netfilter-detect-timeout=$GATEWAY_NETFILTER_DETECT_TIMEOUT
           - --kubelet-dir=$KUBELET_DIR
           - --enable-tproxy=$ENABLE_TPROXY
+          - --enable-nm-helper=$ENABLE_NM_HELPER
           - --enable-recompute=$ENABLE_RECOMPUTE
           - --secure-serving=${SECURE_SERVING}
           - --set-geneve-tx-off=$SET_GENEVE_TX_OFF
@@ -9616,6 +9667,7 @@ ${CNI_SERVER_CAPABILITIES}
             value: "unix:path=/host/var/run/dbus/system_bus_socket"
         volumeMounts:
 ${TPROXY_SOCKET_MOUNT}
+${NM_HELPER_SOCKET_MOUNT}
           - name: usr-local-sbin
             mountPath: /usr/local/sbin
           - name: host-modules
@@ -9677,6 +9729,7 @@ ${TPROXY_SOCKET_MOUNT}
             memory: 1Gi
             ephemeral-storage: 1Gi
 ${TPROXY_CONTAINER}
+${NM_HELPER_CONTAINER}
 ${IPSEC_CONTAINER}
       nodeSelector:
         kubernetes.io/os: "linux"
@@ -9686,6 +9739,7 @@ ${IPSEC_CONTAINER}
             path: /run/kube-ovn-ipsec-protection
             type: DirectoryOrCreate
 ${TPROXY_SOCKET_VOLUME}
+${NM_HELPER_SOCKET_VOLUME}
         - name: usr-local-sbin
           emptyDir: {}
         - name: host-modules

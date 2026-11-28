@@ -192,7 +192,7 @@ func (c *Controller) initRuntime() error {
 		util.LogFatalAndExit(err, "failed to clear obsolete u2o flows")
 	}
 
-	c.nmSyncer = newNetworkManagerSyncer()
+	c.nmSyncer = newNetworkManagerSyncer(c.config.EnableNMHelper)
 	c.nmSyncer.Run(c.transferAddrsAndRoutes)
 
 	return nil
