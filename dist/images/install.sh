@@ -2650,6 +2650,12 @@ spec:
                       type: integer
                     protocol:
                       description: Protocol (tcp, udp, icmp, or all)
+                      enum:
+                      - ""
+                      - all
+                      - icmp
+                      - tcp
+                      - udp
                       type: string
                     remoteAddress:
                       description: Remote address or CIDR
@@ -2692,6 +2698,12 @@ spec:
                       type: integer
                     protocol:
                       description: Protocol (tcp, udp, icmp, or all)
+                      enum:
+                      - ""
+                      - all
+                      - icmp
+                      - tcp
+                      - udp
                       type: string
                     remoteAddress:
                       description: Remote address or CIDR
