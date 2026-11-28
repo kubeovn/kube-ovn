@@ -3348,3 +3348,19 @@ func (suite *OvnClientTestSuite) testMigrateACLTier() {
 	require.Equal(t, 0, getTier(externalMatch))
 	require.Equal(t, 0, getTier(noExtIDsMatch))
 }
+
+func TestSecurityGroupRuleACLRejectsUnknownProtocol(t *testing.T) {
+	t.Parallel()
+
+	for _, protocol := range []kubeovnv1.SgProtocol{"gre", "TCP", "sctp"} {
+		t.Run(string(protocol), func(t *testing.T) {
+			t.Parallel()
+
+			acl, err := SecurityGroupRuleACL("sg-proto-repro", ovnnb.ACLDirectionToLport, kubeovnv1.SecurityGroupRule{
+				Protocol: protocol,
+			}, 2)
+			require.ErrorContains(t, err, "invalid security group protocol")
+			require.Nil(t, acl)
+		})
+	}
+}
