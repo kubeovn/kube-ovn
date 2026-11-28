@@ -8,7 +8,10 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"net/url"
+	"os"
+	"os/exec"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -71,9 +74,12 @@ func TestE2E(t *testing.T) {
 }
 
 type suiteContext struct {
-	Node     string
-	NodeIP   string
-	NodePort int32
+	Namespace   string
+	Service     string
+	BackendPort int32
+	Node        string
+	NodeIP      string
+	NodePort    int32
 }
 
 var suiteCtx suiteContext
@@ -98,6 +104,9 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 	ginkgo.By("Creating deployment " + deploymentName)
 	podLabels := map[string]string{"app": deploymentName}
 	port := 8000 + rand.Int32N(1000)
+	suiteCtx.Namespace = namespaceName
+	suiteCtx.Service = serviceName
+	suiteCtx.BackendPort = port
 	portStr := strconv.Itoa(int(port))
 	args := []string{"netexec", "--http-port", portStr}
 	deploy := framework.MakeDeployment(deploymentName, 1, podLabels, nil, "server", framework.AgnhostImage, "")
@@ -143,7 +152,14 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 	}, "node port is allocated")
 	suiteCtx.NodePort = service.Spec.Ports[0].NodePort
 
+	if os.Getenv("E2E_NODEPORT_DIAGNOSTICS_DIR") != "" {
+		runNodePortDiagnostics("start")
+	}
+
 	ginkgo.DeferCleanup(func() {
+		if os.Getenv("E2E_NODEPORT_DIAGNOSTICS_DIR") != "" {
+			runNodePortDiagnostics("stop")
+		}
 		ginkgo.By("Deleting service " + serviceName)
 		serviceClient.DeleteSync(serviceName)
 
@@ -162,6 +178,18 @@ var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
 	framework.ExpectNoError(err)
 	framework.Logf("suite context: %#v", suiteCtx)
 })
+
+func runNodePortDiagnostics(action string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "bash", "test/e2e/connectivity/diagnostics.sh", action)
+	cmd.Env = append(os.Environ(),
+		"NODEPORT_NAMESPACE="+suiteCtx.Namespace, "NODEPORT_SERVICE="+suiteCtx.Service,
+		"NODEPORT_PORT="+strconv.Itoa(int(suiteCtx.NodePort)),
+		"NODEPORT_BACKEND_PORT="+strconv.Itoa(int(suiteCtx.BackendPort)))
+	output, err := cmd.CombinedOutput()
+	framework.Logf("NodePort diagnostics %s: error=%v\n%s", action, err, output)
+}
 
 var _ = framework.Describe("[group:connectivity]", func() {
 	var server *rpc.Server
@@ -186,7 +214,19 @@ var _ = framework.Describe("[group:connectivity]", func() {
 			Path:   "/clientip",
 		}
 		ginkgo.By("GET " + u.String())
-		reports, err := frameworkhttp.Loop(nil, "NodePort", u.String(), "GET", 0, 100, 5000, 200, notify.ch)
+		// Capture before disruption; post-suite logs run after the Service is deleted.
+		diagnostics := os.Getenv("E2E_NODEPORT_DIAGNOSTICS_DIR")
+		var once sync.Once
+		var snapshot sync.WaitGroup
+
+		reports, err := frameworkhttp.LoopWithFailureHandler("NodePort", u.String(), "GET", 0, 100, 5000, 200, notify.ch, func(r *frameworkhttp.Report) {
+			framework.Logf("NodePort failure index=%d start=%s elapsed=%dms error=%s\n%s",
+				r.Index, r.Timestamp.UTC().Format(time.RFC3339Nano), r.Elapsed, r.Attachments, r.Trace)
+			if diagnostics != "" {
+				once.Do(func() { snapshot.Go(func() { runNodePortDiagnostics("snapshot") }) })
+			}
+		})
+		snapshot.Wait()
 		framework.ExpectNoError(err)
 
 		if len(reports) == 0 {
@@ -196,7 +236,7 @@ var _ = framework.Describe("[group:connectivity]", func() {
 
 		framework.Logf("HTTP failures:")
 		for _, r := range reports {
-			framework.Logf("index = %03d, timestamp = %v, message = %v", r.Index, r.Timestamp, r.Attachments)
+			framework.Logf("index = %03d, timestamp = %v, elapsed = %dms, message = %v\n%s", r.Index, r.Timestamp, r.Elapsed, r.Attachments, r.Trace)
 		}
 
 		framework.Failf("%d HTTP failures occurred", len(reports))
