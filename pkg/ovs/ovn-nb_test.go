@@ -85,6 +85,11 @@ func (suite *OvnClientTestSuite) testCreateLogicalPatchPort() {
 		require.NoError(t, err)
 		require.ElementsMatch(t, []string{"192.168.230.1/24", "fc00::0af4:01/112"}, lrp.Networks)
 
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.Equal(t, lrpName, lsp.Options["router-port"])
+		require.Equal(t, "router", lsp.Options["nat-addresses"])
+
 		for _, chassisName := range chassises {
 			gwChassisName := lrpName + "-" + chassisName
 			gwChassis, err := nbClient.GetGatewayChassis(gwChassisName, false)
@@ -112,6 +117,10 @@ func (suite *OvnClientTestSuite) testCreateLogicalPatchPort() {
 		lrp, err := nbClient.GetLogicalRouterPort(lrpName, false)
 		require.NoError(t, err)
 		require.Empty(t, lrp.GatewayChassis)
+
+		lsp, err := nbClient.GetLogicalSwitchPort(lspName, false)
+		require.NoError(t, err)
+		require.NotContains(t, lsp.Options, "nat-addresses")
 	})
 
 	t.Run("failed client to create router port with chassises", func(t *testing.T) {
