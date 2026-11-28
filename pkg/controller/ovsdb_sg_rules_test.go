@@ -83,6 +83,68 @@ func TestControllerSecurityGroupRulePaths(t *testing.T) {
 	}
 }
 
+func TestControllerSecurityGroupBaseACLsOutrankRules(t *testing.T) {
+	client := newInMemoryOVNNbClient(t)
+	controller := &Controller{OVNNbClient: client, OVNNbTables: client}
+	sgName := "base-priority-test"
+	pgName := ovs.GetSgPortGroupName(sgName)
+	require.NoError(t, client.CreatePortGroup(pgName, nil))
+
+	// A drop rule with the lowest rule priority number gets the highest ACL
+	// priority that a rule can have.
+	dropIPv6 := kubeovnv1.SecurityGroupRule{IPVersion: "ipv6", Priority: util.SecurityGroupPriorityMin, RemoteType: kubeovnv1.SgRemoteTypeAddress, RemoteAddress: "::/0", Protocol: kubeovnv1.SgProtocolALL, Policy: kubeovnv1.SgPolicyDrop}
+	sg := &kubeovnv1.SecurityGroup{Name: sgName, Spec: kubeovnv1.SecurityGroupSpec{IngressRules: []kubeovnv1.SecurityGroupRule{dropIPv6}, EgressRules: []kubeovnv1.SecurityGroupRule{dropIPv6}}}
+	directions := []string{ovnnb.ACLDirectionToLport, ovnnb.ACLDirectionFromLport}
+
+	listACLs := func() []*ovnnb.ACL {
+		acls, err := client.ListAcls("", map[string]string{"parent": pgName})
+		require.NoError(t, err)
+		result := make([]*ovnnb.ACL, 0, len(acls))
+		for i := range acls {
+			result = append(result, &acls[i])
+		}
+		return result
+	}
+
+	// Simulate a group programmed by an earlier version: the rules are in place,
+	// but the base ACLs use the old priority.
+	for _, direction := range directions {
+		require.NoError(t, controller.updateSgACL(sg, direction))
+		legacy := securityGroupACL(pgName, direction, "2005", "legacy base "+direction, ovnnb.ACLActionAllowRelated, util.ConvertSGTierToOvnTier(0))
+		require.NoError(t, controller.createPortGroupACLs(pgName, legacy))
+	}
+	lost, err := controller.securityGroupLostACL(sg)
+	require.NoError(t, err)
+	require.True(t, lost, "a group with old base ACLs must be synced again")
+
+	// A forced sync replaces them.
+	for _, direction := range directions {
+		require.NoError(t, controller.updateSgACL(sg, direction))
+		require.NoError(t, controller.createSgBaseACL(sg.Name, direction))
+	}
+	lost, err = controller.securityGroupLostACL(sg)
+	require.NoError(t, err)
+	require.False(t, lost)
+
+	var baseACLs, ruleACLs int
+	lowestBase, highestRule := 0, 0
+	for _, acl := range listACLs() {
+		require.NotEqual(t, 2005, acl.Priority, "old base ACL was not removed")
+		if acl.Action == ovnnb.ACLActionDrop {
+			ruleACLs++
+			highestRule = max(highestRule, acl.Priority)
+			continue
+		}
+		baseACLs++
+		if lowestBase == 0 || acl.Priority < lowestBase {
+			lowestBase = acl.Priority
+		}
+	}
+	require.Positive(t, baseACLs)
+	require.Positive(t, ruleACLs)
+	require.Greater(t, lowestBase, highestRule)
+}
+
 func TestControllerAddressSetInvalidCIDRFallback(t *testing.T) {
 	client := newInMemoryOVNNbClient(t)
 	require.NoError(t, client.CreateAddressSet("cidr_test", nil))

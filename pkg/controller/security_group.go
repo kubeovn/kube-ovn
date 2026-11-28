@@ -8,6 +8,7 @@ import (
 	"maps"
 	"reflect"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/cnf/structhash"
@@ -487,6 +488,13 @@ func (c *Controller) securityGroupLostACL(sg *kubeovnv1.SecurityGroup) (bool, er
 			if !found {
 				return true, nil
 			}
+		}
+		// Base ACLs are also missing when they still have the priority used by an
+		// earlier version, which ranked below the rules.
+		if !slices.ContainsFunc(existing, func(row ovnnb.ACL) bool {
+			return row.Direction == directionRules.direction && strconv.Itoa(row.Priority) == util.SecurityGroupBasePriority
+		}) {
+			return true, nil
 		}
 	}
 	return false, nil
