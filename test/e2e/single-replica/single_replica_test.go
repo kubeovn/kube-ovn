@@ -151,7 +151,8 @@ var _ = framework.Describe("[group:single-replica]", func() {
 		gomega.Expect(pod.Annotations[util.IPAddressAnnotation]).NotTo(gomega.BeEmpty())
 	})
 
-	framework.DisruptiveIt("should recover after the ovn-central pod is deleted", func() {
+	// Deleting the only database Pod must not overlap the suite's other checks.
+	k8sframework.It("should recover after the ovn-central pod is deleted", k8sframework.WithDisruptive(), k8sframework.WithSerial(), func() {
 		ginkgo.By("Recording the current ovn-central pod")
 		deployClient := f.DeploymentClientNS(framework.KubeOvnNamespace)
 		deploy := deployClient.Get("ovn-central")

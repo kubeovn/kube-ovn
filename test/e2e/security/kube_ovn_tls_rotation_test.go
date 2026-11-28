@@ -18,6 +18,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/retry"
+	k8sframework "k8s.io/kubernetes/test/e2e/framework"
 	e2ekubectl "k8s.io/kubernetes/test/e2e/framework/kubectl"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	e2epodoutput "k8s.io/kubernetes/test/e2e/framework/pod/output"
@@ -52,7 +53,8 @@ var _ = framework.Describe("[group:security] kube-ovn TLS rotation", func() {
 	f := framework.NewDefaultFramework("security-kube-ovn-tls-rotation")
 	f.SkipNamespaceCreation = true
 
-	framework.ConformanceIt("should reload components without restarting pods when kube-ovn-tls secret is updated", func() {
+	// Certificate rotation restarts ovn-controller and changes shared TLS state.
+	framework.ConformanceIt("should reload components without restarting pods when kube-ovn-tls secret is updated", k8sframework.WithSerial(), func() {
 		f.SkipVersionPriorTo(1, 15, "kube-ovn TLS rotation was introduced in v1.15")
 
 		cs := f.ClientSet
