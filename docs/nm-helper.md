@@ -33,15 +33,17 @@ capabilities, and the image build checks that `getcap` reports none. The helper
 mounts the host's `/var/run/dbus` read-only with `HostToContainer` propagation.
 Connecting to a Unix socket does not need a writable mount. NetworkManager
 checks only the caller's UID, so capabilities would not help here, and none are
-granted. The helper looks up the NetworkManager device for each request, so it
-needs no restart after NetworkManager restarts.
+granted. The helper connects to D-Bus and looks up the NetworkManager device
+for each request, so it needs no restart after NetworkManager or D-Bus restarts.
 
 The Unix socket `/run/kube-ovn-nm-helper/nm-helper.sock` is in the Pod-local
 `emptyDir` volume `nm-helper-socket`, which only `cni-server` and `nm-helper`
 mount. The helper creates the socket with mode `0660`, owned by UID 0 and GID
 65534, and accepts only peers whose `SO_PEERCRED` UID is 0 or 65534. Each
 connection carries one request of at most 4096 bytes and has a 10-second
-deadline. The helper serves at most 64 requests at a time.
+deadline. Its D-Bus calls time out after 5 seconds, so a NetworkManager that
+stops replying frees the worker and the caller gets an error. The helper serves
+at most 64 requests at a time.
 
 A request is a JSON object with one field, `Interface`. The helper applies the
 kernel's basic interface name checks: not empty, at most 15 bytes, not `.` or

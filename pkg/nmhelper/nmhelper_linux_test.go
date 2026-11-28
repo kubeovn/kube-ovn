@@ -1,7 +1,11 @@
 package nmhelper
 
 import (
+	"bufio"
+	"context"
+	"encoding/binary"
 	"errors"
+	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -9,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/godbus/dbus/v5"
 	"github.com/stretchr/testify/require"
 )
 
@@ -98,6 +103,83 @@ func TestServeRejectsUnauthorizedPeer(t *testing.T) {
 	// Authentication must reject this UID before reading any request payload.
 	require.Equal(t, "unauthorized NetworkManager helper peer", exchange(t, socket, nil))
 	require.Empty(t, calls, "unauthorized peers must not reach NetworkManager")
+}
+
+// A stalled D-Bus must not hold the request, or it would keep its Serve worker.
+func TestSetUnmanagedTimesOut(t *testing.T) {
+	defer func(timeout time.Duration) { requestTimeout = timeout }(requestTimeout)
+	requestTimeout = 100 * time.Millisecond
+	for _, tt := range []struct {
+		name         string
+		authenticate bool
+	}{{"dbus-daemon hangs", false}, {"NetworkManager hangs", true}} {
+		t.Run(tt.name, func(t *testing.T) {
+			calls := make(chan string, 1)
+			t.Setenv("DBUS_SYSTEM_BUS_ADDRESS", "unix:path="+hungBus(t, tt.authenticate, calls))
+			errs := make(chan error, 1)
+			go func() { errs <- setUnmanaged("eth0") }()
+			select {
+			case err := <-errs:
+				require.ErrorIs(t, err, context.DeadlineExceeded)
+			case <-time.After(5 * time.Second):
+				t.Fatal("the request outlived its timeout")
+			}
+			if tt.authenticate {
+				select {
+				case member := <-calls:
+					require.Equal(t, "GetDeviceByIpIface", member)
+				case <-time.After(5 * time.Second):
+					t.Fatal("no NetworkManager call reached the bus")
+				}
+			}
+		})
+	}
+}
+
+// hungBus returns a D-Bus socket that never replies to NetworkManager calls and
+// sends their members to calls. With authenticate, it answers the handshake and
+// Hello like dbus-daemon.
+func hungBus(t *testing.T, authenticate bool, calls chan<- string) string {
+	t.Helper()
+	socket := filepath.Join(tempDir(t), "bus.sock")
+	listener, err := net.Listen("unix", socket)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = listener.Close() })
+	if !authenticate {
+		return socket
+	}
+	go func() {
+		conn, err := listener.Accept()
+		if err != nil {
+			return
+		}
+		defer conn.Close()
+		_, _ = conn.Write([]byte("REJECTED EXTERNAL\r\nOK 0123456789abcdef0123456789abcdef\r\nERROR\r\n"))
+		in := bufio.NewReader(conn)
+		for range 4 { // AUTH, AUTH EXTERNAL, NEGOTIATE_UNIX_FD, BEGIN
+			if _, err := in.ReadString('\n'); err != nil {
+				return
+			}
+		}
+		hello, err := dbus.DecodeMessage(in)
+		if err != nil {
+			return
+		}
+		reply := &dbus.Message{Type: dbus.TypeMethodReply, Headers: map[dbus.HeaderField]dbus.Variant{
+			dbus.FieldReplySerial: dbus.MakeVariant(hello.Serial()),
+			dbus.FieldSignature:   dbus.MakeVariant(dbus.SignatureOf("")),
+		}, Body: []any{":1.1"}}
+		if err := reply.EncodeTo(conn, binary.LittleEndian); err != nil {
+			return
+		}
+		call, err := dbus.DecodeMessage(in)
+		if err != nil {
+			return
+		}
+		calls <- call.Headers[dbus.FieldMember].Value().(string)
+		_, _ = io.Copy(io.Discard, in)
+	}()
+	return socket
 }
 
 // serve starts the helper protocol on a temporary socket with a fake writer.
