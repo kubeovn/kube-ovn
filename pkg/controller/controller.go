@@ -1926,9 +1926,7 @@ func (c *Controller) initResourceOnce() {
 
 	// remove resources in ovndb that not exist any more in kubernetes resources
 	// process gc at last in case of affecting other init process
-	if err := c.gc(); err != nil {
-		util.LogFatalAndExit(err, "failed to run gc")
-	}
+	runGCWithRetry(startupGCBackoff, c.gc)
 }
 
 func processNextWorkItem[T comparable](action string, queue workqueue.TypedRateLimitingInterface[T], handler func(T) error, getItemKey func(any) string) bool {

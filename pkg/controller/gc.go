@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	nadv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	nadutils "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/utils"
@@ -15,7 +16,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/util/retry"
 	"k8s.io/klog/v2"
 	"k8s.io/utils/set"
 
@@ -27,6 +30,21 @@ import (
 )
 
 var lastNoPodLSP = strset.New()
+
+// startupGCBackoff bounds the retries of the one-shot startup gc: 4 attempts, ~7s.
+var startupGCBackoff = wait.Backoff{Duration: time.Second, Factor: 2, Steps: 4}
+
+// runGCWithRetry runs the one-shot gc passes, retrying a failed run for a short while.
+// gc only removes OVN resources whose Kubernetes objects are gone, and its transactions
+// can lose a race with a concurrent write ("where" clause test failed). Such a transient
+// failure must not take down a controller that is otherwise healthy and already serving
+// allocations, so a run that keeps failing is logged and the cleanup is left to the next
+// controller start.
+func runGCWithRetry(backoff wait.Backoff, gc func() error) {
+	if err := retry.OnError(backoff, func(error) bool { return true }, gc); err != nil {
+		klog.Errorf("failed to run gc, leaving the cleanup to the next controller start: %v", err)
+	}
+}
 
 func (c *Controller) gc() error {
 	if c.config.GCInterval == 0 {
